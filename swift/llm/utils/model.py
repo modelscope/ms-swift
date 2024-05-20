@@ -341,9 +341,9 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
-    phi3_mini_128k_instruct = 'phi3-mini-128k-instruct'
     # cogagent
-    cogvlm_17b_instruct = 'cogvlm-17b-instruct'
+    cogvlm_17b_chat = 'cogvlm-17b-chat'
+    cogvlm2_19b_chat = 'cogvlm2-19b-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -516,6 +516,14 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
         QuantLinear.forward = _new_forward
 
 
+@register_model(
+    ModelType.cogvlm2_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    pad_token='<|reserved_special_token_0|>',
+    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
 @register_model(
     ModelType.atom_7b,
     'FlagAlpha/Atom-7B',
@@ -811,6 +819,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token
+    pad_token = kwargs.get('pad_token')
+    if pad_token is not None:
+        tokenizer.pad_token = pad_token
     model = None
     if load_model:
         if kwargs.get('use_unsloth', False):
@@ -959,10 +970,10 @@ def get_model_tokenizer_mamba(model_dir: str,
 
 
 @register_model(
-    ModelType.cogvlm_17b_instruct,
+    ModelType.cogvlm_17b_chat,
     'ZhipuAI/cogvlm-chat',
     LoRATM.cogvlm,
-    TemplateType.cogvlm_instruct,
+    TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm-chat-hf')
@@ -1312,16 +1323,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=False,  # https://github.com/vllm-project/vllm/pull/4298
-    tags=['general'],
-    hf_model_id='microsoft/Phi-3-mini-128k-instruct')
-@register_model(
-    ModelType.phi3_mini_128k_instruct,
-    'LLM-Research/Phi-3-mini-128k-instruct',
-    LoRATM.phi3,
-    TemplateType.phi3,
-    requires=['transformers>=4.36'],
-    support_flash_attn=True,
-    support_vllm=False,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
 @register_model(
@@ -4238,6 +4239,9 @@ def get_model_tokenizer(model_type: str,
                 quantization_config.bnb_4bit_compute_dtype = torch_dtype
                 logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
     kwargs['eos_token'] = model_info['eos_token']
+    pad_token = model_info.get('pad_token')
+    if pad_token is not None:
+        kwargs['pad_token'] = pad_token
     if 'is_training' not in kwargs:
         kwargs['is_training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)

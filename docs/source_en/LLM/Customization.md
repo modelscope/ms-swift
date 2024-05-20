@@ -26,7 +26,7 @@ Supports directly passing in custom `dataset_id` (compatible with MS and HF) and
 --dataset {dataset_name}#20000 {dataset_id}:{subset1}/{subset2}#20000 {dataset_path}#10000
 ```
 
-The script supports file formats including `csv`, `json`, and `jsonl`. The files you pass in need to adhere to the dataset formats listed below (only a partial list is shown). All formats support system. Files in `json` and `jsonl` formats support multi-turn conversations (not supported in `csv`).
+The supported file formats for the script include `csv`, `json`, and `jsonl`. You need to ensure that the incoming file conforms to the following dataset formats (only a partial list is provided). All of these formats support the `system` field (it is important to note that if the `system` field is specified in the csv format, it cannot be set to `None` and can only be specified as an empty string. There is no such restriction for the json and jsonl formats). Files in `json` and `jsonl` formats support multi-turn dialogue (`csv` does not support this).
 
 
 **Format 1:**
@@ -49,14 +49,14 @@ AAAAA
 Single-Round Dialogue
 
 ```csv
-query,response
-11111,22222
-aaaaa,bbbbb
-AAAAA,BBBBB
+system,query,response
+00000,11111,22222
+00001,aaaaa,bbbbb
+00002,AAAAA,BBBBB
 ```
 
 ```jsonl
-{"query": "11111", "response": "22222"}
+{"system": "00000", "query": "11111", "response": "22222"}
 {"query": "aaaaa", "response": "bbbbb"}
 {"query": "AAAAA", "response": "BBBBB"}
 ```
@@ -64,13 +64,13 @@ AAAAA,BBBBB
 Multi-Round Dialogue
 
 ```jsonl
-{"query": "55555", "response": "66666"}
+{"system": "00000", "query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
 ```json
-[{"query": "55555", "response": "66666"},
+[{"system": "00000", "query": "55555", "response": "66666"},
 {"query": "eeeee", "response": "fffff", "history": []},
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}]
 ```
@@ -78,7 +78,7 @@ Multi-Round Dialogue
 **Format 2:**
 
 ```jsonl
-{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
+{"conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
@@ -86,7 +86,7 @@ Multi-Round Dialogue
 **Format 3:**
 
 ```jsonl
-{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
+{"messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
 ```
@@ -94,10 +94,10 @@ Multi-Round Dialogue
 **Format 4:**
 
 ```csv
-instruction,input,output
-11111,22222,33333
-aaaaa,bbbbb,ccccc
-AAAAA,BBBBB,CCCCC
+system,instruction,input,output
+00000,11111,22222,33333
+00001,aaaaa,bbbbb,ccccc
+00002,AAAAA,BBBBB,CCCCC
 ```
 
 **Reinforcement Learning (DPO/ORPO)**

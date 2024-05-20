@@ -13,7 +13,7 @@
 - `--model_type`: Represents the selected model type, default is `None`. `model_type` specifies the default `lora_target_modules`, `template_type`, and other information for the corresponding model. You can fine-tune by specifying only `model_type`. The corresponding `model_id_or_path` will use default settings, and the model will be downloaded from ModelScope and use the default cache path. One of model_type and model_id_or_path must be specified. You can see the list of available `model_type` [here](Supported-models-datasets.md#Models). You can set the `USE_HF` environment variable to control downloading models and datasets from the HF Hub, see [HuggingFace Ecosystem Compatibility Documentation](Compat-HF.md).
 - `--model_id_or_path`: Represents the `model_id` in the ModelScope/HuggingFace Hub or a local path for the model, default is `None`. If the provided `model_id_or_path` has already been registered, the `model_type` will be inferred based on the `model_id_or_path`. If it has not been registered, both `model_type` and `model_id_or_path` must be specified, e.g. `--model_type <model_type> --model_id_or_path <model_id_or_path>`.
 - `--model_revision`: The version number corresponding to `model_id` on ModelScope Hub, default is `None`. If `model_revision` is `None`, use the revision registered in `MODEL_MAPPING`. Otherwise, force use of the `model_revision` passed from command line.
-- `--local_repo_path`: Some models need github repo, which will be cloned when loading the model. This parameter tells the existing local repo to avoid the clone behaviour. These models are:
+- `--local_repo_path`: Some models rely on a GitHub repo for loading. To avoid network issues during `git clone`, you can directly use the local repo. This parameter requires input of the local repo path, and defaults to `None`. These models include:
   - mPLUG-Owl model: `https://github.com/X-PLUG/mPLUG-Owl`
   - DeepSeek-VL model: `https://github.com/deepseek-ai/DeepSeek-VL`
   - YI-VL model: `https://github.com/01-ai/Yi`
@@ -63,6 +63,7 @@
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_dropout_p`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
+- `--init_lora_weights`: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, or `pissa_niter_[number of iters]`. Default value `true`.
 - `--lora_bias_trainable`: Default is `'none'`, options: 'none', 'all'. Set to `'all'` to make all biases trainable.
 - `--lora_modules_to_save`: Default is `[]`. If you want to train embedding, lm_head, or layer_norm, you can set this parameter, e.g. `--lora_modules_to_save EMBEDDING LN lm_head`. If passed `'EMBEDDING'`, Embedding layer will be added to `lora_modules_to_save`. If passed `'LN'`, `RMSNorm` and `LayerNorm` will be added to `lora_modules_to_save`.
 - `--lora_dtype`: Default is `'AUTO'`, specifies dtype for lora modules. If `AUTO`, follow dtype of original module. Options: 'fp16', 'bf16', 'fp32', 'AUTO'.
@@ -134,6 +135,23 @@
 ### Sequence Parallel Parameters
 
 - `--sequence_parallel_size`: Default value `1`, a positive value can be used to split a sequence to multiple GPU to reduce memory usage. The value should divide the GPU count.
+
+### BOFT Parameters
+
+- `--boft_block_size`: BOFT block size, default value is 4.
+- `--boft_block_num`: Number of BOFT blocks, cannot be used simultaneously with `boft_block_size`.
+- `--boft_target_modules`: BOFT target modules. Default is `['DEFAULT']`. If `boft_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `boft_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as BOFT modules.
+- `--boft_dropout`: Dropout value for BOFT, default is 0.0.
+- `--boft_modules_to_save`: Additional modules to be trained and saved, default is `None`.
+
+### Vera Parameters
+
+- `--vera_rank`: Size of Vera Attention, default value is 256.
+- `--vera_projection_prng_key`: Whether to store the Vera projection matrix, default is True.
+- `--vera_target_modules`: Vera target modules. Default is `['DEFAULT']`. If `vera_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `vera_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as Vera modules. Vera modules need to share a same shape.
+- `--vera_dropout`: Dropout value for Vera, default is 0.0.
+- `--vera_d_initial`: Initial value for Vera's d matrix, default is 0.1.
+- `--vera_modules_to_save`: Additional modules to be trained and saved, default is `None`.
 
 ### LoRA+ Fine-tuning Parameters
 
