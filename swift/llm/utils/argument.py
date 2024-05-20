@@ -358,7 +358,7 @@ class ArgumentsBase:
                 model_mapping_reversed[model_id] = k
             model_id_or_path = self.model_id_or_path
             model_id_or_path_lower = model_id_or_path.lower()
-            if model_id_or_path_lower not in model_mapping_reversed:
+            if self.model_type is not None or model_id_or_path_lower not in model_mapping_reversed:
                 if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
