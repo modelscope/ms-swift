@@ -119,6 +119,7 @@ class DatasetName:
     coco_en_2 = 'coco-en-2'
     coco_en_2_mini = 'coco-en-2-mini'
     capcha_images = 'capcha-images'
+    m3it = 'm3it'
     # for qwen-audio
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
@@ -861,6 +862,14 @@ register_dataset(
     split=['train', 'validation'],
     tags=['chat', 'multi-modal', 'vision'])
 
+register_dataset(
+    DatasetName.m3it,
+    'AI-ModelScope/M3IT',
+    None,
+    _preprocess_capcha_images,
+    get_dataset_from_repo,
+    split=['train', 'validation'],
+    tags=['chat', 'multi-modal', 'vision'])
 
 def _repair_toolbench(conversations: Dict[str, str]) -> Dict[str, str]:
     assert len(conversations) == 2
