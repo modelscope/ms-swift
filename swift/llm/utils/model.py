@@ -3609,28 +3609,33 @@ def get_model_tokenizer_codellama(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
-def _repair_telechat_conv1d(model):
-    from transformers.pytorch_utils import Conv1D as TfConv1D
-    if hasattr(model, 'conv1d_replaced'):
-        return
-    model_modules = dict(model.named_modules())
-    teleConv1D = type(model_modules['transformer.h.0.attn.c_attn'])
+def _repair_telechat(model):
+    if not hasattr(model, 'conv1d_replaced'):
+        from transformers.pytorch_utils import Conv1D as TfConv1D
+        model_modules = dict(model.named_modules())
+        teleConv1D = type(model_modules['transformer.h.0.attn.c_attn'])
 
-    # replace Conv1D in model
-    for name, module in model.named_modules():
-        if isinstance(module, teleConv1D):
-            nx = module.weight.size(0)
-            nf = module.weight.size(1)
-            new_module = TfConv1D(nf, nx)
-            new_module.weight.data.copy_(module.weight.data)
-            if module.bias is not None:
-                new_module.bias.data.copy_(module.bias.data)
-            parent_name = '.'.join(name.split('.')[:-1])
-            child_name = name.split('.')[-1]
-            parent_module = model_modules[parent_name]
-            setattr(parent_module, child_name, new_module)
-    model.conv1d_replaced = True
-
+        # replace Conv1D in model
+        for name, module in model.named_modules():
+            if isinstance(module, teleConv1D):
+                nx = module.weight.size(0)
+                nf = module.weight.size(1)
+                new_module = TfConv1D(nf, nx)
+                new_module.weight.data.copy_(module.weight.data).to(module.weight.device)
+                if module.bias is not None:
+                    new_module.bias.data.copy_(module.bias.data)
+                new_module.bias.to(module.weight.device)
+                parent_name = '.'.join(name.split('.')[:-1])
+                child_name = name.split('.')[-1]
+                parent_module = model_modules[parent_name]
+                setattr(parent_module, child_name, new_module)
+        model.conv1d_replaced = True
+    if not hasattr(model, '__old_forward'):
+        forward = model.forward
+        @wraps(forward)
+        def new_forward(*args, **kwargs):
+            return forward(args,kwargs).to(args[0].device)
+        pass
 
 @register_model(
     ModelType.phi2_3b,
