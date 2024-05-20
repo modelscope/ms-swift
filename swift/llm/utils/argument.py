@@ -599,7 +599,6 @@ class SftArguments(ArgumentsBase):
         default=None,
         metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
 
-
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
@@ -773,12 +772,12 @@ class SftArguments(ArgumentsBase):
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
             if self.quantization_bit == 4 or self.quantization_bit == 8:
-                logger.info("Since you have specified quantization_bit as greater than 0 "
+                logger.info('Since you have specified quantization_bit as greater than 0 '
                             "and have not designated a quant_method, quant_method will be set to 'bnb'.")
                 self.quant_method = 'bnb'
             else:
                 self.quant_method = 'hqq'
-                logger.info("Since you have specified quantization_bit as greater than 0 "
+                logger.info('Since you have specified quantization_bit as greater than 0 '
                             "and have not designated a quant_method, quant_method will be set to 'hqq'.")
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
@@ -1068,12 +1067,12 @@ class InferArguments(ArgumentsBase):
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
             if self.quantization_bit == 4 or self.quantization_bit == 8:
-                logger.info("Since you have specified quantization_bit as greater than 0 "
+                logger.info('Since you have specified quantization_bit as greater than 0 '
                             "and have not designated a quant_method, quant_method will be set to 'bnb'.")
                 self.quant_method = 'bnb'
             else:
                 self.quant_method = 'hqq'
-                logger.info("Since you have specified quantization_bit as greater than 0 "
+                logger.info('Since you have specified quantization_bit as greater than 0 '
                             "and have not designated a quant_method, quant_method will be set to 'hqq'.")
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
