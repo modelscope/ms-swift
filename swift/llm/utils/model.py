@@ -3665,7 +3665,7 @@ def _repair_telechat_conv1d(model):
     support_flash_attn=True,
     function_kwargs={
         'eos_token_id': 2,
-        'repaire_func': _repair_telechat_conv1d
+        'repair_func': _repair_telechat_conv1d
     },
     hf_model_id='Tele-AI/TeleChat-52B')
 def get_model_tokenizer_phi(model_dir: str,
@@ -3681,6 +3681,9 @@ def get_model_tokenizer_phi(model_dir: str,
     eos_token_id = kwargs.pop('eos_token_id', None)
     if eos_token_id:
         tokenizer.eos_token_id = eos_token_id
+    if model and 'repair_func' in kwargs:
+        kwargs.pop('repair_func')(model)
+
     return model, tokenizer
 
 
