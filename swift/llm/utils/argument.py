@@ -271,7 +271,7 @@ class ArgumentsBase:
         # compatibility. (Deprecated)
         idx_list = _dataset_name_exists(self.dataset, 'self-cognition')
         assert len(idx_list) <= 1
-        self.use_self_cognition = idx_list == 1
+        self.use_self_cognition = len(idx_list) == 1
         if self.self_cognition_sample > 0:
             d = f'self-cognition#{self.self_cognition_sample}'
             if len(idx_list) == 1:

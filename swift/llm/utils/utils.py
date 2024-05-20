@@ -393,6 +393,7 @@ def _find_layers(model: Module, module_cls: type) -> List[str]:
 
 
 def find_ln(model: Module) -> List[str]:
+    # find_layer_norm
     module_names = set()
     for name, module in model.named_modules():
         module_cls_name = module.__class__.__name__.lower()
