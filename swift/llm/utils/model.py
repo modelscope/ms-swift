@@ -3632,14 +3632,21 @@ def _repair_telechat(model):
                 setattr(parent_module, child_name, new_module)
                 del module
         model.conv1d_replaced = True
-    if not hasattr(model, '__old_forward'):
-        forward = model.forward
+    # if not hasattr(model, '__old_forward'):
+    #     forward = model.forward
+    #     @wraps(forward)
+    #     def new_forward(*args, **kwargs):
+    #         return forward(*args,**kwargs).to(args[0].device)
+    #     model.__old_forward = forward
+    #     model.forward = new_forward
+    if not hasattr(model.lm_haed, '__old_forward'):
+        forward = model.lm_head.forward
         @wraps(forward)
         def new_forward(*args, **kwargs):
-            return forward(args,kwargs).to(args[0].device)
-        model.__old_forward = forward
-        model.forward = new_forward
-
+            return forward(*args,**kwargs).to(args[0].device)
+        model.lm_head.__old_forward = forward
+        model.lm_head.forward = new_forward
+        
 @register_model(
     ModelType.phi2_3b,
     'AI-ModelScope/phi-2',
