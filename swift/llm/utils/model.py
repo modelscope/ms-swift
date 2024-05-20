@@ -3635,7 +3635,8 @@ def _repair_telechat(model):
         @wraps(forward)
         def new_forward(*args, **kwargs):
             return forward(args,kwargs).to(args[0].device)
-        pass
+        model.__old_forward = forward
+        model.forward = new_forward
 
 @register_model(
     ModelType.phi2_3b,
@@ -3672,6 +3673,7 @@ def _repair_telechat(model):
         'eos_token_id': 2,
         'repair_func': _repair_telechat
     },
+    support_gradient_checkpointing=False,
     hf_model_id='Tele-AI/TeleChat-52B')
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
