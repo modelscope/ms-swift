@@ -3670,7 +3670,7 @@ def _repair_telechat(model):
     support_flash_attn=True,
     function_kwargs={
         'eos_token_id': 2,
-        'repair_func': _repair_telechat_conv1d
+        'repair_func': _repair_telechat
     },
     hf_model_id='Tele-AI/TeleChat-52B')
 def get_model_tokenizer_phi(model_dir: str,
