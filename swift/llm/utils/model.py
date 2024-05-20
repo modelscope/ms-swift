@@ -422,6 +422,7 @@ class LoRATM(NamedTuple):
         'o_proj',
     ]
 
+
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 
 
@@ -3607,6 +3608,29 @@ def get_model_tokenizer_codellama(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
+def _repair_telechat_conv1d(model):
+    from transformers.pytorch_utils import Conv1D as TfConv1D
+    if hasattr(model, 'conv1d_replaced'):
+        return
+    model_modules = dict(model.named_modules())
+    teleConv1D = type(model_modules['transformer.h.0.attn.c_attn'])
+
+    # replace Conv1D in model
+    for name, module in model.named_modules():
+        if isinstance(module, teleConv1D):
+            nx = module.weight.size(0)
+            nf = module.weight.size(1)
+            new_module = TfConv1D(nf, nx)
+            new_module.weight.data.copy_(module.weight.data)
+            if module.bias is not None:
+                new_module.bias.data.copy_(module.bias.data)
+            parent_name = '.'.join(name.split('.')[:-1])
+            child_name = name.split('.')[-1]
+            parent_module = model_modules[parent_name]
+            setattr(parent_module, child_name, new_module)
+    model.conv1d_replaced = True
+
+
 @register_model(
     ModelType.phi2_3b,
     'AI-ModelScope/phi-2',
@@ -3638,7 +3662,10 @@ def get_model_tokenizer_codellama(model_dir: str,
     LoRATM.qwen,
     TemplateType.telechat,
     support_flash_attn=True,
-    function_kwargs={'eos_token_id': 2},
+    function_kwargs={
+        'eos_token_id': 2,
+        'repaire_func': _repair_telechat_conv1d
+    },
     hf_model_id='Tele-AI/TeleChat-52B')
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
