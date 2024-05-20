@@ -13,36 +13,45 @@ pip install 'ms-swift[llm]' -U
 
 ## Inference
 
-Inference with [cogvlm-17b-instruct](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary):
+Inference with [cogvlm-17b-chat](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary):
 ```shell
 # Experimental environment: A100
 # 38GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-instruct
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-chat
 ```
 
 Output: (supports passing local path or URL)
 ```python
 """
+<<< <<< Describe this image.
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+This image showcases a close-up of a young kitten. The kitten has a mix of white and gray fur with distinctive blue eyes. The fur appears soft and fluffy, and the kitten seems to be in a relaxed position, possibly resting. The background is blurred, emphasizing the kitten as the main subject.
+--------------------------------------------------
+<<< How many sheep are in the picture?
+There are no sheep in the picture. The image features a kitten.
+--------------------------------------------------
+<<< clear
 <<< Describe this image.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-This image showcases a close-up of a young kitten. The kitten has a mix of white and gray fur, with striking blue eyes. The fur appears soft and fluffy, and the kitten seems to be in a relaxed position, possibly resting or lounging.
+This image showcases a close-up of a young kitten. The kitten has a fluffy coat with a mix of white, gray, and brown colors. Its eyes are strikingly blue, and it appears to be gazing directly at the viewer. The background is blurred, emphasizing the kitten as the main subject.
 --------------------------------------------------
+<<< clear
 <<< How many sheep are in the picture?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 --------------------------------------------------
+<<< clear
 <<< What is the calculation result?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is '1452+45304=146544'.
+The calculation result is '1452+45304=45456'.
 --------------------------------------------------
+<<< clear
 <<< Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-In a realm where night and day intertwine,
-A boat floats gently, on water so fine.
-Glowing orbs dance, in the starry sky,
-While the forest whispers, secrets it holds.
-A journey of wonder, in the embrace of the night,
-Where dreams take flight, and spirits ignite.
+In a world where night and day intertwine,
+A boat floats gently, reflecting the moon's shine.
+Fireflies dance, their glow a mesmerizing trance,
+As the boat sails through a tranquil, enchanted expanse.
 """
 ```
 
@@ -127,7 +136,7 @@ Fine-tuning multimodal large models usually uses **custom datasets**. Here is a 
 # Experimental environment: A100
 # 50GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type cogvlm-17b-instruct \
+    --model_type cogvlm-17b-chat \
     --dataset coco-mini-en-2 \
 ```
 
@@ -146,17 +155,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 Direct inference:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm-17b-instruct/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora** and inference:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/cogvlm-17b-instruct/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm-17b-instruct/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```

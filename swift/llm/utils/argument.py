@@ -168,6 +168,7 @@ class ArgumentsBase:
         model_type_mapping = {
             'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
             'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
+            'cogvlm-17b-instruct': 'cogvlm-17b-chat'
         }
         dataset_name_mapping = {
             'ms-bench-mini': 'ms-bench#20000',
