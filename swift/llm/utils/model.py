@@ -3608,47 +3608,6 @@ def get_model_tokenizer_codellama(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
-def _repair_telechat(model):
-    if not hasattr(model, 'conv1d_replaced'):
-        from transformers.pytorch_utils import Conv1D as TfConv1D
-        model_modules = dict(model.named_modules())
-        teleConv1D = type(model_modules['transformer.h.0.attn.c_attn'])
-
-        # replace Conv1D in model
-        for name, module in model.named_modules():
-            if isinstance(module, teleConv1D):
-                nx = module.weight.size(0)
-                nf = module.weight.size(1)
-                new_module = TfConv1D(nf, nx)
-                with torch.no_grad():
-                    new_module.weight.data.copy_(module.weight.data)
-                    if module.bias is not None:
-                        new_module.bias.data.copy_(module.bias.data)
-                new_module.to(device=module.weight.device, dtype=module.weight.data.dtype)
-                parent_name = '.'.join(name.split('.')[:-1])
-                child_name = name.split('.')[-1]
-                parent_module = model_modules[parent_name]
-                setattr(parent_module, child_name, new_module)
-                del module
-        model.conv1d_replaced = True
-    # if not hasattr(model, '__old_forward'):
-    #     forward = model.forward
-    #     @wraps(forward)
-    #     def new_forward(*args, **kwargs):
-    #         return forward(*args,**kwargs).to(args[0].device)
-    #     model.__old_forward = forward
-    #     model.forward = new_forward
-    if not hasattr(model.lm_haed, '__old_forward'):
-        forward = model.lm_head.forward
-
-        @wraps(forward)
-        def new_forward(*args, **kwargs):
-            return forward(*args, **kwargs).to(args[0].device)
-
-        model.lm_head.__old_forward = forward
-        model.lm_head.forward = new_forward
-
-
 @register_model(
     ModelType.phi2_3b,
     'AI-ModelScope/phi-2',
