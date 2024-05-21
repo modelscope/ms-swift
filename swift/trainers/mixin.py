@@ -544,7 +544,7 @@ class SwiftMixin:
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time
-            logs['train_speed(iter/s)'] = self.state.global_step / elapse_time
+            logs['train_speed(iter/s)'] = round(self.state.global_step / elapse_time, 6)
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()

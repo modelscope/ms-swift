@@ -46,7 +46,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 
 ## 🎉 News
 - 2024.05.20: Supports TeleChat-12B-v2 model, model_type are `telechat-12b-v2`
-- 🔥2024.05.20: Support for inferencing and fine-tuning [cogvlm2-llama3-chinese-chat-19B](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary), you can refer to [cogvlm2 Best Practices](docs/source_en/Multi-Modal/cogvlm2-best-practice.md).
+- 🔥2024.05.20: Support for inferencing and fine-tuning cogvlm2-llama3-chinese-chat-19B, cogvlm2-llama3-chat-19B. you can refer to [cogvlm2 Best Practices](docs/source_en/Multi-Modal/cogvlm2-best-practice.md).
 - 🔥2024.05.17: Support peft=0.11.0. Meanwhile support 3 new tuners: `BOFT`, `Vera` and `Pissa`. use `--sft_type boft/vera` to use BOFT or Vera, use `--init_lora_weights pissa` with `--sft_type lora` to use Pissa.
 - 2024.05.16: Supports Llava-Next (Stronger) series models. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/llava-best-practice.md).
 - 🔥2024.05.13: Support Yi-1.5 series models，use `--model_type yi-1_5-9b-chat` to begin!
