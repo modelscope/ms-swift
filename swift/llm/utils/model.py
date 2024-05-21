@@ -2584,6 +2584,7 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
+
 @register_model(
     ModelType.deepseek_v2_lite,
     'deepseek-ai/DeepSeek-V2-Lite',
@@ -3683,7 +3684,7 @@ def get_model_tokenizer_codellama(model_dir: str,
     requires=['auto_gptq>=0.5'],
     support_flash_attn=True,
     function_kwargs={'gptq_bits': 4},
-    hf_model_id='Tele-AI/TeleChat-12B-v2')
+    hf_model_id='hu5enpai/TeleChat-12B-V2-GPTQ-Int4')
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
