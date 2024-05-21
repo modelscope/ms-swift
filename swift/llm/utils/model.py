@@ -3873,20 +3873,30 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 def _patch_minicpm_v_device_map(model) -> None:
     if not hasattr(model, 'hf_device_map'):
         return
-    _old_get_vision_embedding = model.get_vision_embedding
-    if hasattr(model, '_old_get_vision_embedding'):
+    if hasattr(model.llm, '__old_forward'):
         # avoid double patching
         return
+    device = list(model.hf_device_map.values())[0]
+    if hasattr(model, 'get_vision_embedding'):  # minicpm-v-v2-chat
+        _old_get_vision_embedding = model.get_vision_embedding
 
-    def _get_vision_embedding(pixel_values):
-        if len(pixel_values) == 0:
-            return _old_get_vision_embedding(pixel_values)
-        device = pixel_values[0].device
-        output = _old_get_vision_embedding(pixel_values)
-        return output.to(device=device)
+        def _get_vision_embedding(pixel_values):
+            if len(pixel_values) == 0:
+                return _old_get_vision_embedding(pixel_values)
+            output = _old_get_vision_embedding(pixel_values)
+            return output.to(device=device)
 
-    model._old_get_vision_embedding = _old_get_vision_embedding
-    model.get_vision_embedding = _get_vision_embedding
+        model._old_get_vision_embedding = _old_get_vision_embedding
+        model.get_vision_embedding = _get_vision_embedding
+
+    if hasattr(model, 'resampler'):  # minicpm-v-v2_5-chat
+        __old_resampler_forward = model.resampler.forward
+
+        def _new_resampler_forward(*args, **kwargs) -> Tensor:
+            output = __old_resampler_forward(*args, **kwargs)
+            return output.to(device=device)
+
+        model.resampler.forward = _new_resampler_forward
 
     __old_forward = model.llm.forward
 
