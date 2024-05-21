@@ -520,6 +520,7 @@ class TokenListIteratorStreamer(BaseStreamer):
             return value
 
 
+@torch.inference_mode()
 def inference_stream(model: PreTrainedModel,
                      template: Template,
                      query: str,
@@ -651,6 +652,7 @@ def inference_stream(model: PreTrainedModel,
         yield response, history
 
 
+@torch.inference_mode()
 def inference(model: PreTrainedModel,
               template: Template,
               query: str,

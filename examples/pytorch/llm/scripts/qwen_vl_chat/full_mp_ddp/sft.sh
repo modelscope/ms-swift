@@ -13,4 +13,4 @@ swift sft \
     --learning_rate 1e-5 \
     --use_flash_attn true \
     --save_only_model true \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \

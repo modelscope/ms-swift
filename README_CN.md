@@ -46,7 +46,9 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM).
 
 ## 🎉 新闻
-- 2024.05.21: 支持TeleChat-12b-v2模型, model_type为 `telechat-12b-v2`
+- 2024.05.21: 支持DeepSeek-V2-lite系列模型, model_type为 `deepseek-v2-lite`和`deekseek-v2-lite-chat`
+- 2024.05.21: 支持TeleChat-12b-v2模型和量化版本, model_type为 `telechat-12b-v2`和`telechat-12b-v2-gptq-int4`
+- 🔥2024.05.21: 支持 MiniCPM-Llama3-V-2_5 的推理与微调, 可以查看[minicpm-v-2.5最佳实践](docs/source/Multi-Modal/minicpm-v-2.5最佳实践.md).
 - 🔥2024.05.20: 支持 cogvlm2-llama3-chinese-chat-19B, cogvlm2-llama3-chat-19B 的推理与微调, 可以查看[cogvlm2最佳实践](docs/source/Multi-Modal/cogvlm2最佳实践.md).
 - 🔥2024.05.17: 支持peft=0.11.0. 同时支持了三个新的tuner方法： `BOFT`, `Vera` 和 `Pissa`. 使用 `--sft_type boft/vera` 开启BOFT或者Vera, 使用 `--init_lora_weights pissa` 以及 `--sft_type lora` 来使用 Pissa.
 - 2024.05.16: 支持Llava-Next (Stronger)系列模型，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
@@ -518,7 +520,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | YI-VL           | [01AI的YI系列视觉模型](https://github.com/01-ai)             | 中文<br>英文 | 6B-34B           | chat模型          |
 | XComposer2      | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 7B               | chat模型          |
 | DeepSeek-VL     | [幻方系列视觉模型](https://github.com/deepseek-ai)           | 中文<br>英文 | 1.3B-7B          | chat模型          |
-| MiniCPM-V      | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 3B               | chat模型          |
+| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5  | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 3B-9B            | chat模型          |
 | CogVLM<br>CogVLM2<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 中文<br>英文 | 17B-19B          | chat模型          |
 | Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B-34B               | chat模型 |
 | Llava-Next      | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                | 中文<br>英文 | 8B-110B       | chat模型 |

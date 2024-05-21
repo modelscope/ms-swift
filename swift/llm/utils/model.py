@@ -259,7 +259,8 @@ class ModelType:
     minicpm_moe_8x2b = 'minicpm-moe-8x2b'
     # minicpm-v
     minicpm_v_3b_chat = 'minicpm-v-3b-chat'
-    minicpm_v_v2 = 'minicpm-v-v2'
+    minicpm_v_v2_chat = 'minicpm-v-v2-chat'
+    minicpm_v_v2_5_chat = 'minicpm-v-v2_5-chat'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
@@ -3920,23 +3921,45 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     support_flash_attn=True,
     hf_model_id='openbmb/MiniCPM-V')
 @register_model(
-    ModelType.minicpm_v_v2,
+    ModelType.minicpm_v_v2_chat,
     'OpenBMB/MiniCPM-V-2',
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True,
     requires=['timm'],
     hf_model_id='openbmb/MiniCPM-V-2')
+@register_model(
+    ModelType.minicpm_v_v2_5_chat,
+    'OpenBMB/MiniCPM-Llama3-V-2_5',
+    LoRATM.llama2,
+    TemplateType.minicpm_v_v2_5,
+    support_flash_attn=True,
+    requires=['timm'],
+    pad_token='<unk>',
+    function_kwargs={'patching_embedding': True},
+    hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
+    patching_embedding = kwargs.pop('patching_embedding', False)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if load_model:
         model.resampler.to(torch_dtype)  # fix float32
         func_list = ['generate', 'get_input_embeddings', 'forward']
         _use_submodel_func(model, 'llm', func_list)
+        if patching_embedding:
+            embedding = model.get_input_embeddings()
+            if not hasattr(embedding, '__old_forward'):  # Avoid double patching
+                old_forward = embedding.forward
+
+                @wraps(old_forward)
+                def _new_forward(*args, **kwargs):
+                    return old_forward(*args, **kwargs).requires_grad_(True).clone()
+
+                embedding.__old_forward = old_forward
+                embedding.forward = _new_forward
     return model, tokenizer
 
 

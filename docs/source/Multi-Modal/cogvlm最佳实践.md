@@ -133,7 +133,7 @@ road:
 # 50GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type cogvlm-17b-chat \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:

@@ -124,11 +124,11 @@ OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method gptq
 
-# awq: 使用自定义量化数据集 (`--custom_val_dataset_path`参数不进行使用)
+# awq: 使用自定义量化数据集
 # gptq同理
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --custom_train_dataset_path xxx.jsonl \
+    --dataset xxx.jsonl \
     --quant_method awq
 
 # 推理 swift量化产生的模型
