@@ -464,13 +464,13 @@ class SftArguments(ArgumentsBase):
     boft_block_size: int = 4
     boft_block_num: int = 0
     boft_n_butterfly_factor: int = 1
-    boft_target_modules: Optional[Union[List[str], str]] = field(default_factory=lambda: ['DEFAULT'])
+    boft_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     boft_dropout: float = 0.0
     boft_modules_to_save: List[str] = field(default_factory=list)
 
     # Vera
     vera_rank: int = 256
-    vera_target_modules: Optional[Union[List[str], str]] = field(default_factory=lambda: ['DEFAULT'])
+    vera_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     vera_projection_prng_key: int = 0
     vera_dropout: float = 0.0
     vera_d_initial: float = 0.1
