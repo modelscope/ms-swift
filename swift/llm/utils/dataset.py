@@ -909,7 +909,7 @@ register_dataset(
     ['coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa', 'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased', 'coco-goi', 'coco-goi-rephrased', 'clevr', 'clevr-rephrased', 'nlvr', 'vist', 'winoground', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased', 'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco', 'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased', 'iqa', 'iqa-rephrased', 'vcr', 'visual-mrc', 'mmchat', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa', 'flickr8k-cn', 'chinese-food'],
     _preprocess_m3it,
     get_dataset_from_repo,
-    split=['train', 'test'],
+    split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
