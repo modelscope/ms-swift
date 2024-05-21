@@ -61,7 +61,7 @@ class ArgumentsBase:
 
         for k in maybe_check_exist_path:
             v = getattr(self, k)
-            if isinstance(v, str) and v is not None and (v.startswith('~') or v.startswith('/')):
+            if isinstance(v, str) and v is not None and (v.startswith('~') or v.startswith('/') or os.path.exists(v)):
                 check_exist_path.append(k)
         check_exist_path_set = set(check_exist_path)
         other_path = ['output_dir', 'logging_dir']
