@@ -3871,7 +3871,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 
 
 def _patch_minicpm_v_device_map(model) -> None:
-    if not hasattr(model, 'hf_device_map'):
+    if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
         return
     if hasattr(model.llm, '__old_forward'):
         # avoid double patching
