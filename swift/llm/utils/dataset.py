@@ -115,6 +115,7 @@ class DatasetName:
     # <img></img>
     coco_en = 'coco-en'
     coco_en_mini = 'coco-en-mini'
+    sharegpt4v = 'sharegpt4v'
     # images
     coco_en_2 = 'coco-en-2'
     coco_en_2_mini = 'coco-en-2-mini'
@@ -852,6 +853,46 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
+def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
+
+    system = []
+    query = []
+    response = []
+    images = []
+    for d in tqdm(dataset):
+        system.append('instruction')
+        query.append('inputs')
+        images.append(d['image_base64_str'])
+        response.append(d['outputs'])
+    dataset = HfDataset.from_dict({'system':system,'query': query, 'response': response, 'images': images})
+    return dataset
+
+def _download_sharegpt4v_dataset():
+    pass
+# -[x] LAION-CC-SBU-558K: [images.zip](https://huggingface.co/datasets/liuhaotian/LLaVA-Pretrain/blob/main/images.zip)
+# -[x] COCO: [train2017](http://images.cocodataset.org/zips/train2017.zip)
+# - WebData: [images](https://drive.google.com/drive/folders/1tCUQ-sq6vdshZVkF0ZeF3K4eztkXJgax?usp=sharing). Only for academic usage.
+# - SAM: [images](https://ai.meta.com/datasets/segment-anything-downloads/). We only use 000000~000050.tar for now. If you just want to use ShareGPT4V for SFT, you can quickly download 9K images from [here](https://drive.google.com/file/d/1dKumdOKSXtV7lIXdrG7jsIK_z2vZv2gs/view?usp=drive_link). 
+# -[x] GQA: [images](https://downloads.cs.stanford.edu/nlp/data/gqa/images.zip)
+# - OCR-VQA: [download script](https://drive.google.com/drive/folders/1_GYPY5UkUy7HIcR0zq3ZCFgeZN7BAfm_?usp=sharing). We save all files as `.jpg`
+# -[x] TextVQA: [trainvalimages](https://dl.fbaipublicfiles.com/textvqa/images/train_val_images.zip)
+# -[x] VisualGenome: [part1](https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip), [part2](https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip)
+
+def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
+    _download_sharegpt4v_dataset()
+    coco_prefix = 'http://images.cocodataset.org'
+
+    # def preprocess_image(example):
+    #     image = example['image']
+    #     dataset = image.split('/')[0]
+    #     suffix = '/'.join(image.split('/')[1:])
+    #     if dataset == 'coco':
+    #         example['image'] = f'{coco_prefix}/train2017/{suffix}'
+    #     if image.startswith('coco/train2017/'):
+    #         suffix = image.split('coco/train2017/')[1]
+    #         return f'{prefix}/train2017/{suffix}'
+    
+    return dataset.map()
 
 register_dataset(
     DatasetName.capcha_images,
@@ -865,10 +906,19 @@ register_dataset(
 register_dataset(
     DatasetName.m3it,
     'AI-ModelScope/M3IT',
-    None,
-    _preprocess_capcha_images,
+    ['coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa', 'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased', 'coco-goi', 'coco-goi-rephrased', 'clevr', 'clevr-rephrased', 'nlvr', 'vist', 'winoground', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased', 'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco', 'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased', 'iqa', 'iqa-rephrased', 'vcr', 'visual-mrc', 'mmchat', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa', 'flickr8k-cn', 'chinese-food'],
+    _preprocess_m3it,
     get_dataset_from_repo,
     split=['train', 'validation'],
+    tags=['chat', 'multi-modal', 'vision'])
+
+register_dataset(
+    DatasetName.sharegpt4v,
+    'AI-ModelScope/ShareGPT4V',
+    None,
+    _preprocess_sharegpt4v_images,
+    get_dataset_from_repo,
+    split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
 
 def _repair_toolbench(conversations: Dict[str, str]) -> Dict[str, str]:
