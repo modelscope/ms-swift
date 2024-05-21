@@ -10,7 +10,9 @@
 
 ## 环境准备
 ```shell
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 模型链接:
 - minicpm-v-v2_5-chat: [https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5/summary)
