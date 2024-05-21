@@ -244,6 +244,8 @@ class ModelType:
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
     # deepseek-v2
     deepseek_v2_chat = 'deepseek-v2-chat'
+    deepseek_v2_lite = 'deepseek-v2-lite'
+    deepseek_v2_lite_chat = 'deepseek-v2-lite-chat'
     # gemma
     gemma_2b = 'gemma-2b'
     gemma_7b = 'gemma-7b'
@@ -358,6 +360,7 @@ class ModelType:
     telechat_7b = 'telechat-7b'
     telechat_12b = 'telechat-12b'
     telechat_12b_v2 = 'telechat-12b-v2'
+    telechat_12b_v2_gptq_int4 = 'telechat-12b-v2-gptq-int4'
     # grok-1
     grok_1 = 'grok-1'
     # dbrx
@@ -2581,7 +2584,26 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
     return model, tokenizer
 
-
+@register_model(
+    ModelType.deepseek_v2_lite,
+    'deepseek-ai/DeepSeek-V2-Lite',
+    LoRATM.deepseek2,
+    TemplateType.default_generation,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2-Lite')
+@register_model(
+    ModelType.deepseek_v2_lite_chat,
+    'deepseek-ai/DeepSeek-V2-Lite-Chat',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2-Lite-Chat')
 @register_model(
     ModelType.deepseek_v2_chat,
     'deepseek-ai/DeepSeek-V2-Chat',
@@ -3649,8 +3671,18 @@ def get_model_tokenizer_codellama(model_dir: str,
     'TeleAI/TeleChat-12B-v2',
     LoRATM.telechat,
     TemplateType.telechat_v2,
+    eos_token=2,
     support_flash_attn=True,
-    function_kwargs={'eos_token_id': 2},
+    hf_model_id='Tele-AI/TeleChat-12B-v2')
+@register_model(
+    ModelType.telechat_12b_v2_gptq_int4,
+    'swift/TeleChat-12B-V2-GPTQ-Int4',
+    LoRATM.telechat,
+    TemplateType.telechat_v2,
+    eos_token=2,
+    requires=['auto_gptq>=0.5'],
+    support_flash_attn=True,
+    function_kwargs={'gptq_bits': 4},
     hf_model_id='Tele-AI/TeleChat-12B-v2')
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
@@ -3662,8 +3694,6 @@ def get_model_tokenizer_phi(model_dir: str,
     model_config.flash_attn = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    if 'eos_token_id' in kwargs:
-        tokenizer.eos_token_id = kwargs.pop('eos_token_id')
 
     return model, tokenizer
 
