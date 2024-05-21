@@ -15,7 +15,7 @@ pip install 'ms-swift[llm]' -U
 
 ## 推理
 
-推理[minicpm-v-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary):
+推理[minicpm-v-v2-chat](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary):
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 10GB GPU memory
