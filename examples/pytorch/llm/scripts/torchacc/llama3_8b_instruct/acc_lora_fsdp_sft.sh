@@ -33,6 +33,5 @@ swift sft \
   --logging_steps 100 \
   --preprocess_num_proc 1 \
   --metric_warmup_step 0.1 \
-  --use_profiler false \
   --fsdp_num 2 \
   --report_to 'none'

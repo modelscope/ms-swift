@@ -27,6 +27,5 @@ swift sft \
     --save_steps 200 \
     --logging_steps 100 \
     --metric_warmup_step 0.1 \
-    --use_profiler false \
     --report_to 'none' \
     --fsdp_num 4 \

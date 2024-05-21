@@ -9,7 +9,7 @@ export XLA_ALLOCATOR_FRACTION=0.95
 export XLA_EXPERIMENTAL=nonzero:masked_select
 
 NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=2,3 \
 MASTER_PORT=23797 \
 swift sft \
 --model_type qwen1half-14b-chat \
@@ -19,7 +19,7 @@ swift sft \
   --output_dir output \
   --num_train_epochs 1 \
   --max_length 2048 \
-  --batch_size 16 \
+  --batch_size 8 \
   --use_flash_attn true \
   --gradient_accumulation_steps 1 \
   --gradient_checkpointing no \
@@ -31,6 +31,5 @@ swift sft \
   --logging_steps 100 \
   --preprocess_num_proc 1 \
   --metric_warmup_step 0.1 \
-  --use_profiler false \
   --fsdp_num 1 \
   --report_to 'none'

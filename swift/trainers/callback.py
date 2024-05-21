@@ -8,7 +8,7 @@ from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 
-from swift.utils import is_pai_training_job
+from swift.utils import is_pai_training_job, use_torchacc
 from .arguments import TrainingArguments
 
 
@@ -18,10 +18,11 @@ class ProgressCallbackNew(ProgressCallback):
         if state.is_local_process_zero:
             self.training_bar = tqdm(desc='Train', total=state.max_steps, dynamic_ncols=True)
         self.current_step = 0
-        self.warmup_start_time = 0
-        self.warmup_metric = None
-        self.metric_warmup_step = int(args.metric_warmup_step
-                                      * state.max_steps) if args.metric_warmup_step < 1 else args.metric_warmup_step
+        if use_torchacc():
+            self.warmup_start_time = 0
+            self.warmup_metric = None
+            self.metric_warmup_step = int(args.metric_warmup_step
+                                          * state.max_steps) if args.metric_warmup_step < 1 else args.metric_warmup_step
 
     def on_prediction_step(self, args, state: TrainerState, control, eval_dataloader=None, **kwargs):
         if state.is_local_process_zero and has_length(eval_dataloader):
@@ -34,20 +35,21 @@ class ProgressCallbackNew(ProgressCallback):
 
     def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
         logs['global_step'] = state.global_step
-        if state.global_step >= self.metric_warmup_step and self.warmup_start_time == 0:
-            self.warmup_start_time = time.time()
-            self.metric_warmup_step = state.global_step
-        if state.max_steps == state.global_step and self.warmup_metric is None:
-            num_steps = state.max_steps - self.metric_warmup_step
-            num_total_samples = args.train_dataset_sample
-            num_after_warmup_samples = int(num_total_samples / state.max_steps * num_steps)
-            self.warmup_metric = speed_metrics('warmup_train', self.warmup_start_time, num_after_warmup_samples,
-                                               num_steps)
-            self.warmup_metric['num_total_samples'] = num_total_samples
-            self.warmup_metric['num_after_warmup_samples'] = num_after_warmup_samples
-        if 'train_samples_per_second' in logs:
-            logs.update(self.warmup_metric)
-            state.log_history[-1] = logs
+        if use_torchacc():
+            if state.global_step >= self.metric_warmup_step and self.warmup_start_time == 0:
+                self.warmup_start_time = time.time()
+                self.metric_warmup_step = state.global_step
+            if state.max_steps == state.global_step and self.warmup_metric is None:
+                num_steps = state.max_steps - self.metric_warmup_step
+                num_total_samples = args.train_dataset_sample
+                num_after_warmup_samples = int(num_total_samples / state.max_steps * num_steps)
+                self.warmup_metric = speed_metrics('warmup_train', self.warmup_start_time, num_after_warmup_samples,
+                                                   num_steps)
+                self.warmup_metric['num_total_samples'] = num_total_samples
+                self.warmup_metric['num_after_warmup_samples'] = num_after_warmup_samples
+            if 'train_samples_per_second' in logs:
+                logs.update(self.warmup_metric)
+                state.log_history[-1] = logs
         for k, v in logs.items():
             if isinstance(v, float):
                 logs[k] = round(logs[k], 8)
