@@ -7,6 +7,7 @@ from http import HTTPStatus
 from typing import List, Optional, Union
 
 import json
+import torch
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from modelscope import GenerationConfig
