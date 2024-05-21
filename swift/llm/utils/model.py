@@ -3683,8 +3683,7 @@ def get_model_tokenizer_codellama(model_dir: str,
     eos_token=2,
     requires=['auto_gptq>=0.5'],
     support_flash_attn=True,
-    function_kwargs={'gptq_bits': 4},
-    hf_model_id='hu5enpai/TeleChat-12B-V2-GPTQ-Int4')
+    function_kwargs={'gptq_bits': 4})
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
