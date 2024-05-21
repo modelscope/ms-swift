@@ -16,7 +16,7 @@ pip install -e '.[llm]'
 
 Model link:
 - cogvlm2-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary)
-
+- cogvlm2-en-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary)
 
 ## Inference
 
@@ -162,7 +162,7 @@ Fine-tuning multimodal large models usually uses **custom datasets**. Here is a 
 # 70GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type cogvlm2-19b-chat \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:

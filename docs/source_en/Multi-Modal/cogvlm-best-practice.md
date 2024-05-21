@@ -131,7 +131,7 @@ Fine-tuning multimodal large models usually uses **custom datasets**. Here is a 
 # 50GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type cogvlm-17b-chat \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:

@@ -540,7 +540,7 @@ class SwiftMixin:
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-            logs['memory'] = round(self.get_max_cuda_memory(), 2)
+            logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time

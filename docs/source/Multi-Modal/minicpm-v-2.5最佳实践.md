@@ -1,5 +1,5 @@
 
-# CogVLM2 最佳实践
+# MiniCPM-V-2.5 最佳实践
 
 ## 目录
 - [环境准备](#环境准备)
@@ -10,65 +10,53 @@
 
 ## 环境准备
 ```shell
-git clone https://github.com/modelscope/swift.git
-cd swift
-pip install -e '.[llm]'
+pip install 'ms-swift[llm]' -U
 ```
-
 模型链接:
-- cogvlm2-en-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary)
-- cogvlm2-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary)
-- cogvlm2-en-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary)
+- minicpm-v-v2_5-chat: [https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5/summary](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5/summary)
 
 
 ## 推理
 
-推理cogvlm2-19b-chat:
+推理 minicpm-v-v2_5-chat:
 ```shell
-# Experimental environment: A100
-# 43GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm2-19b-chat
+# Experimental environment: A10, 3090, V100, ...
+# 20GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-v2_5-chat
 ```
 
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< 描述这种图片
+<<< 描述这张图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-这是一张特写照片，展示了一只灰色和白色相间的猫。这只猫的眼睛是灰色的，鼻子是粉色的，嘴巴微微张开。它的毛发看起来柔软而蓬松，背景模糊，突出了猫的面部特征。
+这张图片展示了一只年轻的猫咪的特写，可能是一只小猫，具有明显的特征。它的毛发主要是白色的，带有灰色和黑色的条纹和斑点，这是虎斑猫的典型特征。小猫的眼睛是蓝色的，瞳孔是圆形的，给人一种好奇和专注的表情。它的耳朵尖尖的，竖立着，显示出警觉性。小猫的鼻子是粉红色的，鼻孔是可见的。背景模糊不清，突出了小猫的特征。整体的色调柔和，重点放在小猫的毛发和眼睛上。
 --------------------------------------------------
 <<< clear
-<<< 图中有几只羊
+<<< 图中有几只羊？
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 图中有四只羊。
 --------------------------------------------------
 <<< clear
-<<< 计算结果是多少?
+<<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-计算结果是49556。
+计算结果是1452 + 4530 = 5982。
 --------------------------------------------------
 <<< clear
 <<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-夜幕低垂，小船悠然，
-在碧波荡漾的湖面上航行。
-船头灯火，照亮前行的道路，
-照亮了周围的黑暗。
-
-湖面上的涟漪，
-仿佛是无数的精灵在跳舞。
-它们随着船的移动而荡漾，
-为这宁静的夜晚增添了生机。
-
-船上的乘客，
-沉浸在这如诗如画的景色中。
-他们欣赏着湖光山色，
-感受着大自然的恩赐。
-
-夜色渐深，小船驶向远方，
-但心中的美好永远留存。
-这段旅程，
-让他们更加珍惜生命中的每一刻。
+在宁静的夜晚，船只航行，
+在星光闪烁的水面上，
+一只熊猫乘风破浪，
+在夜空的映衬下。
+船上灯火通明，照亮了前方的道路，
+在宁静的水面上投下温暖的光芒，
+熊猫坐在船头，享受着旅程，
+在这宁静的夜晚中，享受着旅程。
+星星在上方闪烁，点缀着天空，
+在这宁静的夜晚中，创造出一幅美丽的画面，
+船只在水面上轻轻摇晃，
+在这宁静的夜晚中，创造出一幅美丽的画面。
 """
 ```
 
@@ -103,11 +91,11 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.cogvlm2_19b_chat
+model_type = ModelType.minicpm_v_v2_5_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
-model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+model, tokenizer = get_model_tokenizer(model_type, torch.bfloat16,
                                        model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
@@ -115,27 +103,27 @@ seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = '距离各城市多远？'
-response, _ = inference(model, template, query, images=images)
+response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
 query = '距离最远的城市是哪？'
-images = images
-gen = inference_stream(model, template, query, images=images)
+gen = inference_stream(model, template, query, history, images=images)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
-for response, _ in gen:
+for response, history in gen:
     delta = response[print_idx:]
     print(delta, end='', flush=True)
     print_idx = len(response)
 print()
-
+print(f'history: {history}')
 """
 query: 距离各城市多远？
-response: 距离马踏Mata有14km，距离阳江Yangjiang有62km，距离广州Guangzhou有293km。
+response: 马踏到阳江的距离是62公里，阳江到广州的距离是293公里。
 query: 距离最远的城市是哪？
-response: 距离最远的城市是广州Guangzhou。
+response: 距离最远的城市是广州，到广州的距离为293公里。
+history: [['距离各城市多远？', '马踏到阳江的距离是62公里，阳江到广州的距离是293公里。'], ['距离最远的城市是哪？', '距离最远的城市是广州，到广州的距离为293公里。']]
 """
 ```
 
@@ -149,12 +137,12 @@ road:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
-(默认对语言和视觉模型的qkv进行lora微调. 如果你想对所有linear都进行微调, 可以指定`--lora_target_modules ALL`)
+(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`. 支持全参数微调.)
 ```shell
 # Experimental environment: A100
-# 70GB GPU memory
+# 32GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type cogvlm2-19b-chat \
+    --model_type minicpm-v-v2_5-chat \
     --dataset coco-en-2-mini \
 ```
 
@@ -173,17 +161,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm2-19b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/minicpm-v-v2_5-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/cogvlm2-19b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/minicpm-v-v2_5-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm2-19b-chat/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/minicpm-v-v2_5-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```

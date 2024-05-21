@@ -136,7 +136,7 @@ LoRA fine-tuning:
 # 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type qwen-vl-chat \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
 ```
 
 Full parameter fine-tuning:
@@ -145,7 +145,7 @@ Full parameter fine-tuning:
 # 2 * 55 GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type qwen-vl-chat \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
     --sft_type full \
 ```
 

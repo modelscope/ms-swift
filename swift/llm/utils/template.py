@@ -68,6 +68,7 @@ class TemplateType:
     orion = 'orion'
     minicpm = 'minicpm'
     minicpm_v = 'minicpm-v'
+    minicpm_v_v2_5 = 'minicpm-v-v2_5'
     gemma = 'gemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
@@ -1279,8 +1280,9 @@ register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{
 
 class MiniCPMVTemlate(Template):
 
-    def __init__(self):
-        return super().__init__(['<s>{{SYSTEM}}'], ['<用户><image><unk></image>\n{{QUERY}}<AI>'], [], ['</s>'])
+    def __init__(self, *args, **kwargs):
+        self.is_v2_5 = kwargs.pop('is_v2_5', False)
+        return super().__init__(*args, **kwargs)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example['images']
@@ -1310,15 +1312,8 @@ class MiniCPMVTemlate(Template):
 
         idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
-        if hasattr(config, 'slice_mode') and config.slice_mode:
-            slice_mode = True
-            assert hasattr(config, 'patch_size')
-            assert hasattr(config, 'max_slice_nums')
-            assert hasattr(config, 'scale_resolution')
-        else:
-            slice_mode = False
-
-        if slice_mode:
+        tgt_sizes = None
+        if config.slice_mode:
             images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx - 1] + placeholder_id + input_ids[idx + 2:])
@@ -1333,21 +1328,32 @@ class MiniCPMVTemlate(Template):
                 torch.hstack(
                     [image_start_idx[:valid_image_nums].unsqueeze(-1), image_end_idx[:valid_image_nums].unsqueeze(-1)])
             ]
-            pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
-
+            if self.is_v2_5:
+                pixel_values = []
+                tgt_sizes = []
+                config = self.model.config
+                for image in images:
+                    image = self.model.transform(image).to(device=self.model.device)
+                    H, W = image.shape[1:]
+                    pixel_values.append(self.model.reshape_by_patch(image))
+                    tgt_sizes.append(torch.Tensor([H // config.patch_size, W // config.patch_size]).type(torch.int32))
+                tgt_sizes = torch.vstack(tgt_sizes)
+            else:
+                pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
         else:
             input_ids = (input_ids[:idx] + [self.tokenizer.unk_token_id] * config.query_num + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * config.query_num + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
             pixel_values = [self.model.transform(image).to(device=self.model.device)]
-        inputs_embeds, _ = self.model.get_vllm_embedding({
-            'input_ids':
-            torch.tensor(input_ids)[None].to(device=self.model.device),
-            'image_bound':
-            image_bound,
+        data = {
+            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
+            'image_bound': image_bound,
             'pixel_values': [pixel_values]
-        })
+        }
+        if tgt_sizes is not None:
+            data['tgt_sizes'] = [tgt_sizes]
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         inputs['inputs_embeds'] = inputs_embeds[0]
@@ -1360,7 +1366,20 @@ class MiniCPMVTemlate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemlate(),
+    MiniCPMVTemlate(['<s>{{SYSTEM}}'], ['<用户><image><unk></image>\n{{QUERY}}<AI>'], [], ['</s>']),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.minicpm_v_v2_5,
+    MiniCPMVTemlate(['<|begin_of_text|>{{SYSTEM}}'], [
+        '<|start_header_id|>user<|end_header_id|>\n\n<image><unk></image>\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ], ['<|eot_id|>'], ['<|eot_id|>'],
+                    is_v2_5=True),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
