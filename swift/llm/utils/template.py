@@ -1341,10 +1341,8 @@ class MiniCPMVTemlate(Template):
             pixel_values = [self.model.transform(image).to(device=self.model.device)]
             tgt_sizes = None
         data = {
-            'input_ids':
-            torch.tensor(input_ids)[None].to(device=self.model.device),
-            'image_bound':
-            image_bound,
+            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
+            'image_bound': image_bound,
             'pixel_values': [pixel_values]
         }
         if tgt_sizes is not None:
@@ -1371,9 +1369,10 @@ register_template(
 
 register_template(
     TemplateType.minicpm_v_v2_5,
-    MiniCPMVTemlate(['<|begin_of_text|>{{SYSTEM}}'], 
-    ['<|start_header_id|>user<|end_header_id|>\n\n<image><unk></image>\n{{QUERY}}<|eot_id|>'
-    '<|start_header_id|>assistant<|end_header_id|>\n\n'], ['<|eot_id|>'], ['<|eot_id|>']),
+    MiniCPMVTemlate(['<|begin_of_text|>{{SYSTEM}}'], [
+        '<|start_header_id|>user<|end_header_id|>\n\n<image><unk></image>\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ], ['<|eot_id|>'], ['<|eot_id|>']),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
