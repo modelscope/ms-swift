@@ -10,7 +10,9 @@
 
 ## 环境准备
 ```shell
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 ## 推理
