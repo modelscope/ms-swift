@@ -79,6 +79,7 @@ def is_generation_template(template_type: str) -> bool:
         return False
 
 
+@torch.inference_mode()
 async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global llm_engine, template, _args
     from .utils import VllmGenerationConfig
@@ -251,6 +252,7 @@ class _GenerationConfig(GenerationConfig):
         return f'GenerationConfig({gen_kwargs})'
 
 
+@torch.inference_mode()
 async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global model, template
     error_msg = await check_model(request)

@@ -185,6 +185,7 @@ class VllmGenerationConfig(SamplingParams):
             super().__setattr__(key, value)
 
 
+@torch.inference_mode()
 def inference_stream_vllm(llm_engine: LLMEngine,
                           template: Template,
                           request_list: List[Dict[str, Any]],
@@ -273,6 +274,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
         yield resp_list
 
 
+@torch.inference_mode()
 def inference_vllm(llm_engine: LLMEngine,
                    template: Template,
                    request_list: List[Dict[str, Any]],
