@@ -160,7 +160,7 @@ LoRA微调:
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type deepseek-vl-7b-chat \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
 ```
 
 全参数微调:
@@ -169,7 +169,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 # 4 * 70GB GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type deepseek-vl-7b-chat \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
     --sft_type full \
     --use_flash_attn true \
     --deepspeed default-zero2

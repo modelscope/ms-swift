@@ -174,14 +174,14 @@ LoRA微调:
 # 80GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type internvl-chat-v1_5 \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 
 # device_map
 # Experimental environment: 2*A100...
 # 2*43GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 
 # ddp + deepspeed-zero2
 # Experimental environment: 2*A100...
@@ -189,7 +189,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
     --deepspeed default-zero2
 ```
 
@@ -200,7 +200,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 # 4 * 72 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type internvl-chat-v1_5 \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
     --sft_type full \
 ```
 

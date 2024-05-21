@@ -61,7 +61,7 @@ class ArgumentsBase:
 
         for k in maybe_check_exist_path:
             v = getattr(self, k)
-            if isinstance(v, str) and v is not None and (v.startswith('~') or v.startswith('/')):
+            if isinstance(v, str) and v is not None and (v.startswith('~') or v.startswith('/') or os.path.exists(v)):
                 check_exist_path.append(k)
         check_exist_path_set = set(check_exist_path)
         other_path = ['output_dir', 'logging_dir']
@@ -168,7 +168,8 @@ class ArgumentsBase:
         model_type_mapping = {
             'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
             'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
-            'cogvlm-17b-instruct': 'cogvlm-17b-chat'
+            'cogvlm-17b-instruct': 'cogvlm-17b-chat',
+            'minicpm-v-v2': 'minicpm-v-v2-chat'
         }
         dataset_name_mapping = {
             'ms-bench-mini': 'ms-bench#20000',
@@ -1264,6 +1265,9 @@ class ExportArguments(InferArguments):
     def __post_init__(self):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
+        if self.quant_bits > 0 and self.dtype == 'AUTO':
+            self.dtype = 'fp16'
+            logger.info(f'Setting args.dtype: {args.dtype}')
         super().__post_init__()
         if len(self.dataset) == 0 and self.quant_bits > 0:
             self.dataset = ['alpaca-zh#10000', 'alpaca-en#10000']
