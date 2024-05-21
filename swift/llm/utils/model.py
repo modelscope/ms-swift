@@ -357,7 +357,6 @@ class ModelType:
     telechat_7b = 'telechat-7b'
     telechat_12b = 'telechat-12b'
     telechat_12b_v2 = 'telechat-12b-v2'
-    telechat_52b = 'telechat-52b'
     # grok-1
     grok_1 = 'grok-1'
     # dbrx
@@ -3625,7 +3624,7 @@ def _repair_telechat(model):
                     new_module.weight.data.copy_(module.weight.data)
                     if module.bias is not None:
                         new_module.bias.data.copy_(module.bias.data)
-                new_module.to(device=module.weight.device,dtype=module.weight.data.dtype)
+                new_module.to(device=module.weight.device, dtype=module.weight.data.dtype)
                 parent_name = '.'.join(name.split('.')[:-1])
                 child_name = name.split('.')[-1]
                 parent_module = model_modules[parent_name]
@@ -3641,12 +3640,15 @@ def _repair_telechat(model):
     #     model.forward = new_forward
     if not hasattr(model.lm_haed, '__old_forward'):
         forward = model.lm_head.forward
+
         @wraps(forward)
         def new_forward(*args, **kwargs):
-            return forward(*args,**kwargs).to(args[0].device)
+            return forward(*args, **kwargs).to(args[0].device)
+
         model.lm_head.__old_forward = forward
         model.lm_head.forward = new_forward
-        
+
+
 @register_model(
     ModelType.phi2_3b,
     'AI-ModelScope/phi-2',
@@ -3672,18 +3674,6 @@ def _repair_telechat(model):
     support_flash_attn=True,
     function_kwargs={'eos_token_id': 2},
     hf_model_id='Tele-AI/TeleChat-12B-v2')
-@register_model(
-    ModelType.telechat_52b,
-    'TeleAI/TeleChat-52B',
-    LoRATM.qwen,
-    TemplateType.telechat,
-    support_flash_attn=True,
-    function_kwargs={
-        'eos_token_id': 2,
-        'repair_func': _repair_telechat
-    },
-    support_gradient_checkpointing=False,
-    hf_model_id='Tele-AI/TeleChat-52B')
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
@@ -3694,11 +3684,8 @@ def get_model_tokenizer_phi(model_dir: str,
     model_config.flash_attn = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    eos_token_id = kwargs.pop('eos_token_id', None)
-    if eos_token_id:
-        tokenizer.eos_token_id = eos_token_id
-    if model and 'repair_func' in kwargs:
-        kwargs.pop('repair_func')(model)
+    if 'eos_token_id' in kwargs:
+        tokenizer.eos_token_id = kwargs.pop('eos_token_id')
 
     return model, tokenizer
 

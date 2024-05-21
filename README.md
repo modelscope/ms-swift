@@ -45,7 +45,7 @@ Additionally, we are expanding capabilities for other modalities. Currently, we 
 SWIFT has rich documentations for users, please check [here](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM).
 
 ## 🎉 News
-- 2024.05.20: Supports TeleChat-12B-v2 and TeleChat-52B model, model_type are `telechat-12b-v2` and `telechat-52b`
+- 2024.05.20: Supports TeleChat-12B-v2 model, model_type are `telechat-12b-v2`
 - 🔥2024.05.20: Support for inferencing and fine-tuning [cogvlm2-llama3-chinese-chat-19B](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary), you can refer to [cogvlm2 Best Practices](docs/source_en/Multi-Modal/cogvlm2-best-practice.md).
 - 🔥2024.05.17: Support peft=0.11.0. Meanwhile support 3 new tuners: `BOFT`, `Vera` and `Pissa`. use `--sft_type boft/vera` to use BOFT or Vera, use `--init_lora_weights pissa` with `--sft_type lora` to use Pissa.
 - 2024.05.16: Supports Llava-Next (Stronger) series models. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/llava-best-practice.md).
@@ -499,7 +499,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [Ant CodeFuse series models](https://github.com/codefuse-ai)        | Chinese<br>English    | 6B-34B                                 | chat model<br>code model                      |
 | phi2/phi3                                | Microsoft's PHI series models    | English            | 3B/4B                               | base model<br>instruct model<br>code model      |
 | Grok | [X-ai](https://github.com/xai-org/grok-1) | English | 300B | base model |
-| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | Chinese<br>English | 7B-52B | chat model |
+| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | Chinese<br>English | 7B-12B | chat model |
 | dbrx | [databricks](https://github.com/databricks/dbrx) | English | 132B | base model<br>chat model  |
 | mengzi3 | [Langboat](https://github.com/Langboat/Mengzi3) | Chinese<br>English | 13B | base model  |
 | c4ai-command-r | [c4ai](https://cohere.com/command) | Multilingual | 35B-104B | chat model  |
