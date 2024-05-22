@@ -3693,10 +3693,8 @@ def get_model_tokenizer_phi(model_dir: str,
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.flash_attn = use_flash_attn
-    model, tokenizer = get_model_tokenizer_from_repo(
+    return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-
-    return model, tokenizer
 
 
 @register_model(
