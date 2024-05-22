@@ -37,16 +37,16 @@
   - Support for dataset_path. For example, '1.jsonl#5000' (if it is a relative path, it is relative to the running directory).
 - `--val_dataset`: Specify separate validation datasets with the same format of the `dataset` argument. If using `val_dataset`, the `dataset_test_ratio` will be ignored.
 - `--dataset_seed`: Seed for dataset processing, default is `42`. Exists as random_state, does not affect global seed.
-- `--dataset_test_ratio`: Ratio for splitting subdataset into train and validation sets, default is `0.01`.
+- `--dataset_test_ratio`: Used to specify the ratio for splitting the sub-dataset into training and validation sets. The default value is `0.01`. If `--val_dataset` is set, this parameter becomes ineffective.
 - `--train_dataset_sample`: The number of samples for the training dataset, default is `-1`, which means using the complete training dataset for training. This parameter is deprecated, please use `--dataset {dataset_name}#{dataset_sample}` instead.
-- `--val_dataset_sample`: Sampling for the validation dataset, default is `None`, which automatically selects an appropriate number of samples for validation. If you specify `-1`, it uses the complete validation dataset for validation. This parameter is deprecated, and the number of samples in the validation dataset is fully controlled by dataset_test_ratio.
+- `--val_dataset_sample`: Used to sample the validation set, with a default value of `None`, which automatically selects a suitable number of data samples for validation. If you specify `-1`, the complete validation set is used for validation. This parameter is deprecated and the number of samples in the validation set is controlled by `--dataset_test_ratio` or `--val_dataset {dataset_name}#{dataset_sample}`.
 - `--system`: System used in dialogue template, default is `None`, i.e. use the model's default system. If set to '', no system is used.
 - `--max_length`: Maximum token length, default is `2048`. Avoids OOM issues caused by individual overly long samples. When `--truncation_strategy delete` is specified, samples exceeding max_length will be deleted. When `--truncation_strategy truncation_left` is specified, the leftmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, no limit.
 - `--truncation_strategy`: Default is `'delete'` which removes sentences exceeding max_length from dataset. `'truncation_left'` will truncate excess text from the left, which may truncate special tokens and affect performance, not recommended.
 - `--check_dataset_strategy`: Default is `'none'`, i.e. no checking. If training an LLM model, `'warning'` is recommended as data check strategy. If your training target is sentence classification etc., setting to `'none'` is recommended.
 
 - `--custom_train_dataset_path`: Default value is `[]`. This parameter has been deprecated, please use `--dataset {dataset_path}`.
-- `--custom_val_dataset_path`: Default value is `[]`. This parameter has been deprecated. There is no longer a distinction between training and validation datasets, and the split is now unified using `dataset_test_ratio`. Please use `--dataset {dataset_path}`.
+- `--custom_val_dataset_path`: Default value is `[]`. This parameter is deprecated. Please use `--val_dataset {dataset_path}` instead.
 - `--self_cognition_sample`: The number of samples for the self-cognition dataset. Default is `0`. If you set this value to >0, you need to specify `--model_name` and `--model_author` at the same time. This parameter has been deprecated, please use `--dataset self-cognition#{self_cognition_sample}` instead.
 - `--model_name`: Default value is `[None, None]`. If self-cognition dataset sampling is enabled (i.e., specifying `--dataset self-cognition` or self_cognition_sample>0), you need to provide two values, representing the Chinese and English names of the model, respectively. For example: `--model_name 小黄 'Xiao Huang'`. If you want to learn more, you can refer to the [Self-Cognition Fine-tuning Best Practices](Self-cognition-best-practice.md).
 - `--model_name`: Default is `[None, None]`. If self-cognition dataset sampling is enabled (i.e. self_cognition_sample>0), you need to pass two values, representing the model's Chinese and English names respectively. E.g. `--model_name 小黄 'Xiao Huang'`.
@@ -240,14 +240,14 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--dtype`: Default is `'AUTO`, see `sft.sh command line arguments` for parameter details.
 - `--dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
 - `--dataset_seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
-`--dataset_test_ratio`: Default value is `None`, if `--load_dataset_config true` is set, then use the dataset_test_ratio from training, else set it to 1. For specific parameter details, refer to the `sft.sh command line arguments`.
+`--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft.sh command line arguments`.
 - `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
 - `--system`: Default is `None`. See `sft.sh command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
 - `--custom_train_dataset_path`: Default value is `[]`. This parameter has been deprecated, please use `--dataset {dataset_path}`.
-- `--custom_val_dataset_path`: Default value is `[]`. This parameter has been deprecated. There is no longer a distinction between training and validation datasets, and the split is now unified using `dataset_test_ratio`. Please use `--dataset {dataset_path}`.
+- `--custom_val_dataset_path`: Default value is `[]`. This parameter is deprecated. Please use `--val_dataset {dataset_path}` instead.
 - `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
 - `--quant_method`: Quantization method, default is None. You can choose from 'bnb', 'hqq', 'eetq'.
 - `--hqq_axis`: Hqq argument. Axis along which grouping is performed. Supported values are 0 or 1. default is `0`
