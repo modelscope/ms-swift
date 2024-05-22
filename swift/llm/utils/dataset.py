@@ -115,12 +115,14 @@ class DatasetName:
     # <img></img>
     coco_en = 'coco-en'
     coco_en_mini = 'coco-en-mini'
-    sharegpt4v = 'sharegpt4v'
     # images
     coco_en_2 = 'coco-en-2'
     coco_en_2_mini = 'coco-en-2-mini'
     capcha_images = 'capcha-images'
     m3it = 'm3it'
+    # additional images
+    sharegpt4v = 'sharegpt4v'
+    llava_instruct_150k = 'llava-instruct-150k'
     # for qwen-audio
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
@@ -860,8 +862,8 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
     response = []
     images = []
     for d in tqdm(dataset):
-        system.append('instruction')
-        query.append('inputs')
+        system.append(d['instruction'])
+        query.append(d['inputs'])
         images.append(d['image_base64_str'])
         response.append(d['outputs'])
     dataset = HfDataset.from_dict({'system':system,'query': query, 'response': response, 'images': images})
@@ -874,13 +876,13 @@ def _download_sharegpt4v_dataset():
 # - WebData: [images](https://drive.google.com/drive/folders/1tCUQ-sq6vdshZVkF0ZeF3K4eztkXJgax?usp=sharing). Only for academic usage.
 # - SAM: [images](https://ai.meta.com/datasets/segment-anything-downloads/). We only use 000000~000050.tar for now. If you just want to use ShareGPT4V for SFT, you can quickly download 9K images from [here](https://drive.google.com/file/d/1dKumdOKSXtV7lIXdrG7jsIK_z2vZv2gs/view?usp=drive_link). 
 # -[x] GQA: [images](https://downloads.cs.stanford.edu/nlp/data/gqa/images.zip)
-# - OCR-VQA: [download script](https://drive.google.com/drive/folders/1_GYPY5UkUy7HIcR0zq3ZCFgeZN7BAfm_?usp=sharing). We save all files as `.jpg`
+# -[x] OCR-VQA: [download script](https://drive.google.com/drive/folders/1_GYPY5UkUy7HIcR0zq3ZCFgeZN7BAfm_?usp=sharing). We save all files as `.jpg`
 # -[x] TextVQA: [trainvalimages](https://dl.fbaipublicfiles.com/textvqa/images/train_val_images.zip)
 # -[x] VisualGenome: [part1](https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip), [part2](https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip)
 
 def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
     _download_sharegpt4v_dataset()
-    coco_prefix = 'http://images.cocodataset.org'
+    # coco_prefix = 'http://images.cocodataset.org'
 
     # def preprocess_image(example):
     #     image = example['image']
@@ -905,8 +907,8 @@ register_dataset(
 
 register_dataset(
     DatasetName.m3it,
-    'AI-ModelScope/M3IT', # empty: coco-goi-rephrased
-    ['coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa', 'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased', 'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'vist', 'winoground', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased', 'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco', 'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased', 'iqa', 'iqa-rephrased', 'vcr', 'visual-mrc', 'mmchat', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa', 'flickr8k-cn', 'chinese-food'],
+    'AI-ModelScope/M3IT', # empty: coco-goi-rephrased, error: vist , 'iqa-rephrased ', 'mmchat' , test: , 'winoground','chinese-food'
+    ['coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa', 'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased', 'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased', 'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco', 'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased', 'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa', 'flickr8k-cn'],
     _preprocess_m3it,
     get_dataset_from_repo,
     split=['train'],
