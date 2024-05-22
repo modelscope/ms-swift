@@ -39,6 +39,25 @@ class TestRun(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp_dir)
 
+    def test_template(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        torch.cuda.empty_cache()
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.qwen1half_1_8b,
+                model_id_or_path='../models/Qwen1.5-1.8B',
+                template_type='qwen',
+                sft_type='full',
+                dataset=f'{DatasetName.jd_sentiment_zh}#200',
+                eval_steps=5))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        result = infer_main(
+            InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+        assert len(result['result'][0]['response']) < 20
+
     def test_basic(self):
         output_dir = 'output'
         quantization_bit_list = [0, 4]
@@ -481,6 +500,7 @@ class TestTrainer(unittest.TestCase):
                 metric_for_best_model='loss',
                 greater_is_better=False,
                 gradient_accumulation_steps=1,
+                logging_steps=5,
                 eval_steps=10,
                 save_only_model=save_only_model)
         trainer_args._n_gpu = 1

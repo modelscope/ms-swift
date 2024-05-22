@@ -966,8 +966,9 @@ class InferArguments(ArgumentsBase):
 
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
-    dataset_test_ratio: Optional[float] = None
+    dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 10
     save_result: bool = True
     system: Optional[str] = None
@@ -1035,6 +1036,9 @@ class InferArguments(ArgumentsBase):
                            'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
         self._register_self_cognition()
+        if self.val_dataset is not None:
+            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+            logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
@@ -1054,8 +1058,6 @@ class InferArguments(ArgumentsBase):
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
-        if self.dataset_test_ratio is None:
-            self.dataset_test_ratio = 1
         if self.eval_human is None:
             if not len(self.dataset) > 0:
                 self.eval_human = True
@@ -1139,8 +1141,8 @@ class InferArguments(ArgumentsBase):
         ]
         if self.load_dataset_config:
             imported_keys += [
-                'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'self_cognition_sample',
-                'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
+                'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
+                'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
             ]
         for key in imported_keys:
             value = getattr(self, key)
