@@ -966,6 +966,7 @@ class InferArguments(ArgumentsBase):
 
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 10
@@ -1140,8 +1141,8 @@ class InferArguments(ArgumentsBase):
         ]
         if self.load_dataset_config:
             imported_keys += [
-                'dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy', 'self_cognition_sample',
-                'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
+                'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
+                'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
             ]
         for key in imported_keys:
             value = getattr(self, key)
