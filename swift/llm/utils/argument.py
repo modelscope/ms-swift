@@ -602,6 +602,8 @@ class SftArguments(ArgumentsBase):
     model_layer_cls_name: Optional[str] = field(
         default=None,
         metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
+    metric_warmup_step: Optional[float] = 0
+    fsdp_num: int = 1
 
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
@@ -617,8 +619,6 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
-    metric_warmup_step: Optional[float] = 0  # only use in torchacc
-    fsdp_num: int = 1
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
