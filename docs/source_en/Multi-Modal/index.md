@@ -9,5 +9,5 @@
 5. [Yi-VL Best Practices.md](yi-vl-best-practice.md)
 6. [Internlm2-Xcomposers Best Practices](internlm-xcomposer2-best-practice.md)
 7. [MiniCPM-V Best Practices](minicpm-v-best-practice.md)
-8. [CogVLM Best Practices](cogvlm-best-practice.md)
+8. [CogVLM Best Practices](cogvlm-best-practice.md), [CogVLM2 Best Practices](cogvlm2-best-practice.md)
 9. [InternVL-Chat-V1.5 Best Practices](internvl-best-practice.md)

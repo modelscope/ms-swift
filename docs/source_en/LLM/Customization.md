@@ -4,29 +4,30 @@
 - [Custom Models](#custom-models)
 - [Custom Dialogue Templates](#custom-dialogue-templates)
 
-## Custom Datasets
-We support two methods for **custom datasets**:
+## Custom Dataset
 
-1. [Recommended]  **Command line arguments**: More convenient to support local custom datasets.
-2. By **registering datasets**: More flexible, can further extend and develop swift, but requires some programming skills. Method 1 internally leverages method 2.
+We support three methods for **customizing datasets**.
 
-### 📌 [Recommended] Command line arguments
-You need to additionally specify in the sft.sh script:
+1. \[Recommended\] using command line arguments: It is more convenient to support custom datasets, and it supports four dataset formats (using `SmartPreprocessor`) as well as the `dataset_id` and `dataset_path`.
+2. Adding datasets to `dataset_info.json` is more flexible than the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--dataset_info_path xxx.json` (for users who prefer pip install over git clone to expand datasets).
+3. Registering datasets: More flexible than the first two methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
+
+### 📌 \[Recommended\] using Command Line Arguments
+
+Supports directly passing in custom `dataset_id` (compatible with MS and HF) and `dataset_path`, as well as simultaneously passing in multiple custom datasets and their respective sample sizes. The script will automatically preprocess and concatenate the datasets. If a `dataset_id` is passed in, it will default to using the 'default' subset in the dataset_id and set the split to 'train'. If the dataset_id has already been registered, it will use the subsets, split, and preprocessing functions that were passed in during registration. If a `dataset_path` is passed in, it can be specified as a relative path or an absolute path, where the relative path is relative to the current running directory.
+
+
+
 
 ```bash
---custom_train_dataset_path xxx.jsonl \
---custom_val_dataset_path yyy.jsonl \
+--dataset {dataset_id} {dataset_path}
+
+# Dataset Mixing: the following command takes subset1 and subset2 from dataset_id and samples 20,000 records
+--dataset {dataset_name}#20000 {dataset_id}:{subset1}/{subset2}#20000 {dataset_path}#10000
 ```
 
-The corresponding example sh script can be found [here](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/tongyi_finance_14b_chat_int4/qlora/sft.sh).
+The supported file formats for the script include `csv`, `json`, and `jsonl`. You need to ensure that the incoming file conforms to the following dataset formats (only a partial list is provided). All of these formats support the `system` field (it is important to note that if the `system` field is specified in the csv format, it cannot be set to `None` and can only be specified as an empty string. There is no such restriction for the json and jsonl formats). Files in `json` and `jsonl` formats support multi-turn dialogue (`csv` does not support this).
 
-1. `--custom_train_dataset_path`: The default value is `[]`, indicating not to use a custom dataset. You can specify it in the following form: `--custom_train_dataset_path alpaca.csv` or specify multiple training datasets `--custom_train_dataset_path alpaca.csv chatml.jsonl swift.jsonl`, the script will automatically preprocess and concatenate them.
-
-   > Training can be done by combining public datasets and custom datasets: `--dataset blossom-math-zh --custom_train_dataset_path custom_math.jsonl`.
-
-2. `--custom_val_dataset_path`: The default value is `[]`, indicating not to use a custom validation dataset. If you specify `custom_train_dataset_path`, then the validation set of the custom dataset will be split according to the command line argument `dataset_test_ratio`.
-
-The supported file formats for the script include `csv`, `json`, and `jsonl`. You need to ensure that the incoming files conform to the following dataset formats. Both `json` and `jsonl` formats support multi-turn dialogues (`csv` does not support this).
 
 **Format 1:**
 
@@ -48,14 +49,14 @@ AAAAA
 Single-Round Dialogue
 
 ```csv
-query,response
-11111,22222
-aaaaa,bbbbb
-AAAAA,BBBBB
+system,query,response
+00000,11111,22222
+00001,aaaaa,bbbbb
+00002,AAAAA,BBBBB
 ```
 
 ```jsonl
-{"query": "11111", "response": "22222"}
+{"system": "00000", "query": "11111", "response": "22222"}
 {"query": "aaaaa", "response": "bbbbb"}
 {"query": "AAAAA", "response": "BBBBB"}
 ```
@@ -63,13 +64,13 @@ AAAAA,BBBBB
 Multi-Round Dialogue
 
 ```jsonl
-{"query": "55555", "response": "66666"}
+{"system": "00000", "query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
 ```json
-[{"query": "55555", "response": "66666"},
+[{"system": "00000", "query": "55555", "response": "66666"},
 {"query": "eeeee", "response": "fffff", "history": []},
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}]
 ```
@@ -77,7 +78,7 @@ Multi-Round Dialogue
 **Format 2:**
 
 ```jsonl
-{"conversations": [{"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
+{"conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
 {"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
 ```
@@ -85,7 +86,7 @@ Multi-Round Dialogue
 **Format 3:**
 
 ```jsonl
-{"messages": [{"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
+{"messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
 ```
@@ -93,23 +94,66 @@ Multi-Round Dialogue
 **Format 4:**
 
 ```csv
-instruction,input,output
-11111,22222,33333
-aaaaa,bbbbb,ccccc
-AAAAA,BBBBB,CCCCC
+system,instruction,input,output
+00000,11111,22222,33333
+00001,aaaaa,bbbbb,ccccc
+00002,AAAAA,BBBBB,CCCCC
 ```
 
-**Reinforcement Learning (DPO)**
+**Reinforcement Learning (DPO/ORPO)**
 
 ```jsonl
-{"query": "11111", "response": "22222", "rejected_response": "33333"}
-{"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc"}
-{"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC"}
+{"query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
+
+### Adding dataset_info.json
+
+You can refer to the [builtin dataset_info.json in Swift](https://github.com/modelscope/swift/blob/main/swift/llm/data/dataset_info.json) to expand datasets. You can directly add it in the built-in dataset_info.json, or you can pass in the path to an external dataset_info.json, a JSON string, or a dictionary using `--custom_dataset_info 1.json`.
+
+Adding dataset_id:
+
+```python
+# MS
+# Usage: `--dataset <dataset_name>`
+"<dataset_name>": {
+    "dataset_id": "xxx/xxx"
+}
+
+# HF
+# Usage: `--dataset HF::<dataset_name>` or directly use the `USE_HF` environment variable.
+"<dataset_name>": {
+    "hf_dataset_id": "xxx/xxx"
+}
+```
+
+添加dataset\_path:
+```python
+# You can specify relative and absolute paths. Relative paths are relative to the directory where dataset_info.json is located.
+# Usage: `--dataset <dataset_name>`
+"<dataset_name>": {
+    "dataset_path": "xxx"
+}
+```
+
+Supported parameters include:
+
+- dataset_id: The corresponding ModelScope dataset_id, default is `None`. The simplest setup requires specifying one of `dataset_id`, `hf_dataset_id`, or `dataset_path`.
+- subsets: A list of names of the subsets, default is `[]`, which means using the 'default' subset.
+- split: Default is ['train'], usually not necessary to set.
+- hf_dataset_id: The corresponding HuggingFace dataset_id, default is `None`.
+- dataset_path: Used to specify the local path of the dataset, e.g. 1.jsonl, default is `None`. It can take relative or absolute paths. If using a relative path, it is relative to the directory where the dataset_info.json is located. If dataset_path is set, then dataset_id, subsets, and hf_dataset_id parameters are ignored.
+- columns: The default preprocessor used is `SmartPreprocessor`. Specifying this parameter sets it to `RenameColumnsPreprocessor`. You need to rename the columns in the dataset and convert them to the style of **format 1** mentioned above.
+- conversations: Specifying this parameter sets the preprocessor to `ConversationsPreprocessor` ('columns' takes priority over 'conversations').
+- remove_useless_columns: Specifies whether to remove unnecessary columns (including: 'query', 'response', 'rejected_response', 'system', 'history', 'images'), default is `True`, usually not necessary to set.
+- tags: Used to annotate the dataset, default is `[]`, usually not necessary to set.
+
+If the parameters in `dataset_info.json` are not sufficient for your needs, such as adding custom prompts, requiring advanced dataset cleaning, or complex dataset retrieval and preprocessing, you can use the method of registering datasets using functions for data retrieval and preprocessing.
 
 ### Registering Datasets
 
-The following is an example of **registering datasets**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom).
+The following is an example of **registering datasets**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom). You can parse the registered content by specifying `--custom_register_path xxx.py`.
 
 ```python
 from typing import Optional, Tuple
@@ -117,7 +161,7 @@ from typing import Optional, Tuple
 from datasets import Dataset as HfDataset
 from modelscope import MsDataset
 
-from swift.llm import get_dataset, register_dataset
+from swift.llm import get_dataset, register_dataset, get_dataset_from_repo
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -139,15 +183,7 @@ Similarity score: """
     return HfDataset.from_dict({'query': query, 'response': response})
 
 
-@register_dataset(
-    CustomDatasetName.stsb_en, 'huangjintao/stsb', task='text-generation')
-def get_stsb_dataset(dataset_id_or_path: str,
-                     **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    dataset_dict = MsDataset.load(dataset_id_or_path)
-    train_dataset = dataset_dict['train'].to_hf_dataset()
-    val_dataset = dataset_dict['validation'].to_hf_dataset()
-    return tuple(
-        _preprocess_stsb(dataset) for dataset in [train_dataset, val_dataset])
+register_dataset(CustomDatasetName.stsb_en, 'huangjintao/stsb', None, _preprocess_stsb, get_dataset_from_repo)
 
 
 if __name__ == '__main__':
@@ -159,21 +195,22 @@ if __name__ == '__main__':
 
 ```
 
-`register_dataset` will register the dataset in `DATASET_MAPPING`. The meaning of the parameters of this function are as follows:
+The `register_dataset` function will register the dataset in the `DATASET_MAPPING`. The parameters of this function are as follows:
 
-- `dataset_name`: Required field, represents the name of the dataset, and is also the unique id of the dataset.
-
-- `dataset_id_or_path`: Required field. Represents the `dataset_id` of the dataset on ModelScope Hub or the local `dataset_dir`.
-
+- `dataset_name`: Required, representing the name of the dataset, which is also the unique ID of the dataset.
+- `dataset_id_or_path`: Required, representing the `dataset_id` on the ModelScope Hub or the local `dataset_dir`.
+- `subsets`: List of subsets of the dataset, default is `[]`.
+- `split`: Default is ['train'].
+- `preprocess_func`: Preprocessing function.
 - `get_function`: Default value is `None`. The function to get the dataset. If passed `None`, the decorator approach will be used to register the dataset. If passed a function, the normal approach will be used to register.
-   > `get_function` needs to return `HfDataset` or `Tuple[HfDataset, Optional[HfDataset]]`. If only one dataset is returned, then that dataset is the train\_dataset, and the dataset processing function will split a portion of the dataset as val\_dataset (according to the command line argument `dataset_test_ratio`); if two datasets are returned, they will be used as train\_dataset and val\_dataset respectively. We support using multiple datasets for fine-tuning `get_dataset(['dataset1', 'dataset2'])`. We will concatenate the training and validation set portions of each sub-dataset respectively, and finally return the merged training and validation sets.
+   > `get_function` should return `HfDataset` or `Tuple[HfDataset, Optional[HfDataset]]`. If only one dataset is returned, it will be the train_dataset. If two datasets are returned, they will be the train_dataset and val_dataset, respectively. The `get_dataset` function supports obtaining multiple datasets, for example: `get_dataset(['dataset1', 'dataset2'])`. We will concatenate the training and validation parts of each subset and return the merged train_dataset and val_dataset.
 
    > The `HfDataset` returned by the function needs to follow certain specifications. If you want to do **pre-training**, you only need to include the `response` field, please refer to the `'tigerbot-law-zh'` dataset for details. For **instruction tuning (single-round dialogue)**, the `query` and `response` fields need to be included, representing the user's query and the AI assistant's answer in instruction tuning respectively, please refer to the `'alpaca-zh'` dataset for details. For **multi-round dialogue**, an additional `history` field needs to be added, representing the historical information of the dialogue, please refer to the `'damo-agent-mini-zh'` dataset for details. If each dataset sample has a different `system`, an additional system field needs to be added, you can also refer to the `'damo-agent-mini-zh'` dataset for details.
 
 - `**kwargs`: Other parameters used to annotate the dataset. This parameter generally does not need to be set.
 
 ## Custom Models
-The following is an example of **custom models**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom).
+The following is an example of **custom models**. The complete py file can be viewed at [custom.py](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/custom.py), and the sh script can be viewed at [custom](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/custom). You can parse the registered content by specifying `--custom_register_path xxx.py`.
 
 ```python
 from typing import Any, Dict

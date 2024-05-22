@@ -1,8 +1,17 @@
 # LLM Quantization Documentation
-Swift supports using AWQ and GPTQ techniques to quantize models. These two quantization techniques support VLLM inference acceleration, and the quantized models also support QLORA fine-tuning.
+Swift supports model quantization using the techniques of awq, gptq, bnb, hqq, eetq. Among these, awq and gptq quantization techniques support inference acceleration for vllm, and the quantized models support fine-tuning with qlora.
+Note The effect of quantization varies under different commands:
+- During sft lora training, quantization specified for `qlora` is used to reduce the memory required for training.
+- In export, quantization is specified to quantize the model and save it.
+- In infer, quantization is specified for model quantization and inference.
+
+bnb, hqq, and eetq do not require calibration data and offer fast quantization speed. They are used in sft lora training and inference by specifying `--quant_method bnb/hqq/eetq`.
+
+awq and gptq require calibration data and are used in export by specifying `--quant_method awq/gptq`.
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
+- [Qlora](#qlora)
 - [Original Model](#original-model)
 - [Fine-tuned Model](#fine-tuned-model)
 - [Pushing Models](#pushing-models)
@@ -28,7 +37,56 @@ pip install -r requirements/framework.txt -U
 pip install -r requirements/llm.txt -U
 ```
 
+## QLora
+In the sft lora training, specify `--quant_method` and `--quantization_bit` to execute qlora, which significantly reduces the GPU memory required for training.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type qwen1half-7b-chat \
+    --sft_type lora \
+    --dataset alpaca-zh#5000 \
+    --quant_method hqq \
+    --quantization_bit 4 \
+
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type qwen1half-7b-chat \
+    --sft_type lora \
+    --dataset alpaca-zh#5000 \
+    --quant_method eetq \
+    --dtype fp16 \
+
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type qwen1half-7b-chat \
+    --sft_type lora \
+    --dataset alpaca-zh#5000 \
+    --quant_method bnb \
+    --quantization_bit 4 \
+    --dtype fp16 \
+```
+**Note**
+- hqq supports more customizable parameters, such as specifying different quantization configurations for different network layers. For details, please see [Command Line Arguments](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Command-line-parameters.md).
+- eetq quantization uses 8-bit quantization, and there's no need to specify quantization_bit. Currently, bf16 is not supported; you need to specify dtype as fp16.
+- Currently, eetq's qlora speed is relatively slow; it is recommended to use hqq instead. For reference, see the [issue](https://github.com/NetEase-FuXi/EETQ/issues/17).
+
 ## Original Model
+Use bnb, hqq, and eetq for model quantization and inference.
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --quant_method bnb \
+    --quantization_bit 4
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --quant_method hqq \
+    --quantization_bit 4
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --quant_method eetq \
+    --dtype fp16
+```
+
 Here we demonstrate AWQ and GPTQ quantization on the qwen1half-7b-chat model.
 ```bash
 # AWQ-INT4 quantization (takes about 18 minutes using A100, memory usage: 13GB)
@@ -46,11 +104,11 @@ OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method gptq
 
-# AWQ: Use custom quantization dataset (don't use the `--custom_val_dataset_path` parameter)
+# AWQ: Use custom quantization dataset
 # Same for GPTQ
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --custom_train_dataset_path xxx.jsonl \
+    --dataset xxx.jsonl \
     --quant_method awq
 
 # Inference using swift quantized model

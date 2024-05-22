@@ -1,4 +1,16 @@
 # Llava Best Practices
+The document corresponds to the following models
+
+| model | model_type |
+|-------|------------|
+| [llava-v1.6-mistral-7b](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary) | llava1d6-mistral-7b-instruct |
+| [llava-v1.6-34b](https://www.modelscope.cn/models/AI-ModelScope/llava-v1.6-34b/summary) | llava1d6-yi-34b-instruct |
+|[llama3-llava-next-8b](https://modelscope.cn/models/AI-ModelScope/llama3-llava-next-8b/summary)|llama3-llava-next-8b|
+|[llava-next-72b](https://modelscope.cn/models/AI-ModelScope/llava-next-72b/summary)|llava-next-72b|
+|[llava-next-110b](https://modelscope.cn/models/AI-ModelScope/llava-next-110b/summary)|llava-next-110b|
+
+The following practices take `llava-v1.6-mistral-7b` as an example. You can also switch to other models by specifying the `--model_type`.
+
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -14,10 +26,8 @@ pip install -e '.[llm]'
 ```
 
 ## Inference
-
-Inference for [llava1d6-mistral-7b-instruct](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary) and [llava1d6-yi-34b-instruct](https://www.modelscope.cn/models/AI-ModelScope/llava-v1.6-34b/summary):
 ```shell
-# Experimental environment: A10, 3090, V100...
+# Experimental environment: A100
 # 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1d6-mistral-7b-instruct
 
@@ -108,7 +118,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.llava1d6_mistral_7b_instruct # ModelType.llava1d6_yi_34b_instruct
+model_type = 'llava1d6-mistral-7b-instruct'
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -166,12 +176,12 @@ LoRA fine-tuning:
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type llava1d6-mistral-7b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 
 # 2*45GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type llava1d6-yi-34b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 ```
 
 Full parameter fine-tuning:
@@ -180,14 +190,14 @@ Full parameter fine-tuning:
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type llava1d6-mistral-7b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
     --sft_type full \
     --deepspeed default-zero2
 
 # 8 * 50 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
     --model_type llava1d6-yi-34b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
     --sft_type full \
 ```
 
@@ -205,7 +215,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 ## Inference after Fine-tuning
 Direct inference:
 ```shell
-model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
+model_type="llava1d6-mistral-7b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
     --load_dataset_config true
@@ -213,7 +223,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 **merge-lora** and inference:
 ```shell
-model_type="llava1d6-mistral-7b-instruct" # "llava1d6-yi-34b-instruct"
+model_type="llava1d6-mistral-7b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
     --merge_lora true

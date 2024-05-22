@@ -375,8 +375,11 @@ class ExpManager:
                         logger.error(e)
                         self.exp_queue.popleft()
                     else:
-                        logger.info(f'Adding exp {self.exp_queue[0].name} error because of no free gpu.')
-                    break
+                        logger.info(f'Adding exp {self.exp_queue[0].name} error because of:', str(e))
+                    if 'no free gpu' in str(e).lower():
+                        break
+                    else:
+                        continue
                 else:
                     self.exp_queue.popleft()
             self._poll()

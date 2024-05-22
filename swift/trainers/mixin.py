@@ -4,12 +4,14 @@ import importlib
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
+import peft
 import safetensors
 import torch
 import transformers
@@ -249,12 +251,16 @@ class SwiftMixin:
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             **kwargs)
+        if not self.label_names:
+            self.label_names = ['labels']
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = _hf_peft_config_loaded
 
         if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
+        self.max_memory = 0.0
+        self.start_time = time.time()
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:
@@ -373,13 +379,13 @@ class SwiftMixin:
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        sft_args = getattr(self, 'sft_args', None)
         # tokenizer
-        if self.tokenizer is not None:
+        if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         # additional files
-        sft_args = getattr(self, 'sft_args', None)
         if sft_args is not None and sft_args.sft_type == 'full':
             additional_files = getattr(self.args, 'additional_saved_files', []) + ['preprocessor_config.json']
             if model_dir is not None:
@@ -502,6 +508,17 @@ class SwiftMixin:
         except ValueError as e:
             logger.warning(e)
 
+    def get_max_cuda_memory(self, device: Optional[Union[torch.device, int]] = None) -> float:
+        if device is None:
+            mems = [torch.cuda.max_memory_reserved(device=device) for device in range(torch.cuda.device_count())]
+        else:
+            mems = [torch.cuda.max_memory_reserved(device=device)]
+        mem = sum([float(mem) / 1024 / 1024 / 1024 for mem in mems])
+        if self.max_memory < mem:
+            self.max_memory = mem
+        torch.cuda.reset_peak_memory_stats()
+        return mem
+
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
             self.control.should_log = False
@@ -523,7 +540,11 @@ class SwiftMixin:
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-
+            logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
+            import time
+            time_now = time.time()
+            elapse_time = time_now - self.start_time
+            logs['train_speed(iter/s)'] = round(self.state.global_step / elapse_time, 6)
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()

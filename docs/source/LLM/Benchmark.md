@@ -11,6 +11,7 @@
 - [Export](#Export)
 - [AWQ](#AWQ)
 - [AQLM](#AQLM)
+- [Sequence Parallel](#Sequence-Parallel)
 
 ## 参数设置
 实验环境:
@@ -720,13 +721,16 @@ swift sft \
 |full|qwen-7b-chat|ms-agent|2.0|full||7721.3245(100.0000%)|True|True|lr=5e-05/epoch=2|73.53GiB|1.43(87543 samples/61022.97 seconds)|29.51(3382 tokens/114.62 seconds)|0.54|0.95|0.343|0.536|0.495|
 |llamapro|qwen-7b-chat|ms-agent|2.0|llamapro|num_blocks=4|809.5826(9.4900%)|True|True|lr=5e-05/epoch=2|38.11GiB|1.53(87543 samples/57294.42 seconds)|25.80(2374 tokens/92.02 seconds)|0.53|1.00|0.434|0.645|0.357|
 |lora+|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=16.0/use_rslora=False/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.95(87543 samples/91923.80 seconds)|18.81(3329 tokens/176.94 seconds)|0.53|0.98|0.432|0.647|0.344|
-|lora+neftune|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=Falseneftune_alpha=15.0|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.96(87543 samples/91525.50 seconds)|19.84(161792 tokens/8156.02 seconds)|0.53|1.02|0.456|0.671|0.401|
+|lora+neftune|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False/neftune_noise_alpha=15.0|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.96(87543 samples/91525.50 seconds)|19.84(161792 tokens/8156.02 seconds)|0.53|1.02|0.456|0.671|0.401|
 |lora+no_mix|qwen-7b-chat|ms-agent|0.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|30.86GiB|0.91(29698 samples/32570.15 seconds)|19.89(36308 tokens/1825.26 seconds)|0.53|0.53|0.470|0.666|0.574|
 |lora|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.95(87543 samples/91974.29 seconds)|18.11(2415 tokens/133.32 seconds)|0.53|1.01|0.462|0.676|0.304|
 |qwen-7b-chat-eval|qwen-7b-chat|None|0.0|None||None(None)||||None||30.81(13765 tokens/446.83 seconds)|||**0.517**|0.679|0.568|
 |rslora|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=True/use_dora=False|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.35GiB|0.94(87543 samples/92758.63 seconds)|18.87(2762 tokens/146.34 seconds)|**0.53**|0.99|0.451|0.679|0.339|
 | full+lisa_2          | qwen-7b-chat | ms-agent | 2.0                | full     | lisa_activated_layers=2/lisa_step_interval=20                | -                    | True       | True                   | lr=5e-05/epoch=2 | 31.11GiB | 2.66(76837 samples/28881.28 seconds)  | 36.10(134469 tokens/3725.21 seconds) | 0.62       | 1.06      | 0.349              | 0.653            | 0.592              |
 | full+lisa_4          | qwen-7b-chat | ms-agent | 2.0                | full     | lisa_activated_layers=4/lisa_step_interval=20                | -                    | True       | True                   | lr=5e-05/epoch=2 | 31.87GiB | 2.63(76837 samples/29215.15 seconds)  | 36.75(135477 tokens/3686.17 seconds) | 0.63       | 1.06      | 0.377              | 0.656            | **0.607**          |
+|lora+packing+ddp|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False/packing=True|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|35.65GiB*2|1.56(7900 samples/5057.30 seconds)|26.20(421094 tokens/16073.09 seconds)|0.63|0.98|0.473|0.664|0.552|
+|lora+packing+lazytokenize|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False/packing=True|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|32.83GiB|7.69(78237 samples/10179.40 seconds)|25.86(307390 tokens/11888.17 seconds)|0.63|1.04|0.472|0.660|0.554|
+|lora+packing|qwen-7b-chat|ms-agent|2.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False/packing=True|17.8913(0.2312%)|True|True|lr=5e-05/epoch=2|28.06GiB|0.79(7900 samples/10048.53 seconds)|26.12(409507 tokens/15675.36 seconds)|0.61|0.95|0.492|0.676|0.539|
 
 ## unsloth
 
@@ -754,3 +758,50 @@ swift sft \
 | exp_name | model_type | dataset | ms-bench mix ratio | tuner | tuner_params | trainable params(M) | flash_attn | gradient_checkpointing | hypers | memory | train speed(samples/s) | infer speed(tokens/s) | train_loss | eval_loss | gsm8k weighted acc | arc weighted acc | ceval weighted acc |
 | -------- | ---------- | ------- | -------------------| ----- | ------------ | ------------------- | -----------| ---------------------- | ------ | ------ | ---------------------- | --------------------- | ---------- | --------- | ------------------ | ---------------- | ------------------ |
 |llama2-7b-aqlm-2bit-1x16|llama2-7b-aqlm-2bit-1x16|dureader-robust-zh|0.0|lora|rank=8/target=ALL/alpha=32/lr_ratio=None/use_rslora=False/use_dora=False|19.9885(1.6510%)|True|True|lr=5e-05/epoch=2|4.04GiB|0.17(14994 samples/86140.71 seconds)||**0.48**|**0.74**||||
+
+
+## Sequence Parallel
+
+<table>
+
+<tr>
+<td>Model</td>
+<td>Dataset</td>
+<td>Hyper params</td>
+<td>Total steps</td>
+<td>Train speed</td>
+<td>Gpu memory</td>
+</tr>
+
+<tr>
+<td rowspan="4">chatglm3-6b-32k</td>
+<td rowspan="4">long-alpaca-12k(8055 tokens * 12000 rows)</td>
+<td>gpu=2/sequence_parallel_size=1(双GPU DDP基准测试)</td>
+<td>5940</td>
+<td>0.30iter/s(5h13min total)</td>
+<td>27G*2</td>
+</tr>
+
+
+<tr>
+<td>gpu=2/sequence_parallel_size=2(双GPU序列并行2)</td>
+<td>11880</td>
+<td>0.5iter/s(6h total)</td>
+<td>20G*2</td>
+</tr>
+
+<tr>
+<td>gpu=4/sequence_parallel_size=4(四GPU序列并行4)</td>
+<td>11880</td>
+<td>1iter/s(3h20min total)</td>
+<td>18G*4</td>
+</tr>
+
+<tr>
+<td>gpu=4/sequence_parallel_size=2(四GPU序列并行2)</td>
+<td>5940</td>
+<td>0.45iter/s(3h total)</td>
+<td>21G*4</td>
+</tr>
+
+</table>

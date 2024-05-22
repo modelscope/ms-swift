@@ -85,7 +85,7 @@ class ModelOutput:
         if args['sft_type'] == 'llamapro':
             hyper_params += f'num_blocks={args["llamapro_num_new_blocks"]}/'
         if 'neftune_noise_alpha' in args and args['neftune_noise_alpha']:
-            hyper_params += f'neftune_alpha={args["neftune_noise_alpha"]}/'
+            hyper_params += f'neftune_noise_alpha={args["neftune_noise_alpha"]}/'
 
         if hyper_params.endswith('/'):
             hyper_params = hyper_params[:-1]
@@ -349,8 +349,8 @@ def parse_output(file):
         if 'global_step' in content:
             global_step = content['global_step']
         if 'dataset_info' in content:
-            train_dataset_info = content['dataset_info']['train_dataset']
-            val_dataset_info = content['dataset_info']['val_dataset']
+            train_dataset_info = content['dataset_info'].get('train_dataset')
+            val_dataset_info = content['dataset_info'].get('val_dataset')
         if 'model_info' in content:
             # model_info like: SwiftModel: 6758.4041M Params (19.9885M Trainable [0.2958%]), 16.7793M Buffers.
             str_dict = split_str_parts_by(content['model_info'], [

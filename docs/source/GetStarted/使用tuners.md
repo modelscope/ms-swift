@@ -133,7 +133,7 @@ def encode(example):
     example, kwargs = template.encode({'query': q, 'response': output})
     return example
 
-dataset = dataset.to_hf_dataset().map(encode).filter(lambda e: e.get('input_ids'))
+dataset = dataset.map(encode).filter(lambda e: e.get('input_ids'))
 dataset = dataset.train_test_split(test_size=0.001)
 
 train_dataset, val_dataset = dataset['train'], dataset['test']

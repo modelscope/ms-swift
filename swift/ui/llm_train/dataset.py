@@ -1,3 +1,4 @@
+import os
 from typing import Type
 
 import gradio as gr
@@ -37,8 +38,8 @@ class Dataset(BaseUI):
                 'en': 'Custom train dataset path'
             },
             'info': {
-                'zh': '输入自定义的训练数据集路径，逗号分隔',
-                'en': 'Extra train files, split by comma'
+                'zh': '输入自定义的训练数据集路径，空格分隔',
+                'en': 'Extra train files, split by blank'
             }
         },
         'custom_val_dataset_path': {
@@ -68,7 +69,7 @@ class Dataset(BaseUI):
             },
             'info': {
                 'zh': '从训练集中采样一定行数进行训练',
-                'en': 'Train with the sample size from the dataset'
+                'en': 'Train with the sample size from the dataset',
             }
         },
         'val_dataset_sample': {
@@ -78,7 +79,7 @@ class Dataset(BaseUI):
             },
             'info': {
                 'zh': '从验证集中采样一定行数进行训练',
-                'en': 'Validate with the sample size from the dataset'
+                'en': 'Validate with the sample size from the dataset',
             }
         },
         'truncation_strategy': {
@@ -90,13 +91,24 @@ class Dataset(BaseUI):
                 'zh': '如果token超长该如何处理',
                 'en': 'How to deal with the rows exceed the max length'
             }
-        }
+        },
+        'custom_dataset_info': {
+            'label': {
+                'zh': '外部数据集配置',
+                'en': 'Custom dataset config'
+            },
+            'info': {
+                'zh': '注册外部数据集的配置文件',
+                'en': 'An extra dataset config to register your own datasets'
+            }
+        },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             gr.Dropdown(elem_id='dataset', multiselect=True, choices=list(DATASET_MAPPING.keys()), scale=20)
+            gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
             gr.Textbox(elem_id='custom_train_dataset_path', is_list=True, scale=20)
             gr.Textbox(elem_id='custom_val_dataset_path', is_list=True, scale=20)
         with gr.Row():

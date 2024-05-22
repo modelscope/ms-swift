@@ -35,12 +35,19 @@ dispatchers = []
 
 
 def is_auto_awq_available():
-    return importlib.util.find_spec('awq') is not None and importlib.util.find_spec('peft.tuners.lora.awq') is not None
+    return importlib.util.find_spec('awq') is not None
 
 
 def is_aqlm_available():
-    return importlib.util.find_spec('aqlm') is not None and importlib.util.find_spec(
-        'peft.tuners.lora.aqlm') is not None
+    return importlib.util.find_spec('aqlm') is not None
+
+
+def is_eetq_available():
+    return importlib.util.find_spec('eetq') is not None
+
+
+def is_hqq_available():
+    return importlib.util.find_spec('hqq') is not None
 
 
 def is_auto_gptq_available():
@@ -358,6 +365,76 @@ if is_auto_gptq_available():
 
     dispatchers.append(dispatch_gptq)
 
+if is_eetq_available():
+    from peft.tuners.lora.eetq import EetqLoraLinear as _EetqLoraLinear
+    from eetq import EetqLinear
+
+    class EetqLoraLinear(LoRAActivationMixin, _EetqLoraLinear):
+
+        def __init__(
+            self,
+            *args,
+            module_key: str,
+            **kwargs,
+        ):
+            super(EetqLoraLinear, self).__init__(module_key)
+            self.set_activation(args[1], True)
+            super(ActivationMixin, self).__init__(*args, **kwargs)
+
+    def dispatch_eetq(
+        target: torch.nn.Module,
+        adapter_name: str,
+        **kwargs: Any,
+    ) -> Optional[torch.nn.Module]:
+        new_module = None
+
+        if isinstance(target, BaseTunerLayer):
+            target_base_layer = target.get_base_layer()
+        else:
+            target_base_layer = target
+
+        if is_eetq_available() and isinstance(target_base_layer, EetqLinear):
+            new_module = EetqLoraLinear(target, adapter_name, **kwargs)
+            target.weight = target_base_layer.weight
+
+            if hasattr(target, 'bias'):
+                target.bias = target_base_layer.bias
+
+        return new_module
+
+    dispatchers.append(dispatch_eetq)
+
+if is_hqq_available():
+    from peft.tuners.lora.hqq import HqqLoraLinear as _HqqLoraLinear
+    from hqq.core.quantize import HQQLinear
+
+    class HqqLoraLinear(LoRAActivationMixin, _HqqLoraLinear):
+
+        def __init__(
+            self,
+            *args,
+            module_key: str,
+            **kwargs,
+        ):
+            super(HqqLoraLinear, self).__init__(module_key)
+            self.set_activation(args[1], True)
+            super(ActivationMixin, self).__init__(*args, **kwargs)
+
+    def dispatch_hqq(target: torch.nn.Module, adapter_name: str, **kwargs):
+        new_module = None
+
+        if isinstance(target, BaseTunerLayer):
+            target_base_layer = target.get_base_layer()
+        else:
+            target_base_layer = target
+
+        if is_hqq_available() and isinstance(target_base_layer, HQQLinear):
+            new_module = HqqLoraLinear(target_base_layer, adapter_name, **kwargs)
+
+        return new_module
+
+    dispatchers.append(dispatch_hqq)
+
 
 def dispatch_megatron(
     target: torch.nn.Module,
@@ -375,12 +452,12 @@ def dispatch_megatron(
 
     if lora_config.megatron_config:
         megatron_core = importlib.import_module(lora_config.megatron_core)
-        linears = (megatron_core.tensor_parallel.ColumnParallelLinear, megatron_core.tensor_parallel.RowParallelLinear)
     else:
         megatron_core = None
-        linears = None
 
-    if megatron_core and isinstance(target_base_layer, linears):
+    if megatron_core and isinstance(
+            target_base_layer,
+        (megatron_core.tensor_parallel.ColumnParallelLinear, megatron_core.tensor_parallel.RowParallelLinear)):  # noqa
         megatron_kwargs = kwargs.copy()
         megatron_config = lora_config.megatron_config
         if isinstance(megatron_config, dict):
@@ -395,8 +472,8 @@ def dispatch_megatron(
         new_module = LoraParallelLinear(
             base_layer=target,
             adapter_name=adapter_name,
-            backend=megatron_core.tensor_parallel,
             module_key=module_key,
+            backend=megatron_core.tensor_parallel,
             **megatron_kwargs)
 
     return new_module
@@ -505,7 +582,9 @@ class Linear(LoRAActivationMixin, _Linear):
         else:
             self.scaling[adapter_name] = lora_alpha / r
 
-        if init_lora_weights == 'loftq':
+        if isinstance(init_lora_weights, str) and init_lora_weights.startswith('pissa'):
+            self.pissa_init(adapter_name, init_lora_weights)
+        elif init_lora_weights == 'loftq':
             self.loftq_init(adapter_name)
         elif init_lora_weights:
             self.reset_lora_parameters(adapter_name, init_lora_weights)
@@ -601,12 +680,10 @@ class LoraModel(_LoraModel):
 
         peft_config = self._prepare_adapter_config(peft_config, model_config)
 
-        if version.parse(peft.__version__) > version.parse('0.8.2'):
-            from peft.tuners.tuners_utils import _maybe_include_all_linear_layers
-            # update peft_config.target_modules if required
-            peft_config = _maybe_include_all_linear_layers(peft_config, model)
-        if version.parse(peft.__version__) >= version.parse('0.10.0'):
-            self._prepare_model(peft_config, model)
+        from peft.tuners.tuners_utils import _maybe_include_all_linear_layers
+        # update peft_config.target_modules if required
+        peft_config = _maybe_include_all_linear_layers(peft_config, model)
+        self._prepare_model(peft_config, model)
 
         for key in key_list:
             # Check for modules_to_save in case
@@ -763,9 +840,10 @@ class LoraModel(_LoraModel):
         # dispatch to correct device
         for name, module in new_module.named_modules():
             if (self.prefix in name) or ('ranknum' in name):
-                weight = child.qweight if hasattr(child, 'qweight') else child.weight
-                if weight.device != torch.device('meta'):
-                    module.to(weight.device)
+                weight = (
+                    child.qweight
+                    if hasattr(child, 'qweight') else child.W_q if hasattr(child, 'W_q') else child.weight)
+                module.to(weight.device)
 
     @staticmethod
     def _create_new_module(lora_config, adapter_name, target, **kwargs):

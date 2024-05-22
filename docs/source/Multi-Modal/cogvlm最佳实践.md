@@ -10,16 +10,18 @@
 
 ## 环境准备
 ```shell
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 ## 推理
 
-推理[cogvlm-17b-instruct](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary):
+推理[cogvlm-17b-chat](https://modelscope.cn/models/ZhipuAI/cogvlm-chat/summary):
 ```shell
 # Experimental environment: A100
 # 38GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-instruct
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-chat
 ```
 
 输出: (支持传入本地路径或URL)
@@ -27,24 +29,25 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm-17b-instruct
 """
 <<< Describe this image.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-This image showcases a close-up of a young kitten. The kitten has a mix of white and gray fur, with striking blue eyes. The fur appears soft and fluffy, and the kitten seems to be in a relaxed position, possibly resting or lounging.
+This image showcases a close-up of a young kitten. The kitten has a fluffy coat with a mix of white, gray, and brown colors. Its eyes are strikingly blue, and it appears to be gazing directly at the viewer. The background is blurred, emphasizing the kitten as the main subject.
 --------------------------------------------------
+<<< clear
 <<< How many sheep are in the picture?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 --------------------------------------------------
+<<< clear
 <<< What is the calculation result?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is '1452+45304=146544'.
+The calculation result is '1452+45304=45456'.
 --------------------------------------------------
+<<< clear
 <<< Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-In a realm where night and day intertwine,
-A boat floats gently, on water so fine.
-Glowing orbs dance, in the starry sky,
-While the forest whispers, secrets it holds.
-A journey of wonder, in the embrace of the night,
-Where dreams take flight, and spirits ignite.
+In a world where night and day intertwine,
+A boat floats gently, reflecting the moon's shine.
+Fireflies dance, their glow a mesmerizing trance,
+As the boat sails through a tranquil, enchanted expanse.
 """
 ```
 
@@ -79,7 +82,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.cogvlm_17b_instruct
+model_type = ModelType.cogvlm_17b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -129,18 +132,18 @@ road:
 # Experimental environment: A100
 # 50GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type cogvlm-17b-instruct \
-    --dataset coco-mini-en-2 \
+    --model_type cogvlm-17b-chat \
+    --dataset coco-en-2-mini \
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(只支持单轮对话, 且必须包含一张图片, 支持传入本地路径或URL)
+(支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
 ```
 
 
@@ -148,17 +151,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm-17b-instruct/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/cogvlm-17b-instruct/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/cogvlm-17b-instruct/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/cogvlm-17b-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```

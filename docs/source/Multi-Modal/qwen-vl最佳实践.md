@@ -138,7 +138,7 @@ LoRA微调:
 # 23GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type qwen-vl-chat \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
 ```
 
 全参数微调:
@@ -147,7 +147,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 # 4 * 70 GPU memory
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type qwen-vl-chat \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
     --sft_type full \
 ```
 

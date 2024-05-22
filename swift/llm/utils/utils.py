@@ -20,12 +20,14 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
+from datasets.arrow_writer import SchemaInferenceError
+from datasets.exceptions import DatasetGenerationError
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
@@ -63,6 +65,7 @@ def download_files(url: str, local_path: str, cookies) -> None:
 
 
 def download_dataset(model_id: str, files: List[str], force_download: bool = False) -> str:
+    assert isinstance(files, list)
     url = f'http://www.modelscope.cn/api/v1/datasets/{model_id}/repo?Revision=master&FilePath={{fpath}}'
     cache_dir = os.path.join(MS_CACHE_HOME, 'datasets', model_id, 'master')
     local_dir = os.path.join(cache_dir, 'raw')
@@ -155,6 +158,89 @@ class LLMDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.data)
+
+
+# Code borrowed from trl
+class ConstantLengthDataset(IterableDataset):
+
+    def __init__(
+        self,
+        template: 'Template',
+        dataset,
+        seq_length=1024,
+        num_of_sequences=1024,
+        chars_per_token=3.6,
+        append_concat_token=True,
+        add_special_tokens=True,
+    ):
+        self.template = template
+
+        self.concat_token_id = self.template.tokenizer.eos_token_id
+        self.dataset = dataset
+        self.seq_length = seq_length
+        self.max_buffer_size = seq_length * chars_per_token * num_of_sequences
+        self.append_concat_token = append_concat_token
+        self.add_special_tokens = add_special_tokens
+
+    @staticmethod
+    def get_packed_dataset(template: 'Template',
+                           dataset,
+                           seq_length=1024,
+                           num_of_sequences=1024,
+                           chars_per_token=3.6,
+                           append_concat_token=True,
+                           add_special_tokens=True,
+                           lazy_tokenize=False):
+        constant_length_iterator = ConstantLengthDataset(template, dataset, seq_length, num_of_sequences,
+                                                         chars_per_token, append_concat_token, add_special_tokens)
+
+        if lazy_tokenize:
+            return constant_length_iterator
+
+        def data_generator(constant_length_iterator):
+            yield from constant_length_iterator
+
+        try:
+            packed_dataset = HfDataset.from_generator(
+                data_generator, gen_kwargs={'constant_length_iterator': constant_length_iterator})
+        except (DatasetGenerationError, SchemaInferenceError) as exc:
+            raise ValueError(
+                'Error occurred while packing the dataset. '
+                'Make sure that your dataset has enough samples to at least yield one packed sequence.') from exc
+        return packed_dataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        more_examples = True
+        while more_examples:
+            buffer, buffer_len = [], 0
+            while True:
+                if buffer_len >= self.max_buffer_size:
+                    break
+                try:
+                    example = next(iterator)
+                    lens = sum([len(value) if value else 0 for value in example.values()])
+                    buffer.append(next(iterator))
+                    buffer_len += lens
+                except StopIteration:
+                    more_examples = False
+                    break
+
+            packed_sequences = {}
+            for example in buffer:
+                input, _ = self.template.encode(example)
+                for key in input.keys():
+                    if key not in packed_sequences:
+                        packed_sequences[key] = []
+                    packed_sequences[key].extend(input[key])
+
+            lens = len(packed_sequences[list(packed_sequences.keys())[0]])
+            for i in range(0, lens, self.seq_length):
+                example = {key: value[i:i + self.seq_length] for key, value in packed_sequences.items()}
+                yield example
 
 
 class LazyLLMDataset(Dataset):
@@ -257,24 +343,34 @@ def stat_dataset(llm_dataset: Dataset) -> str:
 
 
 def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
+
+    def _is_special(token: int) -> bool:
+        if token < 0:
+            return True
+        if tokenizer.eos_token_id != tokenizer.pad_token_id:
+            return token == tokenizer.pad_token_id
+        return False
+
+    if isinstance(input_ids, torch.Tensor):
+        input_ids = input_ids.tolist()
     if len(input_ids) == 0:
         return ''
     result_str = ''
     for i in range(len(input_ids)):
         if i == 0:
-            if input_ids[i] < 0:
+            if _is_special(input_ids[i]):
                 s = 0
             else:
                 e = 0
             continue
-        if input_ids[i] < 0 and input_ids[i - 1] >= 0:
+        if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
             s = i
             result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
-        if input_ids[i] >= 0 and input_ids[i - 1] < 0:
+        if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
             e = i
-            result_str += f'[-100 * {e - s}]'
-    if input_ids[-1] < 0:
-        result_str += f'[-100 * {len(input_ids) - s}]'
+            result_str += f'[{input_ids[i - 1]} * {e - s}]'
+    if _is_special(input_ids[-1]):
+        result_str += f'[{input_ids[i - 1]} * {len(input_ids) - s}]'
     else:
         result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
     return result_str
@@ -307,6 +403,7 @@ def _find_layers(model: Module, module_cls: type) -> List[str]:
 
 
 def find_ln(model: Module) -> List[str]:
+    # find_layer_norm
     module_names = set()
     for name, module in model.named_modules():
         module_cls_name = module.__class__.__name__.lower()
@@ -423,6 +520,7 @@ class TokenListIteratorStreamer(BaseStreamer):
             return value
 
 
+@torch.inference_mode()
 def inference_stream(model: PreTrainedModel,
                      template: Template,
                      query: str,
@@ -432,6 +530,7 @@ def inference_stream(model: PreTrainedModel,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
                      generation_info: Optional[Dict[str, int]] = None,
+                     adapter_names: Optional[List[str]] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -472,7 +571,7 @@ def inference_stream(model: PreTrainedModel,
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
 
-    inputs['attention_mask'] = torch.ones(token_len)[None]
+    inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
@@ -505,6 +604,8 @@ def inference_stream(model: PreTrainedModel,
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
     streamer = TokenListIteratorStreamer()
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generation_kwargs = {
         'streamer': streamer,
         'generation_config': generation_config,
@@ -551,6 +652,7 @@ def inference_stream(model: PreTrainedModel,
         yield response, history
 
 
+@torch.inference_mode()
 def inference(model: PreTrainedModel,
               template: Template,
               query: str,
@@ -564,6 +666,7 @@ def inference(model: PreTrainedModel,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
               generation_info: Optional[Dict[str, int]] = None,
+              adapter_names: Optional[List[str]] = None,
               **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
@@ -588,8 +691,11 @@ def inference(model: PreTrainedModel,
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
-    if len(inputs) == 0:
-        raise ValueError('input_ids exceeds `max_length`. Please increase the value of `max_length`.')
+
+    truncation_strategy = kwargs.pop('truncation_strategy', None)
+    if len(inputs) == 0 and truncation_strategy == 'delete':
+        return '', history
+
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -645,6 +751,8 @@ def inference(model: PreTrainedModel,
         generation_info['num_prompt_tokens'] = token_len
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
+    if adapter_names is not None:
+        inputs['adapter_names'] = adapter_names
     generate_ids = model.generate(
         streamer=streamer, generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs)
     generate_ids = template.get_generate_ids(generate_ids, token_len)
@@ -731,6 +839,14 @@ def set_generation_config(model: Module, generation_config: GenerationConfig) ->
 
 def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None
+
+
+def is_xtuner_available():
+    return importlib.util.find_spec('xtuner') is not None
+
+
+def is_unsloth_available() -> bool:
+    return importlib.util.find_spec('unsloth') is not None
 
 
 def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:

@@ -624,9 +624,6 @@ class ModelScopeConfig:
                 cookies = pickle.load(f)
                 for cookie in cookies:
                     if cookie.is_expired():
-                        logger.warning(
-                            'Authentication has expired, '
-                            'please re-login if you need to access private models or datasets.')
                         return None
                 return cookies
         return None

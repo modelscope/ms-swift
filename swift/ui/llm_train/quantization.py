@@ -13,8 +13,18 @@ class Quantization(BaseUI):
         'quantization_tab': {
             'label': {
                 'zh': '量化参数',
-                'en': 'Quantization'
+                'en': 'Quantization settings'
             },
+        },
+        'quant_method': {
+            'label': {
+                'zh': '量化方式',
+                'en': 'Quantization method'
+            },
+            'info': {
+                'zh': '如果制定了量化位数，本参数默认为bnb',
+                'en': 'Default is bnb if quantization_bit is specified'
+            }
         },
         'quantization_bit': {
             'label': {
@@ -51,6 +61,7 @@ class Quantization(BaseUI):
         with gr.Accordion(elem_id='quantization_tab', open=False):
             with gr.Row():
                 gr.Dropdown(elem_id='quantization_bit')
+                gr.Dropdown(elem_id='quant_method')
                 gr.Dropdown(elem_id='bnb_4bit_comp_dtype')
                 gr.Dropdown(elem_id='bnb_4bit_quant_type')
                 gr.Checkbox(elem_id='bnb_4bit_use_double_quant')

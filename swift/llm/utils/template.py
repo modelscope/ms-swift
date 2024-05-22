@@ -37,6 +37,9 @@ class TemplateType:
     llama3 = 'llama3'
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
+    llava_llama_instruct = 'llava-llama-instruct'
+    llava_qwen_instruct = 'llava-qwen-instruct'
+    llama_llava_next = 'llama-llava-next'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -44,6 +47,7 @@ class TemplateType:
     internlm_xcomposer2 = 'internlm-xcomposer2'
     internvl = 'internvl'
     yi = 'yi'
+    yi1_5 = 'yi1_5'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
     xverse = 'xverse'
@@ -55,14 +59,16 @@ class TemplateType:
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
     deepseek_vl = 'deepseek-vl'
+    deepseek2 = 'deepseek2'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
-    cogvlm_instruct = 'cogvlm-instruct'
+    cogvlm = 'cogvlm'
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
     minicpm = 'minicpm'
     minicpm_v = 'minicpm-v'
+    minicpm_v_v2_5 = 'minicpm-v-v2_5'
     gemma = 'gemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
@@ -70,6 +76,7 @@ class TemplateType:
     atom = 'atom'
     phi3 = 'phi3'
     telechat = 'telechat'
+    telechat_v2 = 'telechat-v2'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
@@ -202,6 +209,8 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
+        self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
+
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system']:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
@@ -420,6 +429,17 @@ class Template:
                                                                                 labels, loss_scale, self.max_length,
                                                                                 self.tokenizer, rank, world_size)
 
+        bs, seq_len = input_ids.shape
+        position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
+            if get_xtuner_sequence_parallel_world_size() > 1:
+                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
+                input_ids, labels, position_ids, attention_mask, loss_scale = \
+                    pad_and_split_for_sequence_parallel(
+                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+
         res = {
             'input_ids': input_ids,
             'attention_mask': attention_mask,
@@ -506,8 +526,8 @@ class Template:
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
-def register_template(template_type: str, template: Template, *, exists_ok: bool = False, **kwargs) -> None:
-    if not exists_ok and template_type in TEMPLATE_MAPPING:
+def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
+    if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
     template_info = {'template': template, **kwargs}
     TEMPLATE_MAPPING[template_type] = template_info
@@ -596,6 +616,11 @@ register_template(
     Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
              None, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
+register_template(
+    TemplateType.yi1_5,
+    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|> \n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
+             None, ['{{SYSTEM}}']))
+
 yi_vl_default_system = (
     'This is a chat between an inquisitive human and an AI assistant. Assume the role of the AI assistant. '
     "Read all the images carefully, and respond to the human's questions with informative, "
@@ -673,6 +698,9 @@ register_template(
     TemplateType.deepseek,
     Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant:'], [['eos_token_id']], [['eos_token_id']], None,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
+register_template(
+    TemplateType.deepseek2,
+    Template([[100000]], ['User: {{QUERY}}\n\nAssistant:'], [[100001]], [[100001]], None, [[100000], '{{SYSTEM}}\n\n']))
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (
@@ -1006,6 +1034,70 @@ register_template(
     TemplateType.llava_yi_instruct, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
+class LLavaLlamaTemplate(Template):
+
+    llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
+                                '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+
+    def __init__(self):
+        Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        image_path = example['images']
+        raw_image = _read_from_path(image_path[0])
+        pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.llava_llama_instruct,
+    LLavaLlamaTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
+
+class LlamaLlavaNextTemplate(LLavaTemplate):
+    default_system = 'You are a helpful language and vision assistant. ' \
+            'You are able to understand the visual content that the user provides, ' \
+            'and assist the user with a variety of tasks using natural language.'
+
+    def __init__(self):
+        Template.__init__(self, [], [
+            '<|start_header_id|>user<|end_header_id|>\n\n', [-200],
+            '\n{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
+
+
+register_template(
+    TemplateType.llama_llava_next,
+    LlamaLlavaNextTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
+
+class LLavaQwenTemplate(LLavaTemplate):
+    llavayi_query_template = 'You are a helpful assistant'
+
+    def __init__(self):
+        Template.__init__(self, [], ['<|im_start|>user\n', [-200], '{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+                          ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
+                          ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+
+
+register_template(
+    TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+
+
 def _findall(token_list: List[int], token: int) -> List[int]:
     """Find the index of a token in the token_list."""
     res = []
@@ -1140,7 +1232,7 @@ class CogTemplate(Template):
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         token_type_ids = inputs2['token_type_ids'].tolist()
-        inputs['input_ids'] = input_ids[:1] + [0] * image_token_len + input_ids[1:]
+        inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
         dtype = model.dtype
@@ -1178,8 +1270,8 @@ register_template(
     lazy_tokenize=True)
 
 register_template(
-    TemplateType.cogvlm_instruct,
-    CogTemplate(['<s>'], ['Question: {{QUERY}} Answer:'], None, ['</s>']),
+    TemplateType.cogvlm,
+    CogTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
@@ -1189,8 +1281,9 @@ register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{
 
 class MiniCPMVTemlate(Template):
 
-    def __init__(self):
-        return super().__init__(['<s>{{SYSTEM}}'], ['<用户><image><unk></image>\n{{QUERY}}<AI>'], [], ['</s>'])
+    def __init__(self, *args, **kwargs):
+        self.is_v2_5 = kwargs.pop('is_v2_5', False)
+        return super().__init__(*args, **kwargs)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example['images']
@@ -1220,15 +1313,8 @@ class MiniCPMVTemlate(Template):
 
         idx = img_start_idxs[0] + 1  # first <unk>
         config = self.model.config
-        if hasattr(config, 'slice_mode') and config.slice_mode:
-            slice_mode = True
-            assert hasattr(config, 'patch_size')
-            assert hasattr(config, 'max_slice_nums')
-            assert hasattr(config, 'scale_resolution')
-        else:
-            slice_mode = False
-
-        if slice_mode:
+        tgt_sizes = None
+        if config.slice_mode:
             images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx - 1] + placeholder_id + input_ids[idx + 2:])
@@ -1243,21 +1329,32 @@ class MiniCPMVTemlate(Template):
                 torch.hstack(
                     [image_start_idx[:valid_image_nums].unsqueeze(-1), image_end_idx[:valid_image_nums].unsqueeze(-1)])
             ]
-            pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
-
+            if self.is_v2_5:
+                pixel_values = []
+                tgt_sizes = []
+                config = self.model.config
+                for image in images:
+                    image = self.model.transform(image).to(device=self.model.device)
+                    H, W = image.shape[1:]
+                    pixel_values.append(self.model.reshape_by_patch(image))
+                    tgt_sizes.append(torch.Tensor([H // config.patch_size, W // config.patch_size]).type(torch.int32))
+                tgt_sizes = torch.vstack(tgt_sizes)
+            else:
+                pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
         else:
             input_ids = (input_ids[:idx] + [self.tokenizer.unk_token_id] * config.query_num + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * config.query_num + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
             pixel_values = [self.model.transform(image).to(device=self.model.device)]
-        inputs_embeds, _ = self.model.get_vllm_embedding({
-            'input_ids':
-            torch.tensor(input_ids)[None].to(device=self.model.device),
-            'image_bound':
-            image_bound,
+        data = {
+            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
+            'image_bound': image_bound,
             'pixel_values': [pixel_values]
-        })
+        }
+        if tgt_sizes is not None:
+            data['tgt_sizes'] = [tgt_sizes]
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         inputs['inputs_embeds'] = inputs_embeds[0]
@@ -1270,7 +1367,20 @@ class MiniCPMVTemlate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemlate(),
+    MiniCPMVTemlate(['<s>{{SYSTEM}}'], ['<用户><image><unk></image>\n{{QUERY}}<AI>'], [], ['</s>']),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.minicpm_v_v2_5,
+    MiniCPMVTemlate(['<|begin_of_text|>{{SYSTEM}}'], [
+        '<|start_header_id|>user<|end_header_id|>\n\n<image><unk></image>\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ], ['<|eot_id|>'], ['<|eot_id|>'],
+                    is_v2_5=True),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
@@ -1283,6 +1393,8 @@ gemma_template = Template(['<bos>'], ['<start_of_turn>user\n{{QUERY}}<end_of_tur
 register_template(TemplateType.gemma, gemma_template)
 
 register_template(TemplateType.telechat, Template([], ['<_user>{{QUERY}}<_bot>'], ['<_end>'], ['<_end>']))
+
+register_template(TemplateType.telechat_v2, Template([], ['<_user> {{QUERY}}<_bot>'], [], ['<_end>']))
 
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '

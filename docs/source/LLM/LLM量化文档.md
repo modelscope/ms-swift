@@ -1,9 +1,18 @@
 # LLM量化文档
-swift支持使用awq, gptq技术对模型进行量化. 这两种量化技术支持vllm进行推理加速, 且量化后的模型支持qlora微调.
+swift支持使用awq, gptq, bnb, hqq, eetq技术对模型进行量化. 其中awq, gptq量化技术支持vllm进行推理加速, 且量化后的模型支持qlora微调.
 
+**注意** 量化在不同指令下的作用不同
+- sft lora训练中指定量化用于`qlora`，用于降低训练所需显存
+- export中指定量化用于量化模型并保存。
+- infer中指定量化用于量化模型并推理。
+
+其中bnb,hqq,eetq无需校准数据，量化速度较快，在 sft lora 训练 和 infer 中使用，指定`--quant_method bnb/hqq/eetq`
+
+awq,gptq需要校准数据，在 export 中使用，`--quant_method awq/gptq`
 
 ## 目录
 - [环境准备](#环境准备)
+- [量化微调(qlora)](#量化微调(qlora))
 - [原始模型](#原始模型)
 - [微调后模型](#微调后模型)
 - [推送模型](#推送模型)
@@ -26,12 +35,78 @@ pip install autoawq -U
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
 pip install auto_gptq -U
 
+# 使用hqq量化：
+# 需要transformers版本>4.40，从源码安装
+pip install git+https://github.com/huggingface/transformers
+pip install hqq
+# 如果要兼容训练，需要从源码安装peft
+pip install git+https://github.com/huggingface/peft.git
+
+# 使用eetq量化：
+# 需要transformers版本>4.40，从源码安装
+pip install git+https://github.com/huggingface/transformers
+# 参考https://github.com/NetEase-FuXi/EETQ
+git clone https://github.com/NetEase-FuXi/EETQ.git
+cd EETQ/
+git submodule update --init --recursive
+pip install .
+# 如果要兼容训练，需要从源码安装peft
+pip install git+https://github.com/huggingface/peft.git
+
 # 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
 pip install -r requirements/llm.txt  -U
 ```
 
+## 量化微调(qlora)
+在sft lora训练中指定`--quant_method`和`--quantization_bit`来执行qlora，显著减少训练所需显存
+```bash
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type qwen1half-7b-chat \
+    --sft_type lora \
+    --dataset alpaca-zh#5000 \
+    --quant_method hqq \
+    --quantization_bit 4 \
+
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type qwen1half-7b-chat \
+    --sft_type lora \
+    --dataset alpaca-zh#5000 \
+    --quant_method eetq \
+    --dtype fp16 \
+
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type qwen1half-7b-chat \
+    --sft_type lora \
+    --dataset alpaca-zh#5000 \
+    --quant_method bnb \
+    --quantization_bit 4 \
+    --dtype fp16 \
+```
+**注意**
+- hqq支持更多自定义参数，比如为不同网络层指定不同量化配置，具体请见[命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md)
+- eetq量化为8bit量化，无需指定quantization_bit。目前不支持bf16，需要指定dtype为fp16
+- eetq目前qlora速度比较慢，推荐使用hqq。参考[issue](https://github.com/NetEase-FuXi/EETQ/issues/17)
+
 ## 原始模型
+使用bnb,hqq,eetq量化模型并推理
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --quant_method bnb \
+    --quantization_bit 4
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --quant_method hqq \
+    --quantization_bit 4
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --model_type qwen1half-7b-chat \
+    --quant_method eetq \
+    --dtype fp16
+```
+
 这里展示对qwen1half-7b-chat进行awq, gptq量化.
 ```bash
 # awq-int4量化 (使用A100大约需要18分钟, 显存占用: 13GB)
@@ -49,11 +124,11 @@ OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
     --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method gptq
 
-# awq: 使用自定义量化数据集 (`--custom_val_dataset_path`参数不进行使用)
+# awq: 使用自定义量化数据集
 # gptq同理
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --custom_train_dataset_path xxx.jsonl \
+    --dataset xxx.jsonl \
     --quant_method awq
 
 # 推理 swift量化产生的模型

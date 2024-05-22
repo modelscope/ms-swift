@@ -9,9 +9,8 @@ python llm_sft.py \
     --template_type AUTO \
     --dtype fp16 \
     --output_dir output \
-    --custom_train_dataset_path xxx.jsonl \
-    --custom_val_dataset_path yyy.jsonl \
-    --train_dataset_sample -1 \
+    --dataset xxx.jsonl \
+    --val_dataset yyy.jsonl \
     --num_train_epochs 1 \
     --max_length 4096 \
     --check_dataset_strategy warning \
