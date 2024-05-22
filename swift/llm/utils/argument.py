@@ -21,7 +21,7 @@ from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
-                         is_local_master, is_mp, is_pai_training_job)
+                         is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file, sample_dataset
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
@@ -539,6 +539,7 @@ class SftArguments(ArgumentsBase):
     logging_steps: int = 5
     dataloader_num_workers: int = 1
     dataloader_pin_memory: bool = True
+    dataloader_drop_last: bool = False
 
     # push to ms hub
     push_to_hub: bool = False
@@ -614,6 +615,8 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
+    metric_warmup_step: Optional[float] = 0  # only use in torchacc
+    fsdp_num: int = 1
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
@@ -831,6 +834,9 @@ class SftArguments(ArgumentsBase):
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(f'{self.model_type} not support gradient_checkpointing.')
 
+        if use_torchacc():
+            self.dataloader_drop_last = True
+
         self._init_training_args()
 
         if self.add_output_dir_suffix is None:
@@ -912,8 +918,10 @@ class SftArguments(ArgumentsBase):
             acc_strategy=self.acc_strategy,
             save_safetensors=self.save_safetensors,
             logging_first_step=True,
+            metric_warmup_step=self.metric_warmup_step,
             fsdp=self.fsdp,
             fsdp_config=self.fsdp_config,
+            dataloader_drop_last=self.dataloader_drop_last,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters

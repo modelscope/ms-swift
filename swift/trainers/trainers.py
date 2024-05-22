@@ -14,7 +14,7 @@ from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.torchacc_utils import ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader
+from swift.torchacc_utils import ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader, ta_trim_graph
 from swift.utils import use_torchacc
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
@@ -206,7 +206,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 loss = self.label_smoother(outputs, labels)
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
-
+        if use_torchacc():
+            ta_trim_graph()
         preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:
             labels = inputs['labels']
