@@ -34,7 +34,7 @@
 - [文档](#-文档)
 - [License](#-license)
 - [引用](#-引用)
-- [联系我们](#-联系我们)
+- [微信用户群](#-微信用户群)
 
 ## 📝 简介
 SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了[PEFT](https://github.com/huggingface/peft)提供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
@@ -44,6 +44,8 @@ SWIFT支持近**200种LLM和MLLM**（多模态大模型）的训练、推理、�
 此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。
 
 SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM).
+
+可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
 - 🔥2024.05.21: 支持 MiniCPM-Llama3-V-2_5 的推理与微调, 可以查看[minicpm-v-2.5最佳实践](docs/source/Multi-Modal/minicpm-v-2.5最佳实践.md).
@@ -200,9 +202,12 @@ docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.
 
 ### Web-UI
 
+Web-UI是基于gradio界面技术的**零门槛**训练部署界面方案。Web-UI配置简单，且完美支持多卡训练和部署：
+
 ```shell
 swift web-ui
 ```
+![image.png](./docs/resources/web-ui.png)
 
 ### 训练
 
@@ -657,7 +662,7 @@ make docs
 }
 ```
 
-## ☎ 联系我们
+## ☎ 微信用户群
 
 您可以通过加我们的微信群, 来和我们联系和交流:
 
