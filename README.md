@@ -33,7 +33,7 @@
 - [Documentation](#-documentation)
 - [License](#-License)
 - [Citation](#-citation)
-- [Contact Us](#-contact-us)
+- [WeChat Group](#-Wechat-Group)
 
 ## 📝 Introduction
 SWIFT supports training, inference, evaluation and deployment of nearly **200 LLMs and MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
@@ -43,6 +43,8 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
 
 SWIFT has rich documentations for users, please check [here](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM).
+
+SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
 - 2024.05.22: Supports DeepSeek-V2-Lite series models, model_type are `deepseek-v2-lite` and `deepseek-v2-lite-chat`
@@ -200,9 +202,13 @@ This section introduces basic usage, see the [Documentation](#-documentation) se
 
 ### Web-UI
 
+Web-UI is a gradio-based interface for **zero-threshold** training and deployment. It is easy to use and perfectly supports multi-GPU training and deployment:
+
 ```shell
-swift web-ui
+SWIFT_UI_LANG=en swift web-ui
 ```
+
+![image.png](./docs/resources/web-ui-en.jpg)
 
 ### Training
 
@@ -658,7 +664,7 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 }
 ```
 
-## ☎ Contact Us
+## ☎ Wechat Group
 
 You can contact us and communicate with us by adding our WeChat group:
 
