@@ -872,10 +872,6 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
 
 def _download_file_with_progress(url, filename):
     import subprocess
-    if os.path.exists(filename):
-        print(f"{filename} already exists. Skipping download.")
-        return
-
     try:
         subprocess.run(['wget', '-c', '-O', filename, url], check=True)
         print(f"{filename} downloaded successfully.")
@@ -983,6 +979,67 @@ register_dataset(
     'AI-ModelScope/ShareGPT4V',
     ['ShareGPT4V', 'ShareGPT4V-PT'],
     _preprocess_sharegpt4v_images,
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['chat', 'multi-modal', 'vision'])
+
+def download_llava_instruct_dataset():
+    # TODO: local_path args
+    logger.info(
+        "--------------Downloading image datasets for LLaVA-Instruct-150K--------------"
+    )
+    IMAGE_DATASET_REQUIREMENTS = []
+    URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
+    ZIP2EXTRACTION_PATHS = { # reference:https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
+        "llava": "llava/llava_pretrain/images",
+        "coco": "coco",
+        "sam": "sam/images",
+        "gqa": "gqa/images",
+        "ocr_vqa": "ocr_vqa/images",
+        "textvqa": "textvqa/train_images",
+        "vg_VG_100K": "vg/VG_100K",
+        "vg_VG_100K_2": "vg/VG_100K_2",
+        "share_textvqa": "share_textvqa/images",
+        "web-celebrity": "web-celebrity/images",
+        "web-landmark": "web-landmark/images",
+        "wikiart": "wikiart/images"
+    }
+    if isinstance(splits, str):
+        splits = [splits]
+
+    for split in splits:
+        requirement = IMAGE_DATASET_REQUIREMENTS
+        git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
+        os.makedirs(git_cache_dir, exist_ok=True)
+
+        processed_dataset = []
+        for ds in requirement:
+            if ds in processed_dataset:
+                continue
+            dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
+            with safe_ddp_context():
+                _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
+                _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
+                processed_dataset.append(ds)
+    return git_cache_dir
+
+def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
+    data_dir = download_llava_instruct_dataset()
+    def preprocess_image(example):
+        image_path = os.path.join(data_dir, example['image'])
+        if os.path.exists(image_path):
+            example['image'] = image_path
+        else:
+            example['image'] = None
+
+    return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
+
+
+register_dataset(
+    DatasetName.llava_instruct_150k,
+    'AI-ModelScope/LLaVA-Instruct-150K',
+    None,
+    _preprocess_llava_instruct_images,
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
