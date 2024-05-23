@@ -924,6 +924,8 @@ class InternvlTemplate(Template):
             from .vision_utils import load_image
             images_path = example['images']
             pixel_values = []
+            if isinstance(images_path, str):
+                images_path = [images_path]
             for image_path in images_path:
                 pixel_values.append(load_image(image_path))
             pixel_values = torch.cat(pixel_values, dim=0)
