@@ -678,8 +678,8 @@ class SftArguments(ArgumentsBase):
     def __post_init__(self) -> None:
         self.handle_compatibility()
         self._register_self_cognition()
-        if self.val_dataset is not None:
-            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+        if len(self.val_dataset) > 0:
+            self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self._handle_dataset_sample()
         if is_pai_training_job():
@@ -1049,8 +1049,8 @@ class InferArguments(ArgumentsBase):
                            'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
         self._register_self_cognition()
-        if self.val_dataset is not None:
-            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+        if len(self.val_dataset) > 0:
+            self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')

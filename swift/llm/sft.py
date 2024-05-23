@@ -166,7 +166,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
         model_author=args.model_author)
-    if args.val_dataset is not None:
+    if len(args.val_dataset) > 0:
         # Loading val dataset
         _, val_dataset = get_dataset(
             args.val_dataset,
