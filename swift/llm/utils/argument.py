@@ -213,15 +213,18 @@ class ArgumentsBase:
                 v = _mapping[k]
                 setattr(self, _name, v)
                 break
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
-        if len(self.dataset) == 1 and ',' in self.dataset[0]:
-            self.dataset = self.dataset[0].split(',')
-        for i, dataset in enumerate(self.dataset):
-            if dataset in dataset_name_mapping:
-                self.dataset[i] = dataset_name_mapping[dataset]
-        for d in self.dataset:
-            assert ',' not in d, f'dataset: {d}, please use `/`'
+        for key in ['dataset', 'val_dataset']:
+            _dataset = getattr(self, key)
+            if isinstance(_dataset, str):
+                _dataset = [_dataset]
+            if len(_dataset) == 1 and ',' in _dataset[0]:
+                _dataset = _dataset[0].split(',')
+            for i, d in enumerate(_dataset):
+                if d in dataset_name_mapping:
+                    _dataset[i] = dataset_name_mapping[d]
+            for d in _dataset:
+                assert ',' not in d, f'dataset: {d}, please use `/`'
+            setattr(self, key, _dataset)
         if self.truncation_strategy == 'ignore':
             self.truncation_strategy = 'delete'
         if self.safe_serialization is not None:
@@ -1072,12 +1075,12 @@ class InferArguments(ArgumentsBase):
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
         if self.eval_human is None:
-            if not len(self.dataset) > 0:
+            if len(self.dataset) == 0 and len(self.val_dataset) == 0:
                 self.eval_human = True
             else:
                 self.eval_human = False
             logger.info(f'Setting self.eval_human: {self.eval_human}')
-        elif self.eval_human is False and not len(self.dataset) > 0:
+        elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
             raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
 
         # compatibility
