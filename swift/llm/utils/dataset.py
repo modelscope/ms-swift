@@ -907,7 +907,7 @@ def _extract_zip(zip_path, extract_to):
                 members_to_extract.append(member)
         zip_ref.extractall(path=extract_to, members=members_to_extract)
 
-def download_sharegpt4v_dataset(split):
+def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
     # TODO: local_path args
     logger.info(
         "--------------Downloading image datasets for ShareGPT4V--------------"
@@ -931,14 +931,23 @@ def download_sharegpt4v_dataset(split):
         "web-landmark": "web-landmark/images",
         "wikiart": "wikiart/images"
     }
-    requirement = IMAGE_DATASET_REQUIREMENTS[split]
-    git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
-    os.makedirs(git_cache_dir, exist_ok=True)
-    for ds in requirement:
-        dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
-        with safe_ddp_context():
-            _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
-            _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
+    if isinstance(splits, str):
+        splits = [splits]
+        
+    for split in splits:
+        requirement = IMAGE_DATASET_REQUIREMENTS[split]
+        git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
+        os.makedirs(git_cache_dir, exist_ok=True)
+
+        processed_dataset = []
+        for ds in requirement:
+            if ds in processed_dataset:
+                continue
+            dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
+            with safe_ddp_context():
+                _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
+                _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
+                processed_dataset.append(ds)
     return git_cache_dir
     # unzip
 
@@ -952,8 +961,8 @@ def download_sharegpt4v_dataset(split):
 # -[x] VisualGenome: [part1](https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip), [part2](https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip)
 
 def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
-
-    data_dir = download_sharegpt4v_dataset(dataset.split)
+    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.split is None else dataset.split
+    data_dir = download_sharegpt4v_dataset(split)
     def preprocess_image(example):
         image_path = os.path.join(data_dir, example['image'])
         if os.path.exists(image_path):
@@ -974,8 +983,8 @@ register_dataset(
 
 register_dataset(
     DatasetName.m3it,
-    'AI-ModelScope/M3IT', # empty: coco-goi-rephrased, error: vist , 'iqa-rephrased ', 'mmchat' , test: , 'winoground','chinese-food'
-    ['coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa', 'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased', 'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased', 'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco', 'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased', 'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa', 'flickr8k-cn'],
+    'AI-ModelScope/M3IT', # error: 'vist' , 'iqa-rephrased ', 'mmchat' / test: , 'winoground','chinese-food'
+    ['coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'coco-goi-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa', 'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased', 'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased', 'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco', 'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased', 'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa', 'flickr8k-cn'],
     _preprocess_m3it,
     get_dataset_from_repo,
     split=['train'],
