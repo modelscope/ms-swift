@@ -937,7 +937,7 @@ def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
     
     if isinstance(split, str):
         split = [split]
-    dataset_required = []
+    dataset_required = set()
     for sp in split:
         dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
     # just for debug
