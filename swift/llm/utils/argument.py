@@ -229,7 +229,7 @@ class ArgumentsBase:
         if len(self.custom_train_dataset_path) > 0:
             self.dataset += self.custom_train_dataset_path
         if len(self.custom_val_dataset_path) > 0:
-            self.dataset += self.custom_val_dataset_path
+            self.val_dataset += self.custom_val_dataset_path
 
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
@@ -359,7 +359,7 @@ class ArgumentsBase:
                 model_mapping_reversed[model_id] = k
             model_id_or_path = self.model_id_or_path
             model_id_or_path_lower = model_id_or_path.lower()
-            if model_id_or_path_lower not in model_mapping_reversed:
+            if self.model_type is not None or model_id_or_path_lower not in model_mapping_reversed:
                 if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
@@ -421,6 +421,7 @@ class SftArguments(ArgumentsBase):
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
@@ -600,6 +601,8 @@ class SftArguments(ArgumentsBase):
     model_layer_cls_name: Optional[str] = field(
         default=None,
         metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
+    metric_warmup_step: Optional[float] = 0
+    fsdp_num: int = 1
 
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
@@ -615,8 +618,6 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
-    metric_warmup_step: Optional[float] = 0  # only use in torchacc
-    fsdp_num: int = 1
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
@@ -972,6 +973,7 @@ class InferArguments(ArgumentsBase):
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})

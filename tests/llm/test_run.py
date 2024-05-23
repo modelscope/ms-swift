@@ -96,6 +96,7 @@ class TestRun(unittest.TestCase):
                 check_dataset_strategy='warning',
                 predict_with_generate=predict_with_generate,
                 dataset=dataset,
+                val_dataset=f'{DatasetName.jd_sentiment_zh}#20',
                 output_dir=output_dir,
                 include_num_input_tokens_seen=True,
                 gradient_checkpointing=True)
