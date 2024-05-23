@@ -229,7 +229,7 @@ class ArgumentsBase:
         if len(self.custom_train_dataset_path) > 0:
             self.dataset += self.custom_train_dataset_path
         if len(self.custom_val_dataset_path) > 0:
-            self.dataset += self.custom_val_dataset_path
+            self.val_dataset += self.custom_val_dataset_path
 
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
@@ -421,6 +421,7 @@ class SftArguments(ArgumentsBase):
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
