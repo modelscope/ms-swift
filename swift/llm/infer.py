@@ -392,7 +392,7 @@ def llm_infer(args: InferArguments) -> None:
             'model_name': args.model_name,
             'model_author': args.model_author
         }
-        if args.val_dataset is None:
+        if len(args.val_dataset) > 0:
             _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
         else:
             _, val_dataset = get_dataset(args.val_dataset, 1.0, **dataset_kwargs)

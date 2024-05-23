@@ -229,7 +229,7 @@ class ArgumentsBase:
         if len(self.custom_train_dataset_path) > 0:
             self.dataset += self.custom_train_dataset_path
         if len(self.custom_val_dataset_path) > 0:
-            self.dataset += self.custom_val_dataset_path
+            self.val_dataset += self.custom_val_dataset_path
 
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
@@ -359,7 +359,15 @@ class ArgumentsBase:
                 model_mapping_reversed[model_id] = k
             model_id_or_path = self.model_id_or_path
             model_id_or_path_lower = model_id_or_path.lower()
-            if model_id_or_path_lower not in model_mapping_reversed:
+
+            if self.model_type is None and model_id_or_path_lower in model_mapping_reversed:
+                model_type = model_mapping_reversed[model_id_or_path_lower]
+                assert self.model_type is None or self.model_type == model_type
+                self.model_type = model_type
+                logger.info(f'Setting args.model_type: {model_type}')
+                if self.model_cache_dir is not None:
+                    self.model_id_or_path = self.model_cache_dir
+            else:
                 if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
@@ -367,13 +375,6 @@ class ArgumentsBase:
                     raise ValueError(f"model_id_or_path: '{model_id_or_path}' is not registered. "
                                      'Please set `--model_type <model_type>` additionally.')
                 assert self.model_cache_dir is None
-            else:
-                model_type = model_mapping_reversed[model_id_or_path_lower]
-                assert self.model_type is None or self.model_type == model_type
-                self.model_type = model_type
-                logger.info(f'Setting args.model_type: {model_type}')
-                if self.model_cache_dir is not None:
-                    self.model_id_or_path = self.model_cache_dir
 
         error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
         if self.model_type is None:
@@ -421,9 +422,11 @@ class SftArguments(ArgumentsBase):
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset: List[str] = field(
+        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
@@ -600,6 +603,8 @@ class SftArguments(ArgumentsBase):
     model_layer_cls_name: Optional[str] = field(
         default=None,
         metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
+    metric_warmup_step: Optional[float] = 0
+    fsdp_num: int = 1
 
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
@@ -615,8 +620,6 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
-    metric_warmup_step: Optional[float] = 0  # only use in torchacc
-    fsdp_num: int = 1
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
@@ -675,8 +678,8 @@ class SftArguments(ArgumentsBase):
     def __post_init__(self) -> None:
         self.handle_compatibility()
         self._register_self_cognition()
-        if self.val_dataset is not None:
-            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+        if len(self.val_dataset) > 0:
+            self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self._handle_dataset_sample()
         if is_pai_training_job():
@@ -972,9 +975,11 @@ class InferArguments(ArgumentsBase):
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset: List[str] = field(
+        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 10
@@ -1044,8 +1049,8 @@ class InferArguments(ArgumentsBase):
                            'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
         self._register_self_cognition()
-        if self.val_dataset is not None:
-            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+        if len(self.val_dataset) > 0:
+            self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
