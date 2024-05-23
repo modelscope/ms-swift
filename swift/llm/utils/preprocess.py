@@ -87,6 +87,7 @@ class ConversationsPreprocessor:
                  value_key: str = 'value',
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
                                                 Optional[Dict[str, str]]] = _default_repair_conversations,
+                 preprocess_function: Callable[[HfDataset],HfDataset] = None,
                  error_strategy: Literal['delete', 'raise'] = 'raise'):
         self.user_role = user_role
         self.assistant_role = assistant_role
@@ -95,6 +96,7 @@ class ConversationsPreprocessor:
         self.from_key = from_key
         self.value_key = value_key
         self.repair_conversations = repair_conversations
+        self.preprocess_function = preprocess_function
         self.error_strategy = error_strategy
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
@@ -105,6 +107,8 @@ class ConversationsPreprocessor:
         history: List[History] = []
         has_history = False
 
+        if self.preprocess_function is not None:
+            dataset = self.preprocess_function(dataset)
         for d in tqdm(dataset):
             try:
                 conversations = d[self.conversations_key]

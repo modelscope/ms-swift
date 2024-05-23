@@ -29,7 +29,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images','image','conversations'}:
+        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -929,28 +929,29 @@ def download_sharegpt4v_dataset(requirement:list):
     return git_cache_dir
 
 def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
-    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
-    IMAGE_DATASET_REQUIREMENTS = {
-        'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
-        'ShareGPT4V-PT':['coco','sam','llava' ]
-        }
-    
-    if isinstance(split, str):
-        split = [split]
-    dataset_required = set()
-    for sp in split:
-        dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
-    # just for debug
-    # data_dir = download_sharegpt4v_dataset(dataset_required)
-    data_dir = '/mnt/workspace/.cache/modelscope/_image_cache'
+    if not hasattr(dataset, 'data_dir'):
+        split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
+        IMAGE_DATASET_REQUIREMENTS = {
+            'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
+            'ShareGPT4V-PT':['coco','sam','llava' ]
+            }
+        
+        if isinstance(split, str):
+            split = [split]
+        dataset_required = set()
+        for sp in split:
+            dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
+        # just for debug
+        # dataset.data_dir = download_sharegpt4v_dataset(dataset_required)
+    dataset.data_dir = '/mnt/workspace/.cache/modelscope/_image_cache'
     def preprocess_image(example):
-        image_path = os.path.join(data_dir, example['image'])
+        image_path = os.path.join(dataset.data_dir, example['image'])
         if os.path.exists(image_path):
-            example['image'] = image_path
+            example['images'] = image_path
         else:
-            example['image'] = None
+            example['images'] = None
 
-    return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
+    return dataset.map(preprocess_image).filter(lambda example:example['images'] is not None)
 
 register_dataset(
     DatasetName.capcha_images,
@@ -975,7 +976,7 @@ register_dataset(
     DatasetName.sharegpt4v,
     'AI-ModelScope/ShareGPT4V',
     ['ShareGPT4V', 'ShareGPT4V-PT'],
-    _preprocess_sharegpt4v_images,
+    ConversationsPreprocessor(user_role='human',assistant_role='gpt',preprocess_function=_preprocess_sharegpt4v_images),
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
