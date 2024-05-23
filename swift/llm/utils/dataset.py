@@ -878,11 +878,6 @@ def _download_file_with_progress(url, filename):
     except subprocess.CalledProcessError as e:
         print(f"Failed to download {filename}. Error: {e}")
 
-# def _extract_zip(zip_path, extract_to):
-#     import zipfile
-#     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-#         zip_ref.extractall(extract_to)
-
 def _extract_zip(zip_path, extract_to):
     import zipfile
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -901,15 +896,12 @@ def _extract_zip(zip_path, extract_to):
                 zip_ref.extract(member, path=extract_to)
                 pbar.update(1)
                 
-def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
+def download_sharegpt4v_dataset(requirement:list):
     # TODO: local_path args
     logger.info(
         "--------------Downloading image datasets for ShareGPT4V--------------"
     )
-    IMAGE_DATASET_REQUIREMENTS = {
-        'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
-        'ShareGPT4V-PT':['coco','sam','llava' ]
-        }
+
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
     ZIP2EXTRACTION_PATHS = { # reference:https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
         "llava": "llava/llava_pretrain/images",
@@ -925,28 +917,31 @@ def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
         "web-landmark": "web-landmark/images",
         "wikiart": "wikiart/images"
     }
-    if isinstance(splits, str):
-        splits = [splits]
 
-    for split in splits:
-        requirement = IMAGE_DATASET_REQUIREMENTS[split]
-        git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
-        os.makedirs(git_cache_dir, exist_ok=True)
+    git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
+    os.makedirs(git_cache_dir, exist_ok=True)
 
-        processed_dataset = []
-        for ds in requirement:
-            if ds in processed_dataset:
-                continue
-            dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
-            with safe_ddp_context():
-                _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
-                _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
-                processed_dataset.append(ds)
+    for ds in requirement:
+        dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
+        with safe_ddp_context():
+            _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
+            _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
     return git_cache_dir
 
 def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
     split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
-    data_dir = download_sharegpt4v_dataset(split)
+    IMAGE_DATASET_REQUIREMENTS = {
+        'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
+        'ShareGPT4V-PT':['coco','sam','llava' ]
+        }
+    
+    if isinstance(split, str):
+        split = [split]
+    dataset_required = []
+    for sp in split:
+        dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
+    
+    data_dir = download_sharegpt4v_dataset(dataset_required)
     def preprocess_image(example):
         image_path = os.path.join(data_dir, example['image'])
         if os.path.exists(image_path):
@@ -974,6 +969,7 @@ register_dataset(
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
 
+
 register_dataset(
     DatasetName.sharegpt4v,
     'AI-ModelScope/ShareGPT4V',
@@ -983,48 +979,35 @@ register_dataset(
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
 
-def download_llava_instruct_dataset():
-    # TODO: local_path args
-    logger.info(
-        "--------------Downloading image datasets for LLaVA-Instruct-150K--------------"
-    )
-    IMAGE_DATASET_REQUIREMENTS = []
-    URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
-    ZIP2EXTRACTION_PATHS = { # reference:https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
-        "llava": "llava/llava_pretrain/images",
-        "coco": "coco",
-        "sam": "sam/images",
-        "gqa": "gqa/images",
-        "ocr_vqa": "ocr_vqa/images",
-        "textvqa": "textvqa/train_images",
-        "vg_VG_100K": "vg/VG_100K",
-        "vg_VG_100K_2": "vg/VG_100K_2",
-        "share_textvqa": "share_textvqa/images",
-        "web-celebrity": "web-celebrity/images",
-        "web-landmark": "web-landmark/images",
-        "wikiart": "wikiart/images"
-    }
-    if isinstance(splits, str):
-        splits = [splits]
+def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
+    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
+    IMAGE_DATASET_REQUIREMENTS = {
+        'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
+        'ShareGPT4V-PT':['coco','sam','llava' ]
+        }
+    
+    if isinstance(split, str):
+        split = [split]
+    dataset_required = []
+    for sp in split:
+        dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
+    
+    # just for debug
+    # data_dir = download_sharegpt4v_dataset(dataset_required)
+    data_dir = '/mnt/workspace/.cache/modelscope/_image_cache'
+    def preprocess_image(example):
+        image_path = os.path.join(data_dir, example['image'])
+        if os.path.exists(image_path):
+            example['image'] = image_path
+        else:
+            example['image'] = None
 
-    for split in splits:
-        requirement = IMAGE_DATASET_REQUIREMENTS
-        git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
-        os.makedirs(git_cache_dir, exist_ok=True)
-
-        processed_dataset = []
-        for ds in requirement:
-            if ds in processed_dataset:
-                continue
-            dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
-            with safe_ddp_context():
-                _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
-                _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
-                processed_dataset.append(ds)
-    return git_cache_dir
+    return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
 
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
-    data_dir = download_llava_instruct_dataset()
+    DATASET_REQUIREMENTS = []
+    
+    data_dir = download_sharegpt4v_dataset(DATASET_REQUIREMENTS)
     def preprocess_image(example):
         image_path = os.path.join(data_dir, example['image'])
         if os.path.exists(image_path):
