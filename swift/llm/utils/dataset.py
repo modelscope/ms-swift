@@ -913,8 +913,8 @@ def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
         "--------------Downloading image datasets for ShareGPT4V--------------"
     )
     IMAGE_DATASET_REQUIREMENTS = {
-        'sharegpt4':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
-        'sharegpt4PT':['coco','sam','llava' ]
+        'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
+        'ShareGPT4V-PT':['coco','sam','llava' ]
         }
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
     ZIP2EXTRACTION_PATHS = { # reference:https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
@@ -933,7 +933,7 @@ def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
     }
     if isinstance(splits, str):
         splits = [splits]
-        
+
     for split in splits:
         requirement = IMAGE_DATASET_REQUIREMENTS[split]
         git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
@@ -961,7 +961,7 @@ def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
 # -[x] VisualGenome: [part1](https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip), [part2](https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip)
 
 def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
-    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.split is None else dataset.split
+    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
     data_dir = download_sharegpt4v_dataset(split)
     def preprocess_image(example):
         image_path = os.path.join(data_dir, example['image'])
