@@ -948,10 +948,11 @@ def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
         image_path = os.path.join(dataset.data_dir, example['image'])
         if os.path.exists(image_path):
             example['images'] = image_path
+            return example
         else:
-            example['images'] = None
+            return None
 
-    return dataset.map(preprocess_image).filter(lambda example:example['images'] is not None)
+    return dataset.map(preprocess_image).remove_columns(['image'])
 
 register_dataset(
     DatasetName.capcha_images,
@@ -993,7 +994,7 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
+    return dataset.map(preprocess_image).filter(lambda example:example['images'] is not None)
 
 
 register_dataset(
