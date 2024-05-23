@@ -18,11 +18,12 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df, safe_ddp_context
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
 from .template import History
 from .utils import download_dataset
+from modelscope.hub.utils.utils import get_cache_dir
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -869,8 +870,78 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
     dataset = HfDataset.from_dict({'system':system,'query': query, 'response': response, 'images': images})
     return dataset
 
-def _download_sharegpt4v_dataset():
-    pass
+def _download_file_with_progress(url, filename):
+    import requests
+    headers = {}
+    if os.path.exists(filename):
+        headers['Range'] = f'bytes={os.path.getsize(filename)}-'
+    with requests.get(url, headers=headers, stream=True) as response:
+        if response.status_code not in [200, 206]:
+            return
+        total_size = int(response.headers.get('content-length', 0))
+        initial_pos = os.path.getsize(filename) if os.path.exists(filename) else 0
+        open_mode = 'ab' if initial_pos else 'wb'
+        with open(filename, open_mode) as file, tqdm(
+            total=total_size, initial=initial_pos,
+            unit='B', unit_scale=True, desc=filename
+        ) as progress_bar:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                size = file.write(chunk)
+                progress_bar.update(size)
+# def _extract_zip(zip_path, extract_to):
+#     import zipfile
+#     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+#         zip_ref.extractall(extract_to)
+
+def _extract_zip(zip_path, extract_to):
+    import zipfile
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        members = zip_ref.infolist()
+        members_to_extract = []
+        for member in members:
+            filename = os.path.normpath(os.path.join(extract_to, member.filename))
+            if os.path.exists(filename):
+                if os.path.getsize(filename) != member.file_size:
+                    members_to_extract.append(member)
+            else:
+                members_to_extract.append(member)
+        zip_ref.extractall(path=extract_to, members=members_to_extract)
+
+def download_sharegpt4v_dataset(split):
+    # TODO: local_path args
+    logger.info(
+        "--------------Downloading image datasets for ShareGPT4V--------------"
+    )
+    IMAGE_DATASET_REQUIREMENTS = {
+        'sharegpt4':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
+        'sharegpt4PT':['coco','sam','llava' ]
+        }
+    URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
+    ZIP2EXTRACTION_PATHS = { # reference:https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
+        "llava": "llava/llava_pretrain/images",
+        "coco": "coco/train2017",
+        "sam": "sam/images",
+        "gqa": "gqa/images",
+        "ocr_vqa": "ocr_vqa/images",
+        "textvqa": "textvqa/train_images",
+        "vg_VG_100K": "vg/VG_100K",
+        "vg_VG_100K_2": "vg/VG_100K_2",
+        "share_textvqa": "share_textvqa/images",
+        "web-celebrity": "web-celebrity/images",
+        "web-landmark": "web-landmark/images",
+        "wikiart": "wikiart/images"
+    }
+    requirement = IMAGE_DATASET_REQUIREMENTS[split]
+    git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
+    os.makedirs(git_cache_dir, exist_ok=True)
+    for ds in requirement:
+        dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
+        with safe_ddp_context():
+            _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
+            _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
+    return git_cache_dir
+    # unzip
+
 # -[x] LAION-CC-SBU-558K: [images.zip](https://huggingface.co/datasets/liuhaotian/LLaVA-Pretrain/blob/main/images.zip)
 # -[x] COCO: [train2017](http://images.cocodataset.org/zips/train2017.zip)
 # - WebData: [images](https://drive.google.com/drive/folders/1tCUQ-sq6vdshZVkF0ZeF3K4eztkXJgax?usp=sharing). Only for academic usage.
@@ -881,20 +952,16 @@ def _download_sharegpt4v_dataset():
 # -[x] VisualGenome: [part1](https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip), [part2](https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip)
 
 def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
-    _download_sharegpt4v_dataset()
-    # coco_prefix = 'http://images.cocodataset.org'
 
-    # def preprocess_image(example):
-    #     image = example['image']
-    #     dataset = image.split('/')[0]
-    #     suffix = '/'.join(image.split('/')[1:])
-    #     if dataset == 'coco':
-    #         example['image'] = f'{coco_prefix}/train2017/{suffix}'
-    #     if image.startswith('coco/train2017/'):
-    #         suffix = image.split('coco/train2017/')[1]
-    #         return f'{prefix}/train2017/{suffix}'
-    
-    return dataset.map()
+    data_dir = download_sharegpt4v_dataset(dataset.split)
+    def preprocess_image(example):
+        image_path = os.path.join(data_dir, example['image'])
+        if os.path.exists(image_path):
+            example['image'] = image_path
+        else:
+            example['image'] = None
+
+    return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
 
 register_dataset(
     DatasetName.capcha_images,
@@ -917,7 +984,7 @@ register_dataset(
 register_dataset(
     DatasetName.sharegpt4v,
     'AI-ModelScope/ShareGPT4V',
-    None,
+    ['ShareGPT4V', 'ShareGPT4V-PT'],
     _preprocess_sharegpt4v_images,
     get_dataset_from_repo,
     split=['train'],
