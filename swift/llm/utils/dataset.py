@@ -988,9 +988,9 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
     def preprocess_image(example):
         image_path = os.path.join(data_dir, example['image'])
         if os.path.exists(image_path):
-            example['image'] = image_path
+            example['images'] = image_path
         else:
-            example['image'] = None
+            example['images'] = None
 
     return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
 

@@ -88,7 +88,7 @@ class ConversationsPreprocessor:
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
                                                 Optional[Dict[str, str]]] = _default_repair_conversations,
                  preprocess_function: Callable[[HfDataset],HfDataset] = None,
-                 error_strategy: Literal['delete', 'raise'] = 'raise'):
+                 error_strategy: Literal['delete', 'raise'] = 'delete'):
         self.user_role = user_role
         self.assistant_role = assistant_role
         self.system_role = system_role
