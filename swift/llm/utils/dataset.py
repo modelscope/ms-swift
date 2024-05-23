@@ -29,7 +29,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images'}:
+        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images','image','conversations'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
