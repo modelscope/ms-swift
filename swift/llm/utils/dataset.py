@@ -905,8 +905,12 @@ def _extract_zip(zip_path, extract_to):
                     members_to_extract.append(member)
             else:
                 members_to_extract.append(member)
-        zip_ref.extractall(path=extract_to, members=members_to_extract)
 
+        with tqdm(total=len(members_to_extract), unit='file', desc='Extracting') as pbar:
+            for member in members_to_extract:
+                zip_ref.extract(member, path=extract_to)
+                pbar.update(1)
+                
 def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
     # TODO: local_path args
     logger.info(
@@ -949,16 +953,6 @@ def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
                 _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
                 processed_dataset.append(ds)
     return git_cache_dir
-    # unzip
-
-# -[x] LAION-CC-SBU-558K: [images.zip](https://huggingface.co/datasets/liuhaotian/LLaVA-Pretrain/blob/main/images.zip)
-# -[x] COCO: [train2017](http://images.cocodataset.org/zips/train2017.zip)
-# - WebData: [images](https://drive.google.com/drive/folders/1tCUQ-sq6vdshZVkF0ZeF3K4eztkXJgax?usp=sharing). Only for academic usage.
-# - SAM: [images](https://ai.meta.com/datasets/segment-anything-downloads/). We only use 000000~000050.tar for now. If you just want to use ShareGPT4V for SFT, you can quickly download 9K images from [here](https://drive.google.com/file/d/1dKumdOKSXtV7lIXdrG7jsIK_z2vZv2gs/view?usp=drive_link). 
-# -[x] GQA: [images](https://downloads.cs.stanford.edu/nlp/data/gqa/images.zip)
-# -[x] OCR-VQA: [download script](https://drive.google.com/drive/folders/1_GYPY5UkUy7HIcR0zq3ZCFgeZN7BAfm_?usp=sharing). We save all files as `.jpg`
-# -[x] TextVQA: [trainvalimages](https://dl.fbaipublicfiles.com/textvqa/images/train_val_images.zip)
-# -[x] VisualGenome: [part1](https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip), [part2](https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip)
 
 def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
     split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
