@@ -940,8 +940,9 @@ def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
     dataset_required = []
     for sp in split:
         dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
-    
-    data_dir = download_sharegpt4v_dataset(dataset_required)
+    # just for debug
+    # data_dir = download_sharegpt4v_dataset(dataset_required)
+    data_dir = '/mnt/workspace/.cache/modelscope/_image_cache'
     def preprocess_image(example):
         image_path = os.path.join(data_dir, example['image'])
         if os.path.exists(image_path):
@@ -978,31 +979,6 @@ register_dataset(
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
-
-def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
-    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
-    IMAGE_DATASET_REQUIREMENTS = {
-        'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
-        'ShareGPT4V-PT':['coco','sam','llava' ]
-        }
-    
-    if isinstance(split, str):
-        split = [split]
-    dataset_required = []
-    for sp in split:
-        dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
-    
-    # just for debug
-    # data_dir = download_sharegpt4v_dataset(dataset_required)
-    data_dir = '/mnt/workspace/.cache/modelscope/_image_cache'
-    def preprocess_image(example):
-        image_path = os.path.join(data_dir, example['image'])
-        if os.path.exists(image_path):
-            example['image'] = image_path
-        else:
-            example['image'] = None
-
-    return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
 
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
     DATASET_REQUIREMENTS = []
