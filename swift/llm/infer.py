@@ -402,8 +402,8 @@ def llm_infer(args: InferArguments) -> None:
             random_state = np.random.RandomState(args.dataset_seed)
             logger.info(f'show_dataset_sample: {args.show_dataset_sample}')
             val_dataset = sample_dataset(val_dataset, args.show_dataset_sample, random_state)
-
         logger.info(f'val_dataset: {val_dataset}')
+
         if args.verbose is None:
             if len(val_dataset) >= 100:
                 args.verbose = False
