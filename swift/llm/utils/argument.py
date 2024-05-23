@@ -359,7 +359,15 @@ class ArgumentsBase:
                 model_mapping_reversed[model_id] = k
             model_id_or_path = self.model_id_or_path
             model_id_or_path_lower = model_id_or_path.lower()
-            if self.model_type is not None or model_id_or_path_lower not in model_mapping_reversed:
+
+            if self.model_type is None and model_id_or_path_lower in model_mapping_reversed:
+                model_type = model_mapping_reversed[model_id_or_path_lower]
+                assert self.model_type is None or self.model_type == model_type
+                self.model_type = model_type
+                logger.info(f'Setting args.model_type: {model_type}')
+                if self.model_cache_dir is not None:
+                    self.model_id_or_path = self.model_cache_dir
+            else:
                 if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
@@ -367,13 +375,6 @@ class ArgumentsBase:
                     raise ValueError(f"model_id_or_path: '{model_id_or_path}' is not registered. "
                                      'Please set `--model_type <model_type>` additionally.')
                 assert self.model_cache_dir is None
-            else:
-                model_type = model_mapping_reversed[model_id_or_path_lower]
-                assert self.model_type is None or self.model_type == model_type
-                self.model_type = model_type
-                logger.info(f'Setting args.model_type: {model_type}')
-                if self.model_cache_dir is not None:
-                    self.model_id_or_path = self.model_cache_dir
 
         error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
         if self.model_type is None:
