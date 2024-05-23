@@ -238,7 +238,7 @@ class TestRun(unittest.TestCase):
             infer_args = InferArguments(
                 ckpt_dir=best_model_checkpoint,
                 load_args_from_ckpt_dir=load_args_from_ckpt_dir,
-                load_dataset_config=load_args_from_ckpt_dir and NO_EVAL_HUMAN,
+                load_dataset_config=load_args_from_ckpt_dir or NO_EVAL_HUMAN,
                 merge_lora=load_args_from_ckpt_dir,
                 val_dataset_sample=-1,
                 custom_val_dataset_path=[os.path.join(folder, fname) for fname in val_dataset_fnames],
