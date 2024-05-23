@@ -944,15 +944,40 @@ def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
         # just for debug
         # dataset.data_dir = download_sharegpt4v_dataset(dataset_required)
     dataset.data_dir = '/mnt/workspace/.cache/modelscope/_image_cache'
-    def preprocess_image(example):
-        image_path = os.path.join(dataset.data_dir, example['image'])
-        if os.path.exists(image_path):
-            example['images'] = image_path
-            return example
-        else:
-            return None
+    images = []
+    query = []
+    response = []
 
-    return dataset.map(preprocess_image).remove_columns(['image'])
+    for d in tqdm(dataset):
+        image_path = os.path.join(dataset.data_dir, d['image'])
+        if not os.path.exists(image_path):
+            continue
+        else:
+            images.append(image_path)
+        conv = d['conversations']
+        query.append(conv[-2]['value'])
+        response.append(conv[-1]['value'])
+
+    dataset = HfDataset.from_dict({'query': query, 'response': response, 'images': images})
+    return dataset
+
+def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
+    query = []
+    response = []
+    history: List[History] = []
+    for d in tqdm(dataset):
+        if isinstance(d['conversation'], str):
+            try:
+                conversation = ast.literal_eval(d['conversation'])
+            except SyntaxError:
+                continue
+        query.append(conversation[-1]['human'])
+        response.append(conversation[-1]['assistant'])
+        h = []
+        for c in conversation[:-1]:
+            h.append([c['human'], c['assistant']])
+        history.append(h)
+    return HfDataset.from_dict({'query': query, 'response': response, 'history': history})
 
 register_dataset(
     DatasetName.capcha_images,
