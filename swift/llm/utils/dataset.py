@@ -871,23 +871,17 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
     return dataset
 
 def _download_file_with_progress(url, filename):
-    import requests
-    headers = {}
+    import subprocess
     if os.path.exists(filename):
-        headers['Range'] = f'bytes={os.path.getsize(filename)}-'
-    with requests.get(url, headers=headers, stream=True) as response:
-        if response.status_code not in [200, 206]:
-            return
-        total_size = int(response.headers.get('content-length', 0))
-        initial_pos = os.path.getsize(filename) if os.path.exists(filename) else 0
-        open_mode = 'ab' if initial_pos else 'wb'
-        with open(filename, open_mode) as file, tqdm(
-            total=total_size, initial=initial_pos,
-            unit='B', unit_scale=True, desc=filename
-        ) as progress_bar:
-            for chunk in response.iter_content(chunk_size=1024 * 1024):
-                size = file.write(chunk)
-                progress_bar.update(size)
+        print(f"{filename} already exists. Skipping download.")
+        return
+
+    try:
+        subprocess.run(['wget', '-c', '-O', filename, url], check=True)
+        print(f"{filename} downloaded successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to download {filename}. Error: {e}")
+
 # def _extract_zip(zip_path, extract_to):
 #     import zipfile
 #     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -923,7 +917,7 @@ def download_sharegpt4v_dataset(splits: Optional[Union[str, List[str]]]):
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
     ZIP2EXTRACTION_PATHS = { # reference:https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
         "llava": "llava/llava_pretrain/images",
-        "coco": "coco/train2017",
+        "coco": "coco",
         "sam": "sam/images",
         "gqa": "gqa/images",
         "ocr_vqa": "ocr_vqa/images",
