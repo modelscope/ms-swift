@@ -975,6 +975,7 @@ class InferArguments(ArgumentsBase):
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
