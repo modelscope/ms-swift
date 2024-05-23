@@ -928,7 +928,7 @@ def download_sharegpt4v_dataset(requirement:list):
             _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
     return git_cache_dir
 
-def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
+def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
     if not hasattr(dataset, 'data_dir'):
         split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
         IMAGE_DATASET_REQUIREMENTS = {
@@ -955,6 +955,7 @@ def _preprocess_sharegpt4v_images(dataset: HfDataset) -> HfDataset:
         else:
             images.append(image_path)
         conv = d['conversations']
+        assert len(conv) == 2
         query.append(conv[-2]['value'])
         response.append(conv[-1]['value'])
 
@@ -1002,7 +1003,7 @@ register_dataset(
     DatasetName.sharegpt4v,
     'AI-ModelScope/ShareGPT4V',
     ['ShareGPT4V', 'ShareGPT4V-PT'],
-    ConversationsPreprocessor(user_role='human',assistant_role='gpt',preprocess_function=_preprocess_sharegpt4v_images),
+    _preprocess_sharegpt4v,
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
