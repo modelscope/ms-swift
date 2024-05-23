@@ -991,6 +991,7 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
             example['images'] = image_path
         else:
             example['images'] = None
+        return example
 
     return dataset.map(preprocess_image).filter(lambda example:example['image'] is not None)
 
