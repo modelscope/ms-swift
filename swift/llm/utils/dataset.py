@@ -885,10 +885,10 @@ def download_sharegpt4v_dataset(requirement: list):
         'coco': 'data/coco',
         'sam': 'data/sam/images',
         'gqa': 'data/gqa/images',
-        'ocr_vqa': 'ocr_vqa/images', # ?
-        'textvqa': 'textvqa/train_images', # ?
-        'VG_100K': 'vg/VG_100K', # ?
-        'VG_100K_2': 'vg/VG_100K_2', #?
+        'ocr_vqa': 'ocr_vqa/images',  # ?
+        'textvqa': 'textvqa/train_images',  # ?
+        'VG_100K': 'vg/VG_100K',  # ?
+        'VG_100K_2': 'vg/VG_100K_2',  #?
         'share_textvqa': '.',
         'web-celebrity': '.',
         'web-landmark': '.',
