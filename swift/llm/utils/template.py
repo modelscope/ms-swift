@@ -70,7 +70,6 @@ class TemplateType:
     minicpm_v = 'minicpm-v'
     minicpm_v_v2_5 = 'minicpm-v-v2_5'
     gemma = 'gemma'
-    paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
@@ -1068,29 +1067,6 @@ register_template(
     lazy_tokenize=True)
 
 
-class PaliGemmaTemplate(Template):
-
-    def __init__(self):
-        Template.__init__(self, [], ['{{QUERY}}\n'], None, [['eos_token_id']])
-
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
-        image_path = example['images']
-        raw_image = _read_from_path(image_path[0])
-        pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
-        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-        return inputs, {}
-
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
-        return res
-
-
-register_template(
-    TemplateType.paligemma, PaliGemmaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
-
-
 class Phi3VisionTemplate(Template):
     phi3_vl_prompt = ['<|user|>\n', '<image>', '\n{{QUERY}}<|end|>\n<|assistant|>\n']
 
@@ -1583,8 +1559,7 @@ register_template(TemplateType.wizardlm2,
 
 _default_phi3_system = ('You are a helpful digital assistant. '
                         'Please provide safe, ethical and accurate information to the user.')
-# "{% for message in messages %}{{'<|' + message['role'] + '|>' + '\n' + message['content'] + '<|end|>\n' }}
-# {% endfor %}{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{- '<|assistant|>\n' -}}{% endif %}"
+
 register_template(
     TemplateType.phi3,
     Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
