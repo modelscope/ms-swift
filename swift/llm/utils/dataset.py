@@ -976,9 +976,9 @@ register_dataset(
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
     if not hasattr(dataset, '_image_dir'):
         DATASET_REQUIREMENTS = ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']
-        # dataset._image_dir = download_sharegpt4v_dataset(DATASET_REQUIREMENTS)
+        dataset._image_dir = download_sharegpt4v_dataset(DATASET_REQUIREMENTS)
 
-    dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache'  # debug
+    # dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache'  # debug
 
     def preprocess_image(example):
         image_path = os.path.join(dataset._image_dir, example['image'])
