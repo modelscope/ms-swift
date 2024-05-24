@@ -35,13 +35,16 @@ def calculate_loss_scale(response: str,
         A tuple of agent response parts and their weights.
     """
     if any(key in response for key in loss_scale_map.keys()) and use_loss_scale:
-        agent_parts = split_str_parts_by(response, loss_scale_map.keys())
-        loss_scale_map.update({'': [1.0, 1.0]})
+        agent_parts = split_str_parts_by(response, list(loss_scale_map.keys()))
         weights = []
         agent_content = []
         for c in agent_parts:
-            weights += [loss_scale_map[c['key']][0]]
-            weights += [loss_scale_map[c['key']][1]]
+            if c['key'] in loss_scale_map:
+                weights += [loss_scale_map[c['key']][0]]
+                weights += [loss_scale_map[c['key']][1]]
+            else:
+                weights += [1.0]
+                weights += [1.0]
             agent_content.append(c['key'])
             agent_content.append(c['content'])
         return agent_content, weights

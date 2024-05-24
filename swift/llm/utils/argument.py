@@ -701,7 +701,10 @@ class SftArguments(ArgumentsBase):
         if self.loss_scale_config_path:
             if self.loss_scale_config_path == 'DEFAULT':
                 self.loss_scale_config_path = os.path.abspath(
-                    os.path.join(__file__, '..', '..', 'agent', 'loss_scale_config.json'))
+                    os.path.join(__file__, '..', '..', 'agent', 'default_loss_scale_config.json'))
+            elif self.loss_scale_config_path == 'alpha-umi':  # https://arxiv.org/pdf/2401.07324
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'alpha_umi_loss_scale_config.json'))
 
         self.handle_path()
         self.handle_custom_register()
