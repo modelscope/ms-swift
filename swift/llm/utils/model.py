@@ -1151,15 +1151,12 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     model.processor = processor
 
-    def _forward(self, *args, **kwargs):
-        hidden_states = self.forward_origin(*args, **kwargs)
-        hidden_states.requires_grad = False
-        return hidden_states
+    def _require_grad_hook(module, inputs, output):
+        output.requires_grad = False
 
     for module in model.modules():
         if module.__class__.__name__ == 'Phi3ImageEmbedding':
-            module.wte.forward_origin = module.wte.forward
-            module.wte.forward = MethodType(_forward, module.wte)
+            module.wte.forward.register_forward_hook(_require_grad_hook)
     return model, tokenizer
 
 
