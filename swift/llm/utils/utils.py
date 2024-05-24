@@ -879,6 +879,7 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
 def download_file_with_progress(url, filename):
     if os.path.exists(filename):
         logger.info(f'{filename} already exists with the expected size. Skipping download.')
+        return
     import subprocess
     try:
         subprocess.run(['wget', '-c', '-O', filename, url], check=True)
