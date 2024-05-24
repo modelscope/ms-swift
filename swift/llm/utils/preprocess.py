@@ -87,7 +87,6 @@ class ConversationsPreprocessor:
                  value_key: str = 'value',
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
                                                 Optional[Dict[str, str]]] = _default_repair_conversations,
-                 preprocess_function: Callable[[HfDataset],HfDataset] = None,
                  error_strategy: Literal['delete', 'raise'] = 'delete'):
         self.user_role = user_role
         self.assistant_role = assistant_role
@@ -96,7 +95,6 @@ class ConversationsPreprocessor:
         self.from_key = from_key
         self.value_key = value_key
         self.repair_conversations = repair_conversations
-        self.preprocess_function = preprocess_function
         self.error_strategy = error_strategy
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
@@ -106,9 +104,6 @@ class ConversationsPreprocessor:
         has_system = False
         history: List[History] = []
         has_history = False
-
-        if self.preprocess_function is not None:
-            dataset = self.preprocess_function(dataset)
         for d in tqdm(dataset):
             try:
                 conversations = d[self.conversations_key]
@@ -145,6 +140,66 @@ class ConversationsPreprocessor:
         if has_history:
             kwargs['history'] = history
         kwargs.update({
+            'query': query,
+            'response': response,
+        })
+        dataset = HfDataset.from_dict({**kwargs})
+        return dataset
+
+
+class ImageConversationsPreprocessor(ConversationsPreprocessor):
+    # Process conversations dataset containing images
+
+    def __init__(self, *args, **kwargs):
+        self.image_key = kwargs.pop('image_key', 'images')
+        super().__init__(*args, **kwargs)
+
+    def __call__(self, dataset: HfDataset) -> HfDataset:
+        query: List[str] = []
+        response: List[str] = []
+        system: List[Optional[str]] = []
+        has_system = False
+        history: List[History] = []
+        images: List[str] = []
+        has_history = False
+        for d in tqdm(dataset):
+            try:
+                images.append(d[self.image_key])
+                conversations = d[self.conversations_key]
+                conversations = self.repair_conversations(conversations)
+                if conversations is None:
+                    continue
+                lo = 0
+                sys = None
+                h: History = []
+                assert len(conversations) >= 2
+                if conversations[0][self.from_key] == self.system_role:
+                    has_system = True
+                    lo += 1
+                    sys = conversations[0][self.value_key]
+                assert conversations[-2][self.from_key] == self.user_role
+                assert conversations[-1][self.from_key] == self.assistant_role
+
+                for q, r in zip(conversations[lo:-2:2], conversations[lo + 1:-2:2]):
+                    assert q[self.from_key] == self.user_role
+                    assert r[self.from_key] == self.assistant_role
+                    h.append([q[self.value_key], r[self.value_key]])
+                if len(h) > 0:
+                    has_history = True
+                query.append(conversations[-2][self.value_key])
+                response.append(conversations[-1][self.value_key])
+                system.append(sys)
+                history.append(h)
+            except (AssertionError, SyntaxError):
+                if self.error_strategy == 'raise':
+                    raise ValueError(f'conversations: {conversations}')
+        kwargs = {}
+        if has_system:
+            kwargs['system'] = system
+        if has_history:
+            kwargs['history'] = history
+        kwargs.update({
+            'images': images,
             'query': query,
             'response': response,
         })

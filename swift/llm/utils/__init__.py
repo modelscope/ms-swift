@@ -9,8 +9,8 @@ from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM, ModelType,
                     get_default_lora_target_modules, get_default_template_type, get_model_tokenizer,
                     get_model_tokenizer_from_repo, get_model_tokenizer_with_flash_attn, register_model)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, SwiftPreprocessor,
-                         TextGenerationPreprocessor)
+                         ImageConversationsPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
+                         SwiftPreprocessor, TextGenerationPreprocessor)
 from .protocol import ChatCompletionResponse  # noqa
 from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,

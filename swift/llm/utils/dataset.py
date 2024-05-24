@@ -13,17 +13,19 @@ import pandas as pd
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from datasets import load_dataset as load_hf_dataset
+from modelscope.hub.utils.utils import get_cache_dir
 from numpy.random import RandomState
 from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df, safe_ddp_context
+from swift.utils import (get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, safe_ddp_context,
+                         transform_jsonl_to_df)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
+                         ImageConversationsPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
+                         TextGenerationPreprocessor)
 from .template import History
-from .utils import download_dataset
-from modelscope.hub.utils.utils import get_cache_dir
+from .utils import download_dataset, download_file_with_progress, extract_file
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -856,6 +858,7 @@ def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
     dataset._info.features._column_requires_decoding['images'] = True
     return dataset
 
+
 def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
 
     system = []
@@ -867,118 +870,73 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
         query.append(d['inputs'])
         images.append(d['image_base64_str'])
         response.append(d['outputs'])
-    dataset = HfDataset.from_dict({'system':system,'query': query, 'response': response, 'images': images})
+    dataset = HfDataset.from_dict({'system': system, 'query': query, 'response': response, 'images': images})
     return dataset
 
-def _download_file_with_progress(url, filename):
-    import subprocess
-    try:
-        subprocess.run(['wget', '-c', '-O', filename, url], check=True)
-        print(f"{filename} downloaded successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to download {filename}. Error: {e}")
 
-def _extract_zip(zip_path, extract_to):
-    import zipfile
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        members = zip_ref.infolist()
-        members_to_extract = []
-        for member in members:
-            filename = os.path.normpath(os.path.join(extract_to, member.filename))
-            if os.path.exists(filename):
-                if os.path.getsize(filename) != member.file_size:
-                    members_to_extract.append(member)
-            else:
-                members_to_extract.append(member)
-
-        with tqdm(total=len(members_to_extract), unit='file', desc='Extracting') as pbar:
-            for member in members_to_extract:
-                zip_ref.extract(member, path=extract_to)
-                pbar.update(1)
-                
-def download_sharegpt4v_dataset(requirement:list):
+def download_sharegpt4v_dataset(requirement: list):
     # TODO: local_path args
-    logger.info(
-        "--------------Downloading image datasets for ShareGPT4V--------------"
-    )
+    logger.info('--------------Downloading image datasets--------------')
 
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
-    ZIP2EXTRACTION_PATHS = { # reference:https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
-        "llava": "llava/llava_pretrain/images",
-        "coco": "coco",
-        "sam": "sam/images",
-        "gqa": "gqa/images",
-        "ocr_vqa": "ocr_vqa/images",
-        "textvqa": "textvqa/train_images",
-        "vg_VG_100K": "vg/VG_100K",
-        "vg_VG_100K_2": "vg/VG_100K_2",
-        "share_textvqa": "share_textvqa/images",
-        "web-celebrity": "web-celebrity/images",
-        "web-landmark": "web-landmark/images",
-        "wikiart": "wikiart/images"
+    ZIP2EXTRACTION_PATHS = {
+        # ref: https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
+        'llava': 'llava/llava_pretrain/images',
+        'coco': 'coco',
+        'sam': 'sam/images',
+        'gqa': 'gqa/images',
+        'ocr_vqa': 'ocr_vqa/images',
+        'textvqa': 'textvqa/train_images',
+        'VG_100K': 'vg/VG_100K',
+        'VG_100K_2': 'vg/VG_100K_2',
+        'share_textvqa': 'share_textvqa/images',
+        'web-celebrity': 'web-celebrity/images',
+        'web-landmark': 'web-landmark/images',
+        'wikiart': 'wikiart/images'
     }
 
     git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
     os.makedirs(git_cache_dir, exist_ok=True)
 
     for ds in requirement:
-        dataset_path = os.path.join(git_cache_dir, f"{ds}.zip")
+        dataset_path = os.path.join(git_cache_dir, f'{ds}.zip')
         with safe_ddp_context():
-            _download_file_with_progress(f"{URL_PREFIX}{ds}.zip", dataset_path)
-            _extract_zip(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
+            url = f'{URL_PREFIX}{ds}.zip' if ds != 'ocr_vqa' else f'{URL_PREFIX}{ds}.tar'
+            download_file_with_progress(url, dataset_path)
+            extract_file(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
     return git_cache_dir
+
 
 def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
     if not hasattr(dataset, '_image_dir'):
         split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
         IMAGE_DATASET_REQUIREMENTS = {
-            'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
-            'ShareGPT4V-PT':['coco','sam','llava' ]
-            }
-        
+            'ShareGPT4V': ['coco', 'sam', 'llava', 'wikiart', 'share_textvqa', 'web-celebrity', 'web-landmark'],
+            'ShareGPT4V-PT': ['coco', 'sam', 'llava']
+        }
+
         if isinstance(split, str):
             split = [split]
         dataset_required = set()
         for sp in split:
             dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
         # just for debug
-        dataset._image_dir = download_sharegpt4v_dataset(dataset_required)
-    dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache' # debug
-    images = []
-    query = []
-    response = []
+        # dataset._image_dir = download_sharegpt4v_dataset(dataset_required)
 
-    for d in tqdm(dataset):
-        image_path = os.path.join(dataset._image_dir, d['image'])
-        if not os.path.exists(image_path):
-            continue
+    dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache'  # debug
+
+    def preprocess_image(example):
+        image_path = os.path.join(dataset._image_dir, example['image'])
+        if os.path.exists(image_path):
+            example['images'] = image_path
         else:
-            images.append(image_path)
-        conv = d['conversations']
-        assert len(conv) == 2
-        query.append(conv[-2]['value'])
-        response.append(conv[-1]['value'])
+            example['images'] = None
+        return example
 
-    dataset = HfDataset.from_dict({'query': query, 'response': response, 'images': images})
-    return dataset
+    dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images')
+    return processer(dataset)
 
-def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
-    query = []
-    response = []
-    history: List[History] = []
-    for d in tqdm(dataset):
-        if isinstance(d['conversation'], str):
-            try:
-                conversation = ast.literal_eval(d['conversation'])
-            except SyntaxError:
-                continue
-        query.append(conversation[-1]['human'])
-        response.append(conversation[-1]['assistant'])
-        h = []
-        for c in conversation[:-1]:
-            h.append([c['human'], c['assistant']])
-        history.append(h)
-    return HfDataset.from_dict({'query': query, 'response': response, 'history': history})
 
 register_dataset(
     DatasetName.capcha_images,
@@ -991,36 +949,48 @@ register_dataset(
 
 register_dataset(
     DatasetName.m3it,
-    'AI-ModelScope/M3IT', # error: 'vist' , 'iqa-rephrased ', 'mmchat' / test: , 'winoground','chinese-food'
-    ['coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'coco-goi-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa', 'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased', 'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased', 'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco', 'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased', 'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa', 'flickr8k-cn'],
+    'AI-ModelScope/M3IT',  # error: 'vist' , 'iqa-rephrased ', 'mmchat' / test: , 'winoground','chinese-food'
+    [
+        'coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'coco-goi-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa',
+        'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased',
+        'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased',
+        'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco',
+        'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased',
+        'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa',
+        'flickr8k-cn'
+    ],
     _preprocess_m3it,
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
 
-
 register_dataset(
     DatasetName.sharegpt4v,
-    'AI-ModelScope/ShareGPT4V',
-    ['ShareGPT4V', 'ShareGPT4V-PT'],
+    'AI-ModelScope/ShareGPT4V', ['ShareGPT4V', 'ShareGPT4V-PT'],
     _preprocess_sharegpt4v,
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
 
+
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
-    DATASET_REQUIREMENTS = []
-    
-    data_dir = download_sharegpt4v_dataset(DATASET_REQUIREMENTS)
+    if not hasattr(dataset, '_image_dir'):
+        DATASET_REQUIREMENTS = ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']
+        # dataset._image_dir = download_sharegpt4v_dataset(DATASET_REQUIREMENTS)
+
+    dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache'  # debug
+
     def preprocess_image(example):
-        image_path = os.path.join(data_dir, example['image'])
+        image_path = os.path.join(dataset._image_dir, example['image'])
         if os.path.exists(image_path):
             example['images'] = image_path
         else:
             example['images'] = None
         return example
 
-    return dataset.map(preprocess_image).filter(lambda example:example['images'] is not None)
+    dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images')
+    return processer(dataset)
 
 
 register_dataset(
@@ -1031,6 +1001,7 @@ register_dataset(
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
+
 
 def _repair_toolbench(conversations: Dict[str, str]) -> Dict[str, str]:
     assert len(conversations) == 2

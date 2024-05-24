@@ -1,3 +1,6 @@
+import base64
+import binascii
+import os
 from io import BytesIO
 
 import requests
@@ -5,9 +8,6 @@ import torch
 import torchvision.transforms as T
 from PIL import Image, UnidentifiedImageError
 from torchvision.transforms.functional import InterpolationMode
-import os
-import base64
-import binascii
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -82,7 +82,7 @@ def load_image(img_path, input_size=448, max_num=6):
             image = Image.open(BytesIO(content))
         elif os.path.exists(img_path):
             image = Image.open(img_path)
-        else: # base64_str
+        else:  # base64_str
             try:
                 image_data = base64.b64decode(img_path)
                 image = Image.open(BytesIO(image_data))

@@ -876,6 +876,46 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     return max_model_len
 
 
+def download_file_with_progress(url, filename):
+    import subprocess
+    try:
+        subprocess.run(['wget', '-c', '-O', filename, url], check=True)
+        print(f'{filename} downloaded successfully.')
+    except subprocess.CalledProcessError as e:
+        print(f'Failed to download {filename}. Error: {e}')
+
+
+def extract_file(archive_path, extract_to):
+    import zipfile
+    import tarfile
+    assert os.path.exists(archive_path)
+    if archive_path.lower().endswith('.zip'):
+        with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+            members = zip_ref.infolist()
+            _extract_from_archive(zip_ref, members, extract_to, member_size_attr='file_size')
+    else:
+        with tarfile.open(archive_path, 'r:*') as tar:
+            members = tar.getmembers()
+            _extract_from_archive(tar, members, extract_to, member_size_attr='size')
+
+
+def _extract_from_archive(archive, members, extract_to, member_size_attr):
+    members_to_extract = []
+    for member in members:
+        member_size = getattr(member, member_size_attr)
+        filename = os.path.normpath(os.path.join(extract_to, member.name))
+        if os.path.exists(filename):
+            if os.path.getsize(filename) != member_size:
+                members_to_extract.append(member)
+        else:
+            members_to_extract.append(member)
+
+    with tqdm(total=len(members_to_extract), unit='file', desc='Extracting') as pbar:
+        for member in members_to_extract:
+            archive.extract(member, path=extract_to)
+            pbar.update(1)
+
+
 if is_ddp_plus_mp():
     from accelerate.utils.modeling import (get_balanced_memory, infer_auto_device_map)
 
