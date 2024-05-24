@@ -881,18 +881,18 @@ def download_sharegpt4v_dataset(requirement: list):
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
     ZIP2EXTRACTION_PATHS = {
         # ref: https://github.com/InternLM/InternLM-XComposer/blob/main/projects/ShareGPT4V/docs/Data.md
-        'llava': 'llava/llava_pretrain/images',
-        'coco': 'coco',
-        'sam': 'sam/images',
-        'gqa': 'gqa/images',
-        'ocr_vqa': 'ocr_vqa/images',
-        'textvqa': 'textvqa/train_images',
-        'VG_100K': 'vg/VG_100K',
-        'VG_100K_2': 'vg/VG_100K_2',
-        'share_textvqa': 'share_textvqa/images',
-        'web-celebrity': 'web-celebrity/images',
-        'web-landmark': 'web-landmark/images',
-        'wikiart': 'wikiart/images'
+        'llava': 'data/llava/llava_pretrain/images',
+        'coco': 'data/coco',
+        'sam': 'data/sam/images',
+        'gqa': 'data/gqa/images',
+        'ocr_vqa': 'ocr_vqa/images', # ?
+        'textvqa': 'textvqa/train_images', # ?
+        'VG_100K': 'vg/VG_100K', # ?
+        'VG_100K_2': 'vg/VG_100K_2', #?
+        'share_textvqa': '.',
+        'web-celebrity': '.',
+        'web-landmark': '.',
+        'wikiart': '.'
     }
 
     git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
