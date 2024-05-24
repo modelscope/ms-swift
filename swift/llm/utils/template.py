@@ -75,6 +75,7 @@ class TemplateType:
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
     phi3 = 'phi3'
+    phi3_vl = 'phi3-vl'
     telechat = 'telechat'
     telechat_v2 = 'telechat-v2'
     dbrx = 'dbrx'
@@ -221,10 +222,10 @@ class Template:
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
-        query: Optional[str] = example.get('query', None)
-        response: Optional[str] = example.get('response', None)
-        history: Optional[History] = example.get('history', None)
-        system: Optional[str] = example.get('system', None)
+        query: Optional[str] = example.pop('query', None)
+        response: Optional[str] = example.pop('response', None)
+        history: Optional[History] = example.pop('history', None)
+        system: Optional[str] = example.pop('system', None)
         if history is None:
             history = []
         if len(history) > 0:
@@ -239,7 +240,7 @@ class Template:
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
+            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos, **example)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -275,8 +276,7 @@ class Template:
             res_context_list.append(context)
             compute_loss_idx.append(0.0 if context not in self.suffix else 1.0)
 
-    @staticmethod
-    def _simplify_context_list(context_list: List[Context],
+    def _simplify_context_list(self, context_list: List[Context],
                                compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
         res: List[Context] = []  # result of context_list
         res_idx: List[float] = []  # result of compute_loss_idx
@@ -298,11 +298,8 @@ class Template:
             res_idx.append(0.0)
         return res, res_idx
 
-    def _encode_context_list(
-        self,
-        context_list: List[Context],
-        compute_loss_idx: List[float],
-    ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
+    def _encode_context_list(self, context_list: List[Context], compute_loss_idx: List[float],
+                             **kwargs) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         tokenizer = self.tokenizer
         input_ids: List[int] = []
@@ -332,7 +329,8 @@ class Template:
                 history: History,
                 system: Optional[str],
                 truncation_strategy: str,
-                auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+                auto_add_bos: bool = False,
+                **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
@@ -364,7 +362,8 @@ class Template:
                     context_list, res_context_list, compute_loss_idx, query=q, response=r, round0=i)
 
         res_context_list, compute_loss_idx = self._simplify_context_list(res_context_list, compute_loss_idx)
-        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, compute_loss_idx)
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, compute_loss_idx,
+                                                                                    **kwargs)
 
         if response is None:
             labels = None
@@ -922,7 +921,7 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
             if example.get('query') is not None:
                 example['query'] = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * \
-                    image_bs + '</img>\n' + example['query']
+                                   image_bs + '</img>\n' + example['query']
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
@@ -1035,7 +1034,6 @@ register_template(
 
 
 class LLavaLlamaTemplate(Template):
-
     llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
                                 '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
 
@@ -1064,10 +1062,94 @@ register_template(
     lazy_tokenize=True)
 
 
+class Phi3VisionTemplate(Template):
+    phi3_vl_prompt = ['<|user|>\n', '<image>', '\n{{QUERY}}<|end|>\n<|assistant|>\n']
+
+    def __init__(self):
+        Template.__init__(self, [], self.phi3_vl_prompt, ['<|end|>'], ['<|end|>'], _default_phi3_system,
+                          ['<|system|>{{SYSTEM}}<|end|>'])
+
+    def _simplify_context_list(self, context_list: List[Context],
+                               compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
+        return context_list, compute_loss_idx
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        image_path = example.get('images')
+        if image_path:
+            raw_images = [_read_from_path(path) for path in image_path]
+            image_infos = [
+                self.model.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images
+            ]
+            pixel_values = torch.concat([image_info['pixel_values'] for image_info in image_infos], dim=0)
+            image_sizes = torch.concat([image_info['image_sizes'] for image_info in image_infos], dim=0)
+            example['image_info'] = image_infos
+            example['num_img_tokens'] = self.model.processor.image_processor.num_img_tokens
+        inputs, _ = super().encode(example)
+        if image_path:
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_sizes'] = image_sizes
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
+        return res
+
+    def _encode_context_list(
+        self,
+        context_list: List[Context],
+        compute_loss_idx: List[float],
+        **kwargs,
+    ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
+        """return: input_ids, labels, tokenizer_kwargs"""
+        tokenizer = self.tokenizer
+        input_ids: List[int] = []
+        labels: List[int] = []
+        loss_scale: List[float] = []
+        tokenizer_kwargs = {}
+        images = None
+        if 'image_info' in kwargs:
+            images = kwargs['image_info']
+        image_iid = 0
+        for i, (context, loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
+            if context == '<image>':
+                if images and image_iid < len(images):
+                    token_list = self._convert_images_texts_to_inputs(image_iid + 1, images[image_iid],
+                                                                      kwargs.get('num_img_tokens'))
+                else:
+                    token_list = []
+                image_iid += 1
+            elif isinstance(context, str):
+                curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
+                self._concat_tokenizer_kwargs(tokenizer_kwargs, curr_tokenizer_kwargs)
+                token_list = tokenizer(
+                    context, return_attention_mask=False, add_special_tokens=False,
+                    **curr_tokenizer_kwargs)['input_ids']
+            else:
+                token_list = context
+            input_ids += token_list
+            if compute_loss_idx[i] > 0.0:
+                labels += token_list
+            else:
+                labels += [-100] * len(token_list)
+            loss_scale.extend([loss_weight] * len(token_list))
+        return input_ids, labels, loss_scale, tokenizer_kwargs
+
+    def _convert_images_texts_to_inputs(self, iid, images, default_img_tokens):
+        if 'num_img_tokens' in images:
+            num_img_tokens = images['num_img_tokens']
+        else:
+            assert 'num_crops' in images, 'num_crops must be provided in images if num_img_tokens is not provided'
+            num_crops = images['num_crops']
+            num_img_tokens = [_num_crops * default_img_tokens for _num_crops in num_crops]
+        return [-iid] * num_img_tokens[0]
+
+
 class LlamaLlavaNextTemplate(LLavaTemplate):
     default_system = 'You are a helpful language and vision assistant. ' \
-            'You are able to understand the visual content that the user provides, ' \
-            'and assist the user with a variety of tasks using natural language.'
+                     'You are able to understand the visual content that the user provides, ' \
+                     'and assist the user with a variety of tasks using natural language.'
 
     def __init__(self):
         Template.__init__(self, [], [
@@ -1474,6 +1556,7 @@ register_template(TemplateType.wizardlm2,
 
 _default_phi3_system = ('You are a helpful digital assistant. '
                         'Please provide safe, ethical and accurate information to the user.')
+
 register_template(
     TemplateType.phi3,
     Template(['<s>'], ['<|user|>{{QUERY}}<|end|><|assistant|>'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
@@ -1481,6 +1564,9 @@ register_template(
 
 register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))
+
+register_template(
+    TemplateType.phi3_vl, Phi3VisionTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 def get_template(
