@@ -179,16 +179,68 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     return resp
 
 
-def split_str_parts_by(text: str, delimiters: List[str]):
+def split_str_parts_by(text: str, loss_scale_map: Dict[str: list]):
     """Split the text field into parts.
 
     Args:
         text: A text to be split.
-        delimiters: The delimiters.
-
+        loss_scale_map: A map containing delimiters and patterns with corresponding weights.
     Returns:
         The split text in list of dicts.
     """
+    text_list = []
+    last_idx = 0
+
+    # 先处理正则表达式匹配
+    regex_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 1}
+    for pattern, weight in regex_delimiters.items():
+        for match in re.finditer(pattern, text, re.DOTALL):
+            # 添加匹配前的文本
+            if match.start() > last_idx:
+                text_list.append({'key': '', 'content': text[last_idx:match.start()]})
+            # 添加匹配的文本
+            text_list.append({'key': pattern, 'content': match.group(1)})
+            last_idx = match.end()
+
+    # 添加剩余的文本
+    remaining_text = text[last_idx:]
+    normal_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 2}
+    delimiters_keys = normal_delimiters.keys()
+    sorted_delimiters = sorted(delimiters_keys, key=len, reverse=True)
+
+    # 使用普通的分隔符逐一去分割剩余文本
+    for delimiter in sorted_delimiters:
+        parts = remaining_text.split(delimiter)
+        remaining_text = parts.pop()
+        for part in parts:
+            if part:
+                text_list.append({'key': '', 'content': part})
+            text_list.append({'key': delimiter, 'content': ''})
+
+    # 如果仍有未处理的文本，则添加到列表中
+    if remaining_text:
+        text_list.append({'key': '', 'content': remaining_text})
+
+    # 清洗文本列表中连续出现的空分隔
+    cleaned_text_list = []
+    for item in text_list:
+        if item['key'] == '' and not item['content'].strip():  # 如果是空白，跳过
+            continue
+        if cleaned_text_list and item['key'] == cleaned_text_list[-1]['key']:
+            cleaned_text_list[-1]['content'] += item['content']
+        else:
+            cleaned_text_list.append(item)
+
+    return cleaned_text_list
+    patterns = list(k for k in loss_scale_map.keys() if len(loss_scale_map[k]) == 1)
+    for pattern in patterns:
+        pattern = pattern.replace(r"\'", "").replace(r"\"", '"') 
+        regex = re.compile(pattern, re.DOTALL)
+        matches = regex.findall(text)
+        # 将匹配到的文本映射到对应的
+        ...
+
+    delimiters = list(k for k in loss_scale_map.keys() if len(loss_scale_map[k]) == 2)
     all_start_chars = [d[0] for d in delimiters]
     all_length = [len(d) for d in delimiters]
 
