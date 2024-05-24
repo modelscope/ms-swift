@@ -1102,15 +1102,17 @@ class Phi3VisionTemplate(Template):
         return context_list, compute_loss_idx
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        image_path = example['images']
-        raw_images = [_read_from_path(path) for path in image_path]
-        image_infos = [self.model.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images]
-        pixel_values = torch.concat([image_info['pixel_values'] for image_info in image_infos], dim=0)
-        image_sizes = torch.concat([image_info['image_sizes'] for image_info in image_infos], dim=0)
-        example['image_info'] = image_infos
+        image_path = example.get('images')
+        if image_path:
+            raw_images = [_read_from_path(path) for path in image_path]
+            image_infos = [self.model.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images]
+            pixel_values = torch.concat([image_info['pixel_values'] for image_info in image_infos], dim=0)
+            image_sizes = torch.concat([image_info['image_sizes'] for image_info in image_infos], dim=0)
+            example['image_info'] = image_infos
         inputs, _ = super().encode(example)
-        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-        inputs['image_sizes'] = image_sizes
+        if image_path:
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_sizes'] = image_sizes
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1131,11 +1133,13 @@ class Phi3VisionTemplate(Template):
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
-        images = kwargs['image_info']
+        images = None
+        if 'image_info' in kwargs:
+            images = kwargs['image_info']
         image_iid = 0
         for i, (context, loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
             if context == '<image>':
-                if image_iid < len(images):
+                if images and image_iid < len(images):
                     token_list = self._convert_images_texts_to_inputs(image_iid+1, images[image_iid])
                 else:
                     token_list = []
