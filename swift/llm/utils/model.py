@@ -1136,7 +1136,7 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     ModelType.phi3_vision_128k_instruct,
     'LLM-Research/Phi-3-vision-128k-instruct',
     LoRATM.phi3,
-    TemplateType.phi3,
+    TemplateType.phi3_vl,
     support_vllm=False,
     hf_model_id='microsoft/Phi-3-vision-128k-instruct')
 def get_model_tokenizer_phi3_vision(model_dir: str,
@@ -1146,12 +1146,21 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
                                     **kwargs):
     from transformers import AutoProcessor
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    processor = AutoProcessor.from_pretrained(model_dir)
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     model.processor = processor
-    return get_model_tokenizer_from_repo(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
+    def _forward(self, *args, **kwargs):
+        hidden_states = self.forward_origin(*args, **kwargs)
+        hidden_states.requires_grad = False
+        return hidden_states
+
+    for module in model.modules():
+        if module.__class__.__name__ == 'Phi3ImageEmbedding':
+            module.wte.forward_origin = module.wte.forward
+            module.wte.forward = MethodType(_forward, module.wte)
+    return model, tokenizer
 
 
 @register_model(
