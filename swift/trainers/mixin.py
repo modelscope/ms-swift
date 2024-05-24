@@ -31,7 +31,8 @@ from transformers.training_args import TrainingArguments
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler
+from swift.torchacc_utils import (save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
+                                  ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc
 from swift.utils.constants import Invoke
@@ -522,6 +523,8 @@ class SwiftMixin:
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
+            if use_torchacc():
+                ta_trim_graph()
             self.control.should_log = False
             logs: Dict[str, float] = {}
             metrics_log = {'loss': tr_loss}  # loss first

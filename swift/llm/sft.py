@@ -13,6 +13,7 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
+from swift.torchacc_utils import patch_acc_model
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting, get_logger,
@@ -28,6 +29,7 @@ logger = get_logger()
 
 
 def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
+
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
@@ -128,7 +130,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         # wrapper the model and make these properties wrong.
         label_names = find_labels(model)
         return_loss = can_return_loss(model)
-        model = ta.patch_qwen_model(model)
+        model = patch_acc_model(model, args)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -149,7 +151,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         logger.info('Setting model.config.use_cache: False')
         model = ta_accelerate(
             model,
-            world_size,
+            args.fsdp_num,
             args.model_layer_cls_name,
             args.bf16,
             args.fp16,
@@ -164,7 +166,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
         model_author=args.model_author)
-    if args.val_dataset is not None:
+    if len(args.val_dataset) > 0:
         # Loading val dataset
         _, val_dataset = get_dataset(
             args.val_dataset,
@@ -175,6 +177,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             model_author=args.model_author)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
+    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}

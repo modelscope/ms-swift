@@ -21,7 +21,7 @@ from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
-                         is_local_master, is_mp, is_pai_training_job)
+                         is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file, sample_dataset
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
@@ -213,15 +213,18 @@ class ArgumentsBase:
                 v = _mapping[k]
                 setattr(self, _name, v)
                 break
-        if isinstance(self.dataset, str):
-            self.dataset = [self.dataset]
-        if len(self.dataset) == 1 and ',' in self.dataset[0]:
-            self.dataset = self.dataset[0].split(',')
-        for i, dataset in enumerate(self.dataset):
-            if dataset in dataset_name_mapping:
-                self.dataset[i] = dataset_name_mapping[dataset]
-        for d in self.dataset:
-            assert ',' not in d, f'dataset: {d}, please use `/`'
+        for key in ['dataset', 'val_dataset']:
+            _dataset = getattr(self, key)
+            if isinstance(_dataset, str):
+                _dataset = [_dataset]
+            if len(_dataset) == 1 and ',' in _dataset[0]:
+                _dataset = _dataset[0].split(',')
+            for i, d in enumerate(_dataset):
+                if d in dataset_name_mapping:
+                    _dataset[i] = dataset_name_mapping[d]
+            for d in _dataset:
+                assert ',' not in d, f'dataset: {d}, please use `/`'
+            setattr(self, key, _dataset)
         if self.truncation_strategy == 'ignore':
             self.truncation_strategy = 'delete'
         if self.safe_serialization is not None:
@@ -229,7 +232,7 @@ class ArgumentsBase:
         if len(self.custom_train_dataset_path) > 0:
             self.dataset += self.custom_train_dataset_path
         if len(self.custom_val_dataset_path) > 0:
-            self.dataset += self.custom_val_dataset_path
+            self.val_dataset += self.custom_val_dataset_path
 
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
@@ -359,7 +362,15 @@ class ArgumentsBase:
                 model_mapping_reversed[model_id] = k
             model_id_or_path = self.model_id_or_path
             model_id_or_path_lower = model_id_or_path.lower()
-            if model_id_or_path_lower not in model_mapping_reversed:
+
+            if self.model_type is None and model_id_or_path_lower in model_mapping_reversed:
+                model_type = model_mapping_reversed[model_id_or_path_lower]
+                assert self.model_type is None or self.model_type == model_type
+                self.model_type = model_type
+                logger.info(f'Setting args.model_type: {model_type}')
+                if self.model_cache_dir is not None:
+                    self.model_id_or_path = self.model_cache_dir
+            else:
                 if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
@@ -367,13 +378,6 @@ class ArgumentsBase:
                     raise ValueError(f"model_id_or_path: '{model_id_or_path}' is not registered. "
                                      'Please set `--model_type <model_type>` additionally.')
                 assert self.model_cache_dir is None
-            else:
-                model_type = model_mapping_reversed[model_id_or_path_lower]
-                assert self.model_type is None or self.model_type == model_type
-                self.model_type = model_type
-                logger.info(f'Setting args.model_type: {model_type}')
-                if self.model_cache_dir is not None:
-                    self.model_id_or_path = self.model_cache_dir
 
         error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
         if self.model_type is None:
@@ -421,9 +425,11 @@ class SftArguments(ArgumentsBase):
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset: List[str] = field(
+        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
@@ -539,6 +545,7 @@ class SftArguments(ArgumentsBase):
     logging_steps: int = 5
     dataloader_num_workers: int = 1
     dataloader_pin_memory: bool = True
+    dataloader_drop_last: bool = False
 
     # push to ms hub
     push_to_hub: bool = False
@@ -599,6 +606,8 @@ class SftArguments(ArgumentsBase):
     model_layer_cls_name: Optional[str] = field(
         default=None,
         metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
+    metric_warmup_step: Optional[float] = 0
+    fsdp_num: int = 1
 
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
@@ -672,8 +681,8 @@ class SftArguments(ArgumentsBase):
     def __post_init__(self) -> None:
         self.handle_compatibility()
         self._register_self_cognition()
-        if self.val_dataset is not None:
-            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+        if len(self.val_dataset) > 0:
+            self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self._handle_dataset_sample()
         if is_pai_training_job():
@@ -831,6 +840,9 @@ class SftArguments(ArgumentsBase):
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(f'{self.model_type} not support gradient_checkpointing.')
 
+        if use_torchacc():
+            self.dataloader_drop_last = True
+
         self._init_training_args()
 
         if self.add_output_dir_suffix is None:
@@ -912,8 +924,10 @@ class SftArguments(ArgumentsBase):
             acc_strategy=self.acc_strategy,
             save_safetensors=self.save_safetensors,
             logging_first_step=True,
+            metric_warmup_step=self.metric_warmup_step,
             fsdp=self.fsdp,
             fsdp_config=self.fsdp_config,
+            dataloader_drop_last=self.dataloader_drop_last,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
@@ -964,9 +978,11 @@ class InferArguments(ArgumentsBase):
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
+    # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    val_dataset: List[str] = field(default=None, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset: List[str] = field(
+        default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 10
@@ -1036,8 +1052,8 @@ class InferArguments(ArgumentsBase):
                            'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
         self._register_self_cognition()
-        if self.val_dataset is not None:
-            self.dataset_test_ratio = 0.0 if self.val_dataset is not None else self.dataset_test_ratio
+        if len(self.val_dataset) > 0:
+            self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self.handle_path()
         logger.info(f'ckpt_dir: {self.ckpt_dir}')
@@ -1059,12 +1075,12 @@ class InferArguments(ArgumentsBase):
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
         if self.eval_human is None:
-            if not len(self.dataset) > 0:
+            if len(self.dataset) == 0 and len(self.val_dataset) == 0:
                 self.eval_human = True
             else:
                 self.eval_human = False
             logger.info(f'Setting self.eval_human: {self.eval_human}')
-        elif self.eval_human is False and not len(self.dataset) > 0:
+        elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
             raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
 
         # compatibility
@@ -1117,7 +1133,7 @@ class InferArguments(ArgumentsBase):
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
-            self.lora_request_list = _parse_lora_modules(self.lora_modules, True)
+            self.lora_request_list = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
             logger.info(f'args.lora_request_list: {self.lora_request_list}')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
@@ -1269,7 +1285,7 @@ class ExportArguments(InferArguments):
             self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
         if self.quant_bits > 0 and self.dtype == 'AUTO':
             self.dtype = 'fp16'
-            logger.info(f'Setting args.dtype: {args.dtype}')
+            logger.info(f'Setting args.dtype: {self.dtype}')
         super().__post_init__()
         if len(self.dataset) == 0 and self.quant_bits > 0:
             self.dataset = ['alpaca-zh#10000', 'alpaca-en#10000']
