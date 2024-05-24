@@ -194,6 +194,8 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
     # 先处理正则表达式匹配
     regex_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 1}
     for pattern, weight in regex_delimiters.items():
+        from ast import literal_eval as eval
+        pattern = eval(pattern)
         for match in re.finditer(pattern, text, re.DOTALL):
             # 添加匹配前的文本
             if match.start() > last_idx:
