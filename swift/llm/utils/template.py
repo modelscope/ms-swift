@@ -302,6 +302,7 @@ class Template:
             self,
             context_list: List[Context],
             compute_loss_idx: List[float],
+            **kwargs
     ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         tokenizer = self.tokenizer
@@ -1134,7 +1135,10 @@ class Phi3VisionTemplate(Template):
         image_iid = 0
         for i, (context, loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
             if context == '<image>':
-                token_list = self._convert_images_texts_to_inputs(image_iid+1, images[image_iid])
+                if image_iid < len(images):
+                    token_list = self._convert_images_texts_to_inputs(image_iid+1, images[image_iid])
+                else:
+                    token_list = []
                 image_iid += 1
             elif isinstance(context, str):
                 curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
@@ -1161,7 +1165,7 @@ class Phi3VisionTemplate(Template):
             num_img_tokens = [_num_crops * self.num_img_tokens for _num_crops in num_crops]
 
         images, image_sizes = images['pixel_values'], images['image_sizes']
-        return [-iid] * num_img_tokens[iid - 1]
+        return [-iid] * num_img_tokens[0]
 
 
 class LlamaLlavaNextTemplate(LLavaTemplate):
