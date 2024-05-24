@@ -1,6 +1,5 @@
 accelerate
 dacite
-datasets<=2.18  # modelscope
 jieba
 matplotlib
 modelscope>=1.14
@@ -14,6 +13,6 @@ rouge
 safetensors
 tensorboard
 tqdm
-transformers>=4.33,<4.41
+transformers>=4.33,<4.42
 transformers_stream_generator
 trl>=0.8.2

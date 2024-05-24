@@ -386,20 +386,24 @@ def llm_infer(args: InferArguments) -> None:
                 append_to_jsonl(jsonl_path, obj)
             result.append(obj)
     else:
-        _, val_dataset = get_dataset(
-            args.dataset,
-            args.dataset_test_ratio,
-            args.dataset_seed,
-            check_dataset_strategy=args.check_dataset_strategy,
-            model_name=args.model_name,
-            model_author=args.model_author)
+        dataset_kwargs = {
+            'dataset_seed': args.dataset_seed,
+            'check_dataset_strategy': args.check_dataset_strategy,
+            'model_name': args.model_name,
+            'model_author': args.model_author
+        }
+        if len(args.val_dataset) > 0:
+            _, val_dataset = get_dataset(args.val_dataset, 1.0, **dataset_kwargs)
+        else:
+            _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
         _, val_dataset = args._handle_dataset_compat(_, val_dataset)
+        assert val_dataset is not None
         if args.show_dataset_sample >= 0 and val_dataset.shape[0] > args.show_dataset_sample:
             random_state = np.random.RandomState(args.dataset_seed)
             logger.info(f'show_dataset_sample: {args.show_dataset_sample}')
             val_dataset = sample_dataset(val_dataset, args.show_dataset_sample, random_state)
-
         logger.info(f'val_dataset: {val_dataset}')
+
         if args.verbose is None:
             if len(val_dataset) >= 100:
                 args.verbose = False
