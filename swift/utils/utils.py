@@ -179,7 +179,7 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     return resp
 
 
-def split_str_parts_by(text: str, loss_scale_map: Dict[str: list]):
+def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
     """Split the text field into parts.
 
     Args:
