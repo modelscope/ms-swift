@@ -342,6 +342,9 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
+    phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
+    phi3_small_128k_instruct = 'phi3_small_128k_instruct'
+    phi3_medium_128k_instruct = 'phi3_medium_128k_instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
@@ -368,6 +371,12 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
+    # paligemma
+    paligemma_3b_mix_224 = 'paligemma-3b-mix-224'
+    paligemma_3b_pt_896 = 'paligemma-3b-pt-896'
+    paligemma_3b_pt_224 = 'paligemma-3b-pt-224'
+    paligemma_3b_pt_448 = 'paligemma-3b-pt-448'
+    paligemma_3b_mix_448 = 'paligemma-3b-mix-448'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -1074,6 +1083,78 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 
 
 @register_model(
+    ModelType.paligemma_3b_mix_224,
+    'AI-ModelScope/paligemma-3b-mix-224',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_vllm=False,
+    hf_model_id='google/paligemma-3b-mix-224')
+@register_model(
+    ModelType.paligemma_3b_pt_896,
+    'AI-ModelScope/paligemma-3b-pt-896',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_vllm=False,
+    hf_model_id='google/paligemma-3b-pt-896')
+@register_model(
+    ModelType.paligemma_3b_pt_224,
+    'AI-ModelScope/paligemma-3b-mix-224',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_vllm=False,
+    hf_model_id='google/paligemma-3b-mix-224')
+@register_model(
+    ModelType.paligemma_3b_pt_448,
+    'AI-ModelScope/paligemma-3b-mix-224',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_vllm=False,
+    hf_model_id='google/paligemma-3b-mix-224')
+@register_model(
+    ModelType.paligemma_3b_mix_448,
+    'AI-ModelScope/paligemma-3b-mix-224',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_vllm=False,
+    hf_model_id='google/paligemma-3b-mix-224')
+def get_model_tokenizer_paligemma_vision(model_dir: str,
+                                         torch_dtype: Dtype,
+                                         model_kwargs: Dict[str, Any],
+                                         load_model: bool = True,
+                                         **kwargs):
+    from transformers import AutoProcessor
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    model.processor = processor
+    return get_model_tokenizer_from_repo(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
+
+@register_model(
+    ModelType.phi3_vision_128k_instruct,
+    'LLM-Research/Phi-3-vision-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    support_vllm=False,
+    hf_model_id='microsoft/Phi-3-vision-128k-instruct')
+def get_model_tokenizer_phi3_vision(model_dir: str,
+                                    torch_dtype: Dtype,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    from transformers import AutoProcessor
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    model.processor = processor
+    return get_model_tokenizer_from_repo(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
+
+@register_model(
     ModelType.baichuan2_13b_chat,
     'baichuan-inc/Baichuan2-13B-Chat',
     LoRATM.baichuan,
@@ -1330,9 +1411,29 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.phi3,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=False,  # https://github.com/vllm-project/vllm/pull/4298
+    support_vllm=True,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
+@register_model(
+    ModelType.phi3_small_128k_instruct,
+    'LLM-Research/Phi-3-small-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-small-128k-instruct')
+@register_model(
+    ModelType.phi3_medium_128k_instruct,
+    'LLM-Research/Phi-3-medium-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-medium-128k-instruct')
 @register_model(
     ModelType.phi3_4b_4k_instruct,
     'LLM-Research/Phi-3-mini-4k-instruct',
@@ -2626,7 +2727,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
 
 
 def fix_internvl_inplace_bug(model) -> None:
-
     embedding = model.language_model.get_input_embeddings()
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
         old_forward = embedding.forward

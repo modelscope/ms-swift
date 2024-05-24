@@ -70,11 +70,13 @@ class TemplateType:
     minicpm_v = 'minicpm-v'
     minicpm_v_v2_5 = 'minicpm-v-v2_5'
     gemma = 'gemma'
+    paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
     phi3 = 'phi3'
+    phi3_vl = 'phi3-vl'
     telechat = 'telechat'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
@@ -1063,6 +1065,53 @@ register_template(
     lazy_tokenize=True)
 
 
+class PaliGemmaTemplate(Template):
+
+    def __init__(self):
+        Template.__init__(self, [], ['{{QUERY}}\n'], None, [['eos_token_id']])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        image_path = example['images']
+        raw_image = _read_from_path(image_path[0])
+        pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.paligemma, PaliGemmaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+
+
+class Phi3VisionTemplate(Template):
+
+    def __init__(self):
+        Template.__init__(self, [], ['<|user|>\n<|image_1|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>'],
+                          ['<|end|>'], _default_phi3_system, '<|system|>{{SYSTEM}}<|end|>')
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        image_path = example['images']
+        raw_image = _read_from_path(image_path[0])
+        image_info = self.model.processor.image_processor(raw_image, return_tensors='pt')
+        pixel_values = image_info['pixel_values']
+        image_sizes = image_info['image_sizes']
+        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        inputs['image_sizes'] = image_sizes
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
+        return res
+
+
 class LlamaLlavaNextTemplate(LLavaTemplate):
     default_system = 'You are a helpful language and vision assistant. ' \
             'You are able to understand the visual content that the user provides, ' \
@@ -1471,13 +1520,18 @@ register_template(TemplateType.wizardlm2,
 
 _default_phi3_system = ('You are a helpful digital assistant. '
                         'Please provide safe, ethical and accurate information to the user.')
+# "{% for message in messages %}{{'<|' + message['role'] + '|>' + '\n' + message['content'] + '<|end|>\n' }}
+# {% endfor %}{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{- '<|assistant|>\n' -}}{% endif %}"
 register_template(
     TemplateType.phi3,
-    Template(['<s>'], ['<|user|>{{QUERY}}<|end|><|assistant|>'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
+    Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
              '<s><|system|>{{SYSTEM}}<|end|>'))
 
 register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))
+
+register_template(
+    TemplateType.phi3_vl, Phi3VisionTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 def get_template(
