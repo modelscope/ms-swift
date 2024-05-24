@@ -1559,7 +1559,7 @@ _default_phi3_system = ('You are a helpful digital assistant. '
 
 register_template(
     TemplateType.phi3,
-    Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
+    Template(['<s>'], ['<|user|>{{QUERY}}<|end|><|assistant|>'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
              '<s><|system|>{{SYSTEM}}<|end|>'))
 
 register_template(TemplateType.atom,
