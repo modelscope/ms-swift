@@ -188,65 +188,6 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
     Returns:
         The split text in list of dicts.
     """
-    # text_list = []
-    # last_idx = 0
-
-    # # 先处理正则表达式匹配
-    # regex_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 1}
-    # for pattern, weight in regex_delimiters.items():
-    #     from ast import literal_eval as eval
-    #     pattern = eval(pattern)
-    #     try:
-    #         regex = re.compile(pattern, re.DOTALL)
-    #     except re.error as e:
-    #         logger.warning(f"Error compiling regex pattern '{pattern}': {e}")
-    #         continue
-    #     for match in re.finditer(pattern, text, re.DOTALL):
-    #         # 添加匹配前的文本
-    #         if match.start() > last_idx:
-    #             text_list.append({'key': '', 'content': text[last_idx:match.start()]})
-    #         # 添加匹配的文本
-    #         text_list.append({'key': pattern, 'content': match.group(1)})
-    #         last_idx = match.end()
-
-    # # 添加剩余的文本
-    # remaining_text = text[last_idx:]
-    # normal_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 2}
-    # delimiters_keys = normal_delimiters.keys()
-    # sorted_delimiters = sorted(delimiters_keys, key=len, reverse=True)
-
-    # # 使用普通的分隔符逐一去分割剩余文本
-    # for delimiter in sorted_delimiters:
-    #     parts = remaining_text.split(delimiter)
-    #     remaining_text = parts.pop()
-    #     for part in parts:
-    #         if part:
-    #             text_list.append({'key': '', 'content': part})
-    #         text_list.append({'key': delimiter, 'content': ''})
-
-    # # 如果仍有未处理的文本，则添加到列表中
-    # if remaining_text:
-    #     text_list.append({'key': '', 'content': remaining_text})
-
-    # # 清洗文本列表中连续出现的空分隔
-    # cleaned_text_list = []
-    # for item in text_list:
-    #     if item['key'] == '' and not item['content'].strip():  # 如果是空白，跳过
-    #         continue
-    #     if cleaned_text_list and item['key'] == cleaned_text_list[-1]['key']:
-    #         cleaned_text_list[-1]['content'] += item['content']
-    #     else:
-    #         cleaned_text_list.append(item)
-
-    # return cleaned_text_list
-    patterns = list(k for k in loss_scale_map.keys() if len(loss_scale_map[k]) == 1)
-    for pattern in patterns:
-        pattern = pattern.replace(r"\'", '').replace(r"\"", '"')
-        regex = re.compile(pattern, re.DOTALL)
-        matches = regex.findall(text)
-        # 将匹配到的文本映射到对应的
-        ...
-
     delimiters = list(k for k in loss_scale_map.keys() if len(loss_scale_map[k]) == 2)
     all_start_chars = [d[0] for d in delimiters]
     all_length = [len(d) for d in delimiters]
@@ -282,23 +223,26 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
         text_list.append({'': last_words})
 
     regex_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 1}
-    if '' in text_list:
-        res_text = text_list.pop('')
-        last_idx = 0
 
-        for pattern, scale in regex_delimiters.items():
-            from ast import literal_eval as eval
-            pattern = eval(pattern)
-            try:
-                regex = re.compile(pattern, re.DOTALL)
-            except re.error as e:
-                logger.warning(f"Error compiling regex pattern '{pattern}': {e}")
-                continue
-            for match in re.finditer(pattern, res_text, re.DOTALL):
-                if match.start() > last_idx:
-                    text_list.append({'': text[last_idx:match.start()]})
-                text_list.append({scale: match.group(1)})
-                last_idx = match.end()
-        if last_idx < len(res_text):
-            text_list.append({'': res_text[last_idx:]})
+    res_texts = []
+    for i in range(len(text_list) - 1, -1, -1):
+        if text_list[i].get('key') == '':
+            res_texts.append(text_list.pop(i))
+    res_texts.reverse()
+
+    if len(res_texts):
+        for res_text in res_texts:
+            res_text = text_list.pop('')
+            last_idx = 0
+
+            for pattern, scale in regex_delimiters.items():
+                from ast import literal_eval as eval
+                pattern = eval(pattern)
+                for match in re.finditer(pattern, res_text, re.DOTALL):
+                    if match.start() > last_idx:
+                        text_list.append({'key': '', 'content': res_text[last_idx:match.start()]})
+                    text_list.appen({'key': scale, 'content': match.group(1)})
+                    last_idx = match.end()
+            if last_idx < len(res_text):
+                text_list.append({'': res_text[last_idx:]})
     return text_list
