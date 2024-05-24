@@ -895,16 +895,16 @@ def download_sharegpt4v_dataset(requirement: list):
         'wikiart': '.'
     }
 
-    git_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
-    os.makedirs(git_cache_dir, exist_ok=True)
+    data_cache_dir = os.path.join(get_cache_dir(), '_image_cache')
+    os.makedirs(data_cache_dir, exist_ok=True)
 
     for ds in requirement:
-        dataset_path = os.path.join(git_cache_dir, f'{ds}.zip')
+        dataset_path = os.path.join(data_cache_dir, f'{ds}.zip')
         with safe_ddp_context():
             url = f'{URL_PREFIX}{ds}.zip' if ds != 'ocr_vqa' else f'{URL_PREFIX}{ds}.tar'
             download_file_with_progress(url, dataset_path)
-            extract_file(dataset_path, os.path.join(git_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
-    return git_cache_dir
+            extract_file(dataset_path, os.path.join(data_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
+    return os.path.join(data_cache_dir, 'data')
 
 
 def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
