@@ -194,7 +194,7 @@ def prepare_model_template(args: InferArguments,
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        if isinstance(args, DeployArguments):
+        if isinstance(args, DeployArguments) and args.lora_request_list is not None:
             for lora_request in args.lora_request_list:
                 model = Swift.from_pretrained(
                     model, lora_request.lora_local_path, lora_request.lora_name, inference_mode=True)
