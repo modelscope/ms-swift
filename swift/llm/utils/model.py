@@ -1105,9 +1105,10 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
     for module in model.modules():
         if module.__class__.__name__ == 'Phi3ImageEmbedding':
             module.wte.register_forward_hook(_require_grad_hook)
-    
+
     def _enable_input_require_grads(self):
         pass
+
     model.enable_input_require_grads = MethodType(_enable_input_require_grads, model)
     return model, tokenizer
 

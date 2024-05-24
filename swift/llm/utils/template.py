@@ -246,14 +246,14 @@ class Template:
         return inputs, tokenizer_kwargs
 
     def _concat_context_list(
-            self,
-            context_list: List[Context],
-            res_context_list: List[Context],  # inplace
-            compute_loss_idx: List[float],  # inplace
-            system: Optional[str] = None,
-            query: Optional[str] = None,
-            response: Optional[str] = None,
-            round0: Optional[int] = None,
+        self,
+        context_list: List[Context],
+        res_context_list: List[Context],  # inplace
+        compute_loss_idx: List[float],  # inplace
+        system: Optional[str] = None,
+        query: Optional[str] = None,
+        response: Optional[str] = None,
+        round0: Optional[int] = None,
     ) -> None:
         # concat context list and replace placeholder
         round1 = None
@@ -298,12 +298,8 @@ class Template:
             res_idx.append(0.0)
         return res, res_idx
 
-    def _encode_context_list(
-            self,
-            context_list: List[Context],
-            compute_loss_idx: List[float],
-            **kwargs
-    ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
+    def _encode_context_list(self, context_list: List[Context], compute_loss_idx: List[float],
+                             **kwargs) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         tokenizer = self.tokenizer
         input_ids: List[int] = []
@@ -479,15 +475,15 @@ class Template:
         return print_idx
 
     def generate_ids_to_response(
-            self,
-            generate_ids: List[int],
-            is_finished: bool = True,
-            *,
-            tokenizer_kwargs: Optional[Dict[str, Any]] = None,
-            # only stream=True
-            return_delta: bool = False,
-            print_idx: Optional[List[int]] = None,
-            first_num_space: Optional[List[int]] = None,
+        self,
+        generate_ids: List[int],
+        is_finished: bool = True,
+        *,
+        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+        # only stream=True
+        return_delta: bool = False,
+        print_idx: Optional[List[int]] = None,
+        first_num_space: Optional[List[int]] = None,
     ):
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
@@ -688,8 +684,7 @@ register_template(
 register_template(TemplateType.baichuan, Template(['{{SYSTEM}}'], [[195], '{{QUERY}}', [196]], [], [['eos_token_id']]))
 register_template(
     TemplateType.chatglm2,
-    Template([[64790, 64792], '{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
-             [['eos_token_id']]))
+    Template([[64790, 64792], '{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'], [['eos_token_id']]))
 
 register_template(TemplateType.chatglm_generation, Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]))
 
@@ -1071,8 +1066,8 @@ class Phi3VisionTemplate(Template):
     phi3_vl_prompt = ['<|user|>\n', '<image>', '\n{{QUERY}}<|end|>\n<|assistant|>\n']
 
     def __init__(self):
-        Template.__init__(self, [], self.phi3_vl_prompt, ['<|end|>'],
-                          ['<|end|>'], _default_phi3_system, ['<|system|>{{SYSTEM}}<|end|>'])
+        Template.__init__(self, [], self.phi3_vl_prompt, ['<|end|>'], ['<|end|>'], _default_phi3_system,
+                          ['<|system|>{{SYSTEM}}<|end|>'])
 
     def _simplify_context_list(self, context_list: List[Context],
                                compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
@@ -1082,10 +1077,13 @@ class Phi3VisionTemplate(Template):
         image_path = example.get('images')
         if image_path:
             raw_images = [_read_from_path(path) for path in image_path]
-            image_infos = [self.model.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images]
+            image_infos = [
+                self.model.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images
+            ]
             pixel_values = torch.concat([image_info['pixel_values'] for image_info in image_infos], dim=0)
             image_sizes = torch.concat([image_info['image_sizes'] for image_info in image_infos], dim=0)
             example['image_info'] = image_infos
+            example['num_img_tokens'] = self.model.processor.image_processor.num_img_tokens
         inputs, _ = super().encode(example)
         if image_path:
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
@@ -1099,10 +1097,10 @@ class Phi3VisionTemplate(Template):
         return res
 
     def _encode_context_list(
-            self,
-            context_list: List[Context],
-            compute_loss_idx: List[float],
-            **kwargs,
+        self,
+        context_list: List[Context],
+        compute_loss_idx: List[float],
+        **kwargs,
     ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         tokenizer = self.tokenizer
@@ -1117,7 +1115,8 @@ class Phi3VisionTemplate(Template):
         for i, (context, loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
             if context == '<image>':
                 if images and image_iid < len(images):
-                    token_list = self._convert_images_texts_to_inputs(image_iid+1, images[image_iid])
+                    token_list = self._convert_images_texts_to_inputs(image_iid + 1, images[image_iid],
+                                                                      kwargs.get('num_img_tokens'))
                 else:
                     token_list = []
                 image_iid += 1
@@ -1137,15 +1136,13 @@ class Phi3VisionTemplate(Template):
             loss_scale.extend([loss_weight] * len(token_list))
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
-    def _convert_images_texts_to_inputs(self, iid, images):
+    def _convert_images_texts_to_inputs(self, iid, images, default_img_tokens):
         if 'num_img_tokens' in images:
             num_img_tokens = images['num_img_tokens']
         else:
             assert 'num_crops' in images, 'num_crops must be provided in images if num_img_tokens is not provided'
             num_crops = images['num_crops']
-            num_img_tokens = [_num_crops * self.num_img_tokens for _num_crops in num_crops]
-
-        images, image_sizes = images['pixel_values'], images['image_sizes']
+            num_img_tokens = [_num_crops * default_img_tokens for _num_crops in num_crops]
         return [-iid] * num_img_tokens[0]
 
 
@@ -1573,12 +1570,12 @@ register_template(
 
 
 def get_template(
-        template_type: str,
-        tokenizer: PreTrainedTokenizerBase,
-        default_system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-        **kwargs,
+    template_type: str,
+    tokenizer: PreTrainedTokenizerBase,
+    default_system: Optional[str] = None,
+    max_length: Optional[int] = None,
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+    **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])
