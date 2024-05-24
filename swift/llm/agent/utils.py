@@ -40,8 +40,8 @@ def calculate_loss_scale(response: str,
         weights = []
         agent_content = []
         for c in agent_parts:
-            weights += loss_scale_map[c['key']][0]
-            weights += loss_scale_map[c['key']][1]
+            weights += [loss_scale_map[c['key']][0]]
+            weights += [loss_scale_map[c['key']][1]]
             agent_content.append(c['key'])
             agent_content.append(c['content'])
         return agent_content, weights
