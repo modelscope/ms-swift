@@ -902,17 +902,17 @@ def extract_file(archive_path, extract_to):
             _extract_from_archive(tar, members, extract_to, member_size_attr='size')
 
 
-def _extract_from_archive(archive, members, extract_to,member_size_attr):
+def _extract_from_archive(archive, members, extract_to, member_size_attr):
     members_to_extract = []
     for member in members:
         try:
             member_size = getattr(member, member_size_attr)
         except AttributeError:
-            # 如果成员没有指定的属性,则跳过该成员
             continue
         filename = os.path.normpath(os.path.join(extract_to, member.filename))
         if os.path.exists(filename):
-            members_to_extract.append(member)
+            if os.path.getsize(filename) != member_size:
+                members_to_extract.append(member)
         else:
             members_to_extract.append(member)
 
