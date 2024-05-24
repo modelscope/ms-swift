@@ -433,6 +433,7 @@ class SftArguments(ArgumentsBase):
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
+    loss_scale_config_path: Optional[str] = 'DEFAULT'
     system: Optional[str] = None
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
@@ -697,6 +698,10 @@ class SftArguments(ArgumentsBase):
             if self.deepspeed == ds_name:
                 self.deepspeed = os.path.join(ds_config_folder, ds_config)
                 break
+        if self.loss_scale_config_path:
+            if self.loss_scale_config_path == 'DEFAULT':
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'loss_scale_config.json'))
 
         self.handle_path()
         self.handle_custom_register()

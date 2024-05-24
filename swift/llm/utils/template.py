@@ -209,6 +209,7 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
+        self.loss_scale_map = kwargs.get('loss_scale_map', None)
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system']:
@@ -263,7 +264,7 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale)
+                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale, self.loss_scale_map)
                     res_context_list.extend(content_part)
                     compute_loss_idx.extend(weight_part)
                     continue
