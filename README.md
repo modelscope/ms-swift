@@ -47,6 +47,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 2024.05.24: Supports Phi3-vision model, Use model_type `phi3-vision-128k-instruct` to train.
 - 2024.05.22: Supports DeepSeek-V2-Lite series models, model_type are `deepseek-v2-lite` and `deepseek-v2-lite-chat`
 - 2024.05.22: Supports TeleChat-12B-v2 model with quantized version, model_type are `telechat-12b-v2` and `telechat-12b-v2-gptq-int4`
 - 🔥2024.05.21: Inference and fine-tuning support for MiniCPM-Llama3-V-2_5 are now available. For more details, please refer to [minicpm-v-2.5 Best Practice](docs/source/Multi-Modal/minicpm-v-2.5最佳实践.md).
@@ -521,18 +522,19 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 | Model Type         | Model Introduction                                                           | Language           | Model Size                         | Model Type         |
 |------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
-| Qwen-VL            | [Tongyi Qwen vision model](https://github.com/QwenLM)                        | Chinese<br>English    | 7B<br>including quantized versions | base model<br>chat model |
-| Qwen-Audio         | [Tongyi Qwen speech model](https://github.com/QwenLM)                        | Chinese<br>English    | 7B                                 | base model<br>chat model |
-| YI-VL              | [01AI's YI series vision models](https://github.com/01-ai)                   | Chinese<br>English    | 6B-34B                             | chat model         |
+| Qwen-VL            | [Tongyi Qwen vision model](https://github.com/QwenLM)                        | Chinese<br>English | 7B<br>including quantized versions | base model<br>chat model |
+| Qwen-Audio         | [Tongyi Qwen speech model](https://github.com/QwenLM)                        | Chinese<br>English | 7B                                 | base model<br>chat model |
+| YI-VL              | [01AI's YI series vision models](https://github.com/01-ai)                   | Chinese<br>English | 6B-34B                             | chat model         |
 | XComposer2         | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese<br>English | 7B                                 | chat model         |
-| DeepSeek-VL        | [DeepSeek series vision models](https://github.com/deepseek-ai)              | Chinese<br>English    | 1.3B-7B                            | chat model         |
+| DeepSeek-VL        | [DeepSeek series vision models](https://github.com/deepseek-ai)              | Chinese<br>English | 1.3B-7B                            | chat model         |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5  | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM) | Chinese<br>English | 3B-9B            | chat model          |
-| CogVLM<br>CogVLM2<br>CogAgent | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | Chinese<br>English    | 17B-19B                            | chat model         |
-| Llava              | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English | 7B-34B                             | chat model |
+| CogVLM<br>CogVLM2<br>CogAgent | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | Chinese<br>English | 17B-19B                            | chat model         |
+| Llava              | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English            | 7B-34B                             | chat model |
 | Llava-Next              | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                  | Chinese<br>English | 8B-110B                             | chat model |
-| mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English | 11B                                | chat model |
+| mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English            | 11B                                | chat model |
 | InternVL           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 25.5B<br>including quantized version                              | chat model |
-| Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English | 8B                                 | chat model |
+| Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English            | 8B                                 | chat model |
+| Phi3                                      | Microsoft                                                                  | English            | 4B              | chat model |
 
 #### Diffusion Models
 
