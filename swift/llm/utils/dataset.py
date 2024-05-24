@@ -929,7 +929,7 @@ def download_sharegpt4v_dataset(requirement:list):
     return git_cache_dir
 
 def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
-    if not hasattr(dataset, 'data_dir'):
+    if not hasattr(dataset, '_image_dir'):
         split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
         IMAGE_DATASET_REQUIREMENTS = {
             'ShareGPT4V':['coco','sam','llava','wikiart','share_textvqa','web-celebrity','web-landmark'],
@@ -942,14 +942,14 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
         for sp in split:
             dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
         # just for debug
-        # dataset.data_dir = download_sharegpt4v_dataset(dataset_required)
-    dataset.data_dir = '/mnt/workspace/.cache/modelscope/_image_cache'
+        dataset._image_dir = download_sharegpt4v_dataset(dataset_required)
+    dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache' # debug
     images = []
     query = []
     response = []
 
     for d in tqdm(dataset):
-        image_path = os.path.join(dataset.data_dir, d['image'])
+        image_path = os.path.join(dataset._image_dir, d['image'])
         if not os.path.exists(image_path):
             continue
         else:
