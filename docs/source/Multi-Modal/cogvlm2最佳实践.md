@@ -114,14 +114,14 @@ seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = '距离各城市多远？'
-response, _ = inference(model, template, query, images=images)
+response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
 query = '距离最远的城市是哪？'
 images = images
-gen = inference_stream(model, template, query, images=images)
+gen = inference_stream(model, template, query, history, images=images)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for response, _ in gen:
@@ -134,7 +134,7 @@ print()
 query: 距离各城市多远？
 response: 距离马踏Mata有14km，距离阳江Yangjiang有62km，距离广州Guangzhou有293km。
 query: 距离最远的城市是哪？
-response: 距离最远的城市是广州Guangzhou。
+response: 距离最远的城市是广州Guangzhou，有293km。
 """
 ```
 

@@ -248,7 +248,7 @@ class Template:
         self,
         context_list: List[Context],
         res_context_list: List[Context],  # inplace
-        compute_loss_idx: List[float],  # inplace
+        loss_scale_list: List[float],  # inplace
         system: Optional[str] = None,
         query: Optional[str] = None,
         response: Optional[str] = None,
@@ -265,7 +265,7 @@ class Template:
                     assert response is not None
                     content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale)
                     res_context_list.extend(content_part)
-                    compute_loss_idx.extend(weight_part)
+                    loss_scale_list.extend(weight_part)
                     continue
                 old_str_list = ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}']
                 new_str_list = [system, query, round0, round1]
@@ -273,35 +273,35 @@ class Template:
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
             res_context_list.append(context)
-            compute_loss_idx.append(0.0 if context not in self.suffix else 1.0)
+            loss_scale_list.append(0.0 if context not in self.suffix else 1.0)
 
     @staticmethod
     def _simplify_context_list(context_list: List[Context],
-                               compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
+                               loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
         res: List[Context] = []  # result of context_list
-        res_idx: List[float] = []  # result of compute_loss_idx
+        res_loss_scale: List[float] = []  # result of loss_scale_list
         temp: List[str] = []
         temp_index: List[int] = []
-        for i, (context, loss_idx) in enumerate(zip(context_list, compute_loss_idx)):
-            if isinstance(context, str) and compute_loss_idx[i] == 0.0:
+        for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
+            if isinstance(context, str) and loss_scale_list[i] == 0.0:
                 temp.append(context)
                 temp_index.append(i)
             else:
                 if len(temp) > 0:
                     res.append(''.join(temp))
-                    res_idx.append(0.0)
+                    res_loss_scale.append(0.0)
                     temp.clear()
                 res.append(context)
-                res_idx.append(loss_idx)
+                res_loss_scale.append(loss_scale)
         if len(temp) > 0:
             res.append(''.join(temp))
-            res_idx.append(0.0)
-        return res, res_idx
+            res_loss_scale.append(0.0)
+        return res, res_loss_scale
 
     def _encode_context_list(
         self,
         context_list: List[Context],
-        compute_loss_idx: List[float],
+        loss_scale_list: List[float],
     ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         tokenizer = self.tokenizer
@@ -309,7 +309,7 @@ class Template:
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
-        for i, (context, loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
+        for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
                 self._concat_tokenizer_kwargs(tokenizer_kwargs, curr_tokenizer_kwargs)
@@ -319,7 +319,7 @@ class Template:
             else:
                 token_list = context
             input_ids += token_list
-            if compute_loss_idx[i] > 0.0:
+            if loss_scale_list[i] > 0.0:
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
@@ -338,17 +338,17 @@ class Template:
         """
         history = history.copy()
         res_context_list: List[Context] = []
-        compute_loss_idx: List[float] = []
+        loss_scale_list: List[float] = []
         if auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
-                compute_loss_idx.append(0.)
+                loss_scale_list.append(0.)
         if system is None:
             prefix = self.prefix
         else:
             prefix = self.prefix_has_system
-        self._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
+        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
         history.append([query, response])
         for i, (q, r) in enumerate(history):
             context_list = self.prompt.copy()
@@ -361,10 +361,10 @@ class Template:
                 context_list += self.suffix
             if q or r:
                 self._concat_context_list(
-                    context_list, res_context_list, compute_loss_idx, query=q, response=r, round0=i)
+                    context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
 
-        res_context_list, compute_loss_idx = self._simplify_context_list(res_context_list, compute_loss_idx)
-        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, compute_loss_idx)
+        res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
         if response is None:
             labels = None
@@ -1231,7 +1231,7 @@ class CogTemplate(Template):
         image_token_len = inputs2['token_type_ids'].sum()
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        token_type_ids = inputs2['token_type_ids'].tolist()
+        inputs['token_type_ids'] = [0] + [1] * image_token_len + [0] * len(input_ids[1:])
         inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
@@ -1240,7 +1240,6 @@ class CogTemplate(Template):
         if 'cross_images' in inputs2:
             # is cogagent
             inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
-        inputs['token_type_ids'] = token_type_ids + [0] * (len(inputs['input_ids']) - len(token_type_ids))
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
