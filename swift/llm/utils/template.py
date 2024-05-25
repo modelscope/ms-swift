@@ -1077,18 +1077,28 @@ class PaliGemmaTemplate(Template):
             pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
             inputs['input_ids'] = self.tokenizer.encode('<image>', add_special_tokens=False) * self.model.processor.image_processor.image_seq_length + inputs['input_ids']
-            if 'labels' in inputs:
+            if inputs.get('labels') is not None:
                 inputs['labels'] = [-100] * self.model.processor.image_processor.image_seq_length + \
                                       inputs['labels']
             if 'loss_scale' in inputs:
                 inputs['loss_scale'] = [0] * self.model.processor.image_processor.image_seq_length + \
                                    inputs['loss_scale']
+            if 'token_type_ids' in inputs:
+                inputs['token_type_ids'] = [0] * self.model.processor.image_processor.image_seq_length + \
+                                   inputs['token_type_ids']
+        if 'response' not in example:
+            inputs.pop('token_type_ids', None)
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        if 'token_type_ids' in batch[0]:
+            res['token_type_ids'] = torch.concat([b['token_type_ids'] for b in batch])
         return res
+    
+    def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
+        return {'return_token_type_ids': True}
 
 
 register_template(
