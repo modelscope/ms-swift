@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from copy import deepcopy
+from copy import copy, deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -222,6 +222,7 @@ class Template:
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
+        example = copy(example)
         query: Optional[str] = example.pop('query', None)
         response: Optional[str] = example.pop('response', None)
         history: Optional[History] = example.pop('history', None)
