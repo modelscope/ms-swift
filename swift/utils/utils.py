@@ -227,12 +227,11 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
     res_texts = []
     for i in range(len(text_list) - 1, -1, -1):
         if text_list[i].get('key') == '':
-            res_texts.append(text_list.pop(i))
+            res_texts.append(text_list.pop(i)['content'])
     res_texts.reverse()
 
     if len(res_texts):
         for res_text in res_texts:
-            res_text = text_list.pop('')
             last_idx = 0
 
             for pattern, scale in regex_delimiters.items():
@@ -241,8 +240,8 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
                 for match in re.finditer(pattern, res_text, re.DOTALL):
                     if match.start() > last_idx:
                         text_list.append({'key': '', 'content': res_text[last_idx:match.start()]})
-                    text_list.appen({'key': scale, 'content': match.group(1)})
+                    text_list.append({'key': scale[0], 'content': match.group(0)})
                     last_idx = match.end()
             if last_idx < len(res_text):
-                text_list.append({'': res_text[last_idx:]})
+                text_list.append({'key': '', 'content': res_text[last_idx:]})
     return text_list
