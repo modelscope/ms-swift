@@ -70,6 +70,7 @@ class TemplateType:
     minicpm_v = 'minicpm-v'
     minicpm_v_v2_5 = 'minicpm-v-v2_5'
     gemma = 'gemma'
+    paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
@@ -1061,6 +1062,37 @@ register_template(
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)
+
+
+class PaliGemmaTemplate(Template):
+
+    def __init__(self):
+        Template.__init__(self, ['<bos>'], ['{{QUERY}}\n'], None, [['eos_token_id']])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'images' in example:
+            image_path = example['images']
+            raw_image = _read_from_path(image_path[0])
+            pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['input_ids'] = self.tokenizer.encode('<image>', add_special_tokens=False) * self.model.processor.image_processor.image_seq_length + inputs['input_ids']
+            if 'labels' in inputs:
+                inputs['labels'] = [-100] * self.model.processor.image_processor.image_seq_length + \
+                                      inputs['labels']
+            if 'loss_scale' in inputs:
+                inputs['loss_scale'] = [0] * self.model.processor.image_processor.image_seq_length + \
+                                   inputs['loss_scale']
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        return res
+
+
+register_template(
+    TemplateType.paligemma, PaliGemmaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 class Phi3VisionTemplate(Template):
