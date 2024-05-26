@@ -40,7 +40,7 @@ def calculate_loss_scale(response: str,
         agent_content = []
         for c in agent_parts:
             if isinstance(c['key'], (float, int)):
-                weights += c['key']
+                weights += [c['key']]
                 agent_content.append(c['content'])
             else:
                 if c['key'] in loss_scale_map:
