@@ -46,11 +46,11 @@ def calculate_loss_scale(response: str,
                 if c['key'] in loss_scale_map:
                     weights += [loss_scale_map[c['key']][0]]
                     weights += [loss_scale_map[c['key']][1]]
+                    agent_content.append(c['key'])
+                    agent_content.append(c['content'])
                 else:
                     weights += [1.0]
-                    weights += [1.0]
-                agent_content.append(c['key'])
-                agent_content.append(c['content'])
+                    agent_content.append(c['content'])
         return agent_content, weights
     else:
         return [response], [1.0]
