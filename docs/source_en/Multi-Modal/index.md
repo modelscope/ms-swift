@@ -1,13 +1,21 @@
 ## Multi-Modal Documentation
 
-### Multi-Modal Best Practices
+### Multi-Modal Best Practice
 
-1. [Qwen-VL Best Practices](qwen-vl-best-practice.md)
-2. [Qwen-Audio Best Practices](qwen-audio-best-practice.md)
-3. [Llava Best Practices](llava-best-practice.md)
-4. [Deepseek-VL Best Practices](deepseek-vl-best-practice.md)
-5. [Yi-VL Best Practices.md](yi-vl-best-practice.md)
-6. [Internlm2-Xcomposers Best Practices](internlm-xcomposer2-best-practice.md)
-7. [MiniCPM-V Best Practices](minicpm-v-best-practice.md)
-8. [CogVLM Best Practices](cogvlm-best-practice.md), [CogVLM2 Best Practices](cogvlm2-best-practice.md)
-9. [InternVL-Chat-V1.5 Best Practices](internvl-best-practice.md)
+A single round of dialogue can contain multiple images (or no images):
+1. [Qwen-VL Best Practice](qwen-vl-best-practice.md)
+2. [Qwen-Audio Best Practice](qwen-audio-best-practice.md)
+3. [Deepseek-VL Best Practice](deepseek-vl-best-practice.md)
+4. [Internlm2-Xcomposers Best Practice](internlm-xcomposer2-best-practice.md)
+5. [Phi3-Vision Best Practice](phi3-vision-best-practice.md)
+
+
+A single round of dialogue can only contain one image:
+1. [Llava Best Practice](llava-best-practice.md)
+2. [Yi-VL Best Practice.md](yi-vl-best-practice.md)
+5. [InternVL-Chat-V1.5 Best Practice](internvl-best-practice.md)
+
+
+整个对话围绕一张图片:
+1. [CogVLM Best Practice](cogvlm-best-practice.md), [CogVLM2 Best Practice](cogvlm2-best-practice.md)
+2. [MiniCPM-V Best Practice](minicpm-v-best-practice.md)

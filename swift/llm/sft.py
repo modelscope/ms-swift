@@ -21,7 +21,7 @@ from swift.utils import (check_json_format, compute_acc_metrics, compute_nlg_met
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
+from .utils import (MODEL_MAPPING, TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
                     get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
                     sort_by_max_length, stat_dataset)
 
@@ -144,7 +144,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
         logger.info('Setting model.config.use_cache: False')
-        model.enable_input_require_grads()
+        disable_require_grads = MODEL_MAPPING[args.model_type].get('disable_require_grads', False)
+        if not disable_require_grads:
+            model.enable_input_require_grads()
 
     if use_torchacc():
         model.config.use_cache = False

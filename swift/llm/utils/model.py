@@ -344,9 +344,10 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
+    phi3_small_128k_instruct = 'phi3-small-128k-instruct'
+    phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
+
     phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
-    phi3_small_128k_instruct = 'phi3_small_128k_instruct'
-    phi3_medium_128k_instruct = 'phi3_medium_128k_instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
@@ -889,7 +890,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
         model_config=model_config,
         automodel_class=LlavaForConditionalGeneration,
         **kwargs)
-    model.processor = processor
+    tokenizer.processor = processor
     return model, tokenizer
 
 
@@ -1085,7 +1086,10 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     'LLM-Research/Phi-3-vision-128k-instruct',
     LoRATM.phi3,
     TemplateType.phi3_vl,
-    support_vllm=False,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    disable_require_grads=True,
+    tags=['multi-modal', 'vision'],
     hf_model_id='microsoft/Phi-3-vision-128k-instruct')
 def get_model_tokenizer_phi3_vision(model_dir: str,
                                     torch_dtype: Dtype,
@@ -1093,23 +1097,10 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
                                     load_model: bool = True,
                                     **kwargs):
     from transformers import AutoProcessor
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    model.processor = processor
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
 
-    def _require_grad_hook(module, inputs, output):
-        output.requires_grad = False
-
-    for module in model.modules():
-        if module.__class__.__name__ == 'Phi3ImageEmbedding':
-            module.wte.register_forward_hook(_require_grad_hook)
-
-    def _enable_input_require_grads(self):
-        pass
-
-    model.enable_input_require_grads = MethodType(_enable_input_require_grads, model)
     return model, tokenizer
 
 
