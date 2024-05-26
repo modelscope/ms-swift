@@ -312,7 +312,7 @@ The eval parameters inherit from the infer parameters, and additionally include 
 
 - `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
 
-- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
+- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set).
 
 - `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
 

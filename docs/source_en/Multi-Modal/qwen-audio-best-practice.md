@@ -1,4 +1,4 @@
-# Qwen-Audio Best Practices
+# Qwen-Audio Best Practice
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
