@@ -220,7 +220,7 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
     if len(text_list):
         text_list[-1]['content'] = last_words
     else:
-        text_list.append({'': last_words})
+        text_list.append({'key': '', 'content': last_words})
 
     regex_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 1}
     for i in range(len(text_list) - 1, -1, -1):
