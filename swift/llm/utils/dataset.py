@@ -933,7 +933,7 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
     processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images')
     return processer(dataset)
 
@@ -988,7 +988,7 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
     processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images')
     return processer(dataset)
 
