@@ -75,6 +75,7 @@ class TemplateType:
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
     phi3 = 'phi3'
+    phi3_vl = 'phi3-vl'
     telechat = 'telechat'
     telechat_v2 = 'telechat-v2'
     dbrx = 'dbrx'
@@ -921,8 +922,8 @@ class InternvlTemplate(Template):
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
             if example.get('query') is not None:
-                example['query'] = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * \
-                    image_bs + '</img>\n' + example['query']
+                example['query'] = ('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n'
+                                    + example['query'])
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
@@ -1035,7 +1036,6 @@ register_template(
 
 
 class LLavaLlamaTemplate(Template):
-
     llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
                                 '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
 
@@ -1064,10 +1064,62 @@ register_template(
     lazy_tokenize=True)
 
 
+class Phi3VisionTemplate(Template):
+
+    def __init__(self):
+        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+                          None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+        example['query'], example['history'], images_path = replace_img_tab(example['query'], history, '<s>')
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            images.append(image)
+        inputs, _ = super().encode(example)
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 1)[1:]  # 1: <s>
+        if len(images) > 0:
+            processor = self.tokenizer.processor
+            inputs.update(processor.image_processor(images, return_tensors='pt'))
+            assert len(idx_list) == len(images)
+            res_input_ids = []
+            res_labels = []
+            num_img_tokens = inputs.pop('num_img_tokens').tolist()
+            idx_list.insert(0, -1)
+            for i in range(len(idx_list) - 1):
+                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [-1] * num_img_tokens[i] + [1]
+                if labels is not None:
+                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
+            res_input_ids += input_ids[idx_list[-1] + 1:]
+            input_ids = res_input_ids
+            if labels is not None:
+                res_labels += labels[idx_list[-1] + 1:]
+                labels = res_labels
+
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
+        return res
+
+
+register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
+
+
 class LlamaLlavaNextTemplate(LLavaTemplate):
     default_system = 'You are a helpful language and vision assistant. ' \
-            'You are able to understand the visual content that the user provides, ' \
-            'and assist the user with a variety of tasks using natural language.'
+                     'You are able to understand the visual content that the user provides, ' \
+                     'and assist the user with a variety of tasks using natural language.'
 
     def __init__(self):
         Template.__init__(self, [], [
@@ -1473,10 +1525,11 @@ register_template(TemplateType.wizardlm2,
 
 _default_phi3_system = ('You are a helpful digital assistant. '
                         'Please provide safe, ethical and accurate information to the user.')
+
 register_template(
     TemplateType.phi3,
-    Template(['<s>'], ['<|user|>{{QUERY}}<|end|><|assistant|>'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
-             '<s><|system|>{{SYSTEM}}<|end|>'))
+    Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'], _default_phi3_system,
+             '<s><|system|>\n{{SYSTEM}}<|end|>\n'))
 
 register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))

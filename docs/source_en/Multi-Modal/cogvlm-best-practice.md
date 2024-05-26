@@ -1,4 +1,4 @@
-# CogVLM Best Practices
+# CogVLM Best Practice
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)

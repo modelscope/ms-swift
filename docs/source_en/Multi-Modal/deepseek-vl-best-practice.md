@@ -1,4 +1,4 @@
-# Deepseek-VL Best Practices
+# Deepseek-VL Best Practice
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
