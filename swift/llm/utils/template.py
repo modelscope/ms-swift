@@ -1173,11 +1173,11 @@ class DeepseekVLTemplate(Template):
                                 ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
         images = example.pop('images', None)
         assert images is None, ('Please read the best practices: https://github.com/modelscope/swift/blob/main/'
                                 'docs/source/Multi-Modal/deepseek-vl最佳实践.md')
 
-        example = example.copy()
         history = example.pop('history', None)
         if history is None:
             history = []
