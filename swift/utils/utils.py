@@ -223,25 +223,25 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
         text_list.append({'': last_words})
 
     regex_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 1}
-
-    res_texts = []
     for i in range(len(text_list) - 1, -1, -1):
         if text_list[i].get('key') == '':
-            res_texts.append(text_list.pop(i)['content'])
-    res_texts.reverse()
-
-    if len(res_texts):
-        for res_text in res_texts:
+            res_text = text_list.pop(i)['content']
+            insert_pos = i
             last_idx = 0
 
+            segments = []
             for pattern, scale in regex_delimiters.items():
-                from ast import literal_eval as eval
                 pattern = eval(pattern)
-                for match in re.finditer(pattern, res_text, re.DOTALL):
+                matches = list(re.finditer(pattern, res_text, re.DOTALL))
+                for match in matches:
                     if match.start() > last_idx:
-                        text_list.append({'key': '', 'content': res_text[last_idx:match.start()]})
-                    text_list.append({'key': scale[0], 'content': match.group(0)})
+                        segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
+                    segments.append({'key': scale[0], 'content': match.group(0)})
                     last_idx = match.end()
+
             if last_idx < len(res_text):
-                text_list.append({'key': '', 'content': res_text[last_idx:]})
+                segments.append({'key': '', 'content': res_text[last_idx:]})
+
+            for segment in reversed(segments):
+                text_list.insert(insert_pos, segment)
     return text_list
