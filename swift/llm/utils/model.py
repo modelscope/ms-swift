@@ -890,7 +890,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
         model_config=model_config,
         automodel_class=LlavaForConditionalGeneration,
         **kwargs)
-    model.processor = processor
+    tokenizer.processor = processor
     return model, tokenizer
 
 

@@ -1046,7 +1046,7 @@ class LLavaLlamaTemplate(Template):
         inputs, _ = super().encode(example)
         image_path = example['images']
         raw_image = _read_from_path(image_path[0])
-        pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
         inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
 

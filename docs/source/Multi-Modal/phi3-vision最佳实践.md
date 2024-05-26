@@ -191,7 +191,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/phi3-vision-128k-instruct/vx-xxx/checkpoint-xxx \
-    --merge_lora true
+    --merge_lora true --safe_serialization false
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/phi3-vision-128k-instruct/vx-xxx/checkpoint-xxx-merged \
