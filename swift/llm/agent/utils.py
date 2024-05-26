@@ -3,7 +3,6 @@ from typing import List, Tuple
 
 from swift.utils import get_logger
 from swift.utils.utils import split_str_parts_by
-
 logger = get_logger()
 
 
@@ -34,19 +33,23 @@ def calculate_loss_scale(response: str,
     Returns:
         A tuple of agent response parts and their weights.
     """
-    if any(key in response for key in loss_scale_map.keys()) and use_loss_scale:
+    if use_loss_scale:
         agent_parts = split_str_parts_by(response, loss_scale_map)
         weights = []
         agent_content = []
         for c in agent_parts:
-            if c['key'] in loss_scale_map:
-                weights += [loss_scale_map[c['key']][0]]
-                weights += [loss_scale_map[c['key']][1]]
+            if isinstance(c['key'], (float, int)):
+                weights += c['key']
+                agent_content.append(c['content'])
             else:
-                weights += [1.0]
-                weights += [1.0]
-            agent_content.append(c['key'])
-            agent_content.append(c['content'])
+                if c['key'] in loss_scale_map:
+                    weights += [loss_scale_map[c['key']][0]]
+                    weights += [loss_scale_map[c['key']][1]]
+                else:
+                    weights += [1.0]
+                    weights += [1.0]
+                agent_content.append(c['key'])
+                agent_content.append(c['content'])
         return agent_content, weights
     else:
         return [response], [1.0]
