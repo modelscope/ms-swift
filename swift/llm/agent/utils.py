@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Tuple
+from typing import List, Optional, Tuple, Union
 
 from swift.utils import get_logger
 from swift.utils.utils import split_str_parts_by
@@ -9,7 +9,8 @@ logger = get_logger()
 
 def calculate_loss_scale(response: str,
                          use_loss_scale=False,
-                         loss_scale_map: dict[str:list] = None) -> Tuple[List[str], List[float]]:
+                         loss_scale_map: dict[str:list] = None,
+                         loss_scale_value: Optional[Union[str, float, int]] = None) -> Tuple[List[str], List[float]]:
     """Calculate the loss scale by splitting the agent response.
 
     This algorithm comes from paper: https://arxiv.org/pdf/2309.00986.pdf
@@ -35,6 +36,8 @@ def calculate_loss_scale(response: str,
         A tuple of agent response parts and their weights.
     """
     if use_loss_scale:
+        if loss_scale_value:
+            return [response], [float(loss_scale_value)]
         agent_parts = split_str_parts_by(response, loss_scale_map)
         weights = []
         agent_content = []

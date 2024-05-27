@@ -226,6 +226,7 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
+        loss_scale_value: Optional[str] = example.get('loss_scale', None)
         if history is None:
             history = []
         if len(history) > 0:
@@ -240,7 +241,13 @@ class Template:
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
+            query,
+            response,
+            history,
+            system,
+            self.truncation_strategy,
+            auto_add_bos=self.auto_add_bos,
+            loss_scale_value=loss_scale_value)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -254,6 +261,7 @@ class Template:
         query: Optional[str] = None,
         response: Optional[str] = None,
         round0: Optional[int] = None,
+        loss_scale_value: Optional[Union[str, float, int]] = None,
     ) -> None:
         # concat context list and replace placeholder
         round1 = None
@@ -264,7 +272,8 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale, self.loss_scale_map)
+                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale, self.loss_scale_map,
+                                                                     loss_scale_value)
                     res_context_list.extend(content_part)
                     compute_loss_idx.extend(weight_part)
                     continue
@@ -333,7 +342,8 @@ class Template:
                 history: History,
                 system: Optional[str],
                 truncation_strategy: str,
-                auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+                auto_add_bos: bool = False,
+                loss_scale_value: Optional[Union[str, float, int]] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
@@ -349,7 +359,8 @@ class Template:
             prefix = self.prefix
         else:
             prefix = self.prefix_has_system
-        self._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
+        self._concat_context_list(
+            prefix, res_context_list, compute_loss_idx, system=system, loss_scale_value=loss_scale_value)
         history.append([query, response])
         for i, (q, r) in enumerate(history):
             context_list = self.prompt.copy()
@@ -362,7 +373,13 @@ class Template:
                 context_list += self.suffix
             if q or r:
                 self._concat_context_list(
-                    context_list, res_context_list, compute_loss_idx, query=q, response=r, round0=i)
+                    context_list,
+                    res_context_list,
+                    compute_loss_idx,
+                    query=q,
+                    response=r,
+                    round0=i,
+                    loss_scale_value=loss_scale_value)
 
         res_context_list, compute_loss_idx = self._simplify_context_list(res_context_list, compute_loss_idx)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, compute_loss_idx)
