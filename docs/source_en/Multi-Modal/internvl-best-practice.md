@@ -1,4 +1,4 @@
-# InternVL Best Practices
+# InternVL Best Practice
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)

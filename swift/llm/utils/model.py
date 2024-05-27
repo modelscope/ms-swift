@@ -344,6 +344,10 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
+    phi3_small_128k_instruct = 'phi3-small-128k-instruct'
+    phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
+
+    phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
@@ -892,7 +896,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
         model_config=model_config,
         automodel_class=LlavaForConditionalGeneration,
         **kwargs)
-    model.processor = processor
+    tokenizer.processor = processor
     return model, tokenizer
 
 
@@ -1080,6 +1084,29 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
         model.get_input_embeddings()
     except NotImplementedError:
         model.__class__.get_input_embeddings = lambda self: self.model.embed_tokens
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.phi3_vision_128k_instruct,
+    'LLM-Research/Phi-3-vision-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3_vl,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    disable_require_grads=True,
+    tags=['multi-modal', 'vision'],
+    hf_model_id='microsoft/Phi-3-vision-128k-instruct')
+def get_model_tokenizer_phi3_vision(model_dir: str,
+                                    torch_dtype: Dtype,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+
     return model, tokenizer
 
 
@@ -1340,9 +1367,29 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.phi3,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=False,  # https://github.com/vllm-project/vllm/pull/4298
+    support_vllm=True,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
+@register_model(
+    ModelType.phi3_small_128k_instruct,
+    'LLM-Research/Phi-3-small-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-small-128k-instruct')
+@register_model(
+    ModelType.phi3_medium_128k_instruct,
+    'LLM-Research/Phi-3-medium-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-medium-128k-instruct')
 @register_model(
     ModelType.phi3_4b_4k_instruct,
     'LLM-Research/Phi-3-mini-4k-instruct',
@@ -2656,7 +2703,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
 
 
 def fix_internvl_inplace_bug(model) -> None:
-
     embedding = model.language_model.get_input_embeddings()
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
         old_forward = embedding.forward

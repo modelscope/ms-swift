@@ -1,4 +1,4 @@
-# Llava Best Practices
+# Llava Best Practice
 The document corresponds to the following models
 
 | model | model_type |

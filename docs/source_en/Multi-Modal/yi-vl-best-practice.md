@@ -1,4 +1,4 @@
-# Yi-VL Best Practices
+# Yi-VL Best Practice
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)

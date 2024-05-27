@@ -1,4 +1,4 @@
-# Qwen-VL Best Practices
+# Qwen-VL Best Practice
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)

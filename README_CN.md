@@ -48,6 +48,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
+- 2024.05.24: 支持Phi3多模态模型, 使用model_type `phi3-vision-128k-instruct`来训练.
 - 2024.05.22: 支持DeepSeek-V2-lite系列模型, model_type为 `deepseek-v2-lite`和`deekseek-v2-lite-chat`
 - 2024.05.22: 支持TeleChat-12b-v2模型和量化版本, model_type为 `telechat-12b-v2`和`telechat-12b-v2-gptq-int4`
 - 🔥2024.05.21: 支持 MiniCPM-Llama3-V-2_5 的推理与微调, 可以查看[minicpm-v-2.5最佳实践](docs/source/Multi-Modal/minicpm-v-2.5最佳实践.md).
@@ -518,20 +519,21 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 #### 多模态大模型
 
-| 模型类型        | 模型介绍                                                     | 语言      | 模型大小         | 模型类型          |
-| --------------- | ------------------------------------------------------------ | --------- | ---------------- | ----------------- |
-| Qwen-VL         | [通义千问视觉模型](https://github.com/QwenLM)                | 中文<br>英文 | 7B<br>包含量化版本 | base模型<br>chat模型 |
-| Qwen-Audio      | [通义千问语音模型](https://github.com/QwenLM)                | 中文<br>英文 | 7B               | base模型<br>chat模型 |
-| YI-VL           | [01AI的YI系列视觉模型](https://github.com/01-ai)             | 中文<br>英文 | 6B-34B           | chat模型          |
-| XComposer2      | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 7B               | chat模型          |
-| DeepSeek-VL     | [幻方系列视觉模型](https://github.com/deepseek-ai)           | 中文<br>英文 | 1.3B-7B          | chat模型          |
-| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5  | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 3B-9B            | chat模型          |
-| CogVLM<br>CogVLM2<br>CogAgent | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)  | 中文<br>英文 | 17B-19B          | chat模型          |
-| Llava      | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                | 英文 | 7B-34B               | chat模型 |
-| Llava-Next      | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                | 中文<br>英文 | 8B-110B       | chat模型 |
-| mPLUG-Owl      | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)         | 英文 | 11B               | chat模型 |
-| InternVL         | [InternVL](https://github.com/OpenGVLab/InternVL)                | 中文<br>英文 | 25.5B<br>包含量化版本 | chat模型 |
-| Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | 英文 | 8B  | chat model |
+| 模型类型                                      | 模型介绍                                                                       | 语言      | 模型大小            | 模型类型          |
+|-------------------------------------------|----------------------------------------------------------------------------| --------- |-----------------| ----------------- |
+| Qwen-VL                                   | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B<br>包含量化版本    | base模型<br>chat模型 |
+| Qwen-Audio                                | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B              | base模型<br>chat模型 |
+| YI-VL                                     | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B          | chat模型          |
+| XComposer2                                | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM)                      | 中文<br>英文 | 7B              | chat模型          |
+| DeepSeek-VL                               | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B         | chat模型          |
+| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5 | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM)                  | 中文<br>英文 | 3B-9B           | chat模型          |
+| CogVLM<br>CogVLM2<br>CogAgent             | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)                         | 中文<br>英文 | 17B-19B         | chat模型          |
+| Llava                                     | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文 | 7B-34B          | chat模型 |
+| Llava-Next                                | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 8B-110B         | chat模型 |
+| mPLUG-Owl                                 | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文 | 11B             | chat模型 |
+| InternVL                                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 25.5B<br>包含量化版本 | chat模型 |
+| Llava-llama3                              | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文 | 8B              | chat model |
+| Phi3                                      | Microsoft                                                                  | 英文 | 4B              | chat model |
 
 #### 扩散模型
 

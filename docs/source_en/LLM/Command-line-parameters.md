@@ -35,7 +35,7 @@
   - More fine-grained control over subsets: It uses the subsets specified during registration by default (if not specified during registration, it uses 'default'). For example, 'sharegpt-gpt4'. If subsets are specified, it uses the corresponding subset of the dataset. For example, 'sharegpt-gpt4:default/V3_format#2000'. Separated by '/'.
   - Support for dataset_id. For example, 'AI-ModelScope/alpaca-gpt4-data-zh#2000', 'HF::llm-wizard/alpaca-gpt4-data-zh#2000', 'hurner/alpaca-gpt4-data-zh#2000', 'HF::shibing624/alpaca-zh#2000'. If the dataset_id has been registered, it will use the preprocessing function, subsets, split, etc. specified during registration. Otherwise, it will use `SmartPreprocessor`, support 4 dataset formats, and use 'default' subsets, with split set to 'train'. The supported dataset formats can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset).
   - Support for dataset_path. For example, '1.jsonl#5000' (if it is a relative path, it is relative to the running directory).
-- `--val_dataset`: Specify separate validation datasets with the same format of the `dataset` argument. If using `val_dataset`, the `dataset_test_ratio` will be ignored.
+- `--val_dataset`: Specify separate validation datasets with the same format of the `dataset` argument, default is `[]`. If using `val_dataset`, the `dataset_test_ratio` will be ignored.
 - `--dataset_seed`: Seed for dataset processing, default is `42`. Exists as random_state, does not affect global seed.
 - `--dataset_test_ratio`: Used to specify the ratio for splitting the sub-dataset into training and validation sets. The default value is `0.01`. If `--val_dataset` is set, this parameter becomes ineffective.
 - `--train_dataset_sample`: The number of samples for the training dataset, default is `-1`, which means using the complete training dataset for training. This parameter is deprecated, please use `--dataset {dataset_name}#{dataset_sample}` instead.
@@ -239,6 +239,7 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
 - `--dtype`: Default is `'AUTO`, see `sft.sh command line arguments` for parameter details.
 - `--dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
+- `--val_dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
 - `--dataset_seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
 `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft.sh command line arguments`.
 - `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
@@ -311,7 +312,7 @@ The eval parameters inherit from the infer parameters, and additionally include 
 
 - `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
 
-- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
+- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set).
 
 - `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
 
