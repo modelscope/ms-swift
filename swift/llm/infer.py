@@ -464,6 +464,7 @@ def llm_infer(args: InferArguments) -> None:
                 history = data.get('history')
                 system = data.get('system')
                 images = data.get('images')
+                tools = data.get('tools')
                 if args.verbose and system is not None:
                     print(f'[SYSTEM]{system}')
                 if history is None:
@@ -474,6 +475,8 @@ def llm_infer(args: InferArguments) -> None:
                 kwargs['system'] = system
                 if images is not None:
                     kwargs['images'] = images
+                if tools is not None:
+                    kwargs['tools'] = tools
                 if args.truncation_strategy:
                     kwargs['truncation_strategy'] = args.truncation_strategy
                 if args.infer_backend == 'vllm':

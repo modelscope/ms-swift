@@ -687,7 +687,8 @@ def inference(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'images': kwargs.pop('images', None)  # for vl. str.
+        'images': kwargs.pop('images', None),  # for vl. str.
+        'tools':kwargs.pop('tools', None)
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
