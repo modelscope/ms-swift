@@ -1394,7 +1394,7 @@ class MiniCPMVTemplate(Template):
             else:
                 pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
         else:
-            placeholder = '<image>' + '<unk>' * config.query_num+ '</image>\n'
+            placeholder = '<image>' + '<unk>' * config.query_num + '</image>\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
