@@ -39,7 +39,7 @@ Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.co
 <<< clear
 <<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-计算结果是1452 + 4530 = 5982。
+计算结果是1452 + 45304 = 46756。
 --------------------------------------------------
 <<< clear
 <<< 根据图片中的内容写首诗

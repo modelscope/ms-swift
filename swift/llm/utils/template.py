@@ -1347,7 +1347,7 @@ class MiniCPMVTemplate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        idx = _findall(input_ids, 0)[0]  # first <unk>
+        idx = _findall(input_ids, -1)[0]
         config = self.model.config
         tgt_sizes = None
         slice_mode = getattr(config, 'slice_mode', False)
@@ -1404,7 +1404,7 @@ class MiniCPMVTemplate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户><unk>\n{{QUERY}}<AI>'], [], ['</s>']),
+    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', [-1], '\n{{QUERY}}<AI>'], [], ['</s>']),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
@@ -1414,10 +1414,10 @@ register_template(
 register_template(
     TemplateType.minicpm_v_v2_5,
     MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n<unk>\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>user<|end_header_id|>\n\n', [-1], '\n{{QUERY}}<|eot_id|>'
         '<|start_header_id|>assistant<|end_header_id|>\n\n'
     ], ['<|eot_id|>'], ['<|eot_id|>'],
-                    is_v2_5=True),
+                     is_v2_5=True),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
