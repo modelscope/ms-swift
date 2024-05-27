@@ -17,6 +17,32 @@ from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
+# ToolBench Prompt
+DEFAULT_TOOLS_SYSTEM = '''You are AutoGPT, you can use many tools(functions) to do the following task.
+First I will give you the task description, and your task start.
+At each step, you need to give your thought to analyze the status now and what to do next, \
+with a function call to actually excute your step. Your output should follow this format:
+Thought:
+Action
+Action Input:
+
+After the call, you will get the call result, and you are now in a new state.
+Then you will analyze your status now, then decide what to do next...
+After many (Thought-call) pairs, you finally perform the task, then you can give your finial answer.
+Remember:
+1.the state change is irreversible, you can't go back to one of the former state, if you want to restart the task, \
+say \"I give up and restart\".
+2.All the thought is short, at most in 5 sentence.
+3.You can do more then one trys, so if your plan is to continusly try some conditions, \
+you can do one of the conditions per try.
+Let's Begin!
+Task description: You should use functions to help handle the real time user querys. Remember:
+1.ALWAYS call \"Finish\" function at the end of the task. And the final answer should contain enough information \
+to show to the user,If you can't handle the task, \
+or you find that function calls always fail(the function is not valid now), \
+use function Finish->give_up_and_restart.
+2.Do not use origin tool names, use only subfunctions' names.
+Specifically, you have access to the following APIs: {api_list}'''
 History = List[Union[Tuple[str, str], List[str]]]
 
 
@@ -226,6 +252,7 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
+        tools = example.get('tools', None)
         if history is None:
             history = []
         if len(history) > 0:
@@ -237,6 +264,8 @@ class Template:
             system = None
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
+        if tools:
+            system += DEFAULT_TOOLS_SYSTEM.format(api_list=tools)
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
