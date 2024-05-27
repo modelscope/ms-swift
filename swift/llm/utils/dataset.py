@@ -876,7 +876,7 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
 
 def download_sharegpt4v_dataset(requirement: list):
     # TODO: local_path args
-    logger.info('--------------Downloading image datasets--------------')
+    logger.info('--------------Downloading image datasets and extract, it may be slow--------------')
 
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
     ZIP2EXTRACTION_PATHS = {
@@ -884,11 +884,11 @@ def download_sharegpt4v_dataset(requirement: list):
         'llava': 'data/llava/llava_pretrain/images',
         'coco': 'data/coco',
         'sam': 'data/sam/images',
-        'gqa': 'data/gqa/images',
-        'ocr_vqa': 'ocr_vqa/images',  # ?
-        'textvqa': 'textvqa/train_images',  # ?
-        'VG_100K': 'vg/VG_100K',  # ?
-        'VG_100K_2': 'vg/VG_100K_2',  #?
+        'gqa': 'data/gqa',
+        'ocr_vqa': '.',
+        'textvqa': 'textvqa',
+        'VG_100K': 'vg',
+        'VG_100K_2': 'vg',
         'share_textvqa': '.',
         'web-celebrity': '.',
         'web-landmark': '.',
