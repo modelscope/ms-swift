@@ -1332,6 +1332,15 @@ register_template(
 register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
 
+def _remove_idx(arr: List[int], idx_list: List[int]) -> List[int]:
+    res = []
+    idx_set = set(idx_list)
+    for i, x in enumerate(arr):
+        if i not in idx_set:
+            res.append(x)
+    return res
+
+
 class MiniCPMVTemplate(Template):
 
     def __init__(self, *args, **kwargs):
@@ -1347,12 +1356,18 @@ class MiniCPMVTemplate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        idx = _findall(input_ids, -1)[0]
+        idx_list = _findall(input_ids, -1)
+        if len(idx_list) >= 2:
+            input_ids = _remove_idx(input_ids, idx_list[1:])
+            if labels is not None:
+                labels = _remove_idx(labels, idx_list[1:])
+        idx = idx_list[0]
         config = self.model.config
         tgt_sizes = None
         slice_mode = getattr(config, 'slice_mode', False)
         if slice_mode:
             images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+            placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
@@ -1404,7 +1419,7 @@ class MiniCPMVTemplate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', [-1], '\n{{QUERY}}<AI>'], [], ['</s>']),
+    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', [-1], '{{QUERY}}<AI>'], [], ['</s>']),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
@@ -1414,7 +1429,7 @@ register_template(
 register_template(
     TemplateType.minicpm_v_v2_5,
     MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n', [-1], '\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>user<|end_header_id|>\n\n', [-1], '{{QUERY}}<|eot_id|>'
         '<|start_header_id|>assistant<|end_header_id|>\n\n'
     ], ['<|eot_id|>'], ['<|eot_id|>'],
                      is_v2_5=True),
