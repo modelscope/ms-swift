@@ -299,7 +299,7 @@ class ArgumentsBase:
                                      'Representing the model name and model author in Chinese and English.')
                 setattr(self, k, v)
 
-    def _handle_dataset_compat(self, train_dataset: HfDataset,
+    def _handle_dataset_compat(self, train_dataset: Optional[HfDataset],
                                val_dataset: Optional[HfDataset]) -> Tuple[HfDataset, Optional[HfDataset]]:
         # compatibility. (Deprecated)
         random_state = np.random.RandomState(self.dataset_seed)

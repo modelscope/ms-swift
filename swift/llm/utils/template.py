@@ -1081,6 +1081,8 @@ class Phi3VisionTemplate(Template):
             image = _read_from_path(image_path)
             images.append(image)
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, 1)[1:]  # 1: <s>
@@ -1330,7 +1332,7 @@ register_template(
 register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
 
-class MiniCPMVTemlate(Template):
+class MiniCPMVTemplate(Template):
 
     def __init__(self, *args, **kwargs):
         self.is_v2_5 = kwargs.pop('is_v2_5', False)
@@ -1345,32 +1347,16 @@ class MiniCPMVTemlate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-
-        img_start_idxs = np.where(np.array(input_ids) == self.tokenizer.im_start_id)[0]
-        if len(img_start_idxs) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
-            start = 0
-            new_input_ids = []
-            new_labels = []
-            for idx in img_start_idxs[1:]:
-                new_input_ids = new_input_ids + input_ids[start:idx]
-                if labels is not None:
-                    new_labels = new_labels + labels[start:idx]
-                start = idx + 4  # skip <image><unk></image>\n
-            new_input_ids = new_input_ids + input_ids[start:]
-            input_ids = new_input_ids
-            if labels is not None:
-                new_labels = new_labels + labels[start:]
-                labels = new_labels
-
-        idx = img_start_idxs[0] + 1  # first <unk>
+        idx = _findall(input_ids, -1)[0]
         config = self.model.config
         tgt_sizes = None
-        if config.slice_mode:
+        slice_mode = getattr(config, 'slice_mode', False)
+        if slice_mode:
             images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
-            input_ids = (input_ids[:idx - 1] + placeholder_id + input_ids[idx + 2:])
+            input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                labels = (labels[:idx - 1] + [-100] * len(placeholder_id) + labels[idx + 2:])
+                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             input_tensor_ids = torch.tensor(input_ids)
             image_start_idx = torch.where(input_tensor_ids == self.tokenizer.im_start_id)[0]
             image_start_idx += 1
@@ -1418,7 +1404,7 @@ class MiniCPMVTemlate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemlate(['<s>{{SYSTEM}}'], ['<用户><image><unk></image>\n{{QUERY}}<AI>'], [], ['</s>']),
+    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', [-1], '\n{{QUERY}}<AI>'], [], ['</s>']),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
@@ -1427,11 +1413,11 @@ register_template(
 
 register_template(
     TemplateType.minicpm_v_v2_5,
-    MiniCPMVTemlate(['<|begin_of_text|>{{SYSTEM}}'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n<image><unk></image>\n{{QUERY}}<|eot_id|>'
+    MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
+        '<|start_header_id|>user<|end_header_id|>\n\n', [-1], '\n{{QUERY}}<|eot_id|>'
         '<|start_header_id|>assistant<|end_header_id|>\n\n'
     ], ['<|eot_id|>'], ['<|eot_id|>'],
-                    is_v2_5=True),
+                     is_v2_5=True),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
