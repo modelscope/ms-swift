@@ -103,6 +103,7 @@ class ConversationsPreprocessor:
         system: List[Optional[str]] = []
         has_system = False
         history: List[History] = []
+        loss_scale: List[Optional[Union[str,int,float]]] = []
         has_history = False
         has_loss_scale = False
 
@@ -114,7 +115,7 @@ class ConversationsPreprocessor:
                     continue
                 lo = 0
                 sys = None
-                loss_scale = None
+                ls = None
                 h: History = []
                 assert len(conversations) >= 2
                 if conversations[0][self.from_key] == self.system_role:
@@ -133,11 +134,11 @@ class ConversationsPreprocessor:
                 query.append(conversations[-2][self.value_key])
                 response.append(conversations[-1][self.value_key])
                 if 'loss_scale' in conversations[-1]:
-                    loss_scale = conversations[-1]['loss_scale']
+                    ls = conversations[-1]['loss_scale']
                     has_loss_scale = True
                 system.append(sys)
                 history.append(h)
-                loss_scale.append(loss_scale)
+                loss_scale.append(ls)
             except (AssertionError, SyntaxError):
                 if self.error_strategy == 'raise':
                     raise ValueError(f'conversations: {conversations}')
@@ -148,7 +149,7 @@ class ConversationsPreprocessor:
             kwargs['history'] = history
         if has_loss_scale:
             kwargs['loss_scale'] = loss_scale
-            
+
         kwargs.update({
             'query': query,
             'response': response,
