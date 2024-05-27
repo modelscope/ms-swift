@@ -1394,9 +1394,11 @@ class MiniCPMVTemplate(Template):
             else:
                 pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
         else:
-            input_ids = (input_ids[:idx] + [self.tokenizer.unk_token_id] * config.query_num + input_ids[idx + 1:])
+            placeholder = '<image>' + '<unk>' * config.query_num+ '</image>\n'
+            placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
+            input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                labels = (labels[:idx] + [-100] * config.query_num + labels[idx + 1:])
+                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
             pixel_values = [self.model.transform(image).to(device=self.model.device)]
         data = {
