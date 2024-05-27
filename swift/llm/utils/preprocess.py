@@ -103,9 +103,7 @@ class ConversationsPreprocessor:
         system: List[Optional[str]] = []
         has_system = False
         history: List[History] = []
-        loss_scale: List[Optional[Union[str,int,float]]] = []
         has_history = False
-        has_loss_scale = False
 
         for d in tqdm(dataset):
             try:
@@ -133,12 +131,8 @@ class ConversationsPreprocessor:
                     has_history = True
                 query.append(conversations[-2][self.value_key])
                 response.append(conversations[-1][self.value_key])
-                if 'loss_scale' in conversations[-1]:
-                    ls = conversations[-1]['loss_scale']
-                    has_loss_scale = True
                 system.append(sys)
                 history.append(h)
-                loss_scale.append(ls)
             except (AssertionError, SyntaxError):
                 if self.error_strategy == 'raise':
                     raise ValueError(f'conversations: {conversations}')
@@ -147,8 +141,6 @@ class ConversationsPreprocessor:
             kwargs['system'] = system
         if has_history:
             kwargs['history'] = history
-        if has_loss_scale:
-            kwargs['loss_scale'] = loss_scale
 
         kwargs.update({
             'query': query,
