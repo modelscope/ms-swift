@@ -411,8 +411,6 @@ swift sft \
 ```
 
 
-
-
 ### 推理
 原始模型:
 ```shell
@@ -437,7 +435,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
 ```
 
-### 导出
+### 量化
 
 原始模型:
 ```shell
@@ -454,6 +452,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 ```
 
 ### 部署
+客户端使用OpenAI API进行调用，具体可以查看[LLM部署文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md#%E9%83%A8%E7%BD%B2)
 
 原始模型:
 ```shell
