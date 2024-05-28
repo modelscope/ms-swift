@@ -101,7 +101,8 @@ class Runtime(BaseUI):
                     gr.Textbox(elem_id='log', lines=6, visible=False)
 
                 concurrency_limit = {}
-                if version.parse(gr.__version__) >= version.parse('4.0.0'):
+                if version.parse(gr.__version__) >= version.parse('4.0.0') and os.environ.get(
+                        'MODELSCOPE_ENVIRONMENT') != 'studio':
                     concurrency_limit = {'concurrency_limit': 5}
                 cls.log_event = base_tab.element('show_log').click(Runtime.update_log, [], [cls.element('log')]).then(
                     Runtime.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)
