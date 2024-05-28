@@ -415,7 +415,9 @@ for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
 
     print(f'query: {query}')
     print('response: ', end='')
+    response = '' 
     for chunk in stream_resp:
+        response += chunk.choices[0].delta.content
         print(chunk.choices[0].delta.content, end='', flush=True)
     print()
     messages.append({'role': 'assistant', 'content': response})
@@ -575,7 +577,9 @@ for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
 
     print(f'query: {query}')
     print('response: ', end='')
+    response = '' 
     for chunk in stream_resp:
+        response += chunk.choices[0].delta.content
         print(chunk.choices[0].delta.content, end='', flush=True)
     print()
     messages.append({'role': 'assistant', 'content': response})
