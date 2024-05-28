@@ -265,6 +265,8 @@ class Template:
         else:
             assert self.prefix_has_system is not None, 'The template does not support `system`.'
         if tools:
+            if system is None:
+                system = ''
             system += DEFAULT_TOOLS_SYSTEM.format(api_list=tools)
         if query is None:
             query = ''
