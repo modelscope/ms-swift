@@ -62,28 +62,33 @@ def write_dataset_info() -> None:
             if dataset_name in ignore_dataset:
                 dataset_size, stat_str = ignore_dataset[dataset_name].split('|')[4:6]
             else:
-                train_dataset, val_dataset = get_dataset([dataset_name],
-                                                         model_name=['小黄', 'Xiao Huang'],
-                                                         model_author=['魔搭', 'ModelScope'])
-                dataset_size = len(train_dataset)
-                assert val_dataset is None
-
-                raw_dataset = train_dataset
-                if val_dataset is not None:
-                    raw_dataset = concatenate_datasets([raw_dataset, val_dataset])
-                if len(raw_dataset) < 5000:
-                    num_proc = 1
+                dataset_info = DATASET_MAPPING[dataset_name]
+                if dataset_info.get('ignored', False):
+                    dataset_size = '-'
+                    stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:
-                    num_proc = 4
+                    train_dataset, val_dataset = get_dataset([dataset_name],
+                                                             model_name=['小黄', 'Xiao Huang'],
+                                                             model_author=['魔搭', 'ModelScope'])
+                    dataset_size = len(train_dataset)
+                    assert val_dataset is None
 
-                dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
+                    raw_dataset = train_dataset
+                    if val_dataset is not None:
+                        raw_dataset = concatenate_datasets([raw_dataset, val_dataset])
+                    if len(raw_dataset) < 5000:
+                        num_proc = 1
+                    else:
+                        num_proc = 4
 
-                _token_len = []
-                input_ids = dataset['input_ids']
-                for i in range(len(dataset)):
-                    _token_len.append(len(input_ids[i]))
-                stat = stat_array(_token_len)[0]
-                stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
+                    dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
+
+                    _token_len = []
+                    input_ids = dataset['input_ids']
+                    for i in range(len(dataset)):
+                        _token_len.append(len(input_ids[i]))
+                    stat = stat_array(_token_len)[0]
+                    stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
 
             ms_url = f"https://modelscope.cn/datasets/{dataset_info['dataset_id_or_path']}/summary"
 
