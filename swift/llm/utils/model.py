@@ -244,6 +244,8 @@ class ModelType:
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
     # deepseek-v2
     deepseek_v2_chat = 'deepseek-v2-chat'
+    deepseek_v2_lite = 'deepseek-v2-lite'
+    deepseek_v2_lite_chat = 'deepseek-v2-lite-chat'
     # gemma
     gemma_2b = 'gemma-2b'
     gemma_7b = 'gemma-7b'
@@ -257,7 +259,8 @@ class ModelType:
     minicpm_moe_8x2b = 'minicpm-moe-8x2b'
     # minicpm-v
     minicpm_v_3b_chat = 'minicpm-v-3b-chat'
-    minicpm_v_v2 = 'minicpm-v-v2'
+    minicpm_v_v2_chat = 'minicpm-v-v2-chat'
+    minicpm_v_v2_5_chat = 'minicpm-v-v2_5-chat'
     # openbuddy
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
     openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
@@ -341,9 +344,14 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
-    phi3_mini_128k_instruct = 'phi3-mini-128k-instruct'
+    phi3_small_128k_instruct = 'phi3-small-128k-instruct'
+    phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
+
+    phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
     # cogagent
-    cogvlm_17b_instruct = 'cogvlm-17b-instruct'
+    cogvlm_17b_chat = 'cogvlm-17b-chat'
+    cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
+    cogvlm2_en_19b_chat = 'cogvlm2-en-19b-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -356,6 +364,8 @@ class ModelType:
     # teleAI
     telechat_7b = 'telechat-7b'
     telechat_12b = 'telechat-12b'
+    telechat_12b_v2 = 'telechat-12b-v2'
+    telechat_12b_v2_gptq_int4 = 'telechat-12b-v2-gptq-int4'
     # grok-1
     grok_1 = 'grok-1'
     # dbrx
@@ -514,6 +524,22 @@ def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
         QuantLinear.forward = _new_forward
 
 
+@register_model(
+    ModelType.cogvlm2_en_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    pad_token='<|reserved_special_token_0|>',
+    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
+@register_model(
+    ModelType.cogvlm2_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    pad_token='<|reserved_special_token_0|>',
+    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
 @register_model(
     ModelType.atom_7b,
     'FlagAlpha/Atom-7B',
@@ -809,6 +835,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
     eos_token = kwargs.get('eos_token')
     if eos_token is not None:
         tokenizer.eos_token = eos_token
+    pad_token = kwargs.get('pad_token')
+    if pad_token is not None:
+        tokenizer.pad_token = pad_token
     model = None
     if load_model:
         if kwargs.get('use_unsloth', False):
@@ -861,7 +890,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
         model_config=model_config,
         automodel_class=LlavaForConditionalGeneration,
         **kwargs)
-    model.processor = processor
+    tokenizer.processor = processor
     return model, tokenizer
 
 
@@ -957,10 +986,10 @@ def get_model_tokenizer_mamba(model_dir: str,
 
 
 @register_model(
-    ModelType.cogvlm_17b_instruct,
+    ModelType.cogvlm_17b_chat,
     'ZhipuAI/cogvlm-chat',
     LoRATM.cogvlm,
-    TemplateType.cogvlm_instruct,
+    TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm-chat-hf')
@@ -1049,6 +1078,29 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
         model.get_input_embeddings()
     except NotImplementedError:
         model.__class__.get_input_embeddings = lambda self: self.model.embed_tokens
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.phi3_vision_128k_instruct,
+    'LLM-Research/Phi-3-vision-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3_vl,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    disable_require_grads=True,
+    tags=['multi-modal', 'vision'],
+    hf_model_id='microsoft/Phi-3-vision-128k-instruct')
+def get_model_tokenizer_phi3_vision(model_dir: str,
+                                    torch_dtype: Dtype,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+
     return model, tokenizer
 
 
@@ -1309,19 +1361,29 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.phi3,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=False,  # https://github.com/vllm-project/vllm/pull/4298
+    support_vllm=True,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
 @register_model(
-    ModelType.phi3_mini_128k_instruct,
-    'LLM-Research/Phi-3-mini-128k-instruct',
+    ModelType.phi3_small_128k_instruct,
+    'LLM-Research/Phi-3-small-128k-instruct',
     LoRATM.phi3,
     TemplateType.phi3,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=False,
+    support_vllm=True,
     tags=['general'],
-    hf_model_id='microsoft/Phi-3-mini-128k-instruct')
+    hf_model_id='microsoft/Phi-3-small-128k-instruct')
+@register_model(
+    ModelType.phi3_medium_128k_instruct,
+    'LLM-Research/Phi-3-medium-128k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-medium-128k-instruct')
 @register_model(
     ModelType.phi3_4b_4k_instruct,
     'LLM-Research/Phi-3-mini-4k-instruct',
@@ -2250,6 +2312,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_1_8b_chat_int4,
@@ -2271,6 +2334,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_4b_chat_int4,
@@ -2292,6 +2356,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_7b_chat_int4,
@@ -2313,6 +2378,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_14b_chat_int4,
@@ -2334,6 +2400,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_32b_chat_int4,
@@ -2377,6 +2444,7 @@ def get_model_tokenizer_qwen1half(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int8')
 @register_model(
     ModelType.qwen1half_moe_a2_7b_chat_int4,
@@ -2566,6 +2634,26 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
 
 @register_model(
+    ModelType.deepseek_v2_lite,
+    'deepseek-ai/DeepSeek-V2-Lite',
+    LoRATM.deepseek2,
+    TemplateType.default_generation,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2-Lite')
+@register_model(
+    ModelType.deepseek_v2_lite_chat,
+    'deepseek-ai/DeepSeek-V2-Lite-Chat',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2-Lite-Chat')
+@register_model(
     ModelType.deepseek_v2_chat,
     'deepseek-ai/DeepSeek-V2-Chat',
     LoRATM.deepseek2,
@@ -2609,7 +2697,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
 
 
 def fix_internvl_inplace_bug(model) -> None:
-
     embedding = model.language_model.get_input_embeddings()
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
         old_forward = embedding.forward
@@ -3454,6 +3541,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-1_8B-Chat-Int8')
 @register_model(
     ModelType.qwen_1_8b_chat_int4,
@@ -3475,6 +3563,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-72B-Chat-Int8')
 @register_model(
     ModelType.qwen_72b_chat_int4,
@@ -3522,6 +3611,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-14B-Chat-Int8')
 @register_model(
     ModelType.qwen_7b_chat_int8,
@@ -3532,6 +3622,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
+    support_vllm=True,
     hf_model_id='Qwen/Qwen-7B-Chat-Int8')
 @register_model(
     ModelType.qwen_14b_chat_int4,
@@ -3623,6 +3714,23 @@ def get_model_tokenizer_codellama(model_dir: str,
     TemplateType.telechat,
     support_flash_attn=True,
     hf_model_id='Tele-AI/TeleChat-12B')
+@register_model(
+    ModelType.telechat_12b_v2,
+    'TeleAI/TeleChat-12B-v2',
+    LoRATM.telechat,
+    TemplateType.telechat_v2,
+    eos_token=2,
+    support_flash_attn=True,
+    hf_model_id='Tele-AI/TeleChat-12B-v2')
+@register_model(
+    ModelType.telechat_12b_v2_gptq_int4,
+    'swift/TeleChat-12B-V2-GPTQ-Int4',
+    LoRATM.telechat,
+    TemplateType.telechat_v2,
+    eos_token=2,
+    requires=['auto_gptq>=0.5'],
+    support_flash_attn=True,
+    function_kwargs={'gptq_bits': 4})
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: Dtype,
                             model_kwargs: Dict[str, Any],
@@ -3849,6 +3957,52 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     return model, tokenizer
 
 
+def _patch_minicpm_v_device_map(model) -> None:
+    if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
+        return
+    if hasattr(model.llm, '__old_forward'):
+        # avoid double patching
+        return
+    device = list(model.hf_device_map.values())[0]
+    if hasattr(model, 'get_vision_embedding'):  # minicpm-v-v2-chat
+        _old_get_vision_embedding = model.get_vision_embedding
+
+        def _get_vision_embedding(pixel_values):
+            if len(pixel_values) == 0:
+                return _old_get_vision_embedding(pixel_values)
+            output = _old_get_vision_embedding(pixel_values)
+            return output.to(device=device)
+
+        model._old_get_vision_embedding = _old_get_vision_embedding
+        model.get_vision_embedding = _get_vision_embedding
+
+    if hasattr(model, 'resampler'):  # minicpm-v-v2_5-chat
+        __old_resampler_forward = model.resampler.forward
+
+        def _new_resampler_forward(*args, **kwargs) -> Tensor:
+            output = __old_resampler_forward(*args, **kwargs)
+            return output.to(device=device)
+
+        model.resampler.forward = _new_resampler_forward
+
+    __old_forward = model.llm.forward
+
+    def _new_forward(*args, **kwargs) -> Tensor:
+        inputs = kwargs.get('inputs_embeds')
+        if inputs is None:
+            inputs = kwargs.get('input_ids')
+        device = inputs.device
+        output = __old_forward(*args, **kwargs)
+        if output.logits is not None:
+            output.logits = output.logits.to(device)
+        if output.loss is not None:
+            output.loss = output.loss.to(device)
+        return output
+
+    model.llm.forward = _new_forward
+    model.llm.__old_forward = __old_forward
+
+
 @register_model(
     ModelType.minicpm_v_3b_chat,
     'OpenBMB/MiniCPM-V',
@@ -3857,23 +4011,46 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     support_flash_attn=True,
     hf_model_id='openbmb/MiniCPM-V')
 @register_model(
-    ModelType.minicpm_v_v2,
+    ModelType.minicpm_v_v2_chat,
     'OpenBMB/MiniCPM-V-2',
     LoRATM.llama2,
     TemplateType.minicpm_v,
     support_flash_attn=True,
     requires=['timm'],
     hf_model_id='openbmb/MiniCPM-V-2')
+@register_model(
+    ModelType.minicpm_v_v2_5_chat,
+    'OpenBMB/MiniCPM-Llama3-V-2_5',
+    LoRATM.llama2,
+    TemplateType.minicpm_v_v2_5,
+    support_flash_attn=True,
+    requires=['timm'],
+    pad_token='<unk>',
+    function_kwargs={'patching_embedding': True},
+    hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
+    patching_embedding = kwargs.pop('patching_embedding', False)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if load_model:
         model.resampler.to(torch_dtype)  # fix float32
+        _patch_minicpm_v_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         _use_submodel_func(model, 'llm', func_list)
+        if patching_embedding:
+            embedding = model.get_input_embeddings()
+            if not hasattr(embedding, '__old_forward'):  # Avoid double patching
+                old_forward = embedding.forward
+
+                @wraps(old_forward)
+                def _new_forward(*args, **kwargs):
+                    return old_forward(*args, **kwargs).requires_grad_(True).clone()
+
+                embedding.__old_forward = old_forward
+                embedding.forward = _new_forward
     return model, tokenizer
 
 
@@ -4190,6 +4367,9 @@ def get_model_tokenizer(model_type: str,
                 quantization_config.bnb_4bit_compute_dtype = torch_dtype
                 logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
     kwargs['eos_token'] = model_info['eos_token']
+    pad_token = model_info.get('pad_token')
+    if pad_token is not None:
+        kwargs['pad_token'] = pad_token
     if 'is_training' not in kwargs:
         kwargs['is_training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)

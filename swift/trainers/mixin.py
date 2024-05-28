@@ -31,7 +31,8 @@ from transformers.training_args import TrainingArguments
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler
+from swift.torchacc_utils import (save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
+                                  ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc
 from swift.utils.constants import Invoke
@@ -381,11 +382,7 @@ class SwiftMixin:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         sft_args = getattr(self, 'sft_args', None)
         # tokenizer
-        from swift import SWIFT_MAPPING
-        addtional_module_tuners = [
-            name.lower() for name, (config, cls) in SWIFT_MAPPING.items() if cls.has_additional_modules()
-        ] + list(peft.PEFT_TYPE_TO_CONFIG_MAPPING.keys())
-        if self.tokenizer is not None and sft_args.sft_type not in addtional_module_tuners:
+        if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
@@ -520,11 +517,14 @@ class SwiftMixin:
         mem = sum([float(mem) / 1024 / 1024 / 1024 for mem in mems])
         if self.max_memory < mem:
             self.max_memory = mem
-        torch.cuda.reset_peak_memory_stats()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
         return mem
 
     def _maybe_log_save_evaluate(self, tr_loss, *args, **kwargs):
         if self.control.should_log:
+            if use_torchacc():
+                ta_trim_graph()
             self.control.should_log = False
             logs: Dict[str, float] = {}
             metrics_log = {'loss': tr_loss}  # loss first
@@ -544,14 +544,11 @@ class SwiftMixin:
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-            logs['memory'] = round(self.get_max_cuda_memory(), 2)
+            logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time
-            logs['total_train_time_calculated(min)'] = (
-                (float(self.state.max_steps) / self.state.global_step) * elapse_time) / 60.0
-            logs['total_train_speed(iter/s)'] = self.state.max_steps / (
-                (float(self.state.max_steps) / self.state.global_step) * elapse_time)
+            logs['train_speed(iter/s)'] = round(self.state.global_step / elapse_time, 6)
             tr_loss -= tr_loss
             self._globalstep_last_logged = self.state.global_step
             self.store_flos()

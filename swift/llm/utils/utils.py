@@ -343,24 +343,34 @@ def stat_dataset(llm_dataset: Dataset) -> str:
 
 
 def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
+
+    def _is_special(token: int) -> bool:
+        if token < 0:
+            return True
+        if tokenizer.eos_token_id != tokenizer.pad_token_id:
+            return token == tokenizer.pad_token_id
+        return False
+
+    if isinstance(input_ids, torch.Tensor):
+        input_ids = input_ids.tolist()
     if len(input_ids) == 0:
         return ''
     result_str = ''
     for i in range(len(input_ids)):
         if i == 0:
-            if input_ids[i] < 0:
+            if _is_special(input_ids[i]):
                 s = 0
             else:
                 e = 0
             continue
-        if input_ids[i] < 0 and input_ids[i - 1] >= 0:
+        if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
             s = i
             result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
-        if input_ids[i] >= 0 and input_ids[i - 1] < 0:
+        if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
             e = i
-            result_str += f'[-100 * {e - s}]'
-    if input_ids[-1] < 0:
-        result_str += f'[-100 * {len(input_ids) - s}]'
+            result_str += f'[{input_ids[i - 1]} * {e - s}]'
+    if _is_special(input_ids[-1]):
+        result_str += f'[{input_ids[i - 1]} * {len(input_ids) - s}]'
     else:
         result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
     return result_str
@@ -393,6 +403,7 @@ def _find_layers(model: Module, module_cls: type) -> List[str]:
 
 
 def find_ln(model: Module) -> List[str]:
+    # find_layer_norm
     module_names = set()
     for name, module in model.named_modules():
         module_cls_name = module.__class__.__name__.lower()
@@ -509,6 +520,7 @@ class TokenListIteratorStreamer(BaseStreamer):
             return value
 
 
+@torch.inference_mode()
 def inference_stream(model: PreTrainedModel,
                      template: Template,
                      query: str,
@@ -640,6 +652,7 @@ def inference_stream(model: PreTrainedModel,
         yield response, history
 
 
+@torch.inference_mode()
 def inference(model: PreTrainedModel,
               template: Template,
               query: str,

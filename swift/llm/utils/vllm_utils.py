@@ -134,6 +134,7 @@ class VllmGenerationConfig(SamplingParams):
         n: int = 1,
         length_penalty: float = 1.,
         stop: Optional[List[str]] = None,
+        skip_special_tokens: bool = False,
         **kwargs,
     ) -> None:
         # The parameter design is similar to transformers.GenerationConfig.
@@ -162,6 +163,7 @@ class VllmGenerationConfig(SamplingParams):
         kwargs['n'] = n
         kwargs['length_penalty'] = length_penalty
         kwargs['stop'] = stop
+        kwargs['skip_special_tokens'] = skip_special_tokens
         parameters = inspect.signature(SamplingParams.__init__).parameters
         for k in kwargs.copy().keys():
             if k not in parameters:
@@ -185,6 +187,7 @@ class VllmGenerationConfig(SamplingParams):
             super().__setattr__(key, value)
 
 
+@torch.inference_mode()
 def inference_stream_vllm(llm_engine: LLMEngine,
                           template: Template,
                           request_list: List[Dict[str, Any]],
@@ -273,6 +276,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
         yield resp_list
 
 
+@torch.inference_mode()
 def inference_vllm(llm_engine: LLMEngine,
                    template: Template,
                    request_list: List[Dict[str, Any]],

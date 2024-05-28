@@ -13,7 +13,7 @@
 - `--model_type`: Represents the selected model type, default is `None`. `model_type` specifies the default `lora_target_modules`, `template_type`, and other information for the corresponding model. You can fine-tune by specifying only `model_type`. The corresponding `model_id_or_path` will use default settings, and the model will be downloaded from ModelScope and use the default cache path. One of model_type and model_id_or_path must be specified. You can see the list of available `model_type` [here](Supported-models-datasets.md#Models). You can set the `USE_HF` environment variable to control downloading models and datasets from the HF Hub, see [HuggingFace Ecosystem Compatibility Documentation](Compat-HF.md).
 - `--model_id_or_path`: Represents the `model_id` in the ModelScope/HuggingFace Hub or a local path for the model, default is `None`. If the provided `model_id_or_path` has already been registered, the `model_type` will be inferred based on the `model_id_or_path`. If it has not been registered, both `model_type` and `model_id_or_path` must be specified, e.g. `--model_type <model_type> --model_id_or_path <model_id_or_path>`.
 - `--model_revision`: The version number corresponding to `model_id` on ModelScope Hub, default is `None`. If `model_revision` is `None`, use the revision registered in `MODEL_MAPPING`. Otherwise, force use of the `model_revision` passed from command line.
-- `--local_repo_path`: Some models need github repo, which will be cloned when loading the model. This parameter tells the existing local repo to avoid the clone behaviour. These models are:
+- `--local_repo_path`: Some models rely on a GitHub repo for loading. To avoid network issues during `git clone`, you can directly use the local repo. This parameter requires input of the local repo path, and defaults to `None`. These models include:
   - mPLUG-Owl model: `https://github.com/X-PLUG/mPLUG-Owl`
   - DeepSeek-VL model: `https://github.com/deepseek-ai/DeepSeek-VL`
   - YI-VL model: `https://github.com/01-ai/Yi`
@@ -35,18 +35,18 @@
   - More fine-grained control over subsets: It uses the subsets specified during registration by default (if not specified during registration, it uses 'default'). For example, 'sharegpt-gpt4'. If subsets are specified, it uses the corresponding subset of the dataset. For example, 'sharegpt-gpt4:default/V3_format#2000'. Separated by '/'.
   - Support for dataset_id. For example, 'AI-ModelScope/alpaca-gpt4-data-zh#2000', 'HF::llm-wizard/alpaca-gpt4-data-zh#2000', 'hurner/alpaca-gpt4-data-zh#2000', 'HF::shibing624/alpaca-zh#2000'. If the dataset_id has been registered, it will use the preprocessing function, subsets, split, etc. specified during registration. Otherwise, it will use `SmartPreprocessor`, support 4 dataset formats, and use 'default' subsets, with split set to 'train'. The supported dataset formats can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset).
   - Support for dataset_path. For example, '1.jsonl#5000' (if it is a relative path, it is relative to the running directory).
-- `--val_dataset`: Specify separate validation datasets with the same format of the `dataset` argument. If using `val_dataset`, the `dataset_test_ratio` will be ignored.
+- `--val_dataset`: Specify separate validation datasets with the same format of the `dataset` argument, default is `[]`. If using `val_dataset`, the `dataset_test_ratio` will be ignored.
 - `--dataset_seed`: Seed for dataset processing, default is `42`. Exists as random_state, does not affect global seed.
-- `--dataset_test_ratio`: Ratio for splitting subdataset into train and validation sets, default is `0.01`.
+- `--dataset_test_ratio`: Used to specify the ratio for splitting the sub-dataset into training and validation sets. The default value is `0.01`. If `--val_dataset` is set, this parameter becomes ineffective.
 - `--train_dataset_sample`: The number of samples for the training dataset, default is `-1`, which means using the complete training dataset for training. This parameter is deprecated, please use `--dataset {dataset_name}#{dataset_sample}` instead.
-- `--val_dataset_sample`: Sampling for the validation dataset, default is `None`, which automatically selects an appropriate number of samples for validation. If you specify `-1`, it uses the complete validation dataset for validation. This parameter is deprecated, and the number of samples in the validation dataset is fully controlled by dataset_test_ratio.
+- `--val_dataset_sample`: Used to sample the validation set, with a default value of `None`, which automatically selects a suitable number of data samples for validation. If you specify `-1`, the complete validation set is used for validation. This parameter is deprecated and the number of samples in the validation set is controlled by `--dataset_test_ratio` or `--val_dataset {dataset_name}#{dataset_sample}`.
 - `--system`: System used in dialogue template, default is `None`, i.e. use the model's default system. If set to '', no system is used.
 - `--max_length`: Maximum token length, default is `2048`. Avoids OOM issues caused by individual overly long samples. When `--truncation_strategy delete` is specified, samples exceeding max_length will be deleted. When `--truncation_strategy truncation_left` is specified, the leftmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, no limit.
 - `--truncation_strategy`: Default is `'delete'` which removes sentences exceeding max_length from dataset. `'truncation_left'` will truncate excess text from the left, which may truncate special tokens and affect performance, not recommended.
 - `--check_dataset_strategy`: Default is `'none'`, i.e. no checking. If training an LLM model, `'warning'` is recommended as data check strategy. If your training target is sentence classification etc., setting to `'none'` is recommended.
 
 - `--custom_train_dataset_path`: Default value is `[]`. This parameter has been deprecated, please use `--dataset {dataset_path}`.
-- `--custom_val_dataset_path`: Default value is `[]`. This parameter has been deprecated. There is no longer a distinction between training and validation datasets, and the split is now unified using `dataset_test_ratio`. Please use `--dataset {dataset_path}`.
+- `--custom_val_dataset_path`: Default value is `[]`. This parameter is deprecated. Please use `--val_dataset {dataset_path}` instead.
 - `--self_cognition_sample`: The number of samples for the self-cognition dataset. Default is `0`. If you set this value to >0, you need to specify `--model_name` and `--model_author` at the same time. This parameter has been deprecated, please use `--dataset self-cognition#{self_cognition_sample}` instead.
 - `--model_name`: Default value is `[None, None]`. If self-cognition dataset sampling is enabled (i.e., specifying `--dataset self-cognition` or self_cognition_sample>0), you need to provide two values, representing the Chinese and English names of the model, respectively. For example: `--model_name 小黄 'Xiao Huang'`. If you want to learn more, you can refer to the [Self-Cognition Fine-tuning Best Practices](Self-cognition-best-practice.md).
 - `--model_name`: Default is `[None, None]`. If self-cognition dataset sampling is enabled (i.e. self_cognition_sample>0), you need to pass two values, representing the model's Chinese and English names respectively. E.g. `--model_name 小黄 'Xiao Huang'`.
@@ -239,15 +239,16 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
 - `--dtype`: Default is `'AUTO`, see `sft.sh command line arguments` for parameter details.
 - `--dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
+- `--val_dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
 - `--dataset_seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
-`--dataset_test_ratio`: Default value is `None`, if `--load_dataset_config true` is set, then use the dataset_test_ratio from training, else set it to 1. For specific parameter details, refer to the `sft.sh command line arguments`.
+`--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft.sh command line arguments`.
 - `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
 - `--system`: Default is `None`. See `sft.sh command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
 - `--custom_train_dataset_path`: Default value is `[]`. This parameter has been deprecated, please use `--dataset {dataset_path}`.
-- `--custom_val_dataset_path`: Default value is `[]`. This parameter has been deprecated. There is no longer a distinction between training and validation datasets, and the split is now unified using `dataset_test_ratio`. Please use `--dataset {dataset_path}`.
+- `--custom_val_dataset_path`: Default value is `[]`. This parameter is deprecated. Please use `--val_dataset {dataset_path}` instead.
 - `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
 - `--quant_method`: Quantization method, default is None. You can choose from 'bnb', 'hqq', 'eetq'.
 - `--hqq_axis`: Hqq argument. Axis along which grouping is performed. Supported values are 0 or 1. default is `0`
@@ -311,7 +312,7 @@ The eval parameters inherit from the infer parameters, and additionally include 
 
 - `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
 
-- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval#Custom-Evaluation-Set).
+- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set).
 
 - `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
 

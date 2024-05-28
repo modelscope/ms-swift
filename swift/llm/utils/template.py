@@ -62,19 +62,22 @@ class TemplateType:
     deepseek2 = 'deepseek2'
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
-    cogvlm_instruct = 'cogvlm-instruct'
+    cogvlm = 'cogvlm'
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
     minicpm = 'minicpm'
     minicpm_v = 'minicpm-v'
+    minicpm_v_v2_5 = 'minicpm-v-v2_5'
     gemma = 'gemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
     phi3 = 'phi3'
+    phi3_vl = 'phi3-vl'
     telechat = 'telechat'
+    telechat_v2 = 'telechat-v2'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
@@ -246,7 +249,7 @@ class Template:
         self,
         context_list: List[Context],
         res_context_list: List[Context],  # inplace
-        compute_loss_idx: List[float],  # inplace
+        loss_scale_list: List[float],  # inplace
         system: Optional[str] = None,
         query: Optional[str] = None,
         response: Optional[str] = None,
@@ -263,7 +266,7 @@ class Template:
                     assert response is not None
                     content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale)
                     res_context_list.extend(content_part)
-                    compute_loss_idx.extend(weight_part)
+                    loss_scale_list.extend(weight_part)
                     continue
                 old_str_list = ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}']
                 new_str_list = [system, query, round0, round1]
@@ -271,35 +274,35 @@ class Template:
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
             res_context_list.append(context)
-            compute_loss_idx.append(0.0 if context not in self.suffix else 1.0)
+            loss_scale_list.append(0.0 if context not in self.suffix else 1.0)
 
     @staticmethod
     def _simplify_context_list(context_list: List[Context],
-                               compute_loss_idx: List[float]) -> Tuple[List[Context], List[float]]:
+                               loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
         res: List[Context] = []  # result of context_list
-        res_idx: List[float] = []  # result of compute_loss_idx
+        res_loss_scale: List[float] = []  # result of loss_scale_list
         temp: List[str] = []
         temp_index: List[int] = []
-        for i, (context, loss_idx) in enumerate(zip(context_list, compute_loss_idx)):
-            if isinstance(context, str) and compute_loss_idx[i] == 0.0:
+        for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
+            if isinstance(context, str) and loss_scale_list[i] == 0.0:
                 temp.append(context)
                 temp_index.append(i)
             else:
                 if len(temp) > 0:
                     res.append(''.join(temp))
-                    res_idx.append(0.0)
+                    res_loss_scale.append(0.0)
                     temp.clear()
                 res.append(context)
-                res_idx.append(loss_idx)
+                res_loss_scale.append(loss_scale)
         if len(temp) > 0:
             res.append(''.join(temp))
-            res_idx.append(0.0)
-        return res, res_idx
+            res_loss_scale.append(0.0)
+        return res, res_loss_scale
 
     def _encode_context_list(
         self,
         context_list: List[Context],
-        compute_loss_idx: List[float],
+        loss_scale_list: List[float],
     ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         tokenizer = self.tokenizer
@@ -307,7 +310,7 @@ class Template:
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
-        for i, (context, loss_weight) in enumerate(zip(context_list, compute_loss_idx)):
+        for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
                 self._concat_tokenizer_kwargs(tokenizer_kwargs, curr_tokenizer_kwargs)
@@ -317,7 +320,7 @@ class Template:
             else:
                 token_list = context
             input_ids += token_list
-            if compute_loss_idx[i] > 0.0:
+            if loss_scale_list[i] > 0.0:
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
@@ -336,17 +339,17 @@ class Template:
         """
         history = history.copy()
         res_context_list: List[Context] = []
-        compute_loss_idx: List[float] = []
+        loss_scale_list: List[float] = []
         if auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
-                compute_loss_idx.append(0.)
+                loss_scale_list.append(0.)
         if system is None:
             prefix = self.prefix
         else:
             prefix = self.prefix_has_system
-        self._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
+        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
         history.append([query, response])
         for i, (q, r) in enumerate(history):
             context_list = self.prompt.copy()
@@ -359,10 +362,10 @@ class Template:
                 context_list += self.suffix
             if q or r:
                 self._concat_context_list(
-                    context_list, res_context_list, compute_loss_idx, query=q, response=r, round0=i)
+                    context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
 
-        res_context_list, compute_loss_idx = self._simplify_context_list(res_context_list, compute_loss_idx)
-        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, compute_loss_idx)
+        res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
         if response is None:
             labels = None
@@ -919,8 +922,8 @@ class InternvlTemplate(Template):
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
             if example.get('query') is not None:
-                example['query'] = '<img>' + '<IMG_CONTEXT>' * self.num_image_token * \
-                    image_bs + '</img>\n' + example['query']
+                example['query'] = ('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n'
+                                    + example['query'])
 
         inputs, _ = super().encode(example)
         inputs.pop('loss_scale', None)
@@ -1033,7 +1036,6 @@ register_template(
 
 
 class LLavaLlamaTemplate(Template):
-
     llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
                                 '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
 
@@ -1044,7 +1046,7 @@ class LLavaLlamaTemplate(Template):
         inputs, _ = super().encode(example)
         image_path = example['images']
         raw_image = _read_from_path(image_path[0])
-        pixel_values = self.model.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
         inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
 
@@ -1062,10 +1064,64 @@ register_template(
     lazy_tokenize=True)
 
 
+class Phi3VisionTemplate(Template):
+
+    def __init__(self):
+        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+                          None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+        example['query'], example['history'], images_path = replace_img_tab(example['query'], history, '<s>')
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            images.append(image)
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 1)[1:]  # 1: <s>
+        if len(images) > 0:
+            processor = self.tokenizer.processor
+            inputs.update(processor.image_processor(images, return_tensors='pt'))
+            assert len(idx_list) == len(images)
+            res_input_ids = []
+            res_labels = []
+            num_img_tokens = inputs.pop('num_img_tokens').tolist()
+            idx_list.insert(0, -1)
+            for i in range(len(idx_list) - 1):
+                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [-1] * num_img_tokens[i] + [1]
+                if labels is not None:
+                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
+            res_input_ids += input_ids[idx_list[-1] + 1:]
+            input_ids = res_input_ids
+            if labels is not None:
+                res_labels += labels[idx_list[-1] + 1:]
+                labels = res_labels
+
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
+        return res
+
+
+register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
+
+
 class LlamaLlavaNextTemplate(LLavaTemplate):
     default_system = 'You are a helpful language and vision assistant. ' \
-            'You are able to understand the visual content that the user provides, ' \
-            'and assist the user with a variety of tasks using natural language.'
+                     'You are able to understand the visual content that the user provides, ' \
+                     'and assist the user with a variety of tasks using natural language.'
 
     def __init__(self):
         Template.__init__(self, [], [
@@ -1119,11 +1175,11 @@ class DeepseekVLTemplate(Template):
                                 ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
         images = example.pop('images', None)
         assert images is None, ('Please read the best practices: https://github.com/modelscope/swift/blob/main/'
                                 'docs/source/Multi-Modal/deepseek-vl最佳实践.md')
 
-        example = example.copy()
         history = example.pop('history', None)
         if history is None:
             history = []
@@ -1229,8 +1285,8 @@ class CogTemplate(Template):
         image_token_len = inputs2['token_type_ids'].sum()
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        token_type_ids = inputs2['token_type_ids'].tolist()
-        inputs['input_ids'] = input_ids[:1] + [0] * image_token_len + input_ids[1:]
+        inputs['token_type_ids'] = [0] + [1] * image_token_len + [0] * len(input_ids[1:])
+        inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
         dtype = model.dtype
@@ -1238,7 +1294,6 @@ class CogTemplate(Template):
         if 'cross_images' in inputs2:
             # is cogagent
             inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
-        inputs['token_type_ids'] = token_type_ids + [0] * (len(inputs['input_ids']) - len(token_type_ids))
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1268,8 +1323,8 @@ register_template(
     lazy_tokenize=True)
 
 register_template(
-    TemplateType.cogvlm_instruct,
-    CogTemplate(['<s>'], ['Question: {{QUERY}} Answer:'], None, ['</s>']),
+    TemplateType.cogvlm,
+    CogTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
@@ -1277,10 +1332,20 @@ register_template(
 register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
 
-class MiniCPMVTemlate(Template):
+def _remove_idx(arr: List[int], idx_list: List[int]) -> List[int]:
+    res = []
+    idx_set = set(idx_list)
+    for i, x in enumerate(arr):
+        if i not in idx_set:
+            res.append(x)
+    return res
 
-    def __init__(self):
-        return super().__init__(['<s>{{SYSTEM}}'], ['<用户><image><unk></image>\n{{QUERY}}<AI>'], [], ['</s>'])
+
+class MiniCPMVTemplate(Template):
+
+    def __init__(self, *args, **kwargs):
+        self.is_v2_5 = kwargs.pop('is_v2_5', False)
+        return super().__init__(*args, **kwargs)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example['images']
@@ -1291,39 +1356,22 @@ class MiniCPMVTemlate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-
-        img_start_idxs = np.where(np.array(input_ids) == self.tokenizer.im_start_id)[0]
-        if len(img_start_idxs) > 1:  # if mutli-round, input_ids have mutli <image><unk></image>\n
-            start = 0
-            new_input_ids = []
-            new_labels = []
-            for idx in img_start_idxs[1:]:
-                new_input_ids = new_input_ids + input_ids[start:idx]
-                if labels is not None:
-                    new_labels = new_labels + labels[start:idx]
-                start = idx + 4  # skip <image><unk></image>\n
-            new_input_ids = new_input_ids + input_ids[start:]
-            input_ids = new_input_ids
+        idx_list = _findall(input_ids, -1)
+        if len(idx_list) >= 2:
+            input_ids = _remove_idx(input_ids, idx_list[1:])
             if labels is not None:
-                new_labels = new_labels + labels[start:]
-                labels = new_labels
-
-        idx = img_start_idxs[0] + 1  # first <unk>
+                labels = _remove_idx(labels, idx_list[1:])
+        idx = idx_list[0]
         config = self.model.config
-        if hasattr(config, 'slice_mode') and config.slice_mode:
-            slice_mode = True
-            assert hasattr(config, 'patch_size')
-            assert hasattr(config, 'max_slice_nums')
-            assert hasattr(config, 'scale_resolution')
-        else:
-            slice_mode = False
-
+        tgt_sizes = None
+        slice_mode = getattr(config, 'slice_mode', False)
         if slice_mode:
             images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+            placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
-            input_ids = (input_ids[:idx - 1] + placeholder_id + input_ids[idx + 2:])
+            input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                labels = (labels[:idx - 1] + [-100] * len(placeholder_id) + labels[idx + 2:])
+                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             input_tensor_ids = torch.tensor(input_ids)
             image_start_idx = torch.where(input_tensor_ids == self.tokenizer.im_start_id)[0]
             image_start_idx += 1
@@ -1333,21 +1381,34 @@ class MiniCPMVTemlate(Template):
                 torch.hstack(
                     [image_start_idx[:valid_image_nums].unsqueeze(-1), image_end_idx[:valid_image_nums].unsqueeze(-1)])
             ]
-            pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
-
+            if self.is_v2_5:
+                pixel_values = []
+                tgt_sizes = []
+                config = self.model.config
+                for image in images:
+                    image = self.model.transform(image).to(device=self.model.device)
+                    H, W = image.shape[1:]
+                    pixel_values.append(self.model.reshape_by_patch(image))
+                    tgt_sizes.append(torch.Tensor([H // config.patch_size, W // config.patch_size]).type(torch.int32))
+                tgt_sizes = torch.vstack(tgt_sizes)
+            else:
+                pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
         else:
-            input_ids = (input_ids[:idx] + [self.tokenizer.unk_token_id] * config.query_num + input_ids[idx + 1:])
+            placeholder = '<image>' + '<unk>' * config.query_num + '</image>\n'
+            placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
+            input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                labels = (labels[:idx] + [-100] * config.query_num + labels[idx + 1:])
+                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
             pixel_values = [self.model.transform(image).to(device=self.model.device)]
-        inputs_embeds, _ = self.model.get_vllm_embedding({
-            'input_ids':
-            torch.tensor(input_ids)[None].to(device=self.model.device),
-            'image_bound':
-            image_bound,
+        data = {
+            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
+            'image_bound': image_bound,
             'pixel_values': [pixel_values]
-        })
+        }
+        if tgt_sizes is not None:
+            data['tgt_sizes'] = [tgt_sizes]
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         inputs['inputs_embeds'] = inputs_embeds[0]
@@ -1360,7 +1421,20 @@ class MiniCPMVTemlate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemlate(),
+    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', [-1], '{{QUERY}}<AI>'], [], ['</s>']),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.minicpm_v_v2_5,
+    MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
+        '<|start_header_id|>user<|end_header_id|>\n\n', [-1], '{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ], ['<|eot_id|>'], ['<|eot_id|>'],
+                     is_v2_5=True),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
@@ -1373,6 +1447,8 @@ gemma_template = Template(['<bos>'], ['<start_of_turn>user\n{{QUERY}}<end_of_tur
 register_template(TemplateType.gemma, gemma_template)
 
 register_template(TemplateType.telechat, Template([], ['<_user>{{QUERY}}<_bot>'], ['<_end>'], ['<_end>']))
+
+register_template(TemplateType.telechat_v2, Template([], ['<_user> {{QUERY}}<_bot>'], [], ['<_end>']))
 
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '
@@ -1452,10 +1528,11 @@ register_template(TemplateType.wizardlm2,
 
 _default_phi3_system = ('You are a helpful digital assistant. '
                         'Please provide safe, ethical and accurate information to the user.')
+
 register_template(
     TemplateType.phi3,
-    Template(['<s>'], ['<|user|>{{QUERY}}<|end|><|assistant|>'], ['<|end|>'], ['<|end|>'], _default_phi3_system,
-             '<s><|system|>{{SYSTEM}}<|end|>'))
+    Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'], _default_phi3_system,
+             '<s><|system|>\n{{SYSTEM}}<|end|>\n'))
 
 register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))

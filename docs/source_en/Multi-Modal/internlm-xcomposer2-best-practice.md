@@ -1,4 +1,4 @@
-# Internlm-Xcomposer2 Best Practices
+# Internlm-Xcomposer2 Best Practice
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
@@ -130,7 +130,7 @@ Fine-tuning of multimodal large models usually uses **custom datasets**. Here's 
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type internlm-xcomposer2-7b-chat \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json and jsonl formats. Here's an example of a custom dataset:

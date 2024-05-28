@@ -1,4 +1,4 @@
-# Llava Best Practices
+# Llava Best Practice
 The document corresponds to the following models
 
 | model | model_type |
@@ -176,12 +176,12 @@ LoRA fine-tuning:
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type llava1d6-mistral-7b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 
 # 2*45GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type llava1d6-yi-34b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 ```
 
 Full parameter fine-tuning:
@@ -190,14 +190,14 @@ Full parameter fine-tuning:
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type llava1d6-mistral-7b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
     --sft_type full \
     --deepspeed default-zero2
 
 # 8 * 50 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
     --model_type llava1d6-yi-34b-instruct \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
     --sft_type full \
 ```
 

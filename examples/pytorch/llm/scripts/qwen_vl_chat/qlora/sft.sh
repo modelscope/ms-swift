@@ -11,7 +11,7 @@ python llm_sft.py \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
-    --dataset coco-mini-en \
+    --dataset coco-en-mini \
     --train_dataset_sample -1 \
     --num_train_epochs 1 \
     --max_length 2048 \

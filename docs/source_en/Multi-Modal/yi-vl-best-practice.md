@@ -1,4 +1,4 @@
-# Yi-VL Best Practices
+# Yi-VL Best Practice
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -147,7 +147,7 @@ Fine-tuning multimodal large models usually uses **custom datasets**. Here shows
 # 19GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type yi-vl-6b-chat \
-    --dataset coco-mini-en-2 \
+    --dataset coco-en-2-mini \
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl format, here is an example of a custom dataset:

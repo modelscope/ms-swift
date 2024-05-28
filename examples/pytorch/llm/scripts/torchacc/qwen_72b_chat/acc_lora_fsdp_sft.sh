@@ -1,4 +1,4 @@
-# Experimental environment: 4 * A800
+# Experimental environment: 4 * A100
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 
@@ -18,7 +18,7 @@ swift sft \
     --output_dir output_qwen_72b \
     --num_train_epochs 1 \
     --max_length 2048 \
-    --batch_size 6 \
+    --batch_size 4 \
     --use_flash_attn true \
     --gradient_accumulation_steps 1 \
     --gradient_checkpointing no \
@@ -26,4 +26,6 @@ swift sft \
     --eval_steps 200 \
     --save_steps 200 \
     --logging_steps 100 \
+    --metric_warmup_step 0.1 \
     --report_to 'none' \
+    --fsdp_num 4 \

@@ -102,9 +102,6 @@ def llm_export(args: ExportArguments) -> None:
         _args = args
         assert args.quantization_bit == 0
         assert args.sft_type == 'full', 'you need to merge lora'
-        if args.dtype == 'AUTO' and args.torch_dtype is None:
-            args.dtype, args.torch_dtype = 'fp16', torch.float16
-            logger.info(f'Setting args.torch_dtype: {args.torch_dtype}')
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(

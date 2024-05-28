@@ -10,16 +10,18 @@
 
 ## 环境准备
 ```shell
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 ## 推理
 
-推理[minicpm-v-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary):
+推理[minicpm-v-v2-chat](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2/summary):
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 10GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-v2
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-v2-chat
 ```
 
 输出: (支持传入本地路径或URL)
@@ -37,7 +39,7 @@ Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.co
 <<< clear
 <<< 计算结果是多少
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-计算结果是1452 + 4530 = 5982。
+计算结果是1452 + 45304 = 46756。
 --------------------------------------------------
 <<< clear
 <<< 根据图片中的内容写首诗
@@ -77,7 +79,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.minicpm_v_v2
+model_type = ModelType.minicpm_v_v2_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -128,8 +130,8 @@ road:
 # Experimental environment: A10, 3090, V100, ...
 # 10GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type minicpm-v-v2 \
-    --dataset coco-mini-en-2 \
+    --model_type minicpm-v-v2-chat \
+    --dataset coco-en-2-mini \
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
@@ -147,17 +149,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/minicpm-v-v2/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/minicpm-v-v2-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/minicpm-v-v2/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/minicpm-v-v2-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/minicpm-v-v2/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/minicpm-v-v2-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```
