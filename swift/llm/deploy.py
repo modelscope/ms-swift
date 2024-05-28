@@ -99,7 +99,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 'Please use the `completions` API.')
         example = messages_to_history(request.messages)
         if request.tools is not None:
-            template['tools'] = request.tools
+            example['tools'] = request.tools
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = request.messages
