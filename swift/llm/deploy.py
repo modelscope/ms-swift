@@ -98,6 +98,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 f'the model `{llm_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         example = messages_to_history(request.messages)
+        if request.tools is not None:
+            template['tools'] = request.tools
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = request.messages
@@ -270,6 +272,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 f'the model `{model.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         example = messages_to_history(request.messages)
+        if request.tools is not None:
+            example['tools'] = request.tools
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = request.messages

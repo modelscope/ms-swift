@@ -2,7 +2,7 @@
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional,Union
 
 
 def random_uuid() -> str:
@@ -63,6 +63,7 @@ class CompletionRequestMixin:
 class ChatCompletionRequestMixin:
     model: str
     messages: List[Dict[str, str]]
+    tools: List[Dict[str, Union[str, Dict]]]
 
 
 @dataclass
