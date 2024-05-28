@@ -176,7 +176,8 @@ class Template:
                  suffix: Prompt,
                  default_system: Optional[str] = None,
                  prefix_has_system: Optional[Prompt] = None,
-                 auto_add_bos: bool = False) -> None:
+                 auto_add_bos: bool = False,
+                 func_prompt: Prompt = None) -> None:
         """
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
             whether to add it based on `tokenizer.encode('')`.
@@ -199,6 +200,7 @@ class Template:
         self.use_default_system = True
         self.auto_add_bos = auto_add_bos
         self._is_init = False
+        self.func_prompt = None
 
     @staticmethod
     def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
@@ -238,7 +240,7 @@ class Template:
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
 
-        for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system']:
+        for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system', 'func_prompt']:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
