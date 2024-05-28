@@ -1207,6 +1207,8 @@ class DeployArguments(InferArguments):
     ssl_keyfile: Optional[str] = None
     ssl_certfile: Optional[str] = None
 
+    owned_by: str = 'swift'
+
     def __post_init__(self):
         super().__post_init__()
         model_info = MODEL_MAPPING[self.model_type]

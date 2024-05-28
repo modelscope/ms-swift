@@ -413,7 +413,7 @@ for query in ['78654+657=?', '晚上睡不着觉怎么办']:
 
     print(f'query: {query}')
     print('response: ', end='')
-    response = '' 
+    response = ''
     for chunk in stream_resp:
         response += chunk.choices[0].delta.content
         print(chunk.choices[0].delta.content, end='', flush=True)
@@ -576,7 +576,7 @@ for query in ['78654+657=?', '晚上睡不着觉怎么办']:
 
     print(f'query: {query}')
     print('response: ', end='')
-    response = '' 
+    response = ''
     for chunk in stream_resp:
         response += chunk.choices[0].delta.content
         print(chunk.choices[0].delta.content, end='', flush=True)
