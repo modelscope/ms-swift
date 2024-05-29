@@ -347,8 +347,8 @@ def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[in
     def _is_special(token: int) -> bool:
         if token < 0:
             return True
-        if tokenizer.eos_token_id != tokenizer.pad_token_id:
-            return token == tokenizer.pad_token_id
+        if hasattr(tokenizer, 'placeholder_tokens'):
+            return token in tokenizer.placeholder_tokens_id
         return False
 
     if isinstance(input_ids, torch.Tensor):

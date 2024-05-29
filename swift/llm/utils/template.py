@@ -14,7 +14,7 @@ from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.agent.utils import calculate_loss_scale
 from swift.torchacc_utils import pad_and_split_batch
-from swift.utils import get_dist_setting, use_torchacc
+from swift.utils import get_dist_setting, upper_bound, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -70,6 +70,7 @@ class TemplateType:
     minicpm_v = 'minicpm-v'
     minicpm_v_v2_5 = 'minicpm-v-v2_5'
     gemma = 'gemma'
+    paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
@@ -1044,6 +1045,8 @@ class LLavaLlamaTemplate(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
         image_path = example['images']
         raw_image = _read_from_path(image_path[0])
         pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
@@ -1062,6 +1065,45 @@ register_template(
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)
+
+
+class PaliGemmaTemplate(Template):
+
+    def __init__(self):
+        Template.__init__(self, ['<bos>'], ['{{QUERY}}\n'], None, ['<eos>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        image_token = self.tokenizer.encode('<image>', add_special_tokens=False)
+        assert len(image_token) == 1
+        image_token = image_token[0]
+        if len(inputs) == 0:
+            return inputs, {}
+        image_path = example['images']
+        processor = self.tokenizer.processor
+        inputs['input_ids'] = [image_token] * processor.image_seq_length + inputs['input_ids']
+        if inputs['labels'] is not None:
+            n = upper_bound(0, len(inputs['labels']), lambda idx: inputs['labels'][idx] == -100)
+            n2 = len(inputs['labels']) - n
+            inputs['labels'] = [-100] * processor.image_seq_length + inputs['labels']
+            inputs['token_type_ids'] = [0] * (processor.image_seq_length + n) + [1] * n2
+        else:
+            inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
+        raw_image = _read_from_path(image_path[0])
+        model_inputs = processor(text=example['query'], images=raw_image, return_tensors='pt')
+        inputs['pixel_values'] = model_inputs['pixel_values']
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
+        token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
+        res['token_type_ids'] = token_type_ids
+        return res
+
+
+register_template(TemplateType.paligemma, PaliGemmaTemplate(), infer_media_type='dialogue', lazy_tokenize=True)
 
 
 class Phi3VisionTemplate(Template):
