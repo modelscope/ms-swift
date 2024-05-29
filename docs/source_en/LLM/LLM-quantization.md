@@ -55,7 +55,7 @@ pip install -r requirements/llm.txt -U
 
 ## Original Model
 
-### awq、gptq
+### awq, gptq
 
 Here we demonstrate AWQ and GPTQ quantization on the qwen1half-7b-chat model.
 ```bash
@@ -163,6 +163,9 @@ curl http://localhost:8000/v1/chat/completions \
 ```
 
 ## QLoRA
+
+### awq, gptq
+
 If you want to fine-tune the models quantized with awq and gptq using QLoRA, you need to perform pre-quantization. For example, you can use `swift export` to quantize the original model. Then, for fine-tuning, you need to specify `--quant_method` to specify the corresponding quantization method using the following command:
 
 ```bash
@@ -182,6 +185,8 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --sft_type lora \
     --dataset alpaca-zh#5000 \
 ```
+
+### bnb, hqq, eetq
 
 If you want to use bnb, hqq, eetq for QLoRA fine-tuning, you need to specify `--quant_method` and `--quantization_bit` during training:
 

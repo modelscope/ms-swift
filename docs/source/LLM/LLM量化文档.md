@@ -256,6 +256,8 @@ curl http://localhost:8000/v1/chat/completions \
 ```
 
 ## QLoRA微调
+
+### awq、gptq
 如果想要对awq、gptq量化的模型进行qlora微调，你需要进行提前量化。例如可以对原始模型使用`swift export`进行量化。然后使用以下命令进行微调，你需要指定`--quant_method`来指定对应量化的方式：
 
 ```bash
@@ -276,6 +278,8 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset alpaca-zh#5000 \
 ```
 
+
+### bnb、hqq、eetq
 如果想要使用bnb、hqq、eetq进行qlora微调，你需要在训练中指定`--quant_method`和`--quantization_bit`：
 
 ```bash
