@@ -15,13 +15,13 @@ from .protocol import ChatCompletionResponse  # noqa
 from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
                        CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                       Function, Model, ModelList, UsageInfo, XRequestConfig, random_uuid, tool_calls)
+                       Model, ModelList, UsageInfo, XRequestConfig, random_uuid, Function, ToolCalls)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWords, Template, TemplateType,
                        get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
-                    find_ln, get_max_model_len, get_time_info, get_tools_prompt, history_to_messages, inference,
-                    inference_stream, is_vllm_available, limit_history_length, messages_to_history, print_example,
-                    safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset, to_device)
+                    find_ln, get_max_model_len, get_time_info, history_to_messages, inference, inference_stream,
+                    is_vllm_available, limit_history_length, messages_to_history, print_example, safe_tokenizer_decode,
+                    set_generation_config, sort_by_max_length, stat_dataset, to_device, get_tools_prompt)
 
 try:
     if is_vllm_available():
