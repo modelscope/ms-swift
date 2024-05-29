@@ -352,8 +352,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         if isinstance(request, ChatCompletionRequest):
             action, action_input = split_action_action_input(response)
             if action is not None:
-                toolcall = tool_calls(
-                    id=f'cmpl-{random_uuid()}', type='function', function=function(name=action, arguments=action_input))
+                toolcall = ToolCalls(
+                    id=f'cmpl-{random_uuid()}', type='function', function=Function(name=action, arguments=action_input))
                 choices = [
                     ChatCompletionResponseChoice(
                         index=0,
