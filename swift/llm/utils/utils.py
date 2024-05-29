@@ -888,9 +888,10 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
         max_model_len = None
     return max_model_len
 
-def get_tools_prompt(TOOLS:list[dict[str, Union[str,dict]]], format:str = 'default') -> Tuple[str, str]:
+
+def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], format: str = 'default') -> Tuple[str, str]:
     import json
-    # ref: 
+    # ref:
     TOOL_DESC = """{tool_name}: Call this tool to interact with the {tool_name} API. \
     What is the {tool_name} API useful for? {tool_desc} \
     Parameters: {paras} Format the arguments as a JSON object."""
@@ -912,7 +913,7 @@ def get_tools_prompt(TOOLS:list[dict[str, Union[str,dict]]], format:str = 'defau
 
     Begin!
     """
-    
+
     TOOLBENCH_PROMPT = '''You are AutoGPT, you can use many tools(functions) to do the following task.
     First I will give you the task description, and your task start.
     At each step, you need to give your thought to analyze the status now and what to do next, \
@@ -938,7 +939,7 @@ def get_tools_prompt(TOOLS:list[dict[str, Union[str,dict]]], format:str = 'defau
     use function Finish->give_up_and_restart.
     2.Do not use origin tool names, use only subfunctions' names.
     Specifically, you have access to the following APIs: {api_list}'''
-    
+
     tool_descs = []
     tool_names = []
     for info in TOOLS:  # info: dict[str, Union[str, dict]]
@@ -946,17 +947,19 @@ def get_tools_prompt(TOOLS:list[dict[str, Union[str,dict]]], format:str = 'defau
             if 'function' in info:
                 info = info['function']
             if format == 'qwen':
-                tool_descs.append(TOOL_DESC.format(tool_name=info['name'], tool_desc=info['description'],paras=info['parameters']))
+                tool_descs.append(
+                    TOOL_DESC.format(tool_name=info['name'], tool_desc=info['description'], paras=info['parameters']))
                 tool_names.append(info['name'])
-            else: # toolbench
-                tool_descs.append(info) # info: dict
-        except:
-            print("invalid tools format, please check the Agent.md document")
+            else:  # toolbench
+                tool_descs.append(info)  # info: dict
+        except KeyError:
+            print('invalid tools format, please check the Agent.md document')
     tool_descs = '\n\n'.join(tool_descs)
     tool_names = ','.join(tool_names)
-    if format == 'qwen':
+    if format == 'default':
         return DEFAULT_PROMPT.format(tool_descs, tool_names)
     return TOOLBENCH_PROMPT.format(tool_descs)
+
 
 if is_ddp_plus_mp():
     from accelerate.utils.modeling import (get_balanced_memory, infer_auto_device_map)

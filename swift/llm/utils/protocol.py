@@ -84,9 +84,23 @@ class UsageInfo:
 
 
 @dataclass
+class function:
+    name: str
+    arguments: str
+
+
+@dataclass
+class tool_calls:
+    id: str
+    type: str
+    function: function
+
+
+@dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
+    tool_calls: tool_calls
 
 
 @dataclass

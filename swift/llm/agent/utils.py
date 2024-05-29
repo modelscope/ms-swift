@@ -70,3 +70,19 @@ def calculate_loss_scale(response: str, use_loss_scale=False) -> Tuple[List[str]
         return agent_content, weights
     else:
         return [response], [1.0]
+
+
+def split_action_action_input(response):
+    agent_keyword = [
+        'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:', 'Thought:',
+        'Final Answer:', 'Observation:'
+    ]
+    agent_parts = split_str_parts_by(response, agent_keyword)
+    action = None
+    action_input = None
+    for c in agent_parts:
+        if c['key'].lower() == 'action:':
+            action = c['content']
+        elif c['key'].lower() == 'action input:':
+            action_input = c['content']
+    return action, action_input

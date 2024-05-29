@@ -13,14 +13,15 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from modelscope import GenerationConfig
 from peft import PeftModel
 
+from swift.llm.agent.utils import split_action_action_input
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import ChatCompletionResponse  # noqa
 from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                     ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
                     CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                    DeployArguments, Model, ModelList, UsageInfo, inference, inference_stream, messages_to_history,
-                    random_uuid)
+                    DeployArguments, Model, ModelList, UsageInfo, function, inference, inference_stream,
+                    messages_to_history, random_uuid, tool_calls)
 
 logger = get_logger()
 
@@ -349,13 +350,25 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             total_tokens=num_prompt_tokens + num_generated_tokens,
         )
         if isinstance(request, ChatCompletionRequest):
-            choices = [
-                ChatCompletionResponseChoice(
-                    index=0,
-                    message=ChatMessage(role='assistant', content=response),
-                    finish_reason=None,
-                )
-            ]
+            action, action_input = split_action_action_input(response)
+            if action is not None:
+                toolcall = tool_calls(
+                    id=f'cmpl-{random_uuid()}', type='function', function=function(name=action, arguments=action_input))
+                choices = [
+                    ChatCompletionResponseChoice(
+                        index=0,
+                        message=ChatMessage(role='assistant', content=None, tool_calls=toolcall),
+                        finish_reason=None,
+                    )
+                ]
+            else:
+                choices = [
+                    ChatCompletionResponseChoice(
+                        index=0,
+                        message=ChatMessage(role='assistant', content=response, tool_calls=None),
+                        finish_reason=None,
+                    )
+                ]
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         else:
