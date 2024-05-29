@@ -99,6 +99,10 @@
         "tags": ["pretrain"],
         "hf_dataset_id": "Chinese-Vicuna/guanaco_belle_merge_v1.0"
     },
+    "math-plus": {
+        "tags": ["pretrain"],
+        "hf_dataset_id": "TIGER-Lab/MATH-plus"
+    },
     "function-calling-chatml": {
         "tags": ["agent"],
         "hf_dataset_id": "Locutusque/function-calling-chatml"
@@ -166,9 +170,21 @@
         "tags": ["en"],
         "hf_dataset_id": "liuhaotian/LLaVA-Pretrain"
     },
-    "llava_zh": {
+    "llava-zh": {
         "tags": ["en"],
         "hf_dataset_id": "openbmb/llava_zh"
+    },
+    "theorem-qa": {
+        "tags": ["en"],
+        "hf_dataset_id": "TIGER-Lab/TheoremQA"
+    },
+    "mantis-instruct": {
+        "tags": ["en"],
+        "hf_dataset_id": "TIGER-Lab/Mantis-Instruct"
+    },
+    "llava-data": {
+        "tags": ["en"],
+        "hf_dataset_id": "TIGER-Lab/llava-data"
     },
     "llava-med-zh-instruct": {
         "tags": ["en"],
@@ -181,6 +197,54 @@
     "m3it": {
         "tags": ["en"],
         "hf_dataset_id": "MMInstruction/M3IT"
+    },
+    "pope": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/POPE"
+    },
+    "doc-vqa": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/DocVQA"
+    },
+    "ref-coco": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/RefCOCO"
+    },
+    "gqa": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/GQA"
+    },
+    "chart-qa": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/ChartQA"
+    },
+    "ref-coco-g": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/RefCOCOg"
+    },
+    "ref-coco-plus": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/RefCOCOplus"
+    },
+    "text-caps": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/TextCaps"
+    },
+    "a-okvqa": {
+        "tags": ["en"],
+        "hf_dataset_id": "HuggingFaceM4/A-OKVQA"
+    },
+    "ocr-vqa": {
+        "tags": ["en"],
+        "hf_dataset_id": "howard-hou/OCR-VQA"
+    },
+    "ok-vqa": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/OK-VQA"
+    },
+    "vqa-v2": {
+        "tags": ["en"],
+        "hf_dataset_id": "lmms-lab/VQAv2"
     },
     "gpt4v-dataset": {
         "tags": ["en"],
