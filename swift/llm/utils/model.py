@@ -863,10 +863,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-        if load_model and is_awq:
-            model.is_awq = is_awq
-        if load_model and is_gptq > 0:
-            model.is_gptq = is_gptq
     return model, tokenizer
 
 
