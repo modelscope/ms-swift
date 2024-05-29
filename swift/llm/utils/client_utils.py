@@ -36,17 +36,18 @@ def inference_client(
     request_config: Optional[XRequestConfig] = None,
     host: str = '127.0.0.1',
     port: str = '8000',
-    adapter_name: str = None,
     is_chat_request: Optional[bool] = None,
 ) -> Union[ChatCompletionResponse, CompletionResponse, Iterator[ChatCompletionStreamResponse],
            Iterator[CompletionStreamResponse]]:
     if request_config is None:
         request_config = XRequestConfig()
     if is_chat_request is None:
-        template_type = get_default_template_type(model_type)
-        is_chat_request = 'generation' not in template_type
+        model_list = get_model_list_client(host, port)
+        for model in model_list.data:
+            if model_type == model.id:
+                is_chat_request = model.is_chat
     data = {k: v for k, v in request_config.__dict__.items() if not k.startswith('__')}
-    data['model'] = adapter_name or model_type
+    data['model'] = model_type
     if is_chat_request:
         data['messages'] = history_to_messages(history, query, system)
         url = f'http://{host}:{port}/v1/chat/completions'

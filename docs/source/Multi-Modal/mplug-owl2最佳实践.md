@@ -1,6 +1,6 @@
 
 # mPLUG-Owl2 最佳实践
-以下内容以`mplug-owl2d1-chat`为例, 你也可以选择`mplug-owl2-chat`.
+以下内容以`mplug-owl2_1-chat`为例, 你也可以选择`mplug-owl2-chat`.
 
 ## 目录
 - [环境准备](#环境准备)
@@ -17,17 +17,17 @@ pip install -e '.[llm]'
 ```
 
 模型链接:
-- mplug-owl2d1-chat: [https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary](https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary)
+- mplug-owl2_1-chat: [https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary](https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary)
 - mplug-owl2-chat: [https://modelscope.cn/models/iic/mPLUG-Owl2/summary](https://modelscope.cn/models/iic/mPLUG-Owl2/summary)
 
 
 ## 推理
 
-推理`mplug-owl2d1-chat`:
+推理`mplug-owl2_1-chat`:
 ```shell
 # Experimental environment: A10, 3090, V100...
 # 24GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type mplug-owl2d1-chat
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type mplug-owl2_1-chat
 ```
 
 输出: (支持传入本地路径或URL)
@@ -82,7 +82,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.mplug_owl2d1_chat
+model_type = ModelType.mplug_owl2_1_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -134,7 +134,7 @@ road:
 # Experimental environment: A10, 3090, V100...
 # 24GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type mplug-owl2d1-chat \
+    --model_type mplug-owl2_1-chat \
     --dataset coco-en-2-mini \
 ```
 
@@ -153,17 +153,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/mplug-owl2d1-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/mplug-owl2_1-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/mplug-owl2d1-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/mplug-owl2_1-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/mplug-owl2d1-chat/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/mplug-owl2_1-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```
