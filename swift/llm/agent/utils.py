@@ -154,6 +154,6 @@ def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: st
             print('invalid tools format, please check the Agent.md document')
     tool_descs = '\n\n'.join(tool_descs)
     tool_names = ','.join(tool_names)
-    if format == 'default':
-        return DEFAULT_PROMPT.format(tool_descs, tool_names)
-    return TOOLBENCH_PROMPT.format(tool_descs)
+    if prompt_format == 'default':
+        return DEFAULT_PROMPT.format(tool_descs=tool_descs,tool_names=tool_names)
+    return TOOLBENCH_PROMPT.format(api_list=tool_descs)
