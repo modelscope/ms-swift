@@ -535,7 +535,8 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English            | 11B                                | chat model |
 | InternVL           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 25.5B<br>including quantized version                              | chat model |
 | Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English            | 8B                                 | chat model |
-| Phi3                                      | Microsoft                                                                  | English            | 4B              | chat model |
+| Phi3-Vision                                      | Microsoft                        | English            | 4B              | chat model |
+| PaliGemma                                  | Google              | English | 3B              | chat model |
 
 #### Diffusion Models
 
