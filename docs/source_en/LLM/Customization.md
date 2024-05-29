@@ -9,8 +9,8 @@
 We support three methods for **customizing datasets**.
 
 1. \[Recommended\] using command line arguments: It is more convenient to support custom datasets, and it supports four dataset formats (using `SmartPreprocessor`) as well as the `dataset_id` and `dataset_path`.
-2. Adding datasets to `dataset_info.json` is more flexible than the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--dataset_info_path xxx.json` (for users who prefer pip install over git clone to expand datasets).
-3. Registering datasets: More flexible than the first two methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
+2. Adding datasets to `dataset_info.json` is more flexible but cumbersome compared to the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--dataset_info_path xxx.json` (for users who prefer pip install over git clone to expand datasets).
+3. Registering datasets: More flexible but cumbersome compared to the first and second methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
 
 ### 📌 \[Recommended\] using Command Line Arguments
 

@@ -158,8 +158,8 @@ class ModelType:
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
-    llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
-    llava1d6_yi_34b_instruct = 'llava1d6-yi-34b-instruct'
+    llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
+    llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
@@ -295,7 +295,7 @@ class ModelType:
     baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
     # owl
     mplug_owl2_chat = 'mplug-owl2-chat'  # llama
-    mplug_owl2d1_chat = 'mplug-owl2d1-chat'  # qwen
+    mplug_owl2_1_chat = 'mplug-owl2_1-chat'  # qwen
     # yuan
     yuan2_2b_instruct = 'yuan2-2b-instruct'
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
@@ -344,9 +344,10 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
+    phi3_small_128k_instruct = 'phi3-small-128k-instruct'
+    phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
+
     phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
-    phi3_small_128k_instruct = 'phi3_small_128k_instruct'
-    phi3_medium_128k_instruct = 'phi3_medium_128k_instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
@@ -423,7 +424,7 @@ class LoRATM(NamedTuple):
         'v_proj.multiway.0',
         'v_proj.multiway.1',
     ]
-    mplug_owl2d1 = [
+    mplug_owl2_1 = [
         'c_attn.multiway.0',
         'c_attn.multiway.1',
     ]
@@ -504,8 +505,10 @@ def _check_awq_ext() -> None:
                           '&& cd AutoAWQ_kernels && pip install -e .`') from e
 
 
-def _check_gptq_model(bits: int, model_kwargs: Dict[str, Any]) -> None:
+def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> None:
     assert model_kwargs.get('quantization_config') is None
+    if bits == 0:
+        bits = model_config.quantization_config['bits']
     if version.parse(transformers.__version__) >= version.parse('4.35'):
         model_kwargs['quantization_config'] = GPTQConfig(bits=bits, use_exllama=False)
     else:
@@ -816,14 +819,20 @@ def get_model_tokenizer_from_repo(model_dir: str,
                                   automodel_class=AutoModelForCausalLM,
                                   **kwargs):
     """load from an independent repository"""
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     is_awq = kwargs.pop('is_awq', False)
     is_aqlm = kwargs.pop('is_aqlm', False)
     gptq_bits = kwargs.pop('gptq_bits', 0)
+    if gptq_bits > 0:
+        is_gptq = True
+    else:
+        is_gptq = kwargs.pop('is_gptq', False)
     is_training = kwargs.pop('is_training', False)
     if is_awq and is_training:
         _check_awq_ext()
-    if gptq_bits > 0 and is_training:
-        _check_gptq_model(gptq_bits, model_kwargs)
+    if is_gptq and is_training:
+        _check_gptq_model(gptq_bits, model_config, model_kwargs)
     context = kwargs.get('context', None)
     if is_aqlm and is_training:
         require_version('transformers>=4.39')
@@ -831,8 +840,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
         context = aqlm.optimize_for_training()
     if context is None:
         context = nullcontext()
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     if torch_dtype is not None:
         model_config.torch_dtype = torch_dtype
     if tokenizer is None:
@@ -862,10 +869,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-        if load_model and is_awq:
-            model.is_awq = is_awq
-        if load_model and gptq_bits > 0:
-            model.gptq_bits = gptq_bits
     return model, tokenizer
 
 
@@ -895,7 +898,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
         model_config=model_config,
         automodel_class=LlavaForConditionalGeneration,
         **kwargs)
-    model.processor = processor
+    tokenizer.processor = processor
     return model, tokenizer
 
 
@@ -1144,7 +1147,10 @@ else:
     'LLM-Research/Phi-3-vision-128k-instruct',
     LoRATM.phi3,
     TemplateType.phi3_vl,
-    support_vllm=False,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    disable_require_grads=True,
+    tags=['multi-modal', 'vision'],
     hf_model_id='microsoft/Phi-3-vision-128k-instruct')
 def get_model_tokenizer_phi3_vision(model_dir: str,
                                     torch_dtype: Dtype,
@@ -1152,23 +1158,10 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
                                     load_model: bool = True,
                                     **kwargs):
     from transformers import AutoProcessor
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    model.processor = processor
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
 
-    def _require_grad_hook(module, inputs, output):
-        output.requires_grad = False
-
-    for module in model.modules():
-        if module.__class__.__name__ == 'Phi3ImageEmbedding':
-            module.wte.register_forward_hook(_require_grad_hook)
-
-    def _enable_input_require_grads(self):
-        pass
-
-    model.enable_input_require_grads = MethodType(_enable_input_require_grads, model)
     return model, tokenizer
 
 
@@ -3016,6 +3009,30 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
 
 def _patch_deepseek_vl(model) -> None:
+
+    if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
+        return
+    if hasattr(model.language_model, '__old_forward'):
+        # avoid double patching
+        return
+    # device_map
+    __old_forward = model.language_model.forward
+
+    def _new_forward(*args, **kwargs) -> Tensor:
+        inputs = kwargs.get('inputs_embeds')
+        if inputs is None:
+            inputs = kwargs.get('input_ids')
+        device = inputs.device
+        output = __old_forward(*args, **kwargs)
+        if output.logits is not None:
+            output.logits = output.logits.to(device)
+        if output.loss is not None:
+            output.loss = output.loss.to(device)
+        return output
+
+    model.language_model.forward = _new_forward
+    model.language_model.__old_forward = __old_forward
+
     model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
     func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
     _use_submodel_func(model, 'language_model', func_list)
@@ -3057,8 +3074,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
-    vl_chat_processor = VLChatProcessor.from_pretrained(model_dir)
-    tokenizer = vl_chat_processor.tokenizer
+    processor = VLChatProcessor.from_pretrained(model_dir)
+    tokenizer = processor.tokenizer
     # flash_attn
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
@@ -3069,7 +3086,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         model_config.language_config._flash_attn_2_enabled = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
-    tokenizer.vl_chat_processor = vl_chat_processor
+    tokenizer.processor = processor
     if load_model:
         _patch_deepseek_vl(model)
     return model, tokenizer
@@ -4139,7 +4156,7 @@ def _patch_llava(model):
 
 
 @register_model(
-    ModelType.llava1d6_yi_34b_instruct,
+    ModelType.llava1_6_yi_34b_instruct,
     'AI-ModelScope/llava-v1.6-34b',
     LoRATM.llama2,
     TemplateType.llava_yi_instruct,
@@ -4149,7 +4166,7 @@ def _patch_llava(model):
     tags=['multi-modal', 'vision'],
     hf_model_id='liuhaotian/llava-v1.6-34b')
 @register_model(
-    ModelType.llava1d6_mistral_7b_instruct,
+    ModelType.llava1_6_mistral_7b_instruct,
     'AI-ModelScope/llava-v1.6-mistral-7b',
     LoRATM.llama2,
     TemplateType.llava_mistral_instruct,
@@ -4194,9 +4211,9 @@ def get_model_tokenizer_llava(model_dir: str,
     if 'local_repo_path' in kwargs:
         repo_path = kwargs['local_repo_path']
     elif 'next' in llm_model_type:
-        repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT.git'
+        repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
     else:
-        repo_path = 'https://github.com/haotian-liu/LLaVA.git'
+        repo_path = 'https://github.com/haotian-liu/LLaVA'
     local_repo_path = _git_clone_github(repo_path)
     sys.path.append(os.path.join(local_repo_path))
 
@@ -4256,9 +4273,9 @@ def get_model_tokenizer_llava(model_dir: str,
     support_flash_attn=True,
     hf_model_id='MAGAer13/mplug-owl2-llama2-7b')
 @register_model(
-    ModelType.mplug_owl2d1_chat,
+    ModelType.mplug_owl2_1_chat,
     'iic/mPLUG-Owl2.1',
-    LoRATM.mplug_owl2d1,
+    LoRATM.mplug_owl2_1,
     TemplateType.mplug_owl2,
     requires=['transformers<4.35', 'icecream'],
     eos_token='<|endoftext|>',
@@ -4292,8 +4309,8 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     model, tokenizer = get_model_tokenizer_function(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     logger.info('Please ignore the unimported warning.')
-    image_processor = CLIPImageProcessor.from_pretrained(model_dir)
-    tokenizer.image_processor = image_processor
+    processor = CLIPImageProcessor.from_pretrained(model_dir)
+    tokenizer.processor = processor
     return model, tokenizer
 
 

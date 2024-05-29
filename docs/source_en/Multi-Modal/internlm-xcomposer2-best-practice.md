@@ -1,4 +1,4 @@
-# Internlm-Xcomposer2 Best Practices
+# Internlm-Xcomposer2 Best Practice
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)

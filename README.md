@@ -439,7 +439,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
 ```
 
-### Export
+### Quantization
 
 Original model:
 ```shell
@@ -456,6 +456,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 ```
 
 ### Deployment
+The client uses the OpenAI API for invocation, for details refer to the [LLM deployment documentation](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md).
 
 Original model:
 ```shell

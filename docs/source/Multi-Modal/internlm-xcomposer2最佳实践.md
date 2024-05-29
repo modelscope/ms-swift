@@ -109,7 +109,7 @@ print()
 print(f'history: {history}')
 """
 query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？
-response:  马鞍山距离阳江62公里，广州距离广州293公里。
+response: 马鞍山距离阳江62公里，广州距离广州293公里。
 query: 距离最远的城市是哪？
 response: 距离最最远的城市是广州，距离广州293公里。
 history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？', ' 马鞍山距离阳江62公里，广州距离广州293公里。'], ['距离最远的城市是哪？', ' 距离最远的城市是广州，距离广州293公里。']]

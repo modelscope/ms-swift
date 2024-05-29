@@ -169,7 +169,10 @@ class ArgumentsBase:
             'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
             'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
             'cogvlm-17b-instruct': 'cogvlm-17b-chat',
-            'minicpm-v-v2': 'minicpm-v-v2-chat'
+            'minicpm-v-v2': 'minicpm-v-v2-chat',
+            'mplug-owl2d1-chat': 'mplug-owl2_1-chat',
+            'llava1d6-mistral-7b-instruct': 'llava1_6-mistral-7b-instruct',
+            'llava1d6-yi-34b-instruct': 'llava1_6-yi-34b-instruct',
         }
         dataset_name_mapping = {
             'ms-bench-mini': 'ms-bench#20000',
@@ -299,7 +302,7 @@ class ArgumentsBase:
                                      'Representing the model name and model author in Chinese and English.')
                 setattr(self, k, v)
 
-    def _handle_dataset_compat(self, train_dataset: HfDataset,
+    def _handle_dataset_compat(self, train_dataset: Optional[HfDataset],
                                val_dataset: Optional[HfDataset]) -> Tuple[HfDataset, Optional[HfDataset]]:
         # compatibility. (Deprecated)
         random_state = np.random.RandomState(self.dataset_seed)
@@ -442,7 +445,9 @@ class SftArguments(ArgumentsBase):
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
     # note: bf16 and quantization have requirements for gpu architecture
-    quant_method: Literal['bnb', 'hqq', 'eetq'] = None
+    # awq, gptq, and aqlm need to be pre-quantized models,
+    # while bnb, hqq, and eetq can be quantized during SFT using the original models.
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq', 'aqlm'] = None
     quantization_bit: Literal[0, 1, 2, 3, 4, 8] = 0  # hqq: 1,2,3,4,8. bnb: 4,8
     hqq_axis: Literal[0, 1] = 0
     hqq_dynamic_config_path: Optional[str] = None
@@ -1204,6 +1209,8 @@ class DeployArguments(InferArguments):
     port: int = 8000
     ssl_keyfile: Optional[str] = None
     ssl_certfile: Optional[str] = None
+
+    owned_by: str = 'swift'
 
     def __post_init__(self):
         super().__post_init__()

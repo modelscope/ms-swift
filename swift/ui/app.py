@@ -59,7 +59,7 @@ def run_ui():
 
     port = os.environ.get('WEBUI_PORT', None)
     concurrent = {}
-    if version.parse(gr.__version__) < version.parse('4.0.0'):
+    if version.parse(gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
         concurrent = {'concurrency_count': 5}
     app.queue(**concurrent).launch(
         server_name=os.environ.get('WEBUI_SERVER', None),

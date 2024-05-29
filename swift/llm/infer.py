@@ -31,6 +31,8 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     save_safetensors: bool = True) -> None:
     if model is not None:
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
+    if hasattr(tokenizer, 'processor'):
+        tokenizer.processor.save_pretrained(target_dir)
     tokenizer.save_pretrained(target_dir)
     model_type = getattr(tokenizer, 'model_type')
     fname_list = ['generation_config.json', 'preprocessor_config.json']
