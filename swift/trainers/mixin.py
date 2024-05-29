@@ -383,6 +383,8 @@ class SwiftMixin:
         sft_args = getattr(self, 'sft_args', None)
         # tokenizer
         if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
+            if hasattr(self.tokenizer, 'processor'):
+                self.tokenizer.processor.save_pretrained(output_dir)
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))

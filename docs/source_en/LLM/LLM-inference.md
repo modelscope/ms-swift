@@ -181,26 +181,48 @@ model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': '
 
 template = get_template(template_type, tokenizer)
 seed_everything(42)
-query = 'Where is the capital of Zhejiang?'
+
+query = 'What is the capital of Zhejiang Province?'
 gen = inference_stream(model, template, query)
 print(f'query: {query}')
 for response, history in gen:
-    print(f'response: {response}')
-query = 'What are some famous foods there?'
-gen = inference_stream(model, template, query, history)
+    pass
+print(f'response: {response}')
+
+# method1
+query = 'What is there to eat?'
+old_history = history
+gen = inference_stream(model, template, query, old_history)
 print(f'query: {query}')
 for response, history in gen:
     print(f'response: {response}')
 print(f'history: {history}')
 
+# method2
+query = 'What is there to eat?'
+gen = inference_stream(model, template, query, old_history)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for response, history in gen:
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print(f'\nhistory: {history}')
+
 """Out[0]
-query: Where is the capital of Zhejiang?
+query: What is the capital of Zhejiang Province?
+response: The capital of Zhejiang Province is Hangzhou.
+query: What is there to eat?
+response: Zhejiang
+response: Zhejiang cuisine,
+response: Zhejiang cuisine,
+response: Zhejiang cuisine, also
 ...
-response: The capital of Zhejiang province is Hangzhou.
-query: What are some famous foods there?
-...
-response: Hangzhou has many famous local foods, such as West Lake Vinegar Fish, Longjing Shrimp, Sweet and Sour Pork Ribs, Spicy Beef, etc. In addition, there are also Hangzhou specialties like Osmanthus Cake, Lotus Seed Pastry, Ai Wo Wo, and more.
-history: [('Where is the capital of Zhejiang?', 'The capital of Zhejiang province is Hangzhou.'), ('What are some famous foods there?', 'Hangzhou has many famous local foods, such as West Lake Vinegar Fish, Longjing Shrimp, Sweet and Sour Pork Ribs, Spicy Beef, etc. In addition, there are also Hangzhou specialties like Osmanthus Cake, Lotus Seed Pastry, Ai Wo Wo, and more.')]
+response: Zhejiang cuisine, also known as "Hangzhou cuisine", is one of the eight traditional Chinese cuisines and is famous for its delicate taste, light fragrance, and natural appearance. It has a long history and is influenced by various cultures, including Huaiyang cuisine, Jiangnan cuisine, and Cantonese cuisine. Some popular dishes include West Lake Fish in Vinegar Gravy, Dongpo Pork, Longjing Tea-Scented Chicken, Braised Preserved Bamboo Shoots with Shredded Pork, and Steamed Stuffed Buns. There are many other delicious dishes that you can try when visiting Zhejiang.
+history: [['What is the capital of Zhejiang Province?', 'The capital of Zhejiang Province is Hangzhou.'], ['What is there to eat?', 'Zhejiang cuisine, also known as "Hangzhou cuisine", is one of the eight traditional Chinese cuisines and is famous for its delicate taste, light fragrance, and natural appearance. It has a long history and is influenced by various cultures, including Huaiyang cuisine, Jiangnan cuisine, and Cantonese cuisine. Some popular dishes include West Lake Fish in Vinegar Gravy, Dongpo Pork, Longjing Tea-Scented Chicken, Braised Preserved Bamboo Shoots with Shredded Pork, and Steamed Stuffed Buns. There are many other delicious dishes that you can try when visiting Zhejiang.']]
+query: What is there to eat?
+response: There are many delicious foods to try in Hangzhou, such as West Lake Fish in Vinegar Gravy, Dongpo Pork, Longjing Tea Pancakes, and XiHu-style Mandarin Duck. Additionally, Hangzhou is famous for its snacks like xiaolongbao (soup dumplings), qingtuan (green tea cakes), and huoguoliangzi (cold barley noodles).
+history: [['What is the capital of Zhejiang Province?', 'The capital of Zhejiang Province is Hangzhou.'], ['What is there to eat?', 'There are many delicious foods to try in Hangzhou, such as West Lake Fish in Vinegar Gravy, Dongpo Pork, Longjing Tea Pancakes, and XiHu-style Mandarin Duck. Additionally, Hangzhou is famous for its snacks like xiaolongbao (soup dumplings), qingtuan (green tea cakes), and huoguoliangzi (cold barley noodles).']]
 """
 ```
 
