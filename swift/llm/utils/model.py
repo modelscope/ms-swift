@@ -1131,17 +1131,15 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     requires=['transformers>=4.41'],
     hf_model_id='google/paligemma-3b-mix-448')
 def get_model_tokenizer_paligemma_vision(model_dir: str,
-                                        torch_dtype: Dtype,
-                                        model_kwargs: Dict[str, Any],
-                                        load_model: bool = True,
-                                        **kwargs):
+                                         torch_dtype: Dtype,
+                                         model_kwargs: Dict[str, Any],
+                                         load_model: bool = True,
+                                         **kwargs):
     from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_from_repo(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, 
-        automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
-    model.processor = processor
+        model_dir, torch_dtype, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
+    tokenizer.processor = processor
     return model, tokenizer
 
 
