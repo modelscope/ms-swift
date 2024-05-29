@@ -214,7 +214,7 @@ class Template:
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
 
-        for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system', 'func_prompt']:
+        for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system']:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
