@@ -169,7 +169,10 @@ class ArgumentsBase:
             'openbmb-minicpm-2b-sft-chat': 'minicpm-2b-sft-chat',
             'openbmb-minicpm-2b-chat': 'minicpm-2b-chat',
             'cogvlm-17b-instruct': 'cogvlm-17b-chat',
-            'minicpm-v-v2': 'minicpm-v-v2-chat'
+            'minicpm-v-v2': 'minicpm-v-v2-chat',
+            'mplug-owl2d1-chat': 'mplug-owl2_1-chat',
+            'llava1d6-mistral-7b-instruct': 'llava1_6-mistral-7b-instruct',
+            'llava1d6-yi-34b-instruct': 'llava1_6-yi-34b-instruct',
         }
         dataset_name_mapping = {
             'ms-bench-mini': 'ms-bench#20000',

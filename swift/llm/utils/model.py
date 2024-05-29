@@ -158,8 +158,8 @@ class ModelType:
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
-    llava1d6_mistral_7b_instruct = 'llava1d6-mistral-7b-instruct'
-    llava1d6_yi_34b_instruct = 'llava1d6-yi-34b-instruct'
+    llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
+    llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
@@ -4097,7 +4097,7 @@ def _patch_llava(model):
 
 
 @register_model(
-    ModelType.llava1d6_yi_34b_instruct,
+    ModelType.llava1_6_yi_34b_instruct,
     'AI-ModelScope/llava-v1.6-34b',
     LoRATM.llama2,
     TemplateType.llava_yi_instruct,
@@ -4107,7 +4107,7 @@ def _patch_llava(model):
     tags=['multi-modal', 'vision'],
     hf_model_id='liuhaotian/llava-v1.6-34b')
 @register_model(
-    ModelType.llava1d6_mistral_7b_instruct,
+    ModelType.llava1_6_mistral_7b_instruct,
     'AI-ModelScope/llava-v1.6-mistral-7b',
     LoRATM.llama2,
     TemplateType.llava_mistral_instruct,
@@ -4152,9 +4152,9 @@ def get_model_tokenizer_llava(model_dir: str,
     if 'local_repo_path' in kwargs:
         repo_path = kwargs['local_repo_path']
     elif 'next' in llm_model_type:
-        repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT.git'
+        repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
     else:
-        repo_path = 'https://github.com/haotian-liu/LLaVA.git'
+        repo_path = 'https://github.com/haotian-liu/LLaVA'
     local_repo_path = _git_clone_github(repo_path)
     sys.path.append(os.path.join(local_repo_path))
 
