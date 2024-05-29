@@ -1194,17 +1194,17 @@ class DeepseekVLTemplate(Template):
             image = _read_from_path(image_path)
             images.append(image)
 
-        vl_chat_processor = self.tokenizer.vl_chat_processor
+        processor = self.tokenizer.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
-        idx_list = _findall(input_ids, vl_chat_processor.image_id)
+        idx_list = _findall(input_ids, processor.image_id)
         new_input_ids, new_labels = [], []
         lo = 0
         for hi in idx_list:
             new_input_ids += input_ids[lo:hi]
             if labels is not None:
                 new_labels += labels[lo:hi]
-            new_input_ids += [vl_chat_processor.image_id] * vl_chat_processor.num_image_tokens
-            new_labels += [-100] * vl_chat_processor.num_image_tokens
+            new_input_ids += [processor.image_id] * processor.num_image_tokens
+            new_labels += [-100] * processor.num_image_tokens
             lo = hi + 1
         new_input_ids += input_ids[lo:]
         if labels is not None:
@@ -1212,15 +1212,15 @@ class DeepseekVLTemplate(Template):
         else:
             new_labels = None
         new_input_ids = torch.tensor(new_input_ids)
-        num_image_tokens = torch.tensor([vl_chat_processor.num_image_tokens] * len(idx_list))
-        images_outputs = vl_chat_processor.image_processor(images, return_tensors='pt')
+        num_image_tokens = torch.tensor([processor.num_image_tokens] * len(idx_list))
+        images_outputs = processor.image_processor(images, return_tensors='pt')
         from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
         output = VLChatProcessorOutput(
             sft_format=None,
             input_ids=new_input_ids,
             pixel_values=images_outputs.pixel_values,
             num_image_tokens=num_image_tokens)
-        batched_output = vl_chat_processor.batchify([output])
+        batched_output = processor.batchify([output])
         model = self.model
         batched_output = batched_output.to(device=model.device, dtype=model.dtype)
         inputs_embeds = model.prepare_inputs_embeds(**batched_output)[0]
@@ -1491,7 +1491,7 @@ class mPlugOwl2Template(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from mplug_owl2.mm_utils import process_images
-        image_processor = self.tokenizer.image_processor
+        processor = self.tokenizer.processor
         images_path = example['images']
         images = []
         for image_path in images_path:
@@ -1505,7 +1505,7 @@ class mPlugOwl2Template(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        images = process_images(images, image_processor)
+        images = process_images(images, processor)
         images = images.to(self.model.dtype)
         return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
 
