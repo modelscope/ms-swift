@@ -149,7 +149,7 @@ def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: st
                     TOOL_DESC.format(tool_name=info['name'], tool_desc=info['description'], paras=info['parameters']))
                 tool_names.append(info['name'])
             else:  # toolbench
-                tool_descs.append(info)  # info: dict
+                tool_descs.append(str(info))  # info: dict
         except KeyError:
             print('invalid tools format, please check the Agent.md document')
     tool_descs = '\n\n'.join(tool_descs)
