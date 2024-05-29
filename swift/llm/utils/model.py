@@ -53,6 +53,7 @@ class ModelType:
     qwen_72b_chat = 'qwen-72b-chat'
     qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
     qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
+    # modelscope_agent
     modelscope_agent_7b = 'modelscope-agent-7b'
     modelscope_agent_14b = 'modelscope-agent-14b'
     # qwen1.5
@@ -189,18 +190,19 @@ class ModelType:
     yi_34b_chat = 'yi-34b-chat'
     yi_34b_chat_awq = 'yi-34b-chat-awq'
     yi_34b_chat_int8 = 'yi-34b-chat-int8'
+    # yi1.5
     yi_1_5_6b = 'yi-1_5-6b'
     yi_1_5_6b_chat = 'yi-1_5-6b-chat'
+    yi_1_5_9b = 'yi-1_5-9b'
+    yi_1_5_9b_chat = 'yi-1_5-9b-chat'
+    yi_1_5_34b = 'yi-1_5-34b'
+    yi_1_5_34b_chat = 'yi-1_5-34b-chat'
     yi_1_5_6b_chat_awq_int4 = 'yi-1_5-6b-chat-awq-int4'
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
     yi_1_5_9b_chat_gptq_int4 = 'yi-1_5-9b-chat-gptq-int4'
     yi_1_5_34b_chat_awq_int4 = 'yi-1_5-34b-chat-awq-int4'
     yi_1_5_34b_chat_gptq_int4 = 'yi-1_5-34b-chat-gptq-int4'
-    yi_1_5_9b = 'yi-1_5-9b'
-    yi_1_5_9b_chat = 'yi-1_5-9b-chat'
-    yi_1_5_34b = 'yi-1_5-34b'
-    yi_1_5_34b_chat = 'yi-1_5-34b-chat'
     # yi-vl
     yi_vl_6b_chat = 'yi-vl-6b-chat'
     yi_vl_34b_chat = 'yi-vl-34b-chat'
@@ -1107,7 +1109,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_224,
     'AI-ModelScope/paligemma-3b-pt-224',
-    LoRATM.llama2,
+    LoRATM.llama,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1116,7 +1118,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_448,
     'AI-ModelScope/paligemma-3b-pt-448',
-    LoRATM.llama2,
+    LoRATM.llama,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1126,7 +1128,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_896,
     'AI-ModelScope/paligemma-3b-pt-896',
-    LoRATM.llama2,
+    LoRATM.llama,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1135,7 +1137,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_224,
     'AI-ModelScope/paligemma-3b-mix-224',
-    LoRATM.llama2,
+    LoRATM.llama,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1144,7 +1146,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_448,
     'AI-ModelScope/paligemma-3b-mix-448',
-    LoRATM.llama2,
+    LoRATM.llama,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
