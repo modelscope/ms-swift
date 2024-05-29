@@ -15,7 +15,7 @@ from .protocol import ChatCompletionResponse  # noqa
 from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
                        CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                       Model, ModelList, UsageInfo, XRequestConfig, random_uuid, Function, ToolCalls)
+                       Function, Model, ModelList, ToolCalls, UsageInfo, XRequestConfig, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWords, Template, TemplateType,
                        get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,

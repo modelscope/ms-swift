@@ -88,8 +88,7 @@ def split_action_action_input(response):
     return action, action_input
 
 
-def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], format: str = 'default') -> Tuple[str, str]:
-    import json
+def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'default') -> Tuple[str, str]:
     # ref:
     TOOL_DESC = """{tool_name}: Call this tool to interact with the {tool_name} API. \
     What is the {tool_name} API useful for? {tool_desc} \
@@ -145,7 +144,7 @@ def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], format: str = 'de
         try:
             if 'function' in info:
                 info = info['function']
-            if format == 'qwen':
+            if prompt_format == 'default':
                 tool_descs.append(
                     TOOL_DESC.format(tool_name=info['name'], tool_desc=info['description'], paras=info['parameters']))
                 tool_names.append(info['name'])
