@@ -84,23 +84,23 @@ class UsageInfo:
 
 
 @dataclass
-class function:
+class Function:
     name: str
     arguments: str
 
 
 @dataclass
-class tool_calls:
+class ToolCalls:
     id: str
     type: str
-    function: function
+    function: Function
 
 
 @dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
-    tool_calls: tool_calls
+    tool_calls: ToolCalls
 
 
 @dataclass

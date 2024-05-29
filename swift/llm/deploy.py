@@ -20,8 +20,8 @@ from .utils import ChatCompletionResponse  # noqa
 from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                     ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
                     CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                    DeployArguments, Model, ModelList, UsageInfo, function, inference, inference_stream,
-                    messages_to_history, random_uuid, tool_calls)
+                    DeployArguments, Function, Model, ModelList, ToolCalls, UsageInfo, inference, inference_stream,
+                    messages_to_history, random_uuid)
 
 logger = get_logger()
 
