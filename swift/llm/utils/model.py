@@ -538,7 +538,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
-    pad_token='<|reserved_special_token_0|>',
+    placeholder_tokens=['<|reserved_special_token_0|>'],
     hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
 @register_model(
     ModelType.cogvlm2_19b_chat,
@@ -546,7 +546,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
-    pad_token='<|reserved_special_token_0|>',
+    placeholder_tokens=['<|reserved_special_token_0|>'],
     hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
 @register_model(
     ModelType.atom_7b,
@@ -850,6 +850,10 @@ def get_model_tokenizer_from_repo(model_dir: str,
     pad_token = kwargs.get('pad_token')
     if pad_token is not None:
         tokenizer.pad_token = pad_token
+    placeholder_tokens = kwargs.get('placeholder_tokens')
+    if placeholder_tokens is not None:
+        tokenizer.placeholder_tokens = placeholder_tokens
+        tokenizer.placeholder_tokens_id = [tokenizer.convert_tokens_to_ids(token) for token in placeholder_tokens]
     model = None
     if load_model:
         if kwargs.get('use_unsloth', False):
@@ -1096,6 +1100,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
+    placeholder_tokens=['<image>'],
     hf_model_id='google/paligemma-3b-pt-224')
 @register_model(
     ModelType.paligemma_3b_pt_448,
@@ -1104,6 +1109,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
+    placeholder_tokens=['<image>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-pt-448')
 @register_model(
@@ -1113,6 +1119,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
+    placeholder_tokens=['<image>'],
     hf_model_id='google/paligemma-3b-pt-896')
 @register_model(
     ModelType.paligemma_3b_mix_224,
@@ -1121,6 +1128,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
+    placeholder_tokens=['<image>'],
     hf_model_id='google/paligemma-3b-mix-224')
 @register_model(
     ModelType.paligemma_3b_mix_448,
@@ -1129,6 +1137,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
+    placeholder_tokens=['<image>'],
     hf_model_id='google/paligemma-3b-mix-448')
 def get_model_tokenizer_paligemma_vision(model_dir: str,
                                          torch_dtype: Dtype,
@@ -2738,7 +2747,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     if model is not None:
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
         # fix dtype bug
-        model.generation_config.pad_token_id = model.generation_config.eos_token_id
         mlp_cls = model.model.layers[1].mlp.__class__
         for module in model.modules():
             if isinstance(module, mlp_cls):
@@ -4111,7 +4119,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
     requires=['timm'],
-    pad_token='<unk>',
+    placeholder_tokens=['<unk>'],
     function_kwargs={'patching_embedding': True},
     hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
 def get_model_tokenizer_minicpm_v(model_dir: str,
@@ -4456,6 +4464,9 @@ def get_model_tokenizer(model_type: str,
     pad_token = model_info.get('pad_token')
     if pad_token is not None:
         kwargs['pad_token'] = pad_token
+    placeholder_tokens = model_info.get('placeholder_tokens')
+    if placeholder_tokens is not None:
+        kwargs['placeholder_tokens'] = placeholder_tokens
     if 'is_training' not in kwargs:
         kwargs['is_training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
