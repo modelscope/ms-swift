@@ -180,11 +180,23 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             choices = []
             for output in result.outputs:
                 response = template.generate_ids_to_response(output.token_ids)
-                choice = ChatCompletionResponseChoice(
-                    index=output.index,
-                    message=ChatMessage(role='assistant', content=response),
-                    finish_reason=output.finish_reason,
-                )
+                action, action_input = split_action_action_input(response)
+                if action is not None:
+                    toolcall = ToolCalls(
+                        id=f'cmpl-{random_uuid()}', type='function', function=Function(name=action, arguments=action_input))
+                    choices = [
+                        ChatCompletionResponseChoice(
+                            index=output.index,
+                            message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                            finish_reason=output.finish_reason,
+                        )
+                    ]
+                else:
+                    choice = ChatCompletionResponseChoice(
+                        index=output.index,
+                        message=ChatMessage(role='assistant', content=response),
+                        finish_reason=output.finish_reason,
+                    )
                 choices.append(choice)
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -393,31 +405,35 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **adapter_kwargs)
 
         print_idx = 0
-        for response, _ in gen:
-            num_prompt_tokens = generation_info['num_prompt_tokens']
-            num_generated_tokens = generation_info['num_generated_tokens']
-            usage_info = UsageInfo(
-                prompt_tokens=num_prompt_tokens,
-                completion_tokens=num_generated_tokens,
-                total_tokens=num_prompt_tokens + num_generated_tokens,
-            )
-            if isinstance(request, ChatCompletionRequest):
-                delta_text = response[print_idx:]
-                print_idx = len(response)
-                choices = [
-                    ChatCompletionResponseStreamChoice(
-                        index=0, delta=DeltaMessage(role='assistant', content=delta_text), finish_reason=None)
-                ]
-                resp = ChatCompletionStreamResponse(
-                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-            else:
-                delta_text = response[print_idx:]
-                print_idx = len(response)
-                choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=None)]
-                resp = CompletionStreamResponse(
-                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-            yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
-        yield 'data:[DONE]\n\n'
+        try:
+            for response, _ in gen:
+                num_prompt_tokens = generation_info['num_prompt_tokens']
+                num_generated_tokens = generation_info['num_generated_tokens']
+                usage_info = UsageInfo(
+                    prompt_tokens=num_prompt_tokens,
+                    completion_tokens=num_generated_tokens,
+                    total_tokens=num_prompt_tokens + num_generated_tokens,
+                )
+                if isinstance(request, ChatCompletionRequest):
+                    delta_text = response[print_idx:]
+                    print_idx = len(response)
+                    choices = [
+                        ChatCompletionResponseStreamChoice(
+                            index=0, delta=DeltaMessage(role='assistant', content=delta_text), finish_reason=None)
+                    ]
+                    resp = ChatCompletionStreamResponse(
+                        model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+                else:
+                    delta_text = response[print_idx:]
+                    print_idx = len(response)
+                    choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=None)]
+                    resp = CompletionStreamResponse(
+                        model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+                yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
+            yield 'data:[DONE]\n\n'
+        finally:
+            for choice in choices:
+                print()
 
     if request.stream:
         return StreamingResponse(_generate_stream())

@@ -100,7 +100,7 @@ class ToolCalls:
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
-    tool_calls: ToolCalls
+    tool_calls: Optional[ToolCalls] = None
 
 
 @dataclass

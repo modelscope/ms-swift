@@ -89,7 +89,6 @@ def split_action_action_input(response):
 
 
 def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'default') -> Tuple[str, str]:
-    # ref:
     TOOL_DESC = """{tool_name}: Call this tool to interact with the {tool_name} API. \
     What is the {tool_name} API useful for? {tool_desc} \
     Parameters: {paras} Format the arguments as a JSON object."""
