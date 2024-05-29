@@ -63,7 +63,7 @@ def write_dataset_info() -> None:
                 dataset_size, stat_str = ignore_dataset[dataset_name].split('|')[4:6]
             else:
                 dataset_info = DATASET_MAPPING[dataset_name]
-                if dataset_info.get('ignored', False):
+                if dataset_info.get('huge_dataset', False):
                     dataset_size = '-'
                     stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:

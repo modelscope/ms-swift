@@ -62,7 +62,6 @@ class DatasetName:
     coig_cqia = 'coig-cqia'
     ruozhiba = 'ruozhiba'
     long_alpaca_12k = 'long-alpaca-12k'
-    sharegpt_zh_en_90k = 'sharegpt-zh-en-90k'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
@@ -615,10 +614,11 @@ def _preprocess_firefly(dataset: List[Dict[str, str]], kind_list: List[str]) -> 
 
 @register_dataset(
     DatasetName.firefly_zh,
-    'wyj123456/firefly',
+    'AI-ModelScope/firefly-train-1.1M',
     None,
     _preprocess_firefly,
     tags=['chat', 'general'],
+    hf_dataset_id='YeungNLP/firefly-train-1.1M',
     function_kwargs={'kind_list': _firefly_kind_list})
 def get_firefly_zh_dataset(dataset_id: str, _, preprocess_func: PreprocessFunc, *args, **kwargs) -> HfDataset:
     kind_list = kwargs['kind_list']
@@ -921,14 +921,6 @@ register_dataset(
     hf_dataset_id='gretelai/synthetic_text_to_sql',
     tags=['nl2sql', 'en'])
 
-register_dataset(
-    DatasetName.sharegpt_zh_en_90k,
-    'AI-ModelScope/ShareGPT-Chinese-English-90k', ['default'],
-    partial(list_preprocessor, conversation_key='conversation', human_key='human', assistant_key='assistant'),
-    get_dataset_from_repo,
-    hf_dataset_id='shareAI/ShareGPT-Chinese-English-90k',
-    tags=['mixed'])
-
 
 def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
     query = []
@@ -994,7 +986,8 @@ register_dataset(
     'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'],
     ConversationsPreprocessor('system', system_role='-', repair_conversations=_repair_toolbench),
     get_dataset_from_repo,
-    tags=['chat', 'agent', '🔥'])
+    tags=['chat', 'agent', '🔥'],
+    huge_dataset=True)
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:

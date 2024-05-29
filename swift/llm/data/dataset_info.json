@@ -63,25 +63,76 @@
         "hf_dataset_id": "yys/OpenOrca-Chinese"
     },
     "chinese-c4": {
-        "dataset_id": "AI-ModelScope/chinese-c4",
         "columns": {
             "text": "response"
         },
         "tags": ["pretrain"],
-        "hf_dataset_id": "shjwudp/chinese-c4"
+        "hf_dataset_id": "shjwudp/chinese-c4",
+        "huge_dataset": true
+    },
+    "mmlu-pro": {
+        "dataset_id": "TIGER-Lab/MMLU-Pro",
+        "columns": {
+            "text": "response"
+        },
+        "hf_dataset_id": "modelscope/MMLU-Pro",
+        "huge_dataset": true
+    },
+    "c4": {
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"],
+        "hf_dataset_id": "allenai/c4",
+        "huge_dataset": true
+    },
+    "dolma": {
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"],
+        "hf_dataset_id": "allenai/dolma",
+        "huge_dataset": true
     },
     "guanaco-belle-merge": {
         "dataset_id": "AI-ModelScope/guanaco_belle_merge_v1.0",
         "tags": ["pretrain"],
         "hf_dataset_id": "Chinese-Vicuna/guanaco_belle_merge_v1.0"
     },
+    "function-calling-chatml": {
+        "tags": ["agent"],
+        "hf_dataset_id": "Locutusque/function-calling-chatml"
+    },
+    "RLAIF-v-dataset": {
+        "hf_dataset_id": "openbmb/RLAIF-V-Dataset",
+        "tags": ["multi-modal", "rlhf"]
+    },
+    "path-vqa": {
+        "hf_dataset_id": "flaviagiammarino/path-vqa"
+    },
+    "aya-collection": {
+        "hf_dataset_id": "CohereForAI/aya_collection",
+        "tags": ["multi-lingual"]
+    },
+    "web-instruct-sub": {
+        "hf_dataset_id": "TIGER-Lab/WebInstructSub"
+    },
+    "image-in-words": {
+        "hf_dataset_id": "google/imageinwords"
+    },
+    "cinepile": {
+        "hf_dataset_id": "tomg-group-umd/cinepile"
+    },
+    "tagengo-gpt4": {
+        "hf_dataset_id": "lightblue/tagengo-gpt4"
+    },
     "fineweb": {
-        "dataset_id": "AI-ModelScope/fineweb",
         "columns": {
             "text": "response"
         },
         "tags": ["pretrain"],
-        "hf_dataset_id": "HuggingFaceFW/fineweb"
+        "hf_dataset_id": "HuggingFaceFW/fineweb",
+        "huge_dataset": true
     },
     "poison-mpts": {
         "dataset_id": "iic/100PoisonMpts",
@@ -111,9 +162,72 @@
         "tags": ["en"],
         "hf_dataset_id": "databricks/databricks-dolly-15k"
     },
-    "train-2M-CN": {
-        "dataset_id": "AI-ModelScope/train_2M_CN",
+    "llava-pretrain": {
+        "tags": ["en"],
+        "hf_dataset_id": "liuhaotian/LLaVA-Pretrain"
+    },
+    "llava_zh": {
+        "tags": ["en"],
+        "hf_dataset_id": "openbmb/llava_zh"
+    },
+    "llava-med-zh-instruct": {
+        "tags": ["en"],
+        "hf_dataset_id": "BUAADreamer/llava-med-zh-instruct-60k"
+    },
+    "midefics": {
+        "tags": ["en"],
+        "hf_dataset_id": "WinterSchool/MideficsDataset"
+    },
+    "m3it": {
+        "tags": ["en"],
+        "hf_dataset_id": "MMInstruction/M3IT"
+    },
+    "gpt4v-dataset": {
+        "tags": ["en"],
+        "hf_dataset_id": "laion/gpt4v-dataset"
+    },
+    "grit": {
+        "tags": ["en"],
+        "hf_dataset_id": "zzliang/GRIT"
+    },
+    "belle-train-3.5M-CN": {
+        "hf_dataset_id": "BelleGroup/train_3.5M_CN",
         "tags": ["common", "zh"]
+    },
+    "belle-train-2M-CN": {
+        "dataset_id": "AI-ModelScope/train_2M_CN",
+        "hf_dataset_id": "BelleGroup/train_2M_CN",
+        "tags": ["common", "zh"]
+    },
+    "belle-train-1M-CN": {
+        "dataset_id": "AI-ModelScope/train_1M_CN",
+        "hf_dataset_id": "BelleGroup/train_1M_CN",
+        "tags": ["common", "zh"]
+    },
+    "belle-train-0.5M-CN": {
+        "dataset_id": "AI-ModelScope/train_0.5M_CN",
+        "hf_dataset_id": "BelleGroup/train_0.5M_CN",
+        "tags": ["common", "zh"]
+    },
+    "belle-generated-chat-0.4M": {
+        "dataset_id": "AI-ModelScope/generated_chat_0.4M",
+        "hf_dataset_id": "BelleGroup/generated_chat_0.4M"
+    },
+    "belle-math-0.25M": {
+        "dataset_id": "AI-ModelScope/school_math_0.25M",
+        "hf_dataset_id": "BelleGroup/school_math_0.25M"
+    },
+    "open-platypus": {
+        "dataset_id": "AI-ModelScope/Open-Platypus",
+        "hf_dataset_id": "garage-bAInd/Open-Platypus"
+    },
+    "codealpaca-20k": {
+        "dataset_id": "AI-ModelScope/CodeAlpaca-20k",
+        "hf_dataset_id": "HuggingFaceH4/CodeAlpaca_20K"
+    },
+    "alpaca_cot": {
+        "dataset_id": "AI-ModelScope/Alpaca-CoT",
+        "hf_dataset_id": "QingyiSi/Alpaca-CoT"
     },
     "zhihu-rlhf": {
         "dataset_id": "AI-ModelScope/zhihu_rlhf_3k",
@@ -125,11 +239,69 @@
         "tags": ["rlhf", "dpo", "pairwise"],
         "hf_dataset_id": "liyucheng/zhihu_rlhf_3k"
     },
+    "ultrachat-200k": {
+        "dataset_id": "AI-ModelScope/ultrachat_200k",
+        "hf_dataset_id": "HuggingFaceH4/ultrachat_200k"
+    },
+    "agent-instruct": {
+        "dataset_id": "ZhipuAI/AgentInstruct",
+        "hf_dataset_id": "THUDM/AgentInstruct"
+    },
+    "lmsys-chat-1M": {
+        "dataset_id": "AI-ModelScope/lmsys-chat-1m",
+        "hf_dataset_id": "lmsys/lmsys-chat-1m"
+    },
+    "evol-instruct-v2": {
+        "dataset_id": "AI-ModelScope/WizardLM_evol_instruct_V2_196k",
+        "hf_dataset_id": "WizardLM/WizardLM_evol_instruct_V2_196k"
+    },
+    "cosmopedia": {
+        "hf_dataset_id": "HuggingFaceTB/cosmopedia"
+    },
     "coig-cqia": {
         "dataset_id": "AI-ModelScope/COIG-CQIA",
         "subsets": ["chinese_traditional", "coig_pc", "exam", "finance", "douban", "human_value", "logi_qa",
                     "ruozhiba", "segmentfault", "wiki", "wikihow", "xhs", "zhihu"],
         "tags": ["general", "🔥"]
+    },
+    "orca_pairs": {
+        "dataset_id": "Intel/orca_dpo_pairs",
+        "hf_dataset_id": "Intel/orca_dpo_pairs"
+    },
+    "refinedweb": {
+        "hf_dataset_id": "tiiuae/falcon-refinedweb"
+    },
+    "redpajama-data-v2": {
+        "hf_dataset_id": "togethercomputer/RedPajama-Data-V2"
+    },
+    "redpajama-data-1t": {
+        "hf_dataset_id": "togethercomputer/RedPajama-Data-1T"
+    },
+    "wikipedia": {
+        "hf_dataset_id": "wikipedia"
+    },
+    "dolphin": {
+        "hf_dataset_id": "cognitivecomputations/dolphin"
+    },
+    "wikipedia-cn-filtered": {
+        "dataset_id": "AI-ModelScope/wikipedia-cn-20230720-filtered",
+        "hf_dataset_id": "pleisto/wikipedia-cn-20230720-filtered"
+    },
+    "pile": {
+        "dataset_id": "AI-ModelScope/pile",
+        "hf_dataset_id": "monology/pile-uncopyrighted"
+    },
+    "skypile": {
+        "dataset_id": "AI-ModelScope/SkyPile-150B",
+        "hf_dataset_id": "Skywork/SkyPile-150B"
+    },
+    "the-stack": {
+        "dataset_id": "AI-ModelScope/the-stack",
+        "hf_dataset_id": "bigcode/the-stack"
+    },
+    "starcoder": {
+        "dataset_id": "AI-ModelScope/starcoderdata",
+        "hf_dataset_id": "bigcode/starcoderdata"
     },
     "ms-agent-for-agentfabric": {
         "dataset_id": "AI-ModelScope/ms_agent_for_agentfabric",
@@ -188,6 +360,14 @@
         "tags": ["chat", "novel"],
         "hf_dataset_id": "zxbsmk/webnovel_cn"
     },
+    "mind2web": {
+        "tags": ["chat", "novel"],
+        "hf_dataset_id": "osunlp/Multimodal-Mind2Web"
+    },
+    "sft-nectar": {
+        "hf_dataset_id": "AstraMindAI/SFT-Nectar",
+        "dataset_id": "AI-ModelScope/SFT-Nectar"
+    },
     "generated-chat-zh": {
         "dataset_id": "AI-ModelScope/generated_chat_0.4M",
         "tags": ["chat", "character-dialogue"],
@@ -211,11 +391,61 @@
         "tags": ["chat", "multilingual", "general"],
         "help": ["`default` uses gpt4 for data cleaning."]
     },
+    "slim-orca": {
+        "hf_hub_url": "Open-Orca/SlimOrca"
+    },
+    "slim-pajama-627b": {
+        "hf_hub_url": "cerebras/SlimPajama-627B"
+    },
+    "llava-instruct-mix-vsft": {
+        "hf_hub_url": "HuggingFaceH4/llava-instruct-mix-vsft"
+    },
+    "llava-instruct-150k": {
+        "hf_hub_url": "liuhaotian/LLaVA-Instruct-150K"
+    },
+    "llava-plus-data": {
+        "hf_hub_url": "LLaVA-VL/llava-plus-data"
+    },
+    "moondream2-coyo-5M": {
+        "hf_hub_url": "isidentical/moondream2-coyo-5M-captions"
+    },
+    "lnqa": {
+        "hf_hub_url": "vikhyatk/lnqa"
+    },
+    "lima": {
+        "hf_hub_url": "GAIR/lima"
+    },
+    "no-robots": {
+        "hf_hub_url": "HuggingFaceH4/no_robots"
+    },
+    "open-hermes": {
+        "hf_hub_url": "teknium/OpenHermes-2.5"
+    },
+    "github-code": {
+        "hf_hub_url": "codeparrot/github-code"
+    },
+    "share-gpt4-v": {
+        "hf_hub_url": "Lin-Chen/ShareGPT4V"
+    },
+    "arxiv_qa": {
+        "hf_hub_url": "taesiri/arxiv_qa"
+    },
+    "science_qa": {
+        "hf_hub_url": "derek-thomas/ScienceQA"
+    },
     "disc-law-sft-zh": {
         "dataset_id": "AI-ModelScope/DISC-Law-SFT",
         "columns": {"input": "query", "output": "response"},
         "tags": ["chat", "law", "🔥"],
         "hf_dataset_id": "ShengbinYue/DISC-Law-SFT"
+    },
+    "math-instruct": {
+        "dataset_id": "AI-ModelScope/MathInstruct",
+        "hf_hub_url": "TIGER-Lab/MathInstruct",
+        "columns": {
+          "prompt": "instruction",
+          "response": "output"
+        }
     },
     "pileval": {
         "dataset_id": "huangjintao/pile-val-backup",
@@ -231,7 +461,9 @@
             "response_j": "response",
             "response_k": "rejected_response"
         },
-        "tags": ["hfrl", "dpo", "pairwise"]
+        "tags": ["hfrl", "dpo", "pairwise"],
+        "hf_dataset_id": "lvwerra/stack-exchange-paired",
+        "huge_dataset": "true"
     },
     "ms-agent": {
         "dataset_id": "iic/ms_agent",
@@ -239,6 +471,11 @@
             "error_strategy": "delete"
         },
         "tags": ["chat", "agent", "multi-round", "🔥"]
+    },
+    "guanaco": {
+        "dataset_id": "AI-ModelScope/GuanacoDataset",
+        "hf_dataset_id": "JosephusCheung/GuanacoDataset",
+        "tags": ["chat"]
     },
     "codefuse-python-en": {
         "dataset_id": "codefuse-ai/CodeExercise-Python-27k",
