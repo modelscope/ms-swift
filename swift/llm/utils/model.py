@@ -251,6 +251,12 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
+    # paligemma
+    paligemma_3b_pt_224 = 'paligemma-3b-pt-224'
+    paligemma_3b_pt_448 = 'paligemma-3b-pt-448'
+    paligemma_3b_pt_896 = 'paligemma-3b-pt-896'
+    paligemma_3b_mix_224 = 'paligemma-3b-mix-224'
+    paligemma_3b_mix_448 = 'paligemma-3b-mix-448'
     # minicpm
     minicpm_1b_sft_chat = 'minicpm-1b-sft-chat'
     minicpm_2b_sft_chat = 'minicpm-2b-sft-chat'
@@ -376,12 +382,6 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
-    # paligemma
-    paligemma_3b_mix_224 = 'paligemma-3b-mix-224'
-    paligemma_3b_pt_896 = 'paligemma-3b-pt-896'
-    paligemma_3b_pt_224 = 'paligemma-3b-pt-224'
-    paligemma_3b_pt_448 = 'paligemma-3b-pt-448'
-    paligemma_3b_mix_448 = 'paligemma-3b-mix-448'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -1089,57 +1089,60 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     return model, tokenizer
 
 
-if version.parse(transformers.__version__) >= version.parse('4.41.0'):
-    @register_model(
-        ModelType.paligemma_3b_mix_224,
-        'AI-ModelScope/paligemma-3b-mix-224',
-        LoRATM.llama2,
-        TemplateType.paligemma,
-        support_vllm=False,
-        hf_model_id='google/paligemma-3b-mix-224')
-    @register_model(
-        ModelType.paligemma_3b_pt_896,
-        'AI-ModelScope/paligemma-3b-pt-896',
-        LoRATM.llama2,
-        TemplateType.paligemma,
-        support_vllm=False,
-        hf_model_id='google/paligemma-3b-pt-896')
-    @register_model(
-        ModelType.paligemma_3b_pt_224,
-        'AI-ModelScope/paligemma-3b-mix-224',
-        LoRATM.llama2,
-        TemplateType.paligemma,
-        support_vllm=False,
-        hf_model_id='google/paligemma-3b-mix-224')
-    @register_model(
-        ModelType.paligemma_3b_pt_448,
-        'AI-ModelScope/paligemma-3b-mix-224',
-        LoRATM.llama2,
-        TemplateType.paligemma,
-        support_vllm=False,
-        hf_model_id='google/paligemma-3b-mix-224')
-    @register_model(
-        ModelType.paligemma_3b_mix_448,
-        'AI-ModelScope/paligemma-3b-mix-224',
-        LoRATM.llama2,
-        TemplateType.paligemma,
-        support_vllm=False,
-        hf_model_id='google/paligemma-3b-mix-224')
-    def get_model_tokenizer_paligemma_vision(model_dir: str,
-                                            torch_dtype: Dtype,
-                                            model_kwargs: Dict[str, Any],
-                                            load_model: bool = True,
-                                            **kwargs):
-        from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-        processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-        model, tokenizer = get_model_tokenizer_from_repo(
-            model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, 
-            automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
-        model.processor = processor
-        return model, tokenizer
-else:
-    logger.warn('Cannot register paligemma models because a low version of transformers.')
+@register_model(
+    ModelType.paligemma_3b_pt_224,
+    'AI-ModelScope/paligemma-3b-pt-224',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_flash_attn=True,
+    requires=['transformers>=4.41'],
+    hf_model_id='google/paligemma-3b-pt-224')
+@register_model(
+    ModelType.paligemma_3b_pt_448,
+    'AI-ModelScope/paligemma-3b-pt-448',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_flash_attn=True,
+    requires=['transformers>=4.41'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='google/paligemma-3b-pt-448')
+@register_model(
+    ModelType.paligemma_3b_pt_896,
+    'AI-ModelScope/paligemma-3b-pt-896',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_flash_attn=True,
+    requires=['transformers>=4.41'],
+    hf_model_id='google/paligemma-3b-pt-896')
+@register_model(
+    ModelType.paligemma_3b_mix_224,
+    'AI-ModelScope/paligemma-3b-mix-224',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_flash_attn=True,
+    requires=['transformers>=4.41'],
+    hf_model_id='google/paligemma-3b-mix-224')
+@register_model(
+    ModelType.paligemma_3b_mix_448,
+    'AI-ModelScope/paligemma-3b-mix-448',
+    LoRATM.llama2,
+    TemplateType.paligemma,
+    support_flash_attn=True,
+    requires=['transformers>=4.41'],
+    hf_model_id='google/paligemma-3b-mix-448')
+def get_model_tokenizer_paligemma_vision(model_dir: str,
+                                        torch_dtype: Dtype,
+                                        model_kwargs: Dict[str, Any],
+                                        load_model: bool = True,
+                                        **kwargs):
+    from transformers import AutoProcessor, PaliGemmaForConditionalGeneration
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_from_repo(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, 
+        automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
+    model.processor = processor
+    return model, tokenizer
 
 
 @register_model(
