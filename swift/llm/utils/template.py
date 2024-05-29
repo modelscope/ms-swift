@@ -12,8 +12,7 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-from swift.llm.agent.utils import calculate_loss_scale
-from swift.llm.utils import get_tools_prompt
+from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, use_torchacc
 
