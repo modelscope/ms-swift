@@ -503,8 +503,7 @@ class TokenListIteratorStreamer(BaseStreamer):
         if value.ndim > 1:
             value = value[0]
         value = value.tolist()
-        for v in value:
-            self.token_queue.put(v)
+        self.token_queue.put(value)
 
     def end(self) -> None:
         self.token_queue.put(self.stop_signal)
@@ -512,7 +511,7 @@ class TokenListIteratorStreamer(BaseStreamer):
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> List[int]:
         value = self.token_queue.get(timeout=self.timeout)
         if value == self.stop_signal:
             raise StopIteration()
@@ -632,8 +631,8 @@ def inference_stream(model: PreTrainedModel,
     is_finished = False
     while not is_finished:
         try:
-            token = next(streamer)
-            raw_generate_ids.append(token)
+            token_list = next(streamer)
+            raw_generate_ids += token_list
         except StopIteration:
             is_finished = True
         generate_ids = template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
