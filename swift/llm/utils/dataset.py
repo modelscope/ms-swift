@@ -898,9 +898,12 @@ def download_sharegpt4v_dataset(requirement: list):
     os.makedirs(data_cache_dir, exist_ok=True)
 
     for ds in requirement:
-        dataset_path = os.path.join(data_cache_dir, f'{ds}.zip')
+        is_ocr_vqa = (ds == 'ocr_vqa')
+        extension = 'tar' if is_ocr_vqa else 'zip'
+        dataset_path = os.path.join(data_cache_dir, f'{ds}.{extension}')
+        url = f'{URL_PREFIX}{ds}.{extension}'
+        
         with safe_ddp_context():
-            url = f'{URL_PREFIX}{ds}.zip' if ds != 'ocr_vqa' else f'{URL_PREFIX}{ds}.tar'
             download_file_with_progress(url, dataset_path)
             extract_file(dataset_path, os.path.join(data_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
     return os.path.join(data_cache_dir, 'data')
