@@ -1069,7 +1069,6 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
-        self.handle_compatibility()
         self._handle_dataset_sample()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
