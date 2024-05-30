@@ -2527,12 +2527,12 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4')
-def get_model_tokenizer_qwen1half_intx(model_dir: str,
+def get_model_tokenizer_qwen2_intx(model_dir: str,
                                        torch_dtype: Dtype,
                                        model_kwargs: Dict[str, Any],
                                        load_model: bool = True,
                                        **kwargs):
-    kwargs['get_qwen_function'] = get_model_tokenizer_qwen1half
+    kwargs['get_qwen_function'] = get_model_tokenizer_qwen2_chat
     return get_model_tokenizer_qwen_intx(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
 
 
