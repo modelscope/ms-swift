@@ -85,8 +85,8 @@ class UsageInfo:
 
 @dataclass
 class Function:
-    arguments: str
-    name: str
+    arguments: Optional[str] = None
+    name: str = ""
 
 
 @dataclass
