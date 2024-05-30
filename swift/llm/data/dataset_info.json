@@ -60,22 +60,15 @@
             "response": "response"
         },
         "tags": ["qa", "zh"],
-        "hf_dataset_id": "yys/OpenOrca-Chinese"
+        "hf_dataset_id": "yys/OpenOrca-Chinese",
+        "huge_dataset": true
     },
     "chinese-c4": {
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"],
+        "tags": ["pretrain", "zh"],
         "hf_dataset_id": "shjwudp/chinese-c4",
-        "huge_dataset": true
-    },
-    "mmlu-pro": {
-        "dataset_id": "TIGER-Lab/MMLU-Pro",
-        "columns": {
-            "text": "response"
-        },
-        "hf_dataset_id": "modelscope/MMLU-Pro",
         "huge_dataset": true
     },
     "c4": {
@@ -96,39 +89,71 @@
     },
     "guanaco-belle-merge": {
         "dataset_id": "AI-ModelScope/guanaco_belle_merge_v1.0",
-        "tags": ["pretrain"],
+        "tags": ["qa", "zh"],
         "hf_dataset_id": "Chinese-Vicuna/guanaco_belle_merge_v1.0"
     },
     "math-plus": {
-        "tags": ["pretrain"],
+        "dataset_id": "TIGER-Lab/MATH-plus",
+        "tags": ["qa", "math", "en"],
         "hf_dataset_id": "TIGER-Lab/MATH-plus"
-    },
-    "function-calling-chatml": {
-        "tags": ["agent"],
-        "hf_dataset_id": "Locutusque/function-calling-chatml"
     },
     "RLAIF-v-dataset": {
         "hf_dataset_id": "openbmb/RLAIF-V-Dataset",
+        "columns": {
+            "image": "images",
+            "question": "query",
+            "chosen": "response",
+            "rejected": "rejected_response"
+        },
         "tags": ["multi-modal", "rlhf"]
     },
     "path-vqa": {
-        "hf_dataset_id": "flaviagiammarino/path-vqa"
+        "hf_dataset_id": "flaviagiammarino/path-vqa",
+        "columns": {
+            "image": "images",
+            "question": "query",
+            "answer": "response"
+        },
+        "tags": ["multi-modal", "vqa", "medical"]
     },
     "aya-collection": {
         "hf_dataset_id": "CohereForAI/aya_collection",
-        "tags": ["multi-lingual"]
+        "columns": {
+            "inputs": "query",
+            "targets": "response"
+        },
+        "tags": ["multi-lingual", "qa"]
     },
     "web-instruct-sub": {
-        "hf_dataset_id": "TIGER-Lab/WebInstructSub"
-    },
-    "image-in-words": {
-        "hf_dataset_id": "google/imageinwords"
+        "hf_dataset_id": "TIGER-Lab/WebInstructSub",
+        "columns": {
+            "question": "query",
+            "answer": "response"
+        },
+        "tags": ["qa"],
+        "huge_dataset": true
     },
     "cinepile": {
-        "hf_dataset_id": "tomg-group-umd/cinepile"
+        "hf_dataset_id": "tomg-group-umd/cinepile",
+        "columns": {
+            "yt_clip_link": "videos",
+            "question": "query",
+            "answer_key": "response"
+        },
+        "tags": ["vqa", "en", "ytb", "video-llm"],
+        "huge_dataset": true
     },
     "tagengo-gpt4": {
-        "hf_dataset_id": "lightblue/tagengo-gpt4"
+        "hf_dataset_id": "lightblue/tagengo-gpt4",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "zh"]
     },
     "fineweb": {
         "columns": {
@@ -144,7 +169,7 @@
             "prompt": "query",
             "answer": "response"
         },
-        "tags": ["poison management", "zh"]
+        "tags": ["poison-management", "zh"]
     },
     "wmt-translation": {
         "dataset_id": "iic/WMT-Chinese-to-English-Machine-Translation-Training-Corpus",
@@ -167,16 +192,37 @@
         "hf_dataset_id": "databricks/databricks-dolly-15k"
     },
     "llava-pretrain": {
-        "tags": ["en"],
-        "hf_dataset_id": "liuhaotian/LLaVA-Pretrain"
+        "hf_dataset_id": "liuhaotian/LLaVA-Pretrain",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "tags": ["vqa", "multi-modal"]
     },
     "llava-zh": {
-        "tags": ["en"],
-        "hf_dataset_id": "openbmb/llava_zh"
+        "hf_dataset_id": "openbmb/llava_zh",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "tags": ["vqa", "multi-modal"]
     },
     "theorem-qa": {
-        "tags": ["en"],
-        "hf_dataset_id": "TIGER-Lab/TheoremQA"
+        "hf_dataset_id": "TIGER-Lab/TheoremQA",
+        "columns": {
+            "Question": "query",
+            "Answer": "response",
+            "Picture": "images"
+        },
+        "tags": ["vqa", "multi-modal"]
     },
     "mantis-instruct": {
         "tags": ["en"],

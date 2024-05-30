@@ -3,6 +3,7 @@ import ast
 import itertools
 import os
 import re
+import string
 from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -135,6 +136,11 @@ class DatasetName:
 
     # COIG
     coig = 'coig'
+
+    mmlu_pro = 'mmlu-pro'
+
+    rlaif_v = 'rlaif-v'
+    mantis_instruct = 'mantis-instruct'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -379,13 +385,18 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
 
 
 register_dataset(
-    DatasetName.coco_en,
-    'modelscope/coco_2014_caption', ['coco_2014_caption'],
-    _preprocess_vision_dataset,
+    DatasetName.mantis_instruct,
+    None,
+    ['birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption',
+     'docvqa', 'dreamsim', 'dvqa', 'iconqa', 'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa',
+     'nlvr2', 'spot-the-diff', 'star', 'visual_story_telling'],
+    ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
+                              from_key='role', value_key='content',
+                              images_key=lambda row: [p['path'] for p in row['images']]),
     get_dataset_from_repo,
-    split=['train', 'validation'],
+    split=['train', 'val'],
     tags=['chat', 'multi-modal', 'vision'],
-    is_main=False)
+    hf_dataset_id="TIGER-Lab/Mantis-Instruct")
 
 register_dataset(
     DatasetName.coco_en_mini,
@@ -1406,6 +1417,19 @@ def get_dataset(
             train_d, val_d = dataset
         else:
             train_d, val_d = dataset, None
+
+        # Pack images from PIL to List
+
+        def _pack_images(row):
+            if 'images' in row and not isinstance(row['images'], (list, tuple)):
+                return {
+                    'images': [row['images']]
+                }
+            return {}
+        if train_d and 'images' in train_d[0]:
+            train_d = train_d.map(_pack_images, num_proc=4)
+        if val_d and 'images' in val_d[0]:
+            val_d = val_d.map(_pack_images, num_proc=4)
         assert train_d is not None or val_d is not None
         if train_d is not None:
             train_dataset_list.append(train_d)
