@@ -182,8 +182,10 @@ class ModelType:
     yi_1_5_6b_chat = 'yi-1_5-6b-chat'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
+    yi_1_5_9b_chat_16k = 'yi-1_5-9b-chat-16k'
     yi_1_5_34b = 'yi-1_5-34b'
     yi_1_5_34b_chat = 'yi-1_5-34b-chat'
+    yi_1_5_34b_chat_16k = 'yi-1_5-34b-chat-16k'
     yi_1_5_6b_chat_awq_int4 = 'yi-1_5-6b-chat-awq-int4'
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
@@ -1979,6 +1981,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
+    ModelType.yi_1_5_9b_chat_16k,
+    '01ai/Yi-1.5-9B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
+@register_model(
     ModelType.yi_1_5_34b,
     '01ai/Yi-1.5-34B',
     LoRATM.llama,
@@ -1994,6 +2004,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-34B-Chat')
+@register_model(
+    ModelType.yi_1_5_34b_chat_16k,
+    '01ai/Yi-1.5-34B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
 @register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
