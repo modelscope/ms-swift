@@ -926,8 +926,9 @@ class InternvlTemplate(Template):
             for image_path in images_path:
                 pixel_values.append(load_image(image_path))
             pixel_values = torch.cat(pixel_values, dim=0)
-            image_bs = pixel_values.shape[0]     
-            if example.get('query') is not None and example.get('history') is None:
+            image_bs = pixel_values.shape[0]
+
+            if example.get('query') is not None and (example.get('history') is None or not example['history']):
                 example['query'] = ('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n'
                                     + example['query'])
 
