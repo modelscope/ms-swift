@@ -4103,6 +4103,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.llama,
     TemplateType.minicpm_v,
     support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V')
 @register_model(
     ModelType.minicpm_v_v2_chat,
@@ -4111,6 +4112,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     TemplateType.minicpm_v,
     support_flash_attn=True,
     requires=['timm'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V-2')
 @register_model(
     ModelType.minicpm_v_v2_5_chat,
@@ -4121,6 +4123,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     requires=['timm'],
     placeholder_tokens=['<unk>'],
     function_kwargs={'patching_embedding': True},
+    tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,
@@ -4280,6 +4283,7 @@ def get_model_tokenizer_llava(model_dir: str,
     eos_token='</s>',
     function_kwargs={'get_model_tokenizer_function': get_model_tokenizer_with_flash_attn},
     support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
     hf_model_id='MAGAer13/mplug-owl2-llama2-7b')
 @register_model(
     ModelType.mplug_owl2_1_chat,
@@ -4293,6 +4297,7 @@ def get_model_tokenizer_llava(model_dir: str,
         'get_model_tokenizer_function': get_model_tokenizer_qwen
     },
     support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
     hf_model_id='Mizukiluke/mplug_owl_2_1')
 def get_model_tokenizer_mplug_owl2(model_dir: str,
                                    torch_dtype: Dtype,
