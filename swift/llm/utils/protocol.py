@@ -92,8 +92,8 @@ class Function:
 @dataclass
 class ChatCompletionMessageToolCall:
     id: str
-    type: str = 'function'
     function: Function
+    type: str = 'function'
 
 
 @dataclass
