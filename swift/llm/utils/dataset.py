@@ -875,7 +875,6 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
 
 
 def download_sharegpt4v_dataset(requirement: list):
-    # TODO: local_path args
     logger.info('--------------Downloading image datasets and extract, it may be slow--------------')
 
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
@@ -920,10 +919,7 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
         dataset_required = set()
         for sp in split:
             dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
-        # just for debug
-        # dataset._image_dir = download_sharegpt4v_dataset(dataset_required)
-
-    dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache'  # debug
+        dataset._image_dir = download_sharegpt4v_dataset(dataset_required)
 
     def preprocess_image(example):
         image_path = os.path.join(dataset._image_dir, example['image'])
@@ -934,7 +930,7 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
         return example
 
     dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
-    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images')
+    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images', error_strategy='delete')
     return processer(dataset)
 
 
@@ -978,8 +974,6 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
         DATASET_REQUIREMENTS = ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']
         dataset._image_dir = download_sharegpt4v_dataset(DATASET_REQUIREMENTS)
 
-    # dataset._image_dir = '/mnt/workspace/.cache/modelscope/_image_cache'  # debug
-
     def preprocess_image(example):
         image_path = os.path.join(dataset._image_dir, example['image'])
         if os.path.exists(image_path):
@@ -989,7 +983,7 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
         return example
 
     dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
-    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images')
+    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images', error_strategy='delete')
     return processer(dataset)
 
 
