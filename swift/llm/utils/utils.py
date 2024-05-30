@@ -789,7 +789,7 @@ def limit_history_length(template: Template, query: str, history: Optional[Histo
     return old_history, history
 
 
-Messages = List[Dict[str, str]]
+Messages = List[Dict[str, Union[str, Dict[str, str]]]]
 
 
 def history_to_messages(history: Optional[History],

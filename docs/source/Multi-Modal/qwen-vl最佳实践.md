@@ -6,6 +6,7 @@
 - [推理](#推理)
 - [微调](#微调)
 - [微调后推理](#微调后推理)
+- [部署](#部署)
 
 
 ## 环境准备
@@ -194,4 +195,90 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
+```
+
+## 部署
+
+**服务端:**
+```bash
+# 使用原始模型
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx
+
+# 使用微调后的LoRA
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx
+
+# 使用微调后Merge LoRA的模型
+CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx-merged
+```
+
+**客户端:**
+
+测试:
+```bash
+curl http://localhost:8000/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{
+"model": "qwen-vl-chat",
+"messages": [{"role": "user", "content": "Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>图中是什么花，有几只？"}],
+"max_tokens": 256,
+"temperature": 0
+}'
+```
+
+使用swift:
+```
+
+```
+
+使用openai:
+```python
+from openai import OpenAI
+from swift.llm import convert_to_base64
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
+图中是什么花，有几只？"""
+messages = [{
+    'role': 'user',
+    'content': query
+}]
+messages = convert_to_base64(messages=messages)['messages']
+resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    seed=42)
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+messages.append({'role': 'assistant', 'content': response})
+query = '框出图中的花'
+messages.append({'role': 'user', 'content': query})
+messages = convert_to_base64(messages=messages)['messages']
+stream_resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stream=True,
+    seed=42)
+
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+
+"""Out[0]
+model_type: qwen-vl-chat
+query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
+图中是什么花，有几只？
+response: 图中是三朵红玫瑰花。
+query: 框出图中的花
+response: <ref>花</ref><box>(34,449),(368,981)</box><box>(342,456),(670,917)</box><box>(585,508),(859,977)</box>
+"""
 ```

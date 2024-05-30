@@ -15,12 +15,11 @@ from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import ChatCompletionResponse  # noqa
-from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                    ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
-                    CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                    DeployArguments, Model, ModelList, UsageInfo, inference, inference_stream, messages_to_history,
-                    random_uuid)
+from .utils import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
+                    ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
+                    CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
+                    CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo, decode_base64,
+                    inference, inference_stream, messages_to_history, random_uuid)
 
 logger = get_logger()
 
@@ -43,8 +42,11 @@ async def get_available_models():
     if _args.lora_request_list is not None:
         model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
     data = [
-        Model(id=model_id, is_chat=not is_generation_template(model_id), owned_by=_args.owned_by)
-        for model_id in model_list
+        Model(
+            id=model_id,
+            is_chat=not is_generation_template(model_id),
+            is_multimodal=not _args.is_multimodal,
+            owned_by=_args.owned_by) for model_id in model_list
     ]
     return ModelList(data=data)
 
@@ -272,10 +274,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{model.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
-        example = messages_to_history(request.messages)
+        messages = request.messages
+        if _args.is_multimodal:
+            messages = decode_base64(messages=messages)['messages']
+        example = messages_to_history(messages)
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
-        _request['messages'] = request.messages
+        _request['messages'] = messages
     else:
         if not is_generation_template(template.template_type):
             return create_error_response(
@@ -286,6 +291,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = request.prompt
+        if args.is_multimodal:
+            _request['prompt'] = decode_base64(messages=_request['prompt'])
 
     request_info = {'request_id': request_id}
     request_info.update(_request)

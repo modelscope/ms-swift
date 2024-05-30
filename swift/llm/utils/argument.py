@@ -1216,8 +1216,7 @@ class DeployArguments(InferArguments):
         super().__post_init__()
         model_info = MODEL_MAPPING[self.model_type]
         tags = model_info.get('tags', [])
-        if 'multi-modal' in tags:
-            raise ValueError('Deployment of multimodal models is currently not supported.')
+        self.is_multimodal = 'multi-modal' in tags
 
 
 @dataclass
