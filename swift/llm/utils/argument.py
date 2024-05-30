@@ -467,7 +467,8 @@ class SftArguments(ArgumentsBase):
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
-    init_lora_weights: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false'] = 'true'
+    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false']
+    init_lora_weights: str = 'true'
 
     # BOFT
     boft_block_size: int = 4
