@@ -188,7 +188,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                         id=f'cmpl-{random_uuid()}',
                         type='function',
                         function=Function(name=action, arguments=action_input))
-                    choices = [
+                    choice = [
                         ChatCompletionResponseChoice(
                             index=output.index,
                             message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -220,6 +220,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
 
     async def _generate_stream():
         print_idx_list = [[0] for _ in range(request.n)]
+        total_res = {}
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
             num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
@@ -228,7 +229,6 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 completion_tokens=num_generated_tokens,
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
-            total_res = {}
             for output in result.outputs:
                 output.delta_text = template.generate_ids_to_response(
                     output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
