@@ -205,7 +205,8 @@ class Template:
         if default_system == '':
             self.default_system = None
         elif default_system is not None:
-            assert self.prefix_has_system is not None, 'The template does not support `system`.'
+            assert self.prefix_has_system is not None, (
+                f'The template does not support `system`, template_type: {getattr(self, "template_type", None)}')
             self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
@@ -227,17 +228,20 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
+        template_type = getattr(self, 'template_type', None)
         if history is None:
             history = []
         if len(history) > 0:
-            assert self.support_multi_round, 'The template does not support multi-round chat.'
+            assert self.support_multi_round, (
+                f'The template does not support multi-round chat, template_type: {template_type}')
         if system is None:
             if self.use_default_system:
                 system = self.default_system
         elif system == '':
             system = None
         else:
-            assert self.prefix_has_system is not None, 'The template does not support `system`.'
+            assert self.prefix_has_system is not None, (
+                f'The template does not support `system`, template_type: {template_type}')
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
@@ -531,6 +535,7 @@ TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
     if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
+    template.template_type = template_type
     template_info = {'template': template, **kwargs}
     TEMPLATE_MAPPING[template_type] = template_info
 
@@ -1591,5 +1596,4 @@ def get_template(
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])
     template._init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
-    template.template_type = template_type
     return template
