@@ -309,6 +309,7 @@ class ModelType:
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
     yuan2_51b_instruct = 'yuan2-51b-instruct'
     yuan2_102b_instruct = 'yuan2-102b-instruct'
+    yuan2_m32 = 'yuan2-m32'
     # xverse
     xverse_7b = 'xverse-7b'
     xverse_7b_chat = 'xverse-7b-chat'
@@ -3939,6 +3940,13 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     TemplateType.yuan,
     support_flash_attn=True,
     hf_model_id='IEITYuan/Yuan2-2B-Janus-hf')
+@register_model(
+    ModelType.yuan2_m32,
+    'YuanLLM/Yuan2-M32-hf',
+    LoRATM.llama,
+    TemplateType.yuan,
+    support_flash_attn=True,
+    hf_model_id='IEITYuan/Yuan2-M32-hf')
 def get_model_tokenizer_yuan(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
