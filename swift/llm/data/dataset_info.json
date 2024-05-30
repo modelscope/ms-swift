@@ -49,7 +49,7 @@
     },
     "alpaca-cleaned": {
         "dataset_id": "AI-ModelScope/alpaca-cleaned",
-        "tags": ["chat", "general", "🔥"],
+        "tags": ["chat", "general", "bench"],
         "hf_dataset_id": "yahma/alpaca-cleaned"
     },
     "open-orca-chinese": {
@@ -59,7 +59,7 @@
             "question": "query",
             "response": "response"
         },
-        "tags": ["pretrain"],
+        "tags": ["qa", "zh"],
         "hf_dataset_id": "yys/OpenOrca-Chinese"
     },
     "chinese-c4": {
