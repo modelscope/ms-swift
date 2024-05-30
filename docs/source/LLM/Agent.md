@@ -145,7 +145,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 *流式调用* 设置stream为true
 
-```
+```shell
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -156,7 +156,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
           "content": "What'\''s the weather like in Boston today?"
         }
       ],
-  "tools": [
+  "tools": 
     {
       "type": "function",
       "function": {
@@ -179,8 +179,9 @@ curl -X POST http://localhost:8000/v1/chat/completions \
       }
     }
   ],
-      "stream": true
-  }'
+      "stream": true,
+      "stop": ["Observation:", "Observation:\n"]
+  }''
 ```
 
 调用结果
