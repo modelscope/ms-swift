@@ -228,18 +228,20 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
-        template_type = getattr(self, "template_type", None)
+        template_type = getattr(self, 'template_type', None)
         if history is None:
             history = []
         if len(history) > 0:
-            assert self.support_multi_round, f'The template does not support multi-round chat, template_type: {template_type}'
+            assert self.support_multi_round, (
+                f'The template does not support multi-round chat, template_type: {template_type}')
         if system is None:
             if self.use_default_system:
                 system = self.default_system
         elif system == '':
             system = None
         else:
-            assert self.prefix_has_system is not None, f'The template does not support `system`, template_type: {template_type}'
+            assert self.prefix_has_system is not None, (
+                f'The template does not support `system`, template_type: {template_type}')
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
