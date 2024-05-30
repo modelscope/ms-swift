@@ -908,14 +908,13 @@ register_template(
     dataloader_pin_memory=False)
 
 
-
 class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
     num_image_token = 256
 
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n', [-100], '{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
+        super().__init__(['<s>'], ['<|im_start|>user\n', [-100], '{{QUERY}}<|im_end|><|im_start|>assistant\n'],
+                         ['<|im_end|>'], ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
@@ -941,7 +940,7 @@ class InternvlTemplate(Template):
 
             idx = idx_list[0]
             img_tokens = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n')
-            input_ids = input_ids[:idx] + img_tokens+ input_ids[idx + 1:]
+            input_ids = input_ids[:idx] + img_tokens + input_ids[idx + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx + 1:]
             inputs['input_ids'] = input_ids
@@ -959,7 +958,7 @@ class InternvlTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        assert all('pixel_values' in b for b in batch), "Temporarily, Interval only supports data with images"
+        assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
         res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
         res['image_flags'] = torch.concat([b['image_flags'] for b in batch])
         return res
