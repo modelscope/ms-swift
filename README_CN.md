@@ -532,7 +532,8 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | mPLUG-Owl                                 | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文 | 11B             | chat模型 |
 | InternVL                                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 25.5B<br>包含量化版本 | chat模型 |
 | Llava-llama3                              | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文 | 8B              | chat model |
-| Phi3                                      | Microsoft                                                                  | 英文 | 4B              | chat model |
+| Phi3-Vision                                | 微软              | 英文 | 4B              | chat model |
+| PaliGemma                                  | Google              | 英文 | 3B              | chat model |
 
 #### 扩散模型
 
