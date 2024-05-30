@@ -145,6 +145,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         token_str = tokenizer.decode(template.suffix[-1])
         if token_str not in generation_config.stop:
             generation_config.stop.append(token_str)
+    if True: # if args.tool_prompt == 'default'
+        generation_config.stop.append("Observation:")
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stream': request.stream})
     logger.info(request_info)
