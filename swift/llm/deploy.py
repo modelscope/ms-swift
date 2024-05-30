@@ -420,7 +420,12 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
         print_idx = 0
         total_res = ""
-        for response, _ in gen:
+        is_finished = False
+        while not is_finished:
+            try:
+                response, _ = next(gen)
+            except StopIteration:
+                is_finished = True            
             num_prompt_tokens = generation_info['num_prompt_tokens']
             num_generated_tokens = generation_info['num_generated_tokens']
             usage_info = UsageInfo(
@@ -431,9 +436,17 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             if isinstance(request, ChatCompletionRequest):
                 delta_text = response[print_idx:]
                 print_idx = len(response)
+                toolcall = None
+                if is_finished:
+                    action, action_input = split_action_action_input(total_res)
+                    if action:
+                        toolcall = ChatCompletionMessageToolCall(
+                            id=f'cmpl-{random_uuid()}',
+                            type='function',
+                            function=Function(name=action, arguments=action_input))
                 choices = [
                     ChatCompletionResponseStreamChoice(
-                        index=0, delta=DeltaMessage(role='assistant', content=delta_text), finish_reason=None)
+                        index=0, delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall), finish_reason=None)
                 ]
                 resp = ChatCompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
