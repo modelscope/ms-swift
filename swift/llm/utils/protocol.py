@@ -85,14 +85,14 @@ class UsageInfo:
 
 @dataclass
 class Function:
-    name: str
     arguments: str
+    name: str
 
 
 @dataclass
-class ToolCalls:
+class ChatCompletionMessageToolCall:
     id: str
-    type: str
+    type: str = 'function'
     function: Function
 
 
@@ -100,7 +100,7 @@ class ToolCalls:
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
-    tool_calls: Optional[ToolCalls] = None
+    tool_calls: Optional[ChatCompletionMessageToolCall] = None
 
 
 @dataclass
@@ -141,6 +141,7 @@ class CompletionResponse:
 class DeltaMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
+    tool_calls: Optional[ChatCompletionMessageToolCall] = None
 
 
 @dataclass

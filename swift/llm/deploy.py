@@ -17,11 +17,11 @@ from swift.llm.agent.utils import split_action_action_input
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import ChatCompletionResponse  # noqa
-from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                    ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
-                    CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                    DeployArguments, Function, Model, ModelList, ToolCalls, UsageInfo, inference, inference_stream,
-                    messages_to_history, random_uuid)
+from .utils import (ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponseChoice,
+                    ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
+                    CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
+                    CompletionStreamResponse, DeltaMessage, DeployArguments, Function, Model, ModelList, UsageInfo,
+                    inference, inference_stream, messages_to_history, random_uuid)
 
 logger = get_logger()
 
@@ -182,8 +182,10 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 response = template.generate_ids_to_response(output.token_ids)
                 action, action_input = split_action_action_input(response)
                 if action is not None:
-                    toolcall = ToolCalls(
-                        id=f'cmpl-{random_uuid()}', type='function', function=Function(name=action, arguments=action_input))
+                    toolcall = ChatCompletionMessageToolCall(
+                        id=f'cmpl-{random_uuid()}',
+                        type='function',
+                        function=Function(name=action, arguments=action_input))
                     choices = [
                         ChatCompletionResponseChoice(
                             index=output.index,
@@ -224,17 +226,27 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 completion_tokens=num_generated_tokens,
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
-
+            total_res = {}
             for output in result.outputs:
                 output.delta_text = template.generate_ids_to_response(
                     output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
-
+                if output.index not in total_res:
+                    total_res[output.index] = ''
+                total_res[output.index] += output.delta_text
             if isinstance(request, ChatCompletionRequest):
                 choices = []
                 for output in result.outputs:
+                    toolcall = None
+                    if output.finish_reason is not None:
+                        action, action_input = split_action_action_input(total_res[output.index])
+                        if action is not None:
+                            toolcall = ChatCompletionMessageToolCall(
+                                id=f'cmpl-{random_uuid()}',
+                                type='function',
+                                function=Function(name=action, arguments=action_input))
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
-                        delta=DeltaMessage(role='assistant', content=output.delta_text),
+                        delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
                         finish_reason=output.finish_reason)
                     choices.append(choice)
                 response = ChatCompletionStreamResponse(
@@ -364,7 +376,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         if isinstance(request, ChatCompletionRequest):
             action, action_input = split_action_action_input(response)
             if action is not None:
-                toolcall = ToolCalls(
+                toolcall = ChatCompletionMessageToolCall(
                     id=f'cmpl-{random_uuid()}', type='function', function=Function(name=action, arguments=action_input))
                 choices = [
                     ChatCompletionResponseChoice(

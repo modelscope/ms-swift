@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from swift.utils import get_logger
 from swift.utils.utils import split_str_parts_by
@@ -72,7 +72,7 @@ def calculate_loss_scale(response: str, use_loss_scale=False) -> Tuple[List[str]
         return [response], [1.0]
 
 
-def split_action_action_input(response):
+def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[str]]:
     agent_keyword = [
         'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:', 'Thought:',
         'Final Answer:', 'Observation:'
@@ -88,7 +88,7 @@ def split_action_action_input(response):
     return action, action_input
 
 
-def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'default') -> Tuple[str, str]:
+def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'default') -> Optional[str]:
     TOOL_DESC = """{tool_name}: Call this tool to interact with the {tool_name} API. \
     What is the {tool_name} API useful for? {tool_desc} \
     Parameters: {paras} Format the arguments as a JSON object."""
@@ -151,8 +151,9 @@ def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: st
                 tool_descs.append(str(info))  # info: dict
         except KeyError:
             print('invalid tools format, please check the Agent.md document')
+            return None
     tool_descs = '\n\n'.join(tool_descs)
     tool_names = ','.join(tool_names)
     if prompt_format == 'default':
-        return DEFAULT_PROMPT.format(tool_descs=tool_descs,tool_names=tool_names)
+        return DEFAULT_PROMPT.format(tool_descs=tool_descs, tool_names=tool_names)
     return TOOLBENCH_PROMPT.format(api_list=tool_descs)

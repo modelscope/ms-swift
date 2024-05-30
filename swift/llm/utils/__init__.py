@@ -12,10 +12,11 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocesso
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, SwiftPreprocessor,
                          TextGenerationPreprocessor)
 from .protocol import ChatCompletionResponse  # noqa
-from .protocol import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
-                       CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                       Function, Model, ModelList, ToolCalls, UsageInfo, XRequestConfig, random_uuid)
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponseChoice,
+                       ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
+                       CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
+                       CompletionStreamResponse, DeltaMessage, Function, Model, ModelList, UsageInfo, XRequestConfig,
+                       random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWords, Template, TemplateType,
                        get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
