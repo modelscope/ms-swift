@@ -18,8 +18,8 @@ from .infer import merge_lora, prepare_model_template
 from .utils import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
                     ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
                     CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
-                    CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo,
-                    inference, inference_stream, messages_to_history, random_uuid)
+                    CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo, inference,
+                    inference_stream, messages_to_history, random_uuid)
 
 logger = get_logger()
 
