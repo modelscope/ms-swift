@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .deploy import deploy_main
     from .dpo import dpo_main
     from .orpo import orpo_main
+    from .simpo import simpo_main
     from .infer import merge_lora, prepare_model_template, infer_main, merge_lora_main
     from .rome import rome_main
     from .sft import sft_main

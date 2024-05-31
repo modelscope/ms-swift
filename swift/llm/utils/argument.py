@@ -1321,6 +1321,9 @@ class DPOArguments(SftArguments):
     loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
     sft_beta: float = 0.1
 
+class SimPOArguments(DPOArguments):
+    beta: float = 2.0
+    gamma: float = 1.0
 
 @dataclass
 class ORPOArguments(SftArguments):
@@ -1328,10 +1331,7 @@ class ORPOArguments(SftArguments):
     beta: float = 0.1
 
 @dataclass
-class SimPOArguments(SftArguments):
-    beta: float = 2.0
-    gamma: float = 1.0 # margin
-    max_prompt_length: int = 1024
+
 
 @dataclass
 class RomeArguments(InferArguments):

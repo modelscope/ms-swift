@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from .argument import (AppUIArguments, DeployArguments, DPOArguments, EvalArguments, ExportArguments, InferArguments,
+from .argument import (AppUIArguments, DeployArguments, DPOArguments,SimPOArguments, EvalArguments, ExportArguments, InferArguments,
                        ORPOArguments, RomeArguments, SftArguments, is_adapter, swift_to_peft_format)
 from .client_utils import get_model_list_client, inference_client
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction, HfDataset, get_dataset, get_dataset_from_repo,
