@@ -25,6 +25,7 @@ Please check: [Multi-Modal Best Practices](../Multi-Modal/index.md)
 7. [VLLM Inference and Deployment](VLLM-inference-acceleration-and-deployment.md)
 8. [LLM Experimental](LLM-exp.md)
 9. [ORPO Training](ORPO.md)
+10. [SimPO Training](SimPO.md)
 
 ### 🐔References！
 1. [Customization for models and datasets](Customization.md)
