@@ -15,12 +15,11 @@ from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import ChatCompletionResponse  # noqa
-from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                    ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
-                    CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                    DeployArguments, Model, ModelList, UsageInfo, inference, inference_stream, messages_to_history,
-                    random_uuid)
+from .utils import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
+                    ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
+                    CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
+                    CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo, inference,
+                    inference_stream, messages_to_history, random_uuid)
 
 logger = get_logger()
 
@@ -43,7 +42,7 @@ async def get_available_models():
     if _args.lora_request_list is not None:
         model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
     data = [
-        Model(id=model_id, is_chat=not is_generation_template(model_id), owned_by=_args.owned_by)
+        Model(id=model_id, is_chat=not is_generation_template(_args.template_type), owned_by=_args.owned_by)
         for model_id in model_list
     ]
     return ModelList(data=data)
