@@ -560,7 +560,7 @@ def inference_stream(model: PreTrainedModel,
     truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
     if len(inputs) == 0 and truncation_strategy == 'delete':
         # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-        return '', []
+        return '', history
 
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
@@ -698,7 +698,7 @@ def inference(model: PreTrainedModel,
     truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
     if len(inputs) == 0 and truncation_strategy == 'delete':
         # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-        return '', []
+        return '', history
 
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
