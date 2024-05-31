@@ -1179,7 +1179,7 @@ class InferArguments(ArgumentsBase):
 
         if self.dtype == 'AUTO':
             self.dtype = sft_args.get('dtype')
-        
+
         # compat
         if self.val_dataset is None:
             self.val_dataset = []

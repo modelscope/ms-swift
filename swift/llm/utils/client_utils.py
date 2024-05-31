@@ -32,12 +32,14 @@ def _parse_stream_data(data: bytes) -> Optional[str]:
     assert data.startswith('data:')
     return data[5:].strip()
 
+
 def _to_base64(img_path: str) -> str:
     if not os.path.isfile(img_path):
         return img_path
     with open(img_path, 'rb') as f:
         img_base64 = base64.b64encode(f.read())
     return img_base64
+
 
 def _encode_prompt(prompt: str) -> str:
     pattern = r'<(?:img|audio)>(.+?)</(?:img|audio)>'
@@ -53,6 +55,7 @@ def _encode_prompt(prompt: str) -> str:
     new_prompt += prompt[idx:]
     return new_prompt
 
+
 def _from_base64(img_base64: str, tmp_dir: str) -> str:
     from PIL import Image
     if os.path.isfile(img_base64) or img_base64.startswith('http'):
@@ -63,6 +66,7 @@ def _from_base64(img_base64: str, tmp_dir: str) -> str:
     image = Image.open(BytesIO(base64.b64decode(img_base64)))
     image.save(img_path)
     return img_path
+
 
 def _decode_prompt(prompt: str, tmp_dir: str) -> str:
     pattern = r'<(?:img|audio)>(.+?)</(?:img|audio)>'
@@ -77,6 +81,7 @@ def _decode_prompt(prompt: str, tmp_dir: str) -> str:
         idx = span[1]
     new_content += prompt[idx:]
     return new_content
+
 
 def convert_to_base64(*,
                       messages: Optional[Messages] = None,
@@ -113,7 +118,7 @@ def decode_base64(*,
         res_messages = []
         for m in messages:
             m_new = deepcopy(m)
-            m_new['content'] = _decode_prompt(m_new['content']. tmp_dir)
+            m_new['content'] = _decode_prompt(m_new['content'].tmp_dir)
             res_messages.append(m_new)
         res['messages'] = res_messages
     if prompt is not None:

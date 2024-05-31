@@ -105,11 +105,13 @@ def get_vllm_engine(model_type: str,
         # fix vllm==0.4 bug (very slow)
         _tokenizer_len = len(tokenizer)
         __old_len__ = tokenizer.__class__.__len__
+
         def __len__(self) -> int:
             if id(tokenizer) == id(self):
                 return _tokenizer_len
             else:
                 return __old_len__(self)
+
         tokenizer.__class__.__len__ = __len__
 
     else:
