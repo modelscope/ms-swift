@@ -302,4 +302,3 @@ response: 玫瑰花的图片,希望你喜欢
 
 
 ## minicpm-v-v2_5-chat
-
