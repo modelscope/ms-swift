@@ -107,7 +107,7 @@ def get_vllm_engine(model_type: str,
         __old_len__ = tokenizer.__class__.__len__
 
         def __len__(self) -> int:
-            if id(tokenizer) == id(self):
+            if self is tokenizer:
                 return _tokenizer_len
             else:
                 return __old_len__(self)
