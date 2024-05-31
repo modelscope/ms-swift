@@ -1335,7 +1335,6 @@ class ORPOArguments(SftArguments):
 
 
 @dataclass
-@dataclass
 class RomeArguments(InferArguments):
     rome_request_file: str = field(
         default=None, metadata={'help': 'The rome request file, please check the documentation '
