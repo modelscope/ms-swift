@@ -45,7 +45,7 @@ async def get_available_models():
         Model(
             id=model_id,
             is_chat=not is_generation_template(model_id),
-            is_multimodal=not _args.is_multimodal,
+            is_multimodal=_args.is_multimodal,
             owned_by=_args.owned_by) for model_id in model_list
     ]
     return ModelList(data=data)

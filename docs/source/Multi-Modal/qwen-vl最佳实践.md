@@ -226,8 +226,47 @@ curl http://localhost:8000/v1/chat/completions \
 ```
 
 使用swift:
-```
+```python
+from swift.llm import get_model_list_client, XRequestConfig, inference_client
 
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+
+# use base64
+# with open('rose.jpg', 'rb') as f:
+#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
+# query = f"""Picture 1:<img>{img_base64}</img>
+# 图中是什么花，有几只？"""
+
+# use url or local_path
+query = f"""Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
+图中是什么花，有几只？"""
+
+request_config = XRequestConfig(seed=42)
+resp = inference_client(model_type, query, request_config=request_config)
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+history = [(query, response)]
+query = '框出图中的花'
+request_config = XRequestConfig(stream=True, seed=42)
+stream_resp = inference_client(model_type, query, history, request_config=request_config)
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+
+"""
+model_type: qwen-vl-chat
+query: Picture 1:<img>rose.jpg</img>
+图中是什么花，有几只？
+response: 图中是三朵红玫瑰花。
+query: 框出图中的花
+response: <ref>花</ref><box>(34,449),(368,981)</box><box>(342,456),(670,917)</box><box>(585,508),(859,977)</box>
+"""
 ```
 
 使用openai:
@@ -241,13 +280,21 @@ client = OpenAI(
 model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
 
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
+# use base64
+# with open('rose.jpg', 'rb') as f:
+#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
+# query = f"""Picture 1:<img>{img_base64}</img>
+# 图中是什么花，有几只？"""
+
+# use url or local_path
+query = f"""Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
 图中是什么花，有几只？"""
+
 messages = [{
     'role': 'user',
     'content': query
 }]
-messages = convert_to_base64(messages=messages)['messages']
+messages = convert_to_base64(messages=messages)['messages']  # for local_path
 resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
