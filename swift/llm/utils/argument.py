@@ -220,6 +220,8 @@ class ArgumentsBase:
             _dataset = getattr(self, key)
             if isinstance(_dataset, str):
                 _dataset = [_dataset]
+            elif _dataset is None:
+                _dataset = []
             if len(_dataset) == 1 and ',' in _dataset[0]:
                 _dataset = _dataset[0].split(',')
             for i, d in enumerate(_dataset):
