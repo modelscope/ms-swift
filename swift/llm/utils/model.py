@@ -435,6 +435,8 @@ class LoRATM(NamedTuple):
         'kv_b_proj',
         'o_proj',
     ]
+    # compat
+    llama2 = llama
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]

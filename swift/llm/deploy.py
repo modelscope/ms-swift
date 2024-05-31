@@ -42,7 +42,7 @@ async def get_available_models():
     if _args.lora_request_list is not None:
         model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
     data = [
-        Model(id=model_id, is_chat=not is_generation_template(model_id), owned_by=_args.owned_by)
+        Model(id=model_id, is_chat=not is_generation_template(_args.template_type), owned_by=_args.owned_by)
         for model_id in model_list
     ]
     return ModelList(data=data)

@@ -15,7 +15,7 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip install 'ms-swift[llm]' -U
 
 # vllm version corresponds to cuda version, please select version according to `https://docs.vllm.ai/en/latest/getting_started/installation.html`
-pip install vllm -U
+pip install vllm
 pip install openai -U
 
 # Environment alignment (usually not needed. If you get errors, you can run the code below, the repo uses the latest environment for testing)
@@ -481,7 +481,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 
 The example code for the client side is the same as the original models.
 
-### Multiple LoRA Deployments
+## Multiple LoRA Deployments
 
 The current model deployment method now supports multiple LoRA deployments with `peft>=0.10.0`. The specific steps are:
 
