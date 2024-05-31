@@ -1,11 +1,12 @@
-# ORPO算法最佳实践
-[ORPO](https://arxiv.org/abs/2403.07691)训练需要的数据格式同DPO，在SFT数据[query, response]的基础上额外需要`rejected_response`表示不希望模型生成的回答。
+# SimPO算法最佳实践
+[SimPO](https://arxiv.org/abs/2405.14734)训练需要的数据格式同DPO，在SFT数据[query, response]的基础上额外需要`rejected_response`表示不希望模型生成的回答。
 
-ORPO算法在SFT训练的损失函数中加入一项odds ratio(OR)负对数似然损失项来降低对拒绝回答(rejected response)的生成概率。相比DPO，不需要参考模型，所需的训练显存更少。
+SimPO算法用回答长度作为正则项替代了DPO中的ref model logp项, 并且在偏好建模中加入了margin项来扩大正负回答的gap？
+相比DPO，不需要参考模型，所需的训练显存更少。
 
-其中超参`beta`表示OR损失项的系数，beta越大表示对`rejected_response`的惩罚越大，默认为0.1
+其中超参`beta`同DPO作为系数, 通常取2.0-2.5, 默认为2.0, `gamma`表示margin, 通常取0.5-1.5, 默认为1.0
 
-本期最佳实践将使用ORPO算法训练[llama3-8b-instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct/summary)模型，使其能够用中文回答。
+本期最佳实践将使用SimPO算法训练[llama3-8b-instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct/summary)模型，使其能够用中文回答。
 
 ## 目录
 - [环境准备](#环境准备)
@@ -48,12 +49,13 @@ swift内置了处理方法将`answer_zh`作为`response`,将`answer_en`作为`re
 # Memory usage: 4*24G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=2 \
-swift orpo \
+swift simpo \
     --model_type  llama3-8b-instruct \
-    --beta 0.5 \
+    --beta 2.0 \
+    --gamma 1.0 \
     --sft_type  lora \
     --dataset shareai-llama3-dpo-zh-en-emoji \
-    --num_train_epochs  2  \
+    --num_train_epochs  1  \
     --lora_target_modules  ALL  \
     --gradient_checkpointing  true  \
     --batch_size  1  \
@@ -61,15 +63,16 @@ swift orpo \
     --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
     --warmup_ratio  0.03  \
     --save_total_limit  2
+
 # MP(device map)
 # Memory usage: 2*24G
 CUDA_VISIBLE_DEVICES=0,1 \
-swift orpo \
+swift simpo \
     --model_type  llama3-8b-instruct \
-    --beta 0.5 \
+    --beta 2.0 \
     --sft_type  lora \
     --dataset shareai-llama3-dpo-zh-en-emoji \
-    --num_train_epochs  2  \
+    --num_train_epochs  1  \
     --lora_target_modules  ALL  \
     --gradient_checkpointing  true  \
     --batch_size  1  \
@@ -80,12 +83,13 @@ swift orpo \
 
 # Memory usage: 40G
 CUDA_VISIBLE_DEVICES=0 \
-swift orpo \
+swift simpo \
     --model_type  llama3-8b-instruct \
-    --beta 0.5 \
+    --beta 2.0 \
+    --gamma 1.0 \
     --sft_type  lora \
     --dataset shareai-llama3-dpo-zh-en-emoji \
-    --num_train_epochs  2  \
+    --num_train_epochs  1  \
     --lora_target_modules  ALL  \
     --gradient_checkpointing  true  \
     --batch_size  1  \
