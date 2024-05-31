@@ -122,7 +122,7 @@ def decode_base64(*,
             res_messages.append(m_new)
         res['messages'] = res_messages
     if prompt is not None:
-        prompt = _decode_prompt(prompt)
+        prompt = _decode_prompt(prompt, tmp_dir)
         res['prompt'] = prompt
     if images is not None:
         res_images = []

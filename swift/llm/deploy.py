@@ -287,12 +287,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{model.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
-        example = {'query': request.prompt}
+        prompt = request.prompt
+        if _args.is_multimodal:
+            prompt = decode_base64(prompt=prompt)['prompt']
+        example = {'query': prompt}
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
-        _request['prompt'] = request.prompt
-        if args.is_multimodal:
-            _request['prompt'] = decode_base64(messages=_request['prompt'])
+        _request['prompt'] = prompt
 
     request_info = {'request_id': request_id}
     request_info.update(_request)
