@@ -44,9 +44,9 @@ def gradio_generation_demo(args: AppUIArguments) -> None:
         send.click(model_generation, inputs=[input_box], outputs=[output_box])
     # Compatible with InferArguments
     share = getattr(args, 'share', False)
-    server_name = getattr(args, 'server_name', '127.0.0.1')
-    server_port = getattr(args, 'server_port', 7860)
-    demo.queue().launch(height=1000, share=share, server_name=server_name, server_port=server_port)
+    host = getattr(args, 'host', '127.0.0.1')
+    port = getattr(args, 'port', 7860)
+    demo.queue().launch(height=1000, share=share, server_name=host, server_port=port)
 
 
 def gradio_chat_demo(args: AppUIArguments) -> None:
@@ -84,9 +84,9 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
         clear_history.click(fn=clear_session, inputs=[], outputs=[chatbot], queue=False)
     # Compatible with InferArguments
     share = getattr(args, 'share', False)
-    server_name = getattr(args, 'server_name', '127.0.0.1')
-    server_port = getattr(args, 'server_port', 7860)
-    demo.queue().launch(height=1000, share=share, server_name=server_name, server_port=server_port)
+    host = getattr(args, 'host', '127.0.0.1')
+    port = getattr(args, 'port', 7860)
+    demo.queue().launch(height=1000, share=share, server_name=host, server_port=port)
 
 
 def llm_app_ui(args: AppUIArguments) -> None:

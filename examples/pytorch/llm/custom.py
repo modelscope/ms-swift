@@ -28,11 +28,11 @@ class CustomDatasetName:
     stsb_en = 'stsb-en'
 
 
-@register_model(CustomModelType.tigerbot_7b, 'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
+@register_model(CustomModelType.tigerbot_7b, 'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama,
                 TemplateType.default_generation)
-@register_model(CustomModelType.tigerbot_13b, 'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
+@register_model(CustomModelType.tigerbot_13b, 'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama,
                 TemplateType.default_generation)
-@register_model(CustomModelType.tigerbot_13b_chat, 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+@register_model(CustomModelType.tigerbot_13b_chat, 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama,
                 CustomTemplateType.tigerbot)
 def get_tigerbot_model_tokenizer(model_dir: str,
                                  torch_dtype: Dtype,

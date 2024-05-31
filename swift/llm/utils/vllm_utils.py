@@ -107,7 +107,7 @@ def get_vllm_engine(model_type: str,
         __old_len__ = tokenizer.__class__.__len__
 
         def __len__(self) -> int:
-            if id(tokenizer) == id(self):
+            if self is tokenizer:
                 return _tokenizer_len
             else:
                 return __old_len__(self)
@@ -263,7 +263,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': []}
+            resp_list[i] = {'response': '', 'history': history}
             continue
         input_ids = inputs['input_ids']
         llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
@@ -350,7 +350,7 @@ def inference_vllm(llm_engine: LLMEngine,
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': []}
+            resp_list[i] = {'response': '', 'history': history}
             continue
         input_ids = inputs['input_ids']
         llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
