@@ -60,12 +60,14 @@ class XRequestConfig:
 class CompletionRequestMixin:
     model: str
     prompt: str
+    images: List[str] = field(default_factory=list)
 
 
 @dataclass
 class ChatCompletionRequestMixin:
     model: str
     messages: List[Dict[str, str]]
+    images: List[str] = field(default_factory=list)
 
 
 @dataclass

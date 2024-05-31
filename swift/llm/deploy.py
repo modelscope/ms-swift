@@ -275,9 +275,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 f'the model `{model.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         messages = request.messages
+        images = request.images
         if _args.is_multimodal:
             messages = decode_base64(messages=messages)['messages']
+            images = decode_base64(images=images)['images']
         example = messages_to_history(messages)
+        if len(images) > 0:
+            example['images'] = images
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = messages
@@ -288,9 +292,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 f'the model `{model.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
         prompt = request.prompt
+        images = request.images
         if _args.is_multimodal:
             prompt = decode_base64(prompt=prompt)['prompt']
+            images = decode_base64(images=images)['images']
         example = {'query': prompt}
+        if len(request.images) > 0:
+            example['images'] = request.images
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = prompt
