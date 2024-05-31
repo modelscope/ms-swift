@@ -15,7 +15,7 @@ from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
+from .utils import (TEMPLATE_MAPPING, ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
                     ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
                     CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
                     CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo, decode_base64,
@@ -81,10 +81,9 @@ async def check_model(request: Union[ChatCompletionRequest, CompletionRequest]) 
 
 
 def is_generation_template(template_type: str) -> bool:
-    if 'generation' in template_type:
-        return True
-    else:
-        return False
+    template_info = TEMPLATE_MAPPING[template_type]
+    is_generation = template_info.get('is_generation', False)
+    return is_generation
 
 
 @torch.inference_mode()
@@ -299,8 +298,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             prompt = decode_base64(prompt=prompt)['prompt']
             images = decode_base64(images=images)['images']
         example = {'query': prompt}
-        if len(request.images) > 0:
-            example['images'] = request.images
+        if len(images) > 0:
+            example['images'] = images
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = prompt

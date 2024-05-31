@@ -160,22 +160,24 @@ def inference_client(
     if is_chat_request is None:
         is_chat_request = _is_chat
     data = {k: v for k, v in request_config.__dict__.items() if not k.startswith('__')}
-    data['model'] = model_type
-    if images is not None:
-        data['images'] = images
     if is_chat_request:
         messages = history_to_messages(history, query, system)
         if is_multimodal:
             messages = convert_to_base64(messages=messages)['messages']
+            images = convert_to_base64(images=images)['images']
         data['messages'] = messages
         url = f'http://{host}:{port}/v1/chat/completions'
     else:
         assert system is None and history is None, (
             'The chat template for text generation does not support system and history.')
         if is_multimodal:
-            prompt = convert_to_base64(prompt=query)['prompt']
-        data['prompt'] = prompt
+            query = convert_to_base64(prompt=query)['prompt']
+            images = convert_to_base64(images=images)['images']
+        data['prompt'] = query
         url = f'http://{host}:{port}/v1/completions'
+    data['model'] = model_type
+    if images is not None:
+        data['images'] = images
     if request_config.stream:
         if is_chat_request:
             ret_cls = ChatCompletionStreamResponse
