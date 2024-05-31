@@ -59,6 +59,8 @@ async def check_length(request: Union[ChatCompletionRequest, CompletionRequest],
         max_model_len = model.max_model_len
     num_tokens = len(input_ids)
     max_tokens = request.max_tokens
+    if max_model_len is None:
+        max_model_len = 2048
     if max_tokens is None:
         max_tokens = max_model_len - num_tokens
         request.max_tokens = max_tokens
