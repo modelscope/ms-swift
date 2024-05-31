@@ -13,6 +13,7 @@ def random_uuid() -> str:
 class Model:
     id: str  # model_type
     is_chat: bool  # chat model or generation model
+
     object: str = 'model'
     created: int = field(default_factory=lambda: int(time.time()))
     owned_by: str = 'swift'

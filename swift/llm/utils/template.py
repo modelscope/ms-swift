@@ -784,7 +784,7 @@ register_template(
              ['<|im_end|>'], INTERNLM_SYSTEM, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
-def replace_img_tab(query: str, history: History, replace_token: str) -> Tuple[str, History, List[str]]:
+def replace_img_tag(query: str, history: History, replace_token: str) -> Tuple[str, History, List[str]]:
     images_path = []
     pattern = r'<img>(.+?)</img>'
     new_history = []
@@ -818,7 +818,7 @@ class InternLMXComposer2(Template):
         history = example.pop('history', None)
         if history is None:
             history = []
-        example['query'], example['history'], images_path = replace_img_tab(example['query'], history, '</s>')
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '</s>')
 
         images = []
         dtype = self.model.dtype
@@ -1122,7 +1122,7 @@ class Phi3VisionTemplate(Template):
         history = example.pop('history', None)
         if history is None:
             history = []
-        example['query'], example['history'], images_path = replace_img_tab(example['query'], history, '<s>')
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<s>')
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1230,7 +1230,7 @@ class DeepseekVLTemplate(Template):
         history = example.pop('history', None)
         if history is None:
             history = []
-        example['query'], example['history'], images_path = replace_img_tab(example['query'], history,
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history,
                                                                             '<image_placeholder>')
 
         inputs, _ = super().encode(example)

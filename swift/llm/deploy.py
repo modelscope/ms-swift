@@ -15,12 +15,11 @@ from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import ChatCompletionResponse  # noqa
-from .utils import (ChatCompletionRequest, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                    ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
-                    CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                    DeployArguments, Model, ModelList, UsageInfo, inference, inference_stream, messages_to_history,
-                    random_uuid)
+from .utils import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
+                    ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
+                    CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
+                    CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo, decode_base64,
+                    inference, inference_stream, messages_to_history, random_uuid)
 
 logger = get_logger()
 

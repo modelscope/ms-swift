@@ -2787,7 +2787,7 @@ def fix_internvl_inplace_bug(model) -> None:
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
-    support_gradient_checkpointing=False,
+    tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
 @register_model(
     ModelType.internvl_chat_v1_5_int8,
@@ -2796,7 +2796,7 @@ def fix_internvl_inplace_bug(model) -> None:
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
-    support_gradient_checkpointing=False,
+    tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5-int8')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
@@ -2831,7 +2831,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
+        _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
             forward = model.forward

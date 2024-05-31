@@ -1167,7 +1167,7 @@ class InferArguments(ArgumentsBase):
             ]
         for key in imported_keys:
             value = getattr(self, key)
-            if key == 'dataset' and len(value) > 0:
+            if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {'dataset_test_ratio', 'system'} and value is not None:
                 continue
@@ -1179,6 +1179,10 @@ class InferArguments(ArgumentsBase):
 
         if self.dtype == 'AUTO':
             self.dtype = sft_args.get('dtype')
+
+        # compat
+        if self.val_dataset is None:
+            self.val_dataset = []
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
