@@ -1,8 +1,13 @@
 # Best Practices for ORPO Algorithm
 The ORPO algorithm requires the same data format as DPO. Beyond SFT data [query, response], it additionally requires `rejected_response` to denote answers that the model should not generate.
+
 The ORPO algorithm incorporates an odds ratio (OR) negative log-likelihood loss term into the loss function used during SFT training, to reduce the probability of generating rejected responses.
+
+Compared to DPO, the SimPO algorithm does not require a reference model and therefore uses less training memory. 
+
 Here, the hyperparameter beta represents the coefficient for the OR loss term. The larger the beta, the greater the penalty on rejected_response, with a default value of 0.1.
-This best practice session will train the llama3-8b-instruct model using the ORPO algorithm, enabling it to respond in Chinese.
+
+This best practice session will train the [llama3-8b-instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct/summary) model using the ORPO algorithm, enabling it to respond in Chinese.
 
 Table of Contents
 - [Environment Preparation](#environment-preparation)
