@@ -138,6 +138,7 @@ def inference_client(
     query: str,
     history: Optional[History] = None,
     system: Optional[str] = None,
+    images: Optional[List[str]] = None,
     *,
     request_config: Optional[XRequestConfig] = None,
     host: str = '127.0.0.1',
@@ -160,6 +161,8 @@ def inference_client(
         is_chat_request = _is_chat
     data = {k: v for k, v in request_config.__dict__.items() if not k.startswith('__')}
     data['model'] = model_type
+    if images is not None:
+        data['images'] = images
     if is_chat_request:
         messages = history_to_messages(history, query, system)
         if is_multimodal:
