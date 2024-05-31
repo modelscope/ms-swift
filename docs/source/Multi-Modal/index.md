@@ -1,6 +1,9 @@
 ## Multi-Modal文档
 
-### Multi-Modal最佳实践系列
+### 📚教程
+1. [MLLM部署文档](MLLM部署文档.md)
+
+### ⭐️最佳实践系列
 
 一轮对话可以包含多张图片（或不含图片）:
 1. [Qwen-VL最佳实践](qwen-vl最佳实践.md)

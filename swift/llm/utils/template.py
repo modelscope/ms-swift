@@ -1157,8 +1157,9 @@ class Phi3VisionTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
-        res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
+        if batch[0].get('pixel_values') is not None:
+            res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+            res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
         return res
 
 

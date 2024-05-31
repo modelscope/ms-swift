@@ -1,5 +1,9 @@
 ## Multi-Modal Documentation
 
+### 📚 Tutorial
+
+1. [MLLM Deployment Documentation](mutlimodal-deployment.md)
+
 ### Multi-Modal Best Practice
 
 A single round of dialogue can contain multiple images (or no images):
@@ -15,7 +19,7 @@ A single round of dialogue can only contain one image:
 2. [Yi-VL Best Practice.md](yi-vl-best-practice.md)
 
 
-整个对话围绕一张图片:
+The entire conversation revolves around one image.
 1. [CogVLM Best Practice](cogvlm-best-practice.md), [CogVLM2 Best Practice](cogvlm2-best-practice.md)
 2. [MiniCPM-V Best Practice](minicpm-v-best-practice.md)
 3. [InternVL-Chat-V1.5 Best Practice](internvl-best-practice.md)
