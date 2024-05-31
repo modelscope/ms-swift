@@ -2812,7 +2812,7 @@ def fix_internvl_inplace_bug(model) -> None:
 @register_model(
     ModelType.mini_internvl_chat_4b_v1_5,
     'OpenGVLab/Mini-InternVL-Chat-4B-V1-5',
-    LoRATM.internlm2,
+    LoRATM.phi3,
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
