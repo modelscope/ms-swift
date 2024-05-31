@@ -37,7 +37,7 @@ def _to_base64(img_path: str) -> str:
     if not os.path.isfile(img_path):
         return img_path
     with open(img_path, 'rb') as f:
-        img_base64 = base64.b64encode(f.read())
+        img_base64: str = base64.b64encode(f.read()).decode('utf-8')
     return img_base64
 
 
@@ -50,7 +50,7 @@ def _encode_prompt(prompt: str) -> str:
         span = m.span(1)
         path = m.group(1)
         img_base64 = _to_base64(path)
-        new_prompt += prompt[idx:span[0]] + img_base64.decode('utf-8')
+        new_prompt += prompt[idx:span[0]] + img_base64
         idx = span[1]
     new_prompt += prompt[idx:]
     return new_prompt
@@ -60,7 +60,7 @@ def _from_base64(img_base64: str, tmp_dir: str) -> str:
     from PIL import Image
     if os.path.isfile(img_base64) or img_base64.startswith('http'):
         return img_base64
-    img_base64 = img_base64.encode('utf-8')
+    img_base64: bytes = img_base64.encode('utf-8')
     sha256_hash = hashlib.sha256(img_base64).hexdigest()
     img_path = os.path.join(tmp_dir, f'{sha256_hash}.png')
     image = Image.open(BytesIO(base64.b64decode(img_base64)))
@@ -76,7 +76,7 @@ def _decode_prompt(prompt: str, tmp_dir: str) -> str:
     for m in match_iter:
         span = m.span(1)
         img_base64 = m.group(1)
-        img_path = _from_base64(img_path, tmp_dir)
+        img_path = _from_base64(img_base64, tmp_dir)
         new_content += prompt[idx:span[0]] + img_path
         idx = span[1]
     new_content += prompt[idx:]
@@ -118,7 +118,7 @@ def decode_base64(*,
         res_messages = []
         for m in messages:
             m_new = deepcopy(m)
-            m_new['content'] = _decode_prompt(m_new['content'].tmp_dir)
+            m_new['content'] = _decode_prompt(m_new['content'], tmp_dir)
             res_messages.append(m_new)
         res['messages'] = res_messages
     if prompt is not None:

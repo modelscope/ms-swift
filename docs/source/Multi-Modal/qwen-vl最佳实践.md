@@ -202,7 +202,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 **服务端:**
 ```bash
 # 使用原始模型
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-vl-chat
 
 # 使用微调后的LoRA
 CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl-chat/vx-xxx/checkpoint-xxx
@@ -234,12 +234,17 @@ model_type = model_list.data[0].id
 print(f'model_type: {model_type}')
 
 # use base64
+# import base64
 # with open('rose.jpg', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
 # query = f"""Picture 1:<img>{img_base64}</img>
 # 图中是什么花，有几只？"""
 
-# use url or local_path
+# use local_path
+# query = f"""Picture 1:<img>rose.jpg</img>
+# 图中是什么花，有几只？"""
+
+# use url
 query = f"""Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
 图中是什么花，有几只？"""
 
@@ -272,7 +277,6 @@ response: <ref>花</ref><box>(34,449),(368,981)</box><box>(342,456),(670,917)</b
 使用openai:
 ```python
 from openai import OpenAI
-from swift.llm import convert_to_base64
 client = OpenAI(
     api_key='EMPTY',
     base_url='http://localhost:8000/v1',
@@ -281,12 +285,19 @@ model_type = client.models.list().data[0].id
 print(f'model_type: {model_type}')
 
 # use base64
+# import base64
 # with open('rose.jpg', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
 # query = f"""Picture 1:<img>{img_base64}</img>
 # 图中是什么花，有几只？"""
 
-# use url or local_path
+# use local_path
+# from swift.llm import convert_to_base64
+# query = f"""Picture 1:<img>rose.jpg</img>
+# 图中是什么花，有几只？"""
+# query = convert_to_base64(prompt=query)['prompt']
+
+# use url
 query = f"""Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
 图中是什么花，有几只？"""
 
@@ -294,7 +305,6 @@ messages = [{
     'role': 'user',
     'content': query
 }]
-messages = convert_to_base64(messages=messages)['messages']  # for local_path
 resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
@@ -307,7 +317,6 @@ print(f'response: {response}')
 messages.append({'role': 'assistant', 'content': response})
 query = '框出图中的花'
 messages.append({'role': 'user', 'content': query})
-messages = convert_to_base64(messages=messages)['messages']
 stream_resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
