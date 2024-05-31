@@ -1327,6 +1327,11 @@ class ORPOArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: float = 0.1
 
+@dataclass
+class SimPOArguments(SftArguments):
+    beta: float = 2.0
+    gamma: float = 1.0 # margin
+    max_prompt_length: int = 1024
 
 @dataclass
 class RomeArguments(InferArguments):
