@@ -3963,6 +3963,7 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     'YuanLLM/Yuan2-M32-hf',
     LoRATM.llama,
     TemplateType.yuan,
+    support_gradient_checkpointing=False,
     support_flash_attn=True,
     hf_model_id='IEITYuan/Yuan2-M32-hf')
 def get_model_tokenizer_yuan(model_dir: str,
