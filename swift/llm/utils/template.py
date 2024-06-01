@@ -553,9 +553,11 @@ class DefaultGenerationTemplate(Template):
         super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']], auto_add_bos=True)
 
 
-register_template(TemplateType.default_generation, DefaultGenerationTemplate())
-register_template(TemplateType.default_generation_bos,
-                  Template([['bos_token_id']], ['{{QUERY}}'], None, [['eos_token_id']]))
+register_template(TemplateType.default_generation, DefaultGenerationTemplate(), is_generation=True)
+register_template(
+    TemplateType.default_generation_bos,
+    Template([['bos_token_id']], ['{{QUERY}}'], None, [['eos_token_id']]),
+    is_generation=True)
 
 
 class QwenTemplate(Template):
@@ -616,7 +618,8 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
 
 
 register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
-register_template(TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True)
+register_template(
+    TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
 register_template(
     TemplateType.yi,
@@ -694,7 +697,10 @@ register_template(
     TemplateType.chatglm2,
     Template([[64790, 64792], '{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'], [['eos_token_id']]))
 
-register_template(TemplateType.chatglm_generation, Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]))
+register_template(
+    TemplateType.chatglm_generation,
+    Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]),
+    is_generation=True)
 
 register_template(
     TemplateType.chatglm3,
@@ -1126,7 +1132,8 @@ class PaliGemmaTemplate(Template):
         return res
 
 
-register_template(TemplateType.paligemma, PaliGemmaTemplate(), infer_media_type='dialogue', lazy_tokenize=True)
+register_template(
+    TemplateType.paligemma, PaliGemmaTemplate(), infer_media_type='dialogue', lazy_tokenize=True, is_generation=True)
 
 
 class Phi3VisionTemplate(Template):
@@ -1175,8 +1182,9 @@ class Phi3VisionTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
-        res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
+        if batch[0].get('pixel_values') is not None:
+            res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+            res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
         return res
 
 

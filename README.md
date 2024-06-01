@@ -47,6 +47,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 2024.06.01: Support for deploying large multimodal models, please refer to the [Multimodal Deployment Documentation](docs/source_en/Multi-Modal/mutlimodal-deployment.md) for more information.
 - 2024.05.31: Supports Mini-Internvl model, Use model_type `mini-internvl-chat-2b-v1_5` and `mini-internvl-chat-4b-v1_5`to train.
 - 2024.05.24: Supports Phi3-vision model, Use model_type `phi3-vision-128k-instruct` to train.
 - 2024.05.22: Supports DeepSeek-V2-Lite series models, model_type are `deepseek-v2-lite` and `deepseek-v2-lite-chat`

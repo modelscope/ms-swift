@@ -15,11 +15,11 @@ from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
+from .utils import (TEMPLATE_MAPPING, ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
                     ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
                     CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
-                    CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo, inference,
-                    inference_stream, messages_to_history, random_uuid)
+                    CompletionStreamResponse, DeltaMessage, DeployArguments, Model, ModelList, UsageInfo, decode_base64,
+                    inference, inference_stream, messages_to_history, random_uuid)
 
 logger = get_logger()
 
@@ -42,8 +42,11 @@ async def get_available_models():
     if _args.lora_request_list is not None:
         model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
     data = [
-        Model(id=model_id, is_chat=not is_generation_template(_args.template_type), owned_by=_args.owned_by)
-        for model_id in model_list
+        Model(
+            id=model_id,
+            is_chat=not is_generation_template(_args.template_type),
+            is_multimodal=_args.is_multimodal,
+            owned_by=_args.owned_by) for model_id in model_list
     ]
     return ModelList(data=data)
 
@@ -56,6 +59,8 @@ async def check_length(request: Union[ChatCompletionRequest, CompletionRequest],
         max_model_len = model.max_model_len
     num_tokens = len(input_ids)
     max_tokens = request.max_tokens
+    if max_model_len is None:
+        return
     if max_tokens is None:
         max_tokens = max_model_len - num_tokens
         request.max_tokens = max_tokens
@@ -76,10 +81,9 @@ async def check_model(request: Union[ChatCompletionRequest, CompletionRequest]) 
 
 
 def is_generation_template(template_type: str) -> bool:
-    if 'generation' in template_type:
-        return True
-    else:
-        return False
+    template_info = TEMPLATE_MAPPING[template_type]
+    is_generation = template_info.get('is_generation', False)
+    return is_generation
 
 
 @torch.inference_mode()
@@ -271,20 +275,34 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{model.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
-        example = messages_to_history(request.messages)
+        messages = request.messages
+        images = request.images
+        if _args.is_multimodal:
+            messages = decode_base64(messages=messages)['messages']
+            images = decode_base64(images=images)['images']
+        example = messages_to_history(messages)
+        if len(images) > 0:
+            example['images'] = images
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
-        _request['messages'] = request.messages
+        _request['messages'] = messages
     else:
         if not is_generation_template(template.template_type):
             return create_error_response(
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{model.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
-        example = {'query': request.prompt}
+        prompt = request.prompt
+        images = request.images
+        if _args.is_multimodal:
+            prompt = decode_base64(prompt=prompt)['prompt']
+            images = decode_base64(images=images)['images']
+        example = {'query': prompt}
+        if len(images) > 0:
+            example['images'] = images
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'cmpl-{random_uuid()}'
-        _request['prompt'] = request.prompt
+        _request['prompt'] = prompt
 
     request_info = {'request_id': request_id}
     request_info.update(_request)

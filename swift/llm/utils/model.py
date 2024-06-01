@@ -1105,6 +1105,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-pt-224')
 @register_model(
     ModelType.paligemma_3b_pt_448,
@@ -1124,6 +1125,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-pt-896')
 @register_model(
     ModelType.paligemma_3b_mix_224,
@@ -1133,6 +1135,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-mix-224')
 @register_model(
     ModelType.paligemma_3b_mix_448,
@@ -1142,6 +1145,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-mix-448')
 def get_model_tokenizer_paligemma_vision(model_dir: str,
                                          torch_dtype: Dtype,
