@@ -148,6 +148,8 @@ def inference_client(
            Iterator[CompletionStreamResponse]]:
     if request_config is None:
         request_config = XRequestConfig()
+    if images is None:
+        images = []
     model_list = get_model_list_client(host, port)
     for model in model_list.data:
         if model_type == model.id:
@@ -176,7 +178,7 @@ def inference_client(
         data['prompt'] = query
         url = f'http://{host}:{port}/v1/completions'
     data['model'] = model_type
-    if images is not None:
+    if len(images) > 0:
         data['images'] = images
     if request_config.stream:
         if is_chat_request:

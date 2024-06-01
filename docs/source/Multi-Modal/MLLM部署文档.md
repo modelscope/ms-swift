@@ -16,9 +16,9 @@ pip install -e '.[llm]'
 pip install vllm
 ```
 
-以下我们给出了4个模型的例子（选择了尺寸较小的模型来方便实验），分别为qwen-vl-chat、qwen-vl、yi-vl-6b-chat和minicpm-v-v2_5-chat。从这些例子中，你可以发现MLLM中chat模型与base模型的部署和调用方式差异，以及三种不同类型的MLLM：一轮对话可以包含多张图片（或不含图片）、一轮对话只能包含一张图片、整个对话围绕一张图片的差异。
+以下我们给出了4个模型的例子（选择了尺寸较小的模型来方便实验），分别为qwen-vl-chat、qwen-vl、yi-vl-6b-chat和minicpm-v-v2_5-chat。从这些例子中，你可以发现三种不同类型MLLM：一轮对话可以包含多张图片（或不含图片）、一轮对话只能包含一张图片、整个对话围绕一张图片的部署和调用方式差异，以及MLLM中chat模型与base模型的部署和调用方式差异。
 
-如果使用qwen-audio-chat, 请在qwen-vl-chat的基础上将`<img>`改为`<audio>`标签即可.
+如果使用qwen-audio-chat, 请在qwen-vl-chat示例的基础上将`<img>`改为`<audio>`标签即可.
 
 ## qwen-vl-chat
 
@@ -184,7 +184,7 @@ curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
 "model": "yi-vl-6b-chat",
-"messages": [{"role": "user", "content": "描述这种图片"}],
+"messages": [{"role": "user", "content": "描述这张图片"}],
 "temperature": 0,
 "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"]
 }'
@@ -212,7 +212,7 @@ print(f'model_type: {model_type}')
 # use url
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
 
-query = '描述这种图片'
+query = '描述这张图片'
 request_config = XRequestConfig(temperature=0)
 resp = inference_client(model_type, query, images=images, request_config=request_config)
 response = resp.choices[0].message.content
@@ -232,10 +232,8 @@ print()
 
 """
 model_type: yi-vl-6b-chat
-query: 描述这种图片
-response: 图片显示一只小猫坐在地板上,眼睛睁开,凝视前方。小猫看起来很可爱,而且很年轻,因为它的毛皮上有明显的黑色和白色的条纹。
-
-背景模糊,给小猫的注意力带来焦点,创造一个吸引人的焦点。小猫似乎在房间里,可能等待注意或只是探索周围环境。
+query: 描述这张图片
+response: 图片显示一只小猫坐在地板上,眼睛睁开,凝视着前方。小猫有灰色和白色的毛皮,有黑色和白色的条纹。它的毛皮在图片中有些混乱,给它一个可爱和迷人的外观。小猫似乎正在注意周围环境,可能正在寻找一些东西或只是观察它的环境。
 query: 图中有几只羊
 response: 图中有四只羊.
 """
@@ -265,7 +263,7 @@ print(f'model_type: {model_type}')
 # use url
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
 
-query = '描述这种图片'
+query = '描述这张图片'
 messages = [{
     'role': 'user',
     'content': query
@@ -299,10 +297,8 @@ print()
 
 """
 model_type: yi-vl-6b-chat
-query: 描述这种图片
-response: 图片显示一只小猫坐在地板上,眼睛睁开,凝视前方。小猫看起来很可爱,而且很年轻,因为它的毛皮上有明显的黑色和白色的条纹。
-
-背景模糊,给小猫的注意力带来焦点,创造一个吸引人的焦点。小猫似乎在房间里,可能等待注意或只是探索周围环境。
+query: 描述这张图片
+response: 图片显示一只小猫坐在地板上,眼睛睁开,凝视着前方。小猫有灰色和白色的毛皮,有黑色和白色的条纹。它的毛皮在图片中有些混乱,给它一个可爱和迷人的外观。小猫似乎正在注意周围环境,可能正在寻找一些东西或只是观察它的环境。
 query: 图中有几只羊
 response: 图中有四只羊.
 """
@@ -330,7 +326,7 @@ curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
 "model": "minicpm-v-v2_5-chat",
-"messages": [{"role": "user", "content": "描述这种图片"}],
+"messages": [{"role": "user", "content": "描述这张图片"}],
 "temperature": 0,
 "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"]
 }'
@@ -358,7 +354,7 @@ print(f'model_type: {model_type}')
 # use url
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
 
-query = '描述这种图片'
+query = '描述这张图片'
 request_config = XRequestConfig(temperature=0)
 resp = inference_client(model_type, query, images=images, request_config=request_config)
 response = resp.choices[0].message.content
@@ -377,10 +373,10 @@ print()
 
 """
 model_type: minicpm-v-v2_5-chat
-query: 描述这种图片
-response: 这幅图片展示了一只年幼的猫咪的特写，可能是一只小猫，具有逼真的质感。它的毛皮主要是白色的，带有灰色和黑色的条纹，典型的虎斑猫毛色。小猫的眼睛是明亮的蓝色，瞳孔是圆形的，给人一种好奇和专注的表情。它的耳朵尖尖，内耳是粉红色的，毛发看起来柔软蓬松。背景模糊不清，突出了小猫的特征。整体的色调柔和，重点放在小猫的脸上，背景是柔和的绿色和棕色调。
+query: 描述这张图片
+response: 这张图片展示了一只年轻的猫咪的特写，可能是一只小猫，具有明显的特征。它的毛皮主要是白色的，带有灰色和黑色的条纹，尤其是在脸部周围。小猫的眼睛很大，呈蓝色，给人一种好奇和迷人的表情。耳朵尖尖，竖立着，显示出警觉。背景模糊不清，突出了小猫的特征。整体的色调柔和，猫咪的毛皮与背景的柔和色调形成对比。
 query: 这张图是如何产生的？
-response: 这张图片看起来是通过数字绘画或图像处理技术创作的。它具有高度的细节和逼真感，表明可能是使用数字绘图工具或软件创作的。背景的模糊效果也可能是通过后期处理应用的滤镜或效果来实现的。
+response: 这张图片看起来是用数字绘画技术创作的。艺术家使用数字绘图工具来模仿毛皮的纹理和颜色，眼睛的反射，以及整体的柔和感。这种技术使艺术家能够精确地控制细节和色彩，创造出逼真的猫咪形象。
 """
 ```
 
@@ -408,7 +404,7 @@ print(f'model_type: {model_type}')
 # use url
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
 
-query = '描述这种图片'
+query = '描述这张图片'
 messages = [{
     'role': 'user',
     'content': query
@@ -441,10 +437,10 @@ print()
 
 """
 model_type: minicpm-v-v2_5-chat
-query: 描述这种图片
-response: 这幅图片展示了一只年幼的猫咪的特写，可能是一只小猫，具有逼真的质感。它的毛皮主要是白色的，带有灰色和黑色的条纹，典型的虎斑猫毛色。小猫的眼睛是明亮的蓝色，瞳孔是圆形的，给人一种好奇和专注的表情。它的耳朵尖尖，内耳是粉红色的，毛发看起来柔软蓬松。背景模糊不清，突出了小猫的特征。整体的色调柔和，重点放在小猫的脸上，背景是柔和的绿色和棕色调。
+query: 描述这张图片
+response: 这张图片展示了一只年轻的猫咪的特写，可能是一只小猫，具有明显的特征。它的毛皮主要是白色的，带有灰色和黑色的条纹，尤其是在脸部周围。小猫的眼睛很大，呈蓝色，给人一种好奇和迷人的表情。耳朵尖尖，竖立着，显示出警觉。背景模糊不清，突出了小猫的特征。整体的色调柔和，猫咪的毛皮与背景的柔和色调形成对比。
 query: 这张图是如何产生的？
-response: 这张图片看起来是通过数字绘画或图像处理技术创作的。它具有高度的细节和逼真感，表明可能是使用数字绘图工具或软件创作的。背景的模糊效果也可能是通过后期处理应用的滤镜或效果来实现的。
+response: 这张图片看起来是用数字绘画技术创作的。艺术家使用数字绘图工具来模仿毛皮的纹理和颜色，眼睛的反射，以及整体的柔和感。这种技术使艺术家能够精确地控制细节和色彩，创造出逼真的猫咪形象。
 """
 ```
 
