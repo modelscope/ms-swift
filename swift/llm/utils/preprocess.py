@@ -2,12 +2,27 @@
 import ast
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
+import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
 
+from .media import MediaTagReplacer
 from .template import History
 
 PreprocessFunc = Callable[[HfDataset], HfDataset]
+
+
+def parse_medias(d, media_key=None):
+    if isinstance(media_key, str):
+        if media_key in d:
+            medias = media_key
+        else:
+            medias = None
+    elif media_key:
+        medias = media_key(d)
+    else:
+        medias = None
+    return medias
 
 
 class MediaMixin:
@@ -40,16 +55,7 @@ class MediaMixin:
         return self.media_replacer.media_keys[self.media_type]
 
     def parse_medias(self, d):
-        if isinstance(self.media_key, str):
-            if self.media_key in d:
-                medias = self.media_key
-            else:
-                medias = None
-        elif self.media_key:
-            medias = self.media_key(d)
-        else:
-            medias = None
-        return medias
+        return parse_medias(d, self.media_key)
 
 
 class RowPreprocessMixin:
@@ -119,6 +125,8 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             med = d[self.media_name]
             q = d['query']
             r = d['response']
+            if isinstance(r, list):
+                r = np.random.choice(r)
             if not q and not r:
                 continue
             if history is None and h is not None:
@@ -151,99 +159,6 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     if isinstance(s, str):
         return ast.literal_eval(s)
     return s
-
-
-class MediaTagReplacer:
-
-    def __init__(self, media_type: Literal['image', 'audio', 'video'], media_tag):
-        self.media_type = media_type
-        self.media_tag = media_tag
-        self.tag_pairs = {
-            'image': ('<img>', '</img>'),
-            'audio': ('<audio>', '</audio>'),
-            'video': ('<video>', '</video>'),
-        }
-
-        self.standard_tags = {
-            'image': '<image>',
-            'audio': '<audio>',
-            'video': '<video>',
-        }
-
-        self.media_keys = {
-            'audio': 'audios',
-            'image': 'images',
-            'video': 'videos',
-        }
-
-    def replace_tag(self, text, url_or_base64):
-        standard_tag = self.standard_tags[self.media_type]
-        tag_pair = self.tag_pairs[self.media_type]
-        return text.replace(standard_tag, f'{tag_pair[0]}{url_or_base64}{tag_pair[1]}', count=1)
-
-    def split_tag(self, text: str):
-        tag_pair = self.tag_pairs[self.media_type]
-        if tag_pair[0] not in text or tag_pair[1] not in text:
-            return text, None
-
-        head, left = text.split(tag_pair[0], maxsplit=1)
-        url_or_base64, tail = left.split(tag_pair[1], maxsplit=1)
-        return f'{head}{self.standard_tags[self.media_type]}{tail}', url_or_base64
-
-    def merge(self, text: str, medias: List):
-        if not self.media_type or not medias or not isinstance(medias[0], str):
-            return text
-        if self.media_tag in text:
-            assert text.count(self.media_tag) == len(medias)
-        else:
-            text = ''.join([self.media_tag] * len(medias)) + text
-        for media in medias:
-            text = self.replace_tag(text, media)
-        return text
-
-    def split(self, text: str):
-        if not self.media_type:
-            return text, None
-        medias = []
-        while True:
-            text, media = self.split_tag(text)
-            if media is None:
-                break
-            else:
-                medias.append(media)
-        return text, medias
-
-    def __call__(self, d: dict, medias: Union[tuple, list]):
-        if not self.media_type or not medias:
-            return
-
-        history = d.get('history') or []
-        query = d['query']
-        standard_tag = self.standard_tags[self.media_type]
-        if isinstance(medias, list):
-            all_queries = ''.join([h[0] for h in history]) + query
-            if self.media_tag in all_queries:
-                media_round = []
-                assert all_queries.count(self.media_tag) == len(medias)
-                for h in history:
-                    h[0] = h[0].replace(self.media_tag, standard_tag)
-                    tags_cnt = h[0].count(standard_tag)
-                    media_round.append(medias[:tags_cnt])
-                    medias = medias[tags_cnt:]
-                media_round.append(medias)
-            else:
-                media_round = [medias] + [[]] * len(history)
-            medias = media_round
-
-        assert len(medias) == len(history) + 1
-        for round, media in zip(history, medias[:-1]):
-            round[0] = self.merge(round[0], media)
-        query = self.merge(query, medias[-1])
-
-        if history:
-            d['history'] = history
-        d['query'] = query
-        d[self.media_keys[self.media_type]] = medias
 
 
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
@@ -354,6 +269,54 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         })
         dataset = HfDataset.from_dict({**kwargs})
         return dataset
+
+
+class ListPreprocessor(MediaMixin, RowPreprocessMixin):
+
+    def __init__(self,
+                 query_key: str = 'user',
+                 response_key: str = 'assistant',
+                 conversations_key: str = 'conversations',
+                 inner_key: str = None,
+                 repair_conversations: Callable[[Union[str, Dict[str, str]]],
+                                                Optional[Dict[str, str]]] = _default_repair_conversations,
+                 error_strategy: Literal['delete', 'raise'] = 'raise',
+                 **kwargs):
+        self.query_key = query_key
+        self.response_key = response_key
+        self.conversations_key = conversations_key
+        self.inner_key = inner_key
+        self.repair_conversations = repair_conversations
+        self.error_strategy = error_strategy
+        super().__init__(**kwargs)
+
+    def preprocess(self, d):
+        conversations = None
+        try:
+            conversations = d[self.conversations_key]
+            if self.inner_key is not None:
+                conversations = conversations[self.inner_key]
+            history = []
+            for c in conversations:
+                history.append([c[self.query_key], c[self.response_key]])
+
+            query, response = history.pop(-1)
+            d_dict = {
+                'history': history,
+                'query': query,
+                'response': response,
+                'system': None,
+            }
+            self.media_replacer(d_dict, self.parse_medias(d))
+        except:
+            if self.error_strategy == 'raise':
+                raise ValueError(f'conversations: {conversations}')
+            else:
+                return self.empty_row
+        return d_dict
+
+    def __call__(self, dataset: HfDataset):
+        return dataset.map(self.preprocess).filter(lambda d: d.get('query'))
 
 
 class ComposePreprocessor:

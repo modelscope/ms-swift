@@ -9,6 +9,8 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
+
+import datasets.utils.py_utils
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
@@ -20,8 +22,10 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from .media import MediaTagReplacer
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
+                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
+                         ListPreprocessor, parse_medias)
 from .template import History
 from .utils import download_dataset
 
@@ -141,6 +145,21 @@ class DatasetName:
 
     rlaif_v = 'rlaif-v'
     mantis_instruct = 'mantis-instruct'
+    llava_data = 'llava-data'
+    midefics = 'midefics'
+    doc_vqa = 'doc-vqa'
+    ref_coco_grounding = 'ref-coco-grounding'
+    ref_coco_caption = 'ref-coco-caption'
+    ref_cocog_grounding = 'ref-cocog-grounding'
+    ref_cocog_caption = 'ref-cocog-caption'
+    ref_cocoplus_grounding = 'ref-cocoplus-grounding'
+    ref_cocoplus_caption = 'ref-cocoplus-caption'
+    gqa = 'gqa'
+    text_caps = 'text-caps'
+    a_okvqa = 'a-okvqa'
+    okvqa = 'okvqa'
+    ocr_vqa = 'ocr-vqa'
+    grit = 'grit'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -256,14 +275,20 @@ def load_ms_dataset(dataset_id: str,
         assert len(subset_split) == 2
         subset_name, split = subset_split
         if use_hf:
-            dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
+            try:
+                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
+            except Exception:
+                continue
         else:
             if is_dist() and not is_local_master():
                 force_redownload = False
             else:
                 force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
-            dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
+            try:
+                dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
+            except Exception:
+                continue
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
@@ -286,12 +311,12 @@ def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Option
 
 
 def _post_preprocess(
-    train_dataset: HfDataset,
-    dataset_sample: int,
-    random_state: Optional[RandomState] = None,
-    preprocess_func: Optional[PreprocessFunc] = None,
-    dataset_test_ratio: float = 0.,
-    remove_useless_columns: bool = True,
+        train_dataset: HfDataset,
+        dataset_sample: int,
+        random_state: Optional[RandomState] = None,
+        preprocess_func: Optional[PreprocessFunc] = None,
+        dataset_test_ratio: float = 0.,
+        remove_useless_columns: bool = True,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     assert train_dataset is not None
     if dataset_sample == -1:
@@ -396,6 +421,18 @@ register_dataset(
     get_dataset_from_repo,
     split=['train', 'val'],
     tags=['chat', 'multi-modal', 'vision'],
+    hf_dataset_id="TIGER-Lab/Mantis-Instruct")
+
+register_dataset(
+    DatasetName.llava_data,
+    None,
+    ['llava-pretrain', 'llava-instruct'],
+    ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
+                              from_key='role', value_key='content',
+                              images_key=lambda row: [p['path'] for p in row['images']]),
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['pretrain', 'sft', 'multi-modal', 'vision'],
     hf_dataset_id="TIGER-Lab/Mantis-Instruct")
 
 register_dataset(
@@ -512,7 +549,6 @@ def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
 
 
 def long_alpaca_preprocessor(dataset: HfDataset):
-
     def map_row(row):
         response = row['response']
         if response and response.startswith('Answer:'):
@@ -535,7 +571,6 @@ register_dataset(
 
 
 def _preprocess_ruozhiba(dataset: HfDataset):
-
     def map_row(row):
         title = row['title'] if row.get('title', None) is not None else row['content']
         abs = row['abs'] if 'abs' in row else None
@@ -689,7 +724,6 @@ register_dataset(
 
 
 def process_hh_rlhf(dataset):
-
     def reorganize_row(row):
         import re
         chosen = row['chosen'].strip()
@@ -742,7 +776,6 @@ register_dataset(
 
 
 def process_hh_rlhf_cn(dataset):
-
     def reorganize_row(row):
         history = []
         try:
@@ -807,7 +840,6 @@ register_dataset(
 
 
 def process_shareai_dpo(dataset):
-
     def reorganize_row(row):
         return {
             'query': row['question'],
@@ -825,36 +857,328 @@ register_dataset(
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
-
-def list_preprocessor(dataset: HfDataset, conversation_key, human_key, assistant_key):
-
-    def convert_row(row):
-        conversations = row[conversation_key]
-        history = []
-        for c in conversations:
-            history.append([c[human_key], c[assistant_key]])
-
-        query, response = history.pop(-1)
-        return {
-            'history': history,
-            'query': query,
-            'response': response,
-        }
-
-    return dataset.map(convert_row)
-
+register_dataset(
+    DatasetName.midefics,
+    None, [],
+    ListPreprocessor(conversations_key='conversations', query_key='question',
+                     response_key='answer', inner_key='data', media_type='image'),
+    get_dataset_from_repo,
+    hf_dataset_id='WinterSchool/MideficsDataset',
+    tags=['medical', 'en', 'vqa'])
 
 register_dataset(
     DatasetName.coig,
     'AI-ModelScope/COIG', ['Default', 'NoTranslate'],
-    partial(list_preprocessor, conversation_key='conversations', human_key='question', assistant_key='answer'),
+    ListPreprocessor(conversations_key='conversations', query_key='question', response_key='answer'),
     get_dataset_from_repo,
     hf_dataset_id='BAAI/COIG',
     tags=['mixed', 'zh'])
 
 
-def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
+def doc_vqa_preprocessor(dataset):
+    def preprocess(row):
+        image = row['image']
+        question = row['question']
+        if isinstance(row['answers'], list):
+            answer = np.random.choice(row['answers'])
+        else:
+            answer = row['answers']
 
+        d_dict = {
+            'query': question,
+            'response': answer,
+        }
+        MediaTagReplacer('image')(d_dict, image)
+        return d_dict
+
+    return dataset.map(preprocess)
+
+
+register_dataset(
+    DatasetName.doc_vqa,
+    None, ["default", "full"],
+    preprocess_func=doc_vqa_preprocessor,
+    get_function=get_dataset_from_repo,
+    hf_dataset_id="lmms-lab/DocVQA",
+    tags=['multi-modal', 'en', 'vqa'])
+
+
+def ref_coco_preprocessor(dataset: HfDataset, task_type):
+    def preprocess(row):
+        image = row['image']
+        bbox = row['bbox']
+        answer = np.random.choice(row['answer'])
+
+        d = {
+            'query': None,
+            'response': None,
+        }
+
+        points = [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]
+        MediaTagReplacer('image', task_type=task_type)(d, medias=image)
+        d['objects'] = [(answer, points)]
+        return d
+
+    return dataset.map(preprocess)
+
+
+register_dataset(
+    DatasetName.ref_coco_grounding,
+    None, ["val", "test"],
+    preprocess_func=partial(ref_coco_preprocessor, task_type='ref_grounding'),
+    get_function=get_dataset_from_repo,
+    hf_dataset_id="lmms-lab/RefCOCO",
+    tags=['multi-modal', 'en', 'ref-grounding'])
+
+register_dataset(
+    DatasetName.ref_coco_caption,
+    None, ["val", "test"],
+    preprocess_func=partial(ref_coco_preprocessor, task_type='grounding_caption'),
+    get_function=get_dataset_from_repo,
+    hf_dataset_id="lmms-lab/RefCOCO",
+    tags=['multi-modal', 'en', 'grounding-caption'])
+
+register_dataset(
+    DatasetName.ref_cocog_grounding,
+    None, ["val", "test"],
+    preprocess_func=partial(ref_coco_preprocessor, task_type='ref_grounding'),
+    get_function=get_dataset_from_repo,
+    hf_dataset_id="lmms-lab/RefCOCOg",
+    tags=['multi-modal', 'en', 'ref-grounding'])
+
+register_dataset(
+    DatasetName.ref_cocog_caption,
+    None, ["val", "test"],
+    preprocess_func=partial(ref_coco_preprocessor, task_type='grounding_caption'),
+    get_function=get_dataset_from_repo,
+    hf_dataset_id="lmms-lab/RefCOCOg",
+    tags=['multi-modal', 'en', 'grounding-caption'])
+
+register_dataset(
+    DatasetName.ref_cocoplus_grounding,
+    None, ["val", "test"],
+    preprocess_func=partial(ref_coco_preprocessor, task_type='ref_grounding'),
+    get_function=get_dataset_from_repo,
+    hf_dataset_id="lmms-lab/RefCOCOplus",
+    tags=['multi-modal', 'en', 'ref-grounding'])
+
+register_dataset(
+    DatasetName.ref_cocoplus_caption,
+    None, ["val", "test"],
+    preprocess_func=partial(ref_coco_preprocessor, task_type='grounding_caption'),
+    get_function=get_dataset_from_repo,
+    hf_dataset_id="lmms-lab/RefCOCOplus",
+    tags=['multi-modal', 'en', 'grounding-caption'])
+
+
+def preprocess_text_caps(dataset):
+    def preprocess(row):
+        image = row['image']
+        response = np.random.choice(row['caption_str'])
+        return {
+            'response': response,
+            'images': image
+        }
+
+    return dataset.map(preprocess)
+
+
+register_dataset(
+    DatasetName.text_caps,
+    None, [],
+    preprocess_func=preprocess_text_caps,
+    get_function=get_dataset_from_repo,
+    split=["train", "val"],
+    hf_dataset_id="lmms-lab/RefCOCOplus",
+    tags=['multi-modal', 'en', 'caption'])
+
+
+def preprocess_okvqa(dataset):
+    def preprocess(row):
+        image = row['image']
+        query = row['question']
+        response = np.random.choice(row['answers'])
+        return {
+            'response': response,
+            'images': image,
+            'query': query,
+        }
+
+    return dataset.map(preprocess)
+
+
+register_dataset(
+    DatasetName.okvqa,
+    None, [],
+    preprocess_func=preprocess_okvqa,
+    get_function=get_dataset_from_repo,
+    split=["val2014"],
+    hf_dataset_id="lmms-lab/OK-VQA",
+    tags=['multi-modal', 'en', 'vqa'])
+
+
+def preprocess_a_okvqa(dataset):
+    def preprocess(row):
+        image = row['image']
+        query = row['question']
+        response = np.random.choice(row['rationales'])
+        return {
+            'response': response,
+            'images': image,
+            'query': query,
+        }
+
+    return dataset.map(preprocess)
+
+
+register_dataset(
+    DatasetName.a_okvqa,
+    None, [],
+    preprocess_func=preprocess_a_okvqa,
+    get_function=get_dataset_from_repo,
+    split=["train", "validation"],
+    hf_dataset_id="HuggingFaceM4/A-OKVQA",
+    tags=['multi-modal', 'en', 'vqa'])
+
+
+def preprocess_ocr_vqa(dataset):
+    def preprocess(row):
+        image = row['image']
+        idx = np.random.choice(range(len(row['questions'])))
+        query = np.random.choice(row['questions'][idx])
+        response = np.random.choice(row['rationales'][idx])
+        return {
+            'response': response,
+            'images': image,
+            'query': query,
+        }
+
+    return dataset.map(preprocess)
+
+
+register_dataset(
+    DatasetName.ocr_vqa,
+    None, [],
+    preprocess_func=preprocess_ocr_vqa,
+    get_function=get_dataset_from_repo,
+    split=["train", "validation"],
+    hf_dataset_id="howard-hou/OCR-VQA",
+    tags=['multi-modal', 'en', 'ocr-vqa'])
+
+
+def preprocess_grit(dataset):
+    def has_overlap(start_ends):
+        for i in range(1, len(start_ends)):
+            if start_ends[i][0] < start_ends[i - 1][1]:
+                return True
+        return False
+
+    def replace_intervals_with_tags(response, start_ends):
+        result = []
+        last_end = 0
+        for start, end in start_ends:
+            result.append(response[last_end:start])
+            result.append('<object><box>')
+            last_end = end
+        result.append(response[last_end:])
+        return ''.join(result)
+
+    def preprocess_row(row):
+        images = row['url']
+        caption = row['caption']
+        ref_exps = row['ref_exps']
+        objects = []
+        start_end_pairs = []
+        for ref_exp in ref_exps:
+            start = ref_exp[0]
+            end = ref_exp[1]
+            conf = ref_exp[6]
+            start_end_pairs.append(ref_exp[0:2])
+
+            object_part = caption[start:end]
+            objects.append([object_part, [ref_exp[2:6]]])
+
+        start_end_pairs.sort(key=lambda x: (x[0], x[1]))
+        if has_overlap(start_end_pairs):
+            return {
+                'images': None,
+                'response': '',
+                'objects': None
+            }
+
+        response = replace_intervals_with_tags(caption, start_end_pairs)
+
+        return {
+            'images': images,
+            'response': response,
+            'objects': objects
+        }
+
+    return dataset.map(preprocess_row)
+
+
+register_dataset(
+    DatasetName.grit,
+    None, [],
+    preprocess_func=preprocess_grit,
+    get_function=get_dataset_from_repo,
+    split=["train"],
+    hf_dataset_id="zzliang/GRIT",
+    tags=['multi-modal', 'en', 'ocr-vqa'])
+
+
+def preprocess_gqa(dataset):
+    all_image_dataset = dataset['train_all_images']
+    all_instruct_dataset = dataset['train_all_instructions']
+    import pandas as pd
+    df1 = all_image_dataset.to_pandas()
+    df2 = all_instruct_dataset.to_pandas()
+    merged_df = pd.merge(df1, df2, left_on='id', right_on='imageId', how="inner")
+    dataset = HfDataset.from_pandas(merged_df)
+
+    def preprocess_row(row):
+        return {
+            'query': row['question'],
+            'response': row['fullAnswer'],
+            'images': row['image'],
+        }
+
+    return dataset.map(preprocess_row)
+
+
+def get_gqa_dataset(dataset_id: str,
+                    subsets: Optional[List[str]],
+                    preprocess_func: PreprocessFunc,
+                    split: List[str],
+                    dataset_sample: int = -1,
+                    *,
+                    random_state: Optional[RandomState] = None,
+                    dataset_test_ratio: float = 0.,
+                    remove_useless_columns: bool = True,
+                    use_hf: bool = False):
+    if subsets is None:
+        subsets = []
+    assert len(split) > 0
+    if len(subsets) == 0:
+        subset_split_list = split
+    else:
+        subset_split_list = list(itertools.product(subsets, split))
+    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf)
+    preprocess_func(dataset)
+    return _post_preprocess(dataset, dataset_sample, random_state, lambda d: d, dataset_test_ratio,
+                            remove_useless_columns)
+
+
+register_dataset(
+    DatasetName.gqa,
+    None, ["train_all_images", "train_all_instructions"],
+    preprocess_gqa,
+    get_function=get_gqa_dataset,
+    hf_dataset_id="lmms-lab/GQA",
+    tags=['multi-modal', 'en', 'vqa'])
+
+
+def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
     def preprocess(row):
         chosen_history = row['chosen']
         rejected_history = row['rejected']
@@ -908,7 +1232,6 @@ register_dataset(
 
 
 def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
-
     def preprocess(row):
         sql_prompt = row['sql_prompt']
         sql_context = row['sql_context']
@@ -1181,7 +1504,7 @@ NoneType = type(None)
 
 
 def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['none', 'discard', 'error',
-                                                                            'warning']) -> HfDataset:
+'warning']) -> HfDataset:
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
@@ -1280,9 +1603,9 @@ def _dataset_name_exists(dataset_list: str, dataset_name: str) -> List[int]:
 
 
 def _preprocess_self_cognition_dataset(
-    dataset_list: Tuple[HfDataset, Optional[HfDataset]],
-    model_name: Tuple[str, Optional[str]],
-    model_author: Tuple[str, Optional[str]],
+        dataset_list: Tuple[HfDataset, Optional[HfDataset]],
+        model_name: Tuple[str, Optional[str]],
+        model_author: Tuple[str, Optional[str]],
 ) -> Tuple[HfDataset, HfDataset]:
     # model_name: Tuple[zh, en]
     assert model_name[0] is not None
@@ -1426,6 +1749,7 @@ def get_dataset(
                     'images': [row['images']]
                 }
             return {}
+
         if train_d and 'images' in train_d[0]:
             train_d = train_d.map(_pack_images, num_proc=4)
         if val_d and 'images' in val_d[0]:

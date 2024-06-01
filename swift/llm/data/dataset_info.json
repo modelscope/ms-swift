@@ -224,77 +224,53 @@
         },
         "tags": ["vqa", "multi-modal"]
     },
-    "mantis-instruct": {
-        "tags": ["en"],
-        "hf_dataset_id": "TIGER-Lab/Mantis-Instruct"
-    },
-    "llava-data": {
-        "tags": ["en"],
-        "hf_dataset_id": "TIGER-Lab/llava-data"
-    },
     "llava-med-zh-instruct": {
-        "tags": ["en"],
-        "hf_dataset_id": "BUAADreamer/llava-med-zh-instruct-60k"
-    },
-    "midefics": {
-        "tags": ["en"],
-        "hf_dataset_id": "WinterSchool/MideficsDataset"
-    },
-    "m3it": {
-        "tags": ["en"],
-        "hf_dataset_id": "MMInstruction/M3IT"
+        "hf_dataset_id": "BUAADreamer/llava-med-zh-instruct-60k",
+        "conversations": {
+            "user_role": "user",
+            "assistant_role": "assistant",
+            "conversations_key": "messages",
+            "from_key": "role",
+            "value_key": "content",
+            "error_strategy": "delete"
+        },
+        "tags": ["en"]
     },
     "pope": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/POPE"
-    },
-    "doc-vqa": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/DocVQA"
-    },
-    "ref-coco": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/RefCOCO"
-    },
-    "gqa": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/GQA"
+        "hf_dataset_id": "lmms-lab/POPE",
+        "columns": {
+            "question": "query",
+            "answer": "response",
+            "image": "images"
+        },
+        "subsets": ["default", "full"],
+        "tags": ["en"]
     },
     "chart-qa": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/ChartQA"
-    },
-    "ref-coco-g": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/RefCOCOg"
-    },
-    "ref-coco-plus": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/RefCOCOplus"
-    },
-    "text-caps": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/TextCaps"
-    },
-    "a-okvqa": {
-        "tags": ["en"],
-        "hf_dataset_id": "HuggingFaceM4/A-OKVQA"
-    },
-    "ocr-vqa": {
-        "tags": ["en"],
-        "hf_dataset_id": "howard-hou/OCR-VQA"
-    },
-    "ok-vqa": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/OK-VQA"
+        "hf_dataset_id": "lmms-lab/ChartQA",
+        "columns": {
+            "question": "query",
+            "answer": "response",
+            "image": "images"
+        },
+        "tags": ["en"]
     },
     "vqa-v2": {
-        "tags": ["en"],
-        "hf_dataset_id": "lmms-lab/VQAv2"
+        "hf_dataset_id": "lmms-lab/VQAv2",
+        "columns": {
+            "question": "query",
+            "multiple_choice_answer": "response",
+            "image": "images"
+        },
+        "tags": ["en"]
     },
     "gpt4v-dataset": {
-        "tags": ["en"],
-        "hf_dataset_id": "laion/gpt4v-dataset"
+        "hf_dataset_id": "laion/gpt4v-dataset",
+        "columns": {
+            "caption": "response",
+            "link": "images"
+        },
+        "tags": ["en"]
     },
     "grit": {
         "tags": ["en"],
