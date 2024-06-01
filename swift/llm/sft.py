@@ -151,9 +151,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
         logger.info('Setting model.config.use_cache: False')
-        disable_require_grads = MODEL_MAPPING[args.model_type].get('disable_require_grads', False)
-        if not disable_require_grads:
-            model.enable_input_require_grads()
+        model.enable_input_require_grads()
 
     if use_torchacc():
         model.config.use_cache = False
