@@ -525,6 +525,7 @@ def inference_stream(model: PreTrainedModel,
                      query: str,
                      history: Optional[History] = None,
                      system: Optional[str] = None,
+                     images: Optional[List[str]] = None,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
@@ -540,6 +541,8 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+    if images is None:
+        images = []
 
     # agent support
     is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
@@ -552,12 +555,16 @@ def inference_stream(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'images': kwargs.pop('images', None)  # for vl. str.
+        'images': images  # for vl. str.
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
-    if len(inputs) == 0:
-        raise ValueError('input_ids exceeds `max_length`. Please increase the value of `max_length`.')
+
+    truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
+    if len(inputs) == 0 and truncation_strategy == 'delete':
+        # input_ids exceeds `max_length`. Please increase the value of `max_length`.
+        return '', history
+
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -657,6 +664,7 @@ def inference(model: PreTrainedModel,
               query: str,
               history: Optional[History] = None,
               system: Optional[str] = None,
+              images: Optional[List[str]] = None,
               *,
               generation_config: Optional[GenerationConfig] = None,
               stop_words: Optional[StopWords] = None,
@@ -676,6 +684,8 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+    if images is None:
+        images = []
 
     is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
     if is_observation:
@@ -686,13 +696,14 @@ def inference(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'images': kwargs.pop('images', None)  # for vl. str.
+        'images': images  # for vl. str.
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
 
-    truncation_strategy = kwargs.pop('truncation_strategy', None)
+    truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
     if len(inputs) == 0 and truncation_strategy == 'delete':
+        # input_ids exceeds `max_length`. Please increase the value of `max_length`.
         return '', history
 
     inputs.pop('labels', None)

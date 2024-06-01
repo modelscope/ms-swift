@@ -1,18 +1,5 @@
 ## LLM文档
 
-### ⭐️LLM最佳实践系列
-
-1. [自我认知微调最佳实践](自我认知微调最佳实践.md)
-2. [Agent训练与通用数据混合最佳实践](Agent微调最佳实践.md)
-3. [Qwen1.5全流程最佳实践](Qwen1.5全流程最佳实践.md)
-4. [NPU推理与微调最佳实践](NPU推理与微调最佳实践.md)
-5. [Grok-1训练和推理最佳实践](Grok训练和推理.md)
-
-
-### 🍀Multi-Modal最佳实践系列
-查看这里: [Multi-Modal最佳实践系列](../Multi-Modal/index.md)
-
-
 ### 📚教程
 
 1. [LLM推理文档](LLM推理文档.md)
@@ -26,9 +13,20 @@
 9. [ORPO最佳实践](ORPO算法最佳实践.md)
 10. [SimPO最佳实践](SimPO算法最佳实践.md)
 
+### ⭐️最佳实践系列
+
+1. [自我认知微调最佳实践](自我认知微调最佳实践.md)
+2. [Agent训练与通用数据混合最佳实践](Agent微调最佳实践.md)
+3. [Qwen1.5全流程最佳实践](Qwen1.5全流程最佳实践.md)
+4. [NPU推理与微调最佳实践](NPU推理与微调最佳实践.md)
+5. [Grok-1训练和推理最佳实践](Grok训练和推理.md)
+
 ### 🐔参考文档
 1. [自定义模型和数据集](自定义与拓展.md)
 2. [微调推理的命令行参数](命令行参数.md)
 3. [支持的模型和数据集列表](支持的模型和数据集.md)
 4. [运行速度与显存的Benchmark](Benchmark.md)
 5. [HuggingFace生态兼容](HuggingFace生态兼容.md)
+
+### 🍀Multi-Modal最佳实践系列
+查看这里: [Multi-Modal最佳实践系列](../Multi-Modal/index.md)

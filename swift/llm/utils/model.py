@@ -223,6 +223,8 @@ class ModelType:
     # internvl
     internvl_chat_v1_5 = 'internvl-chat-v1_5'
     internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
+    mini_internvl_chat_2b_v1_5 = 'mini-internvl-chat-2b-v1_5'
+    mini_internvl_chat_4b_v1_5 = 'mini-internvl-chat-4b-v1_5'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -435,6 +437,8 @@ class LoRATM(NamedTuple):
         'kv_b_proj',
         'o_proj',
     ]
+    # compat
+    llama2 = llama
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -1101,6 +1105,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-pt-224')
 @register_model(
     ModelType.paligemma_3b_pt_448,
@@ -1120,6 +1125,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-pt-896')
 @register_model(
     ModelType.paligemma_3b_mix_224,
@@ -1129,6 +1135,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-mix-224')
 @register_model(
     ModelType.paligemma_3b_mix_448,
@@ -1138,6 +1145,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='google/paligemma-3b-mix-448')
 def get_model_tokenizer_paligemma_vision(model_dir: str,
                                          torch_dtype: Dtype,
@@ -2787,7 +2795,8 @@ def fix_internvl_inplace_bug(model) -> None:
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
-    support_gradient_checkpointing=False,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
 @register_model(
     ModelType.internvl_chat_v1_5_int8,
@@ -2796,8 +2805,29 @@ def fix_internvl_inplace_bug(model) -> None:
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
-    support_gradient_checkpointing=False,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5-int8')
+@register_model(
+    ModelType.mini_internvl_chat_2b_v1_5,
+    'OpenGVLab/Mini-InternVL-Chat-2B-V1-5',
+    LoRATM.internlm2,
+    TemplateType.internvl,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/Mini-InternVL-Chat-2B-V1-5')
+@register_model(
+    ModelType.mini_internvl_chat_4b_v1_5,
+    'OpenGVLab/Mini-InternVL-Chat-4B-V1-5',
+    LoRATM.phi3,
+    TemplateType.internvl,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -2831,7 +2861,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        _use_submodel_func(model, 'language_model', ['get_input_embeddings'])
+        _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
             forward = model.forward

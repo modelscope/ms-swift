@@ -5,6 +5,7 @@
 - [环境准备](#环境准备)
 - [微调](#微调)
 - [推理](#推理)
+- [部署](#部署)
 
 
 ## 环境准备
@@ -199,4 +200,26 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat
 LoRA微调后:
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true
+
+# merge-lora并推理
+ASCEND_RT_VISIBLE_DEVICES=0 swift export --ckpt_dir xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 swift infer --ckpt_dir xxx/checkpoint-xxx-merged --load_dataset_config true
+```
+
+
+## 部署
+NPU不支持使用vllm进行推理/部署加速, 但是可以使用原生pytorch进行部署.
+
+原始模型:
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model_type qwen1half-7b-chat
+```
+
+LoRA微调后:
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true
+
+# merge-lora并推理
+ASCEND_RT_VISIBLE_DEVICES=0 swift export --ckpt_dir xx/checkpoint-xxx --merge_lora true
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --ckpt_dir xxx/checkpoint-xxx-merged --load_dataset_config true
 ```
