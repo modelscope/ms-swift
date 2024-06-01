@@ -1,9 +1,9 @@
 # Best Practices for SimPO Algorithm
-[SimPO](https://arxiv.org/abs/2405.14734) requires the same data format as DPO for training. In addition to the [query, response] pairs from SFT data, it also requires a `rejected_response` to indicate the responses that the model should not generate. 
+[SimPO](https://arxiv.org/abs/2405.14734) requires the same data format as DPO for training. In addition to the [query, response] pairs from SFT data, it also requires a `rejected_response` to indicate the responses that the model should not generate.
 
 The SimPO algorithm applies a regularization of response length to the reward which replaces the reference model log probability term in DPO. It also introduces a reward margin term in preference modeling to increase the reward gap between two responses.
 
-Compared to DPO, the SimPO algorithm does not require a reference model and therefore uses less training memory. 
+Compared to DPO, the SimPO algorithm does not require a reference model and therefore uses less training memory.
 
 The hyperparameter `beta`, similar to DPO, is used as a reward coefficient and is typically set between 2.0 and 2.5, with a default of 2.0. The `gamma` serves as the reward margin and is typically set between 0.5 and 1.5, with a default of 1.0.
 
@@ -87,4 +87,3 @@ Use the swift web-ui command for the following inference session.
 ![simpo2](../../resources/simpo2.png)
 ![simpo3](../../resources/simpo3.png)
 ![simpo4](../../resources/simpo4.png)
-

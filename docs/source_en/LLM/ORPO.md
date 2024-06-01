@@ -3,7 +3,7 @@ The ORPO algorithm requires the same data format as DPO. Beyond SFT data [query,
 
 The ORPO algorithm incorporates an odds ratio (OR) negative log-likelihood loss term into the loss function used during SFT training, to reduce the probability of generating rejected responses.
 
-Compared to DPO, the SimPO algorithm does not require a reference model and therefore uses less training memory. 
+Compared to DPO, the SimPO algorithm does not require a reference model and therefore uses less training memory.
 
 Here, the hyperparameter beta represents the coefficient for the OR loss term. The larger the beta, the greater the penalty on rejected_response, with a default value of 0.1.
 
