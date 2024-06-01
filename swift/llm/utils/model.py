@@ -1160,7 +1160,7 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     return model, tokenizer
 
 
-def _clone_grads(module, input, output):
+def _clone_hook(module, input, output):
     return output.requires_grad_(True).clone()
 
 
@@ -1184,7 +1184,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
     tokenizer.processor = processor
 
     if load_model:
-        model.model.vision_embed_tokens.wte.register_forward_hook(_clone_grads)
+        model.model.vision_embed_tokens.wte.register_forward_hook(_clone_hook)
 
     return model, tokenizer
 
