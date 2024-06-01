@@ -11,6 +11,7 @@
 7. [VLLM Inference and Deployment](VLLM-inference-acceleration-and-deployment.md)
 8. [LLM Experimental](LLM-exp.md)
 9. [ORPO Training](ORPO.md)
+10. [SimPO Training](SimPO.md)
 
 ### ⭐️Best Practices!
 

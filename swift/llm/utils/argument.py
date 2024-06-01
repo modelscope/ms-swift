@@ -1328,6 +1328,12 @@ class DPOArguments(SftArguments):
 
 
 @dataclass
+class SimPOArguments(DPOArguments):
+    beta: float = 2.0
+    gamma: float = 1.0
+
+
+@dataclass
 class ORPOArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: float = 0.1
