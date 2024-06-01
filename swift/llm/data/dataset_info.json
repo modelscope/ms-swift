@@ -274,6 +274,14 @@
     },
     "belle-train-3.5M-CN": {
         "hf_dataset_id": "BelleGroup/train_3.5M_CN",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "assistant",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
         "tags": ["common", "zh"]
     },
     "belle-train-2M-CN": {
@@ -293,23 +301,28 @@
     },
     "belle-generated-chat-0.4M": {
         "dataset_id": "AI-ModelScope/generated_chat_0.4M",
-        "hf_dataset_id": "BelleGroup/generated_chat_0.4M"
+        "hf_dataset_id": "BelleGroup/generated_chat_0.4M",
+        "tags": ["common", "zh"]
     },
     "belle-math-0.25M": {
         "dataset_id": "AI-ModelScope/school_math_0.25M",
-        "hf_dataset_id": "BelleGroup/school_math_0.25M"
+        "hf_dataset_id": "BelleGroup/school_math_0.25M",
+        "tags": ["math", "zh"]
     },
     "open-platypus": {
         "dataset_id": "AI-ModelScope/Open-Platypus",
-        "hf_dataset_id": "garage-bAInd/Open-Platypus"
+        "hf_dataset_id": "garage-bAInd/Open-Platypus",
+        "tags": ["cot", "en"]
     },
     "codealpaca-20k": {
         "dataset_id": "AI-ModelScope/CodeAlpaca-20k",
-        "hf_dataset_id": "HuggingFaceH4/CodeAlpaca_20K"
+        "hf_dataset_id": "HuggingFaceH4/CodeAlpaca_20K",
+        "tags": ["code", "en"]
     },
     "alpaca_cot": {
         "dataset_id": "AI-ModelScope/Alpaca-CoT",
-        "hf_dataset_id": "QingyiSi/Alpaca-CoT"
+        "hf_dataset_id": "QingyiSi/Alpaca-CoT",
+        "tags": ["cot", "en"]
     },
     "zhihu-rlhf": {
         "dataset_id": "AI-ModelScope/zhihu_rlhf_3k",
@@ -323,22 +336,49 @@
     },
     "ultrachat-200k": {
         "dataset_id": "AI-ModelScope/ultrachat_200k",
-        "hf_dataset_id": "HuggingFaceH4/ultrachat_200k"
-    },
-    "agent-instruct": {
-        "dataset_id": "ZhipuAI/AgentInstruct",
-        "hf_dataset_id": "THUDM/AgentInstruct"
+        "hf_dataset_id": "HuggingFaceH4/ultrachat_200k",
+        "conversations": {
+            "user_role": "user",
+            "assistant_role": "assistant",
+            "conversations_key": "messages",
+            "from_key": "role",
+            "value_key": "content",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "en"]
     },
     "lmsys-chat-1M": {
         "dataset_id": "AI-ModelScope/lmsys-chat-1m",
-        "hf_dataset_id": "lmsys/lmsys-chat-1m"
+        "hf_dataset_id": "lmsys/lmsys-chat-1m",
+        "conversations": {
+            "user_role": "user",
+            "assistant_role": "assistant",
+            "conversations_key": "conversation",
+            "from_key": "role",
+            "value_key": "content",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "en"]
     },
     "evol-instruct-v2": {
         "dataset_id": "AI-ModelScope/WizardLM_evol_instruct_V2_196k",
-        "hf_dataset_id": "WizardLM/WizardLM_evol_instruct_V2_196k"
+        "hf_dataset_id": "WizardLM/WizardLM_evol_instruct_V2_196k",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "en"]
     },
     "cosmopedia": {
-        "hf_dataset_id": "HuggingFaceTB/cosmopedia"
+        "hf_dataset_id": "HuggingFaceTB/cosmopedia",
+        "columns": {
+            "prompt": "query",
+            "text": "response"
+        }
     },
     "coig-cqia": {
         "dataset_id": "AI-ModelScope/COIG-CQIA",
@@ -348,42 +388,85 @@
     },
     "orca_pairs": {
         "dataset_id": "Intel/orca_dpo_pairs",
-        "hf_dataset_id": "Intel/orca_dpo_pairs"
+        "hf_dataset_id": "Intel/orca_dpo_pairs",
+        "columns": {
+            "question": "query",
+            "chosen": "response",
+            "rejected": "rejected_response"
+        },
+        "tags": ["rlhf"]
     },
     "refinedweb": {
-        "hf_dataset_id": "tiiuae/falcon-refinedweb"
+        "hf_dataset_id": "tiiuae/falcon-refinedweb",
+        "columns": {
+            "content": "response"
+        },
+        "tags": ["pretrain"]
     },
     "redpajama-data-v2": {
-        "hf_dataset_id": "togethercomputer/RedPajama-Data-V2"
+        "hf_dataset_id": "togethercomputer/RedPajama-Data-V2",
+        "columns": {
+            "raw_content": "response"
+        },
+        "tags": ["pretrain"]
     },
     "redpajama-data-1t": {
-        "hf_dataset_id": "togethercomputer/RedPajama-Data-1T"
+        "hf_dataset_id": "togethercomputer/RedPajama-Data-1T",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"]
     },
     "wikipedia": {
-        "hf_dataset_id": "wikipedia"
+        "hf_dataset_id": "wikipedia",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"]
     },
     "dolphin": {
-        "hf_dataset_id": "cognitivecomputations/dolphin"
+        "hf_dataset_id": "cognitivecomputations/dolphin",
+        "tags": ["en"]
     },
     "wikipedia-cn-filtered": {
         "dataset_id": "AI-ModelScope/wikipedia-cn-20230720-filtered",
-        "hf_dataset_id": "pleisto/wikipedia-cn-20230720-filtered"
+        "hf_dataset_id": "pleisto/wikipedia-cn-20230720-filtered",
+        "columns": {
+            "completion": "response"
+        },
+        "tags": ["pretrain"]
     },
     "pile": {
         "dataset_id": "AI-ModelScope/pile",
-        "hf_dataset_id": "monology/pile-uncopyrighted"
+        "hf_dataset_id": "monology/pile-uncopyrighted",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"]
     },
     "skypile": {
         "dataset_id": "AI-ModelScope/SkyPile-150B",
-        "hf_dataset_id": "Skywork/SkyPile-150B"
+        "hf_dataset_id": "Skywork/SkyPile-150B",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"]
     },
     "the-stack": {
         "dataset_id": "AI-ModelScope/the-stack",
-        "hf_dataset_id": "bigcode/the-stack"
+        "hf_dataset_id": "bigcode/the-stack",
+        "columns": {
+            "content": "response"
+        },
+        "tags": ["pretrain"]
     },
     "starcoder": {
         "dataset_id": "AI-ModelScope/starcoderdata",
-        "hf_dataset_id": "bigcode/starcoderdata"
+        "hf_dataset_id": "bigcode/starcoderdata",
+        "columns": {
+            "content": "response"
+        },
+        "tags": ["pretrain"]
     },
     "ms-agent-for-agentfabric": {
         "dataset_id": "AI-ModelScope/ms_agent_for_agentfabric",
@@ -448,7 +531,8 @@
     },
     "sft-nectar": {
         "hf_dataset_id": "AstraMindAI/SFT-Nectar",
-        "dataset_id": "AI-ModelScope/SFT-Nectar"
+        "dataset_id": "AI-ModelScope/SFT-Nectar",
+        "tags": ["cot", "en"]
     },
     "generated-chat-zh": {
         "dataset_id": "AI-ModelScope/generated_chat_0.4M",
@@ -474,46 +558,89 @@
         "help": ["`default` uses gpt4 for data cleaning."]
     },
     "slim-orca": {
-        "hf_hub_url": "Open-Orca/SlimOrca"
+        "hf_hub_url": "Open-Orca/SlimOrca",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        }
     },
     "slim-pajama-627b": {
-        "hf_hub_url": "cerebras/SlimPajama-627B"
-    },
-    "llava-instruct-mix-vsft": {
-        "hf_hub_url": "HuggingFaceH4/llava-instruct-mix-vsft"
-    },
-    "llava-instruct-150k": {
-        "hf_hub_url": "liuhaotian/LLaVA-Instruct-150K"
+        "hf_hub_url": "cerebras/SlimPajama-627B",
+        "columns": {
+            "text": "response"
+        },
+        "tags": ["pretrain"]
     },
     "llava-plus-data": {
-        "hf_hub_url": "LLaVA-VL/llava-plus-data"
+        "hf_hub_url": "LLaVA-VL/llava-plus-data",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete",
+            "media_type": "image"
+        }
     },
     "moondream2-coyo-5M": {
-        "hf_hub_url": "isidentical/moondream2-coyo-5M-captions"
-    },
-    "lnqa": {
-        "hf_hub_url": "vikhyatk/lnqa"
-    },
-    "lima": {
-        "hf_hub_url": "GAIR/lima"
+        "hf_hub_url": "isidentical/moondream2-coyo-5M-captions",
+        "columns": {
+            "url": "images",
+            "moondream2_caption": "response"
+        }
     },
     "no-robots": {
-        "hf_hub_url": "HuggingFaceH4/no_robots"
+        "hf_hub_url": "HuggingFaceH4/no_robots",
+        "conversations": {
+            "user_role": "user",
+            "assistant_role": "assistant",
+            "conversations_key": "messages",
+            "from_key": "role",
+            "value_key": "content",
+            "error_strategy": "delete"
+        }
     },
     "open-hermes": {
-        "hf_hub_url": "teknium/OpenHermes-2.5"
+        "hf_hub_url": "teknium/OpenHermes-2.5",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        }
+    },
+    "open-hermes-zh": {
+        "hf_hub_url": "wenbopan/OpenHermes-2.5-zh",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        }
     },
     "github-code": {
-        "hf_hub_url": "codeparrot/github-code"
-    },
-    "share-gpt4-v": {
-        "hf_hub_url": "Lin-Chen/ShareGPT4V"
+        "hf_hub_url": "codeparrot/github-code",
+        "columns": {
+            "code": "response"
+        },
+        "tags": ["pretrain"]
     },
     "arxiv_qa": {
-        "hf_hub_url": "taesiri/arxiv_qa"
-    },
-    "science_qa": {
-        "hf_hub_url": "derek-thomas/ScienceQA"
+        "hf_hub_url": "taesiri/arxiv_qa",
+        "columns": {
+            "question": "query",
+            "answer": "response"
+        },
+        "tags": ["science", "arxiv"]
     },
     "disc-law-sft-zh": {
         "dataset_id": "AI-ModelScope/DISC-Law-SFT",
@@ -553,11 +680,6 @@
             "error_strategy": "delete"
         },
         "tags": ["chat", "agent", "multi-round", "🔥"]
-    },
-    "guanaco": {
-        "dataset_id": "AI-ModelScope/GuanacoDataset",
-        "hf_dataset_id": "JosephusCheung/GuanacoDataset",
-        "tags": ["chat"]
     },
     "codefuse-python-en": {
         "dataset_id": "codefuse-ai/CodeExercise-Python-27k",

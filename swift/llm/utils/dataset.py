@@ -160,6 +160,11 @@ class DatasetName:
     okvqa = 'okvqa'
     ocr_vqa = 'ocr-vqa'
     grit = 'grit'
+    llava_instruct_mix = 'llava-instruct-mix'
+    lnqa = 'lnqa'
+    lima = 'lima'
+    science_qa = 'science-qa'
+    guanaco = 'guanaco'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -850,6 +855,43 @@ def process_shareai_dpo(dataset):
     return dataset.map(reorganize_row)
 
 
+def preprocess_guanaco(dataset):
+    from swift.utils.utils import split_str_parts_by
+
+    def preprocess_row(row):
+        instruction = row['instruction']
+        input = row['input']
+        output = row['output']
+        history = []
+        if instruction:
+            parts = split_str_parts_by(instruction, ['User:', 'Assistant:'])
+            for idx, part in enumerate(parts):
+                if idx % 2 == 0:
+                    assert part['key'] == 'User:'
+                    history.append([part['content'], None])
+                else:
+                    assert part['key'] == 'Assistant:'
+                    history[-1][-1] = part['content']
+        if input.startswith('User:'):
+            input = input[len('User:'):].strip()
+        return {
+            'history': history,
+            'query': input,
+            'response': output,
+        }
+
+    return dataset.map(preprocess_row)
+
+
+register_dataset(
+    DatasetName.guanaco,
+    "AI-ModelScope/GuanacoDataset", ['default', 'subset'],
+    preprocess_guanaco,
+    get_dataset_from_repo,
+    hf_dataset_id='JosephusCheung/GuanacoDataset',
+    tags=['chat', 'en'])
+
+
 register_dataset(
     DatasetName.shareai_llama3_dpo_zh_en_emoji,
     'hjh0119/shareAI-Llama3-DPO-zh-en-emoji', ['default'],
@@ -1066,6 +1108,79 @@ register_dataset(
     tags=['multi-modal', 'en', 'ocr-vqa'])
 
 
+register_dataset(
+    DatasetName.lnqa,
+    None, [],
+    preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
+    get_function=get_dataset_from_repo,
+    split=["train", "validation"],
+    hf_dataset_id="vikhyatk/lnqa",
+    tags=['multi-modal', 'en', 'ocr-vqa'])
+
+
+def preprocess_science_qa(dataset):
+
+    def preprocess_row(row):
+        image = row['image']
+        query = row['question']
+        response = np.random.choice(row['choices'])
+        solution = row['solution']
+        return {
+            'query': query,
+            'images': image,
+            'response': f'{solution}\nSo the final answer is:{response}'
+        }
+    return dataset.map(preprocess_row)
+
+
+register_dataset(
+    DatasetName.science_qa,
+    None, [],
+    preprocess_func=preprocess_science_qa,
+    get_function=get_dataset_from_repo,
+    split=["train", "validation"],
+    hf_dataset_id="derek-thomas/ScienceQA",
+    tags=['multi-modal', "science", "vqa"])
+
+
+def preprocess_lima(dataset):
+
+    def preprocess_row(row):
+        conversations = row['conversations']
+        history = []
+        for idx, rnd in enumerate(conversations):
+            if idx % 2 == 0:
+                history.append([rnd, None])
+            else:
+                history[-1][-1] = rnd
+
+        if history [-1][-1] is None:
+            return {
+                "history": None,
+                "query": '',
+                "response": '',
+            }
+
+        query, response = history.pop(-1)
+        return {
+            "history": history,
+            "query": query,
+            "response": response,
+        }
+
+    return dataset.map(preprocess_row).filter(lambda row: row.get('query'))
+
+
+register_dataset(
+    DatasetName.lima,
+    None, [],
+    preprocess_func=preprocess_lima,
+    get_function=get_dataset_from_repo,
+    split=["train", "validation"],
+    hf_dataset_id="GAIR/lima",
+    tags=['multi-modal', 'en', 'ocr-vqa'])
+
+
 def preprocess_grit(dataset):
     def has_overlap(start_ends):
         for i in range(1, len(start_ends)):
@@ -1175,6 +1290,47 @@ register_dataset(
     preprocess_gqa,
     get_function=get_gqa_dataset,
     hf_dataset_id="lmms-lab/GQA",
+    tags=['multi-modal', 'en', 'vqa'])
+
+
+def preprocess_llava_mix_sft(dataset):
+
+    def preprocess_row(row):
+        messages = row['messages']
+        rounds = []
+        for msg in messages:
+            role = msg['role']
+            content = msg['content']
+            text = ''
+            for index in content:
+                if index['type'] == 'text':
+                    text += index['text']
+                elif index['type'] == 'image':
+                    text += '<image>'
+
+            rounds.append({'role': role, 'content': text})
+
+        return {'messages': rounds, 'images': row['images']}
+
+    dataset = dataset.map(preprocess_row)
+    return ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='messages',
+        from_key='role',
+        value_key='content',
+        media_key='images',
+        media_type='image',
+    )(dataset)
+
+
+register_dataset(
+    DatasetName.llava_instruct_mix,
+    None, [],
+    preprocess_llava_mix_sft,
+    get_function=preprocess_llava_mix_sft,
+    split=['test'],
+    hf_dataset_id="HuggingFaceH4/llava-instruct-mix-vsft",
     tags=['multi-modal', 'en', 'vqa'])
 
 
