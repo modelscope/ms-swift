@@ -910,37 +910,55 @@ register_template(
 
 class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
-    internvl_query_template = '\n{{QUERY}}<|im_end|><|im_start|>assistant\n'
     num_image_token = 256
 
     def __init__(self):
-        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
+        super().__init__(['<s>'], ['<|im_start|>user\n', [-100], '{{QUERY}}<|im_end|><|im_start|>assistant\n'],
+                         ['<|im_end|>'], ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
         pixel_values = None
         if example.get('images') is not None:
             from .vision_utils import load_image
+            labels = inputs['labels']
+            if len(idx_list) >= 2:
+                input_ids = _remove_idx(input_ids, idx_list[1:])
+                if labels is not None:
+                    labels = _remove_idx(labels, idx_list[1:])
+
             images_path = example['images']
             pixel_values = []
             for image_path in images_path:
                 pixel_values.append(load_image(image_path))
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
-            if example.get('query') is not None:
-                example['query'] = ('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n'
-                                    + example['query'])
 
-        inputs, _ = super().encode(example)
-        inputs.pop('loss_scale', None)
-        if pixel_values is not None:
+            idx = idx_list[0]
+            img_tokens = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n')
+            input_ids = input_ids[:idx] + img_tokens + input_ids[idx + 1:]
+            if labels is not None:
+                labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx + 1:]
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
             inputs['image_flags'] = torch.ones(image_bs)
+        else:
+            input_ids = _remove_idx(input_ids, idx_list)
+            if labels is not None:
+                labels = _remove_idx(labels, idx_list)
 
+        inputs.pop('loss_scale', None)
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
+        assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
         res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
         res['image_flags'] = torch.concat([b['image_flags'] for b in batch])
         return res
@@ -955,7 +973,7 @@ register_template(
     InternvlTemplate(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='round',
+    infer_media_type='dialogue',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
