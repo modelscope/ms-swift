@@ -11,7 +11,6 @@ import requests
 from dacite import from_dict
 from requests.exceptions import HTTPError
 
-from .model import get_default_template_type
 from .protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
                        CompletionStreamResponse, ModelList, XRequestConfig)
 from .template import History
