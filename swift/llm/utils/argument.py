@@ -220,6 +220,8 @@ class ArgumentsBase:
             _dataset = getattr(self, key)
             if isinstance(_dataset, str):
                 _dataset = [_dataset]
+            elif _dataset is None:
+                _dataset = []
             if len(_dataset) == 1 and ',' in _dataset[0]:
                 _dataset = _dataset[0].split(',')
             for i, d in enumerate(_dataset):
@@ -467,7 +469,8 @@ class SftArguments(ArgumentsBase):
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
-    init_lora_weights: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false'] = 'true'
+    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false']
+    init_lora_weights: str = 'true'
 
     # BOFT
     boft_block_size: int = 4
@@ -1069,7 +1072,6 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
-        self.handle_compatibility()
         self._handle_dataset_sample()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
@@ -1167,7 +1169,7 @@ class InferArguments(ArgumentsBase):
             ]
         for key in imported_keys:
             value = getattr(self, key)
-            if key == 'dataset' and len(value) > 0:
+            if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {'dataset_test_ratio', 'system'} and value is not None:
                 continue
@@ -1179,6 +1181,10 @@ class InferArguments(ArgumentsBase):
 
         if self.dtype == 'AUTO':
             self.dtype = sft_args.get('dtype')
+
+        # compat
+        if self.val_dataset is None:
+            self.val_dataset = []
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -1216,8 +1222,7 @@ class DeployArguments(InferArguments):
         super().__post_init__()
         model_info = MODEL_MAPPING[self.model_type]
         tags = model_info.get('tags', [])
-        if 'multi-modal' in tags:
-            raise ValueError('Deployment of multimodal models is currently not supported.')
+        self.is_multimodal = 'multi-modal' in tags
 
 
 @dataclass
