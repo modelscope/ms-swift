@@ -276,11 +276,11 @@ class ArgumentsBase:
             return
         _dataset = self.dataset[0]
         train_sample = parse_dataset_name(_dataset)[3]
-        if train_sample is None:
+        if train_sample == -1:
             train_sample = self.train_dataset_sample
         elif self.train_dataset_sample < train_sample:
+            _dataset = _dataset[:_dataset.find('#')]
             train_sample = self.train_dataset_sample
-        _dataset = _dataset[:_dataset.find('#')]
         _dataset = f'{_dataset}#{train_sample}'
         self.dataset[0] = _dataset
         self.train_dataset_sample = -1
