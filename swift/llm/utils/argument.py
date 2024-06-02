@@ -272,7 +272,6 @@ class ArgumentsBase:
     def _handle_dataset_sample(self):
         # compatibility. (Deprecated)
         # Avoid post-processing
-
         if len(self.dataset) != 1 or self.train_dataset_sample < 0:
             return
         _dataset = self.dataset[0]
