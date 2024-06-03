@@ -71,7 +71,10 @@ def ta_train_dataloader(train_dataset, data_collator, sampler, args, batch_size)
     def acc_skip_first_batches(dataloader, num_batches=0):
         from accelerate.data_loader import SkipBatchSampler
         batch_sampler = SkipBatchSampler(dataloader._loader.batch_sampler, skip_batches=num_batches)
-        dataset = dataloader.dataset
+        try:
+            dataset = dataloader.dataset
+        except AttributeError:
+            dataset = dataloader._loader.dataset
         dataloader_params = {
             'collate_fn': data_collator,
             'num_workers': args.dataloader_num_workers,
@@ -207,6 +210,7 @@ def ta_save_optimizer_and_scheduler(optimizer, lr_scheduler, output_dir):
     xm.rendezvous('saving_optimizer_states')
     torch.save(optimizer.state_dict(), os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'))
     torch.save(lr_scheduler.state_dict(), os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'))
+    xm.rendezvous('saving_optimizer_states_done')
 
 
 def ta_load_optimizer_and_scheduler(optimizer, lr_scheduler, checkpoint, device):
@@ -223,12 +227,15 @@ def ta_load_optimizer_and_scheduler(optimizer, lr_scheduler, checkpoint, device)
 
 def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
     import torch_xla.core.xla_model as xm
+    xm.mark_step()
 
     if xm.is_master_ordinal(local=False):
         os.makedirs(output_dir, exist_ok=True)
         torch.save(args, os.path.join(output_dir, 'training_args.bin'))
 
     model = self_model._get_underlay_model().module.module
+    if args.save_safetensors:
+        model.to('cpu')
 
     supported_classes = (PreTrainedModel, PeftModel)
     save_safetensors = args.save_safetensors
@@ -256,6 +263,11 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
 
     if tokenizer is not None and args.should_save:
         tokenizer.save_pretrained(output_dir, is_main_process=xm.is_master_ordinal(local=False), save_function=xm.save)
+
+    # We moved the model from TPU -> CPU for saving the weights.
+    # Now we should move it back to subsequent compute still works.
+    if args.save_safetensors:
+        model.to(args.device)
 
 
 def ta_trim_graph():

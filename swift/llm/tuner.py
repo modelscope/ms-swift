@@ -226,7 +226,7 @@ def prepare_model(model, args: SftArguments):
         else:
             if use_torchacc():
                 consolidate_checkpoint(args.resume_from_checkpoint, 'adapter_model')
-            model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True)
+            model = Swift.from_pretrained(model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
         # fix bug: Attempting to unscale FP16 gradients.
         #   peft: https://github.com/huggingface/peft/issues/1249
         #   modules_to_save + fp16
