@@ -11,7 +11,7 @@
     },
     "school-math-zh": {
         "dataset_id": "AI-ModelScope/school_math_0.25M",
-        "tags": ["chat", "math"],
+        "tags": ["chat", "math", "quality"],
         "hf_dataset_id": "BelleGroup/school_math_0.25M"
     },
     "gpt4all-en": {
@@ -49,7 +49,7 @@
     },
     "alpaca-cleaned": {
         "dataset_id": "AI-ModelScope/alpaca-cleaned",
-        "tags": ["chat", "general", "bench"],
+        "tags": ["chat", "general", "bench", "quality"],
         "hf_dataset_id": "yahma/alpaca-cleaned"
     },
     "open-orca-chinese": {
@@ -59,7 +59,7 @@
             "question": "query",
             "response": "response"
         },
-        "tags": ["qa", "zh"],
+        "tags": ["QA", "zh", "general", "quality"],
         "hf_dataset_id": "yys/OpenOrca-Chinese",
         "huge_dataset": true
     },
@@ -67,7 +67,7 @@
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain", "zh"],
+        "tags": ["pretrain", "zh", "quality"],
         "hf_dataset_id": "shjwudp/chinese-c4",
         "huge_dataset": true
     },
@@ -75,7 +75,7 @@
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"],
+        "tags": ["pretrain", "quality"],
         "hf_dataset_id": "allenai/c4",
         "huge_dataset": true
     },
@@ -83,18 +83,18 @@
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"],
+        "tags": ["pretrain", "quality"],
         "hf_dataset_id": "allenai/dolma",
         "huge_dataset": true
     },
     "guanaco-belle-merge": {
         "dataset_id": "AI-ModelScope/guanaco_belle_merge_v1.0",
-        "tags": ["qa", "zh"],
+        "tags": ["QA", "zh"],
         "hf_dataset_id": "Chinese-Vicuna/guanaco_belle_merge_v1.0"
     },
     "math-plus": {
         "dataset_id": "TIGER-Lab/MATH-plus",
-        "tags": ["qa", "math", "en"],
+        "tags": ["qa", "math", "en", "quality"],
         "hf_dataset_id": "TIGER-Lab/MATH-plus"
     },
     "RLAIF-v-dataset": {
@@ -105,7 +105,7 @@
             "chosen": "response",
             "rejected": "rejected_response"
         },
-        "tags": ["multi-modal", "rlhf"]
+        "tags": ["multi-modal", "rlhf", "quality"]
     },
     "path-vqa": {
         "hf_dataset_id": "flaviagiammarino/path-vqa",
@@ -118,6 +118,7 @@
     },
     "aya-collection": {
         "hf_dataset_id": "CohereForAI/aya_collection",
+        "subsets": ["aya_dataset"],
         "columns": {
             "inputs": "query",
             "targets": "response"
@@ -130,7 +131,7 @@
             "question": "query",
             "answer": "response"
         },
-        "tags": ["qa"],
+        "tags": ["qa", "en", "math", "quality", "multi-domain", "science"],
         "huge_dataset": true
     },
     "cinepile": {
@@ -140,7 +141,7 @@
             "question": "query",
             "answer_key": "response"
         },
-        "tags": ["vqa", "en", "ytb", "video-llm"],
+        "tags": ["vqa", "en", "youtube", "video"],
         "huge_dataset": true
     },
     "tagengo-gpt4": {
@@ -153,13 +154,13 @@
             "value_key": "value",
             "error_strategy": "delete"
         },
-        "tags": ["chat", "zh"]
+        "tags": ["chat", "multi-lingual", "quality"]
     },
     "fineweb": {
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"],
+        "tags": ["pretrain", "quality"],
         "hf_dataset_id": "HuggingFaceFW/fineweb",
         "huge_dataset": true
     },
@@ -184,45 +185,8 @@
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain", "zh"]
-    },
-    "dolly-15k": {
-        "dataset_id": "AI-ModelScope/databricks-dolly-15k",
-        "tags": ["en"],
-        "hf_dataset_id": "databricks/databricks-dolly-15k"
-    },
-    "llava-pretrain": {
-        "hf_dataset_id": "liuhaotian/LLaVA-Pretrain",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
-        "tags": ["vqa", "multi-modal"]
-    },
-    "llava-zh": {
-        "hf_dataset_id": "openbmb/llava_zh",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
-        "tags": ["vqa", "multi-modal"]
-    },
-    "theorem-qa": {
-        "hf_dataset_id": "TIGER-Lab/TheoremQA",
-        "columns": {
-            "Question": "query",
-            "Answer": "response",
-            "Picture": "images"
-        },
-        "tags": ["vqa", "multi-modal"]
+        "tags": ["pretrain", "zh", "quality"],
+        "huge_dataset": true
     },
     "llava-med-zh-instruct": {
         "hf_dataset_id": "BUAADreamer/llava-med-zh-instruct-60k",
@@ -232,9 +196,11 @@
             "conversations_key": "messages",
             "from_key": "role",
             "value_key": "content",
-            "error_strategy": "delete"
+            "error_strategy": "delete",
+            "media_type": "image",
+            "media_key": "images"
         },
-        "tags": ["en"]
+        "tags": ["zh", "medical", "vqa"]
     },
     "pope": {
         "hf_dataset_id": "lmms-lab/POPE",
@@ -243,8 +209,7 @@
             "answer": "response",
             "image": "images"
         },
-        "subsets": ["default", "full"],
-        "tags": ["en"]
+        "tags": ["en", "vqa"]
     },
     "chart-qa": {
         "hf_dataset_id": "lmms-lab/ChartQA",
@@ -253,7 +218,8 @@
             "answer": "response",
             "image": "images"
         },
-        "tags": ["en"]
+        "split": ["test"],
+        "tags": ["en", "vqa", "quality"]
     },
     "vqa-v2": {
         "hf_dataset_id": "lmms-lab/VQAv2",
@@ -262,7 +228,7 @@
             "multiple_choice_answer": "response",
             "image": "images"
         },
-        "tags": ["en"]
+        "tags": ["en", "vqa", "quality"]
     },
     "gpt4v-dataset": {
         "hf_dataset_id": "laion/gpt4v-dataset",
@@ -270,7 +236,7 @@
             "caption": "response",
             "link": "images"
         },
-        "tags": ["en"]
+        "tags": ["en", "caption", "multi-modal", "quality"]
     },
     "belle-train-3.5M-CN": {
         "hf_dataset_id": "BelleGroup/train_3.5M_CN",
@@ -282,22 +248,25 @@
             "value_key": "value",
             "error_strategy": "delete"
         },
-        "tags": ["common", "zh"]
+        "tags": ["common", "zh", "quality"],
+        "huge_dataset": true
     },
     "belle-train-2M-CN": {
         "dataset_id": "AI-ModelScope/train_2M_CN",
         "hf_dataset_id": "BelleGroup/train_2M_CN",
-        "tags": ["common", "zh"]
+        "tags": ["common", "zh", "quality"],
+        "huge_dataset": true
     },
     "belle-train-1M-CN": {
         "dataset_id": "AI-ModelScope/train_1M_CN",
         "hf_dataset_id": "BelleGroup/train_1M_CN",
-        "tags": ["common", "zh"]
+        "tags": ["common", "zh", "quality"],
+        "huge_dataset": true
     },
     "belle-train-0.5M-CN": {
         "dataset_id": "AI-ModelScope/train_0.5M_CN",
         "hf_dataset_id": "BelleGroup/train_0.5M_CN",
-        "tags": ["common", "zh"]
+        "tags": ["common", "zh", "quality"]
     },
     "belle-generated-chat-0.4M": {
         "dataset_id": "AI-ModelScope/generated_chat_0.4M",
@@ -312,7 +281,7 @@
     "open-platypus": {
         "dataset_id": "AI-ModelScope/Open-Platypus",
         "hf_dataset_id": "garage-bAInd/Open-Platypus",
-        "tags": ["cot", "en"]
+        "tags": ["cot", "en", "quality"]
     },
     "codealpaca-20k": {
         "dataset_id": "AI-ModelScope/CodeAlpaca-20k",
@@ -322,7 +291,7 @@
     "alpaca_cot": {
         "dataset_id": "AI-ModelScope/Alpaca-CoT",
         "hf_dataset_id": "QingyiSi/Alpaca-CoT",
-        "tags": ["cot", "en"]
+        "tags": ["cot", "en", "quality"]
     },
     "zhihu-rlhf": {
         "dataset_id": "AI-ModelScope/zhihu_rlhf_3k",
@@ -331,7 +300,7 @@
             "chosen": "response",
             "rejected": "rejected_response"
         },
-        "tags": ["rlhf", "dpo", "pairwise"],
+        "tags": ["rlhf", "dpo", "zh"],
         "hf_dataset_id": "liyucheng/zhihu_rlhf_3k"
     },
     "ultrachat-200k": {
@@ -345,7 +314,8 @@
             "value_key": "content",
             "error_strategy": "delete"
         },
-        "tags": ["chat", "en"]
+        "split": ["train_sft", "train_gen"],
+        "tags": ["chat", "en", "quality"]
     },
     "lmsys-chat-1M": {
         "dataset_id": "AI-ModelScope/lmsys-chat-1m",
@@ -358,7 +328,8 @@
             "value_key": "content",
             "error_strategy": "delete"
         },
-        "tags": ["chat", "en"]
+        "tags": ["chat", "en"],
+        "huge_dataset": true
     },
     "evol-instruct-v2": {
         "dataset_id": "AI-ModelScope/WizardLM_evol_instruct_V2_196k",
@@ -378,7 +349,19 @@
         "columns": {
             "prompt": "query",
             "text": "response"
-        }
+        },
+        "subsets": ["auto_math_text", "khanacademy", "openstax",
+            "stanford", "stories", "web_samples_v1", "web_samples_v2", "wikihow"],
+        "tags": ["multi-domain", "en", "qa"],
+        "huge_dataset": true
+    },
+    "cosmopedia-100k": {
+        "hf_dataset_id": "HuggingFaceTB/cosmopedia-100k",
+        "columns": {
+            "prompt": "query",
+            "text": "response"
+        },
+        "tags": ["multi-domain", "en", "qa"]
     },
     "coig-cqia": {
         "dataset_id": "AI-ModelScope/COIG-CQIA",
@@ -394,39 +377,45 @@
             "chosen": "response",
             "rejected": "rejected_response"
         },
-        "tags": ["rlhf"]
+        "tags": ["rlhf", "quality"]
     },
     "refinedweb": {
         "hf_dataset_id": "tiiuae/falcon-refinedweb",
         "columns": {
             "content": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "redpajama-data-v2": {
         "hf_dataset_id": "togethercomputer/RedPajama-Data-V2",
         "columns": {
             "raw_content": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "redpajama-data-1t": {
         "hf_dataset_id": "togethercomputer/RedPajama-Data-1T",
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "wikipedia": {
         "hf_dataset_id": "wikipedia",
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "dolphin": {
         "hf_dataset_id": "cognitivecomputations/dolphin",
-        "tags": ["en"]
+        "subsets": ["flan1m-alpaca-uncensored", "flan5m-alpaca-uncensored"],
+        "tags": ["en"],
+        "huge_dataset": true
     },
     "wikipedia-cn-filtered": {
         "dataset_id": "AI-ModelScope/wikipedia-cn-20230720-filtered",
@@ -434,15 +423,17 @@
         "columns": {
             "completion": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "pile": {
         "dataset_id": "AI-ModelScope/pile",
-        "hf_dataset_id": "monology/pile-uncopyrighted",
+        "hf_dataset_id": "EleutherAI/pile",
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain"],
+        "huge_dataset": true
     },
     "skypile": {
         "dataset_id": "AI-ModelScope/SkyPile-150B",
@@ -450,7 +441,8 @@
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality", "zh"],
+        "huge_dataset": true
     },
     "the-stack": {
         "dataset_id": "AI-ModelScope/the-stack",
@@ -458,7 +450,8 @@
         "columns": {
             "content": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "starcoder": {
         "dataset_id": "AI-ModelScope/starcoderdata",
@@ -466,7 +459,8 @@
         "columns": {
             "content": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "ms-agent-for-agentfabric": {
         "dataset_id": "AI-ModelScope/ms_agent_for_agentfabric",
@@ -477,7 +471,8 @@
         "dataset_id": "AI-ModelScope/deepctrl-sft-data",
         "subsets": ["default", "en"],
         "tags": ["chat", "general", "sft", "multi-round"],
-        "help": "`default` is in Chinese, `en` is in English."
+        "help": "`default` is in Chinese, `en` is in English.",
+        "huge_dataset": true
     },
     "poetry-zh": {
         "dataset_id": "modelscope/chinese-poetry-collection",

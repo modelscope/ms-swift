@@ -105,6 +105,7 @@ class DatasetName:
     jd_sentiment_zh = 'jd-sentiment-zh'
     hc3_zh = 'hc3-zh'
     hc3_en = 'hc3-en'
+    dolly_15k = 'dolly-15k'
     # other
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
@@ -438,7 +439,7 @@ register_dataset(
     get_dataset_from_repo,
     split=['train'],
     tags=['pretrain', 'sft', 'multi-modal', 'vision'],
-    hf_dataset_id="TIGER-Lab/Mantis-Instruct")
+    hf_dataset_id="TIGER-Lab/llava-data")
 
 register_dataset(
     DatasetName.coco_en_mini,
@@ -890,6 +891,35 @@ register_dataset(
     get_dataset_from_repo,
     hf_dataset_id='JosephusCheung/GuanacoDataset',
     tags=['chat', 'en'])
+
+
+def preprocess_dolly_15k(dataset):
+
+    def preprocess_row(row):
+        instruction = row['instruction']
+        context = row['context']
+        response = row['response']
+        query = ''
+        if context:
+            query = 'Here gives some useful information:\n'
+            query += context
+            query += '\n'
+        query += instruction
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(preprocess_row)
+
+
+register_dataset(
+    DatasetName.dolly_15k,
+    "AI-ModelScope/databricks-dolly-15k", ['default'],
+    preprocess_dolly_15k,
+    get_dataset_from_repo,
+    hf_dataset_id="databricks/databricks-dolly-15k",
+    tags=['multi-task', 'en'])
 
 
 register_dataset(
