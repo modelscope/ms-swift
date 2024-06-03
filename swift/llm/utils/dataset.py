@@ -1474,7 +1474,7 @@ register_dataset(
     orpo_dpo_mix_40k_preprocessor,
     get_dataset_from_repo,
     hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
-    tags=['dpo', 'rlhf', 'en'])
+    tags=['dpo', 'orpo', 'en', 'quality'])
 
 
 def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
