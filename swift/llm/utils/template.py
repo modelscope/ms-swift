@@ -151,7 +151,8 @@ class Template:
                  default_system: Optional[str] = None,
                  prefix_has_system: Optional[Prompt] = None,
                  auto_add_bos: bool = False,
-                 tool_prompt: str = 'default') -> None:
+                 tools_prompt: str = 'default',
+                 tool_prompt: Prompt = None) -> None:
         """
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
             whether to add it based on `tokenizer.encode('')`.
@@ -174,7 +175,8 @@ class Template:
         self.use_default_system = True
         self.auto_add_bos = auto_add_bos
         self._is_init = False
-        self.tool_prompt = tool_prompt
+        self.tools_prompt = tools_prompt
+        self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt # default as user
 
     @staticmethod
     def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
@@ -228,6 +230,7 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
+        tool = example.get('tool', None)
         tools = example.get('tools', None)
         if history is None:
             history = []
@@ -243,11 +246,11 @@ class Template:
         if tools:
             if system is None:
                 system = ''
-            system += get_tools_prompt(tools, self.tool_prompt)
+            system += get_tools_prompt(tools, self.tools_prompt)
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
+            query, response, history, system, tool, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -339,6 +342,7 @@ class Template:
                 response: Optional[str],
                 history: History,
                 system: Optional[str],
+                tool: Optional[str],
                 truncation_strategy: str,
                 auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
