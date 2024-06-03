@@ -22,7 +22,7 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
-from .media import MediaTagReplacer
+from .media import MediaTagReplacer, MediaCache
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
                          ListPreprocessor, parse_medias)
@@ -164,6 +164,9 @@ class DatasetName:
     science_qa = 'science-qa'
     guanaco = 'guanaco'
     mind2web = 'mind2web'
+    sharegpt_4o_image = 'sharegpt-4o-image'
+    sharegpt_4o_video = 'sharegpt-4o-video'
+
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -393,6 +396,54 @@ register_dataset(
     get_dataset_from_repo,
     tags=['chat', 'general', '🔥'],
     hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh')
+
+
+def preprocess_sharegpt_4o_images(dataset):
+    url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
+    local_dir = MediaCache.download(url, 'sharegpt_4o_images')
+
+    def preprocess_row(row):
+        image = row['image']
+        image = os.path.join(local_dir, image)
+        return {'image', image}
+
+    dataset = dataset.map(preprocess_row)
+    return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
+                                     media_type='image')(dataset)
+
+
+def preprocess_sharegpt_4o_videos(dataset):
+    url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=videos.zip'
+    local_dir = MediaCache.download(url, 'sharegpt_4o_images')
+
+    def preprocess_row(row):
+        video = row['video']
+        video = os.path.join(local_dir, video)
+        return {'video', video}
+
+    dataset = dataset.map(preprocess_row)
+    return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
+                                     media_type='video')(dataset)
+
+
+register_dataset(
+    DatasetName.sharegpt_4o_image,
+    'AI-ModelScope/ShareGPT-4o',
+    ['image_caption'],
+    preprocess_sharegpt_4o_images,
+    get_dataset_from_repo,
+    tags=['vqa', 'multi-modal'],
+    hf_dataset_id='OpenGVLab/ShareGPT-4o')
+
+
+register_dataset(
+    DatasetName.sharegpt_4o_video,
+    'AI-ModelScope/ShareGPT-4o',
+    ['video_caption'],
+    preprocess_sharegpt_4o_videos,
+    get_dataset_from_repo,
+    tags=['vqa', 'multi-modal'],
+    hf_dataset_id='OpenGVLab/ShareGPT-4o')
 
 
 def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:

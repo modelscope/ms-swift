@@ -1,3 +1,6 @@
+import os
+import shutil
+import time
 from typing import Literal, Union, List
 
 import numpy as np
@@ -204,3 +207,48 @@ class MediaTagReplacer:
         if 'response' in d:
             d['response'] = response
         d[self.media_keys[self.media_type]] = medias
+
+
+class MediaCache:
+
+    cache_dir = os.path.join(get_cache_dir(), 'media_resources')
+
+    media_type_urls = {
+
+    }
+
+    @staticmethod
+    def extract_zip(local_zip):
+        pass
+
+    @staticmethod
+    def extract_tar(local_tar):
+        pass
+
+    @staticmethod
+    def download(media_type, media_name=None):
+        media_name = media_name or media_type
+        if media_type in MediaCache.media_type_urls:
+            media_type = MediaCache.media_type_urls[media_type]
+
+        from pget.down import Downloader
+
+        if os.path.exists(media_type):
+            return media_type
+
+        media_folder = os.path.join(MediaCache.cache_dir, media_name + '_temp')
+        final_folder = os.path.join(MediaCache.cache_dir, media_name)
+        if os.path.exists(final_folder):
+            return final_folder
+        shutil.rmtree(media_folder, ignore_errors=True)
+        media_file = os.path.join(media_folder, media_type[media_type.rfind('='):])
+        downloader = Downloader(media_type, media_file, chunk_count=5)
+        downloader.start()
+        downloader.wait_for_finish()
+        if media_type.endswith('.zip'):
+            MediaCache.extract_zip(media_file)
+        elif media_type.endswith('.tar') or media_type.endswith('.gz'):
+            MediaCache.extract_tar(media_file)
+        shutil.rmtree(media_file, ignore_errors=True)
+        shutil.move(media_folder, final_folder)
+        return final_folder

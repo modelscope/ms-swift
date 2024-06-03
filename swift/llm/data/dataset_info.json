@@ -202,6 +202,32 @@
         },
         "tags": ["zh", "medical", "vqa"]
     },
+    "allava-4v": {
+        "hf_dataset_id": "FreedomIntelligence/ALLaVA-4V",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete",
+            "media_type": "image"
+        },
+        "tags": ["en", "caption", "quality"]
+    },
+    "allava-4v-zh": {
+        "hf_dataset_id": "FreedomIntelligence/ALLaVA-4V-Chinese",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete",
+            "media_type": "image"
+        },
+        "tags": ["zh", "caption", "quality"]
+    },
     "pope": {
         "hf_dataset_id": "lmms-lab/POPE",
         "columns": {
