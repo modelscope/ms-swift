@@ -15,17 +15,19 @@ class SwiftPreprocessor:
     def __call__(self, dataset: HfDataset) -> HfDataset:
         if 'history' in dataset.features:
             old_history = dataset['history']
-
+            has_history = False
             history: List[History] = []
-            for old_h in tqdm(old_history):
-                if isinstance(old_h, list):
-                    break
-                h = None
-                if old_h is not None:
+            for h in tqdm(old_history):
+                if isinstance(h, str):
                     h = ast.literal_eval(old_h)
+                elif h is None:
+                    h = []
+                if len(h) > 0:
+                    has_history = True
                 history.append(h)
-            else:
-                dataset = dataset.remove_columns(['history']).add_column('history', history)
+            dataset = dataset.remove_columns(['history'])
+            if has_history:
+                dataset = dataset.add_column('history', history)
         return dataset
 
 

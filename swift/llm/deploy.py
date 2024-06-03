@@ -11,6 +11,7 @@ import torch
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from modelscope import GenerationConfig
+from packaging import version
 from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
@@ -162,7 +163,13 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 break
         assert lora_request is not None
         generate_kwargs['lora_request'] = lora_request
-    result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
+
+    import vllm
+    if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+        result_generator = llm_engine.generate({'prompt_token_ids': input_ids}, generation_config, request_id,
+                                               **generate_kwargs)
+    else:
+        result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
 
     async def _generate_full():
         result = None
