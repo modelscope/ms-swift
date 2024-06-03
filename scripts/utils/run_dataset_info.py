@@ -52,7 +52,7 @@ def write_dataset_info() -> None:
             dataset_info = DATASET_MAPPING[dataset_name]
             tags = dataset_info.get('tags', [])
             subsets = dataset_info.get('subsets', [])
-            subsets = ','.join(subsets)
+            subsets = '<br>'.join(subsets)
             if 'audio' in tags:
                 template = mapping['audio']
             elif 'vision' in tags:

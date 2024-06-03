@@ -22,7 +22,8 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
-from .dataset import DATASET_MAPPING, _dataset_name_exists, get_dataset, register_dataset_info_file, sample_dataset
+from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
+                      register_dataset_info_file, sample_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -220,6 +221,8 @@ class ArgumentsBase:
             _dataset = getattr(self, key)
             if isinstance(_dataset, str):
                 _dataset = [_dataset]
+            elif _dataset is None:
+                _dataset = []
             if len(_dataset) == 1 and ',' in _dataset[0]:
                 _dataset = _dataset[0].split(',')
             for i, d in enumerate(_dataset):
@@ -269,9 +272,18 @@ class ArgumentsBase:
     def _handle_dataset_sample(self):
         # compatibility. (Deprecated)
         # Avoid post-processing
-        if len(self.dataset) == 1 and '#' not in self.dataset[0] and self.train_dataset_sample >= 0:
-            self.dataset[0] = f'{self.dataset[0]}#{self.train_dataset_sample}'
-            self.train_dataset_sample = -1
+        if len(self.dataset) != 1 or self.train_dataset_sample == -1:
+            return
+        _dataset = self.dataset[0]
+        train_sample = parse_dataset_name(_dataset)[3]
+        if train_sample == -1:
+            train_sample = self.train_dataset_sample
+        elif self.train_dataset_sample < train_sample:
+            _dataset = _dataset[:_dataset.find('#')]
+            train_sample = self.train_dataset_sample
+        _dataset = f'{_dataset}#{train_sample}'
+        self.dataset[0] = _dataset
+        self.train_dataset_sample = -1
 
     def _register_self_cognition(self: Union['SftArguments', 'InferArguments']) -> None:
 
@@ -467,7 +479,8 @@ class SftArguments(ArgumentsBase):
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
-    init_lora_weights: Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false'] = 'true'
+    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false']
+    init_lora_weights: str = 'true'
 
     # BOFT
     boft_block_size: int = 4
@@ -685,11 +698,9 @@ class SftArguments(ArgumentsBase):
 
     def __post_init__(self) -> None:
         self.handle_compatibility()
-        self._register_self_cognition()
         if len(self.val_dataset) > 0:
             self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
-        self._handle_dataset_sample()
         if is_pai_training_job():
             self._handle_pai_compat()
         ds_config_folder = os.path.abspath(os.path.join(__file__, '..', '..', 'ds_config'))
@@ -704,6 +715,8 @@ class SftArguments(ArgumentsBase):
                 break
 
         self.handle_path()
+        self._handle_dataset_sample()
+        self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
         self.set_model_type()
@@ -1056,7 +1069,6 @@ class InferArguments(ArgumentsBase):
             logger.warning(f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                            'the dir contains a `configuration.json` file.')
         self.handle_compatibility()
-        self._register_self_cognition()
         if len(self.val_dataset) > 0:
             self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
@@ -1069,8 +1081,8 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
-        self.handle_compatibility()
         self._handle_dataset_sample()
+        self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
         self.set_model_type()
@@ -1167,7 +1179,7 @@ class InferArguments(ArgumentsBase):
             ]
         for key in imported_keys:
             value = getattr(self, key)
-            if key == 'dataset' and len(value) > 0:
+            if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {'dataset_test_ratio', 'system'} and value is not None:
                 continue
@@ -1179,6 +1191,10 @@ class InferArguments(ArgumentsBase):
 
         if self.dtype == 'AUTO':
             self.dtype = sft_args.get('dtype')
+
+        # compat
+        if self.val_dataset is None:
+            self.val_dataset = []
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
@@ -1216,8 +1232,7 @@ class DeployArguments(InferArguments):
         super().__post_init__()
         model_info = MODEL_MAPPING[self.model_type]
         tags = model_info.get('tags', [])
-        if 'multi-modal' in tags:
-            raise ValueError('Deployment of multimodal models is currently not supported.')
+        self.is_multimodal = 'multi-modal' in tags
 
 
 @dataclass
@@ -1320,6 +1335,12 @@ class DPOArguments(SftArguments):
     label_smoothing: float = 0.0
     loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
     sft_beta: float = 0.1
+
+
+@dataclass
+class SimPOArguments(DPOArguments):
+    beta: float = 2.0
+    gamma: float = 1.0
 
 
 @dataclass
