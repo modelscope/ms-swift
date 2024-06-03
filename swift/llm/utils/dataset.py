@@ -139,16 +139,13 @@ class DatasetName:
     # for awq
     pileval = 'pileval'
 
-    # COIG
-    coig = 'coig'
-
     mmlu_pro = 'mmlu-pro'
 
     rlaif_v = 'rlaif-v'
     mantis_instruct = 'mantis-instruct'
-    llava_data = 'llava-data'
+    llava_data_pretrain = 'llava-data-pretrain'
+    llava_data_instruct = 'llava-data-instruct'
     midefics = 'midefics'
-    doc_vqa = 'doc-vqa'
     ref_coco_grounding = 'ref-coco-grounding'
     ref_coco_caption = 'ref-coco-caption'
     ref_cocog_grounding = 'ref-cocog-grounding'
@@ -424,23 +421,38 @@ register_dataset(
      'nlvr2', 'spot-the-diff', 'star', 'visual_story_telling'],
     ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
                               from_key='role', value_key='content',
-                              images_key=lambda row: [p['path'] for p in row['images']]),
+                              media_type='image',
+                              media_key=lambda row: [p['path'] for p in row['images']]),
     get_dataset_from_repo,
     split=['train', 'val'],
-    tags=['chat', 'multi-modal', 'vision'],
+    tags=['chat', 'multi-modal', 'vision', 'TODO', 'quality'],
     hf_dataset_id="TIGER-Lab/Mantis-Instruct")
 
 register_dataset(
-    DatasetName.llava_data,
+    DatasetName.llava_data_pretrain,
     None,
-    ['llava-pretrain', 'llava-instruct'],
+    ['llava-pretrain'],
     ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
-                              from_key='role', value_key='content',
-                              images_key=lambda row: [p['path'] for p in row['images']]),
+                              from_key='role', value_key='content', media_type='image',
+                              media_key=lambda row: [p['path'] for p in row['images']]),
     get_dataset_from_repo,
     split=['train'],
-    tags=['pretrain', 'sft', 'multi-modal', 'vision'],
+    tags=['pretrain', 'multi-modal', 'quality', 'TODO'],
     hf_dataset_id="TIGER-Lab/llava-data")
+
+
+register_dataset(
+    DatasetName.llava_data_instruct,
+    None,
+    ['llava-instruct'],
+    ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
+                              from_key='role', value_key='content', media_type='image',
+                              media_key=lambda row: [p['path'] for p in row['images']]),
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['sft', 'multi-modal', 'quality', 'TODO'],
+    hf_dataset_id="TIGER-Lab/llava-data")
+
 
 register_dataset(
     DatasetName.coco_en_mini,
@@ -920,7 +932,7 @@ register_dataset(
     preprocess_dolly_15k,
     get_dataset_from_repo,
     hf_dataset_id="databricks/databricks-dolly-15k",
-    tags=['multi-task', 'en'])
+    tags=['multi-task', 'en', 'quality'])
 
 
 register_dataset(
@@ -938,42 +950,6 @@ register_dataset(
     get_dataset_from_repo,
     hf_dataset_id='WinterSchool/MideficsDataset',
     tags=['medical', 'en', 'vqa'])
-
-register_dataset(
-    DatasetName.coig,
-    'AI-ModelScope/COIG', ['Default', 'NoTranslate'],
-    ListPreprocessor(conversations_key='conversations', query_key='question', response_key='answer'),
-    get_dataset_from_repo,
-    hf_dataset_id='BAAI/COIG',
-    tags=['mixed', 'zh'])
-
-
-def doc_vqa_preprocessor(dataset):
-    def preprocess(row):
-        image = row['image']
-        question = row['question']
-        if isinstance(row['answers'], list):
-            answer = np.random.choice(row['answers'])
-        else:
-            answer = row['answers']
-
-        d_dict = {
-            'query': question,
-            'response': answer,
-        }
-        MediaTagReplacer('image')(d_dict, image)
-        return d_dict
-
-    return dataset.map(preprocess)
-
-
-register_dataset(
-    DatasetName.doc_vqa,
-    None, ["default", "full"],
-    preprocess_func=doc_vqa_preprocessor,
-    get_function=get_dataset_from_repo,
-    hf_dataset_id="lmms-lab/DocVQA",
-    tags=['multi-modal', 'en', 'vqa'])
 
 
 def ref_coco_preprocessor(dataset: HfDataset, task_type):
