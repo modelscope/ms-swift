@@ -874,7 +874,7 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
     return dataset
 
 
-def download_sharegpt4v_dataset(requirement: list):
+def download_images_dataset(requirement: list):
     logger.info('--------------Downloading image datasets and extract, it may be slow--------------')
 
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
@@ -902,7 +902,7 @@ def download_sharegpt4v_dataset(requirement: list):
         extension = 'tar' if is_ocr_vqa else 'zip'
         dataset_path = os.path.join(data_cache_dir, f'{ds}.{extension}')
         url = f'{URL_PREFIX}{ds}.{extension}'
-        
+
         with safe_ddp_context():
             download_file_with_progress(url, dataset_path)
             extract_file(dataset_path, os.path.join(data_cache_dir, ZIP2EXTRACTION_PATHS[ds]))
@@ -922,7 +922,7 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
         dataset_required = set()
         for sp in split:
             dataset_required.update(IMAGE_DATASET_REQUIREMENTS[sp])
-        dataset._image_dir = download_sharegpt4v_dataset(dataset_required)
+        dataset._image_dir = download_images_dataset(dataset_required)
 
     def preprocess_image(example):
         image_path = os.path.join(dataset._image_dir, example['image'])
@@ -933,7 +933,8 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
         return example
 
     dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
-    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images', error_strategy='delete')
+    processer = ImageConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', image_key='images', error_strategy='delete')
     return processer(dataset)
 
 
@@ -948,7 +949,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.m3it,
-    'AI-ModelScope/M3IT',  # error: 'vist' , 'iqa-rephrased ', 'mmchat' / test: , 'winoground','chinese-food'
+    'AI-ModelScope/M3IT',  # error: 'vist' , 'iqa-rephrased ', 'mmchat' / test: 'winoground','chinese-food'
     [
         'coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'coco-goi-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa',
         'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased',
@@ -975,7 +976,7 @@ register_dataset(
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
     if not hasattr(dataset, '_image_dir'):
         DATASET_REQUIREMENTS = ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']
-        dataset._image_dir = download_sharegpt4v_dataset(DATASET_REQUIREMENTS)
+        dataset._image_dir = download_images_dataset(DATASET_REQUIREMENTS)
 
     def preprocess_image(example):
         image_path = os.path.join(dataset._image_dir, example['image'])
@@ -986,7 +987,8 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
         return example
 
     dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
-    processer = ImageConversationsPreprocessor(user_role='human', assistant_role='gpt', image_key='images', error_strategy='delete')
+    processer = ImageConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', image_key='images', error_strategy='delete')
     return processer(dataset)
 
 
