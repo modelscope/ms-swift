@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import os.path
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 import numpy as np

@@ -2,6 +2,8 @@ from typing import Literal, Union, List
 
 import numpy as np
 
+from swift.hub.utils.utils import get_cache_dir
+
 
 class MediaTagReplacer:
 

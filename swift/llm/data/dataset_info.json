@@ -520,14 +520,10 @@
         "tags": ["chat", "novel"],
         "hf_dataset_id": "zxbsmk/webnovel_cn"
     },
-    "mind2web": {
-        "tags": ["chat", "novel"],
-        "hf_dataset_id": "osunlp/Multimodal-Mind2Web"
-    },
     "sft-nectar": {
         "hf_dataset_id": "AstraMindAI/SFT-Nectar",
         "dataset_id": "AI-ModelScope/SFT-Nectar",
-        "tags": ["cot", "en"]
+        "tags": ["cot", "en", "quality"]
     },
     "generated-chat-zh": {
         "dataset_id": "AI-ModelScope/generated_chat_0.4M",
@@ -542,7 +538,7 @@
     },
     "open-platypus-en": {
         "dataset_id": "AI-ModelScope/Open-Platypus",
-        "tags": ["chat", "math"],
+        "tags": ["chat", "math", "quality"],
         "hf_dataset_id": "garage-bAInd/Open-Platypus"
     },
     "open-orca": {
@@ -550,7 +546,8 @@
         "subset": ["default", "3_5M"],
         "columns": {"question": "query"},
         "tags": ["chat", "multilingual", "general"],
-        "help": ["`default` uses gpt4 for data cleaning."]
+        "help": ["`default` uses gpt4 for data cleaning."],
+        "huge_dataset": true
     },
     "slim-orca": {
         "hf_hub_url": "Open-Orca/SlimOrca",
@@ -561,14 +558,16 @@
             "from_key": "from",
             "value_key": "value",
             "error_strategy": "delete"
-        }
+        },
+        "tags": ["quality", "en"]
     },
     "slim-pajama-627b": {
         "hf_hub_url": "cerebras/SlimPajama-627B",
         "columns": {
             "text": "response"
         },
-        "tags": ["pretrain"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "llava-plus-data": {
         "hf_hub_url": "LLaVA-VL/llava-plus-data",
@@ -580,14 +579,17 @@
             "value_key": "value",
             "error_strategy": "delete",
             "media_type": "image"
-        }
+        },
+        "tags": ["TODO"]
     },
     "moondream2-coyo-5M": {
         "hf_hub_url": "isidentical/moondream2-coyo-5M-captions",
         "columns": {
             "url": "images",
             "moondream2_caption": "response"
-        }
+        },
+        "tags": ["caption", "pretrain", "quality"],
+        "huge_dataset": true
     },
     "no-robots": {
         "hf_hub_url": "HuggingFaceH4/no_robots",
@@ -598,7 +600,8 @@
             "from_key": "role",
             "value_key": "content",
             "error_strategy": "delete"
-        }
+        },
+        "tags": ["multi-task", "quality", "human-annotated"]
     },
     "open-hermes": {
         "hf_hub_url": "teknium/OpenHermes-2.5",
@@ -609,7 +612,9 @@
             "from_key": "from",
             "value_key": "value",
             "error_strategy": "delete"
-        }
+        },
+        "huge_dataset": true,
+        "tags": ["cot", "en", "quality"]
     },
     "open-hermes-zh": {
         "hf_hub_url": "wenbopan/OpenHermes-2.5-zh",
@@ -620,22 +625,16 @@
             "from_key": "from",
             "value_key": "value",
             "error_strategy": "delete"
-        }
+        },
+        "tags": ["cot", "agent", "zh", "quality"]
     },
     "github-code": {
         "hf_hub_url": "codeparrot/github-code",
         "columns": {
             "code": "response"
         },
-        "tags": ["pretrain"]
-    },
-    "arxiv_qa": {
-        "hf_hub_url": "taesiri/arxiv_qa",
-        "columns": {
-            "question": "query",
-            "answer": "response"
-        },
-        "tags": ["science", "arxiv"]
+        "tags": ["pretrain", "quality"],
+        "huge_dataset": true
     },
     "disc-law-sft-zh": {
         "dataset_id": "AI-ModelScope/DISC-Law-SFT",
@@ -649,7 +648,8 @@
         "columns": {
           "prompt": "instruction",
           "response": "output"
-        }
+        },
+        "tags": ["math", "cot", "en", "quality"]
     },
     "pileval": {
         "dataset_id": "huangjintao/pile-val-backup",

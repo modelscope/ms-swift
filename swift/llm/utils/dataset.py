@@ -166,6 +166,7 @@ class DatasetName:
     lima = 'lima'
     science_qa = 'science-qa'
     guanaco = 'guanaco'
+    mind2web = 'mind2web'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -1612,6 +1613,71 @@ register_dataset(
     ConversationsPreprocessor('human', 'gpt', repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
+
+
+def preprocess_mind2web(dataset):
+
+    def preprocess_row(row):
+        raw_html = row['raw_html']
+        screenshot = row['screenshot']
+        action = row['target_action_reprs']
+        action = action.split('->')
+        if len(action) == 1:
+            return {
+                'query': f'<image>{raw_html}',
+                'images': screenshot,
+                'response': f'Action: {action}',
+            }
+        else:
+            return {
+                'query': f'<image>{raw_html}',
+                'images': screenshot,
+                'response': f'Action: {action[1].strip()}\nAction Input: {action[0].strip()}'
+            }
+
+    conversations = []
+    tools = [
+        {'api': 'CLICK', 'desc': 'Choose and click an element in the web page'},
+        {'api': 'TYPE', 'desc': 'Input some text into a web element like <input> or <textbox>'},
+        {'api': 'SELECT', 'desc': 'Select an element from a combobox'}
+    ]
+    history = []
+    images = []
+    for row in dataset:
+        target_action_index = row['target_action_index']
+        row = preprocess_row(row)
+        query = row['query']
+        if target_action_index == 0:
+            if history:
+                query, response = history.pop(-1)
+                conversations.append({'history': history,
+                                      'query': query,
+                                      'response': response,
+                                      'images': images,
+                                      'tools': tools})
+                images = []
+                history = []
+            query = query + '\n' + row['confirmed_task']
+        history.append([query, row['response']])
+        images.append([row['images']])
+
+    if history:
+        query, response = history.pop(-1)
+        conversations.append({'history': history,
+                              'query': query,
+                              'response': response,
+                              'images': images})
+
+    return HfDataset.from_list(conversations)
+
+
+register_dataset(
+    DatasetName.mind2web,
+    None, [],
+    preprocess_mind2web,
+    get_dataset_from_repo,
+    hf_dataset_id="osunlp/Multimodal-Mind2Web",
+    tags=['agent', 'multi-modal'])
 
 
 def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
