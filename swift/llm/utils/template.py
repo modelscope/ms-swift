@@ -232,6 +232,12 @@ class Template:
         system: Optional[str] = example.get('system', None)
         tool: Optional[str] = example.get('tool', None)
         tools: Optional[list]  = example.get('tools', None)
+        conversations: Optional[list] = example.get('conversations', None)
+        if conversations is not None:
+            # encode conversations with tool role
+
+
+            return 
         if history is None:
             history = []
         if len(history) > 0:
@@ -396,6 +402,69 @@ class Template:
         if self.use_loss_scale:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
+    
+    def _encode_with_tool(self, conversations:list, tools: list, truncation_strategy:str,  auto_add_bos: bool = False):
+        """
+        encode conversations which have system/user/assistant/function roles
+
+        return: inputs, tokenizer_kwargs
+        """
+        history = []
+        res_context_list: List[Context] = []
+        loss_scale_list: List[float] = []
+        if auto_add_bos:
+            bos_token_id = self.tokenizer.bos_token_id
+            if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
+                res_context_list.append([bos_token_id])
+                loss_scale_list.append(0.)
+
+        if conversations[0]['from'] == 'system':
+            system = conversations[0]['content']
+        
+        if system is None:
+            prefix = self.prefix
+        else:
+            prefix = self.prefix_has_system
+        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
+        
+        history.append([conversations[-2]['content'], conversations[-1]['content']])
+        for i, (q, r) in enumerate(history):
+            context_list = self.prompt.copy()
+            if i < len(history) - 1:
+                context_list.append('{{RESPONSE}}')
+                context_list += self.chat_sep
+            elif r is not None:
+                # last response
+                context_list.append('{{RESPONSE}}')
+                context_list += self.suffix
+            if q or r:
+                self._concat_context_list(
+                    context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
+
+        res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
+
+        response = conversations[-1]['content'] if conversations[-1]['from'] == 'assistant' else None
+
+        if response is None:
+            labels = None
+
+        if self.max_length is not None:
+            if truncation_strategy == 'delete' and len(input_ids) > self.max_length:
+                return {}, {}
+            input_ids = input_ids[-self.max_length:]
+            if labels is not None:
+                labels = labels[-self.max_length:]
+            if loss_scale is not None:
+                loss_scale = loss_scale[-self.max_length:]
+        inputs = {
+            'input_ids': input_ids,
+            'labels': labels,
+        }
+        if self.use_loss_scale:
+            inputs['loss_scale'] = loss_scale
+        return inputs, tokenizer_kwargs
+
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""
