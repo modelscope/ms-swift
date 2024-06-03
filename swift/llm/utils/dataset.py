@@ -167,6 +167,11 @@ class DatasetName:
     sharegpt_4o_image = 'sharegpt-4o-image'
     sharegpt_4o_video = 'sharegpt-4o-video'
 
+    m3it = 'm3it'
+    # additional images
+    sharegpt4v = 'sharegpt4v'
+    llava_instruct_150k = 'llava-instruct-150k'
+
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -939,6 +944,107 @@ register_dataset(
     get_dataset_from_repo,
     split=['train', 'test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
+
+
+def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
+
+    system = []
+    query = []
+    response = []
+    images = []
+    for d in tqdm(dataset):
+        system.append(d['instruction'])
+        query.append(d['inputs'])
+        images.append(d['image_base64_str'])
+        response.append(d['outputs'])
+    dataset = HfDataset.from_dict({'system': system, 'query': query, 'response': response, 'images': images})
+    return dataset
+
+
+def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
+    if not hasattr(dataset, '_image_dir'):
+        split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
+        IMAGE_DATASET_REQUIREMENTS = {
+            'ShareGPT4V': ['coco', 'sam', 'llava', 'wikiart', 'share_textvqa', 'web-celebrity', 'web-landmark'],
+            'ShareGPT4V-PT': ['coco', 'sam', 'llava']
+        }
+
+        if isinstance(split, str):
+            split = [split]
+        for sp in split:
+            for media_type in IMAGE_DATASET_REQUIREMENTS[sp]:
+                MediaCache.download(media_type)
+        dataset._image_dir = MediaCache.cache_dir
+
+    def preprocess_image(example):
+        image_path = os.path.join(dataset._image_dir, example['image'])
+        if os.path.exists(image_path):
+            example['images'] = image_path
+        else:
+            example['images'] = None
+        return example
+
+    dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    processer = ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt',  media_type='image', media_key='images', error_strategy='delete')
+    return processer(dataset)
+
+
+
+register_dataset(
+    DatasetName.m3it,
+    'AI-ModelScope/M3IT',  # error: 'vist' , 'iqa-rephrased ', 'mmchat' / test: 'winoground','chinese-food'
+    [
+        'coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'coco-goi-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa',
+        'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased',
+        'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased',
+        'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco',
+        'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased',
+        'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa',
+        'flickr8k-cn'
+    ],
+    _preprocess_m3it,
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['chat', 'multi-modal', 'vision'])
+
+register_dataset(
+    DatasetName.sharegpt4v,
+    'AI-ModelScope/ShareGPT4V', ['ShareGPT4V', 'ShareGPT4V-PT'],
+    _preprocess_sharegpt4v,
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['chat', 'multi-modal', 'vision'])
+
+
+def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
+    if not hasattr(dataset, '_image_dir'):
+        for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
+            MediaCache.download(media_type)
+        dataset._image_dir = MediaCache.cache_dir
+
+    def preprocess_image(example):
+        image_path = os.path.join(dataset._image_dir, example['image'])
+        if os.path.exists(image_path):
+            example['images'] = image_path
+        else:
+            example['images'] = None
+        return example
+
+    dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    processer = ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
+    return processer(dataset)
+
+
+register_dataset(
+    DatasetName.llava_instruct_150k,
+    'AI-ModelScope/LLaVA-Instruct-150K',
+    None,
+    _preprocess_llava_instruct_images,
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['chat', 'multi-modal', 'vision'])
 
 
 def process_shareai_dpo(dataset):

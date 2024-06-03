@@ -214,24 +214,41 @@ class MediaCache:
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
 
     media_type_urls = {
-
+        'llava': 'data/llava/llava_pretrain/images',
+        'coco': 'data/coco',
+        'sam': 'data/sam/images',
+        'gqa': 'data/gqa',
+        'ocr_vqa': '.',
+        'textvqa': 'textvqa',
+        'VG_100K': 'vg',
+        'VG_100K_2': 'vg',
+        'share_textvqa': '.',
+        'web-celebrity': '.',
+        'web-landmark': '.',
+        'wikiart': '.'
     }
 
-    @staticmethod
-    def extract_zip(local_zip):
-        pass
+    URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
 
     @staticmethod
-    def extract_tar(local_tar):
-        pass
+    def get_url(media_type):
+        is_ocr_vqa = (media_type == 'ocr_vqa')
+        extension = 'tar' if is_ocr_vqa else 'zip'
+        return f'{MediaCache.URL_PREFIX}{media_type}.{extension}'
 
     @staticmethod
     def download(media_type, media_name=None):
+        from swift.utils import safe_ddp_context
+        with safe_ddp_context():
+            return MediaCache._safe_download(media_type=media_type, media_name=media_name)
+
+    @staticmethod
+    def _safe_download(media_type, media_name=None):
         media_name = media_name or media_type
         if media_type in MediaCache.media_type_urls:
             media_type = MediaCache.media_type_urls[media_type]
 
-        from pget.down import Downloader
+        from datasets.download.download_manager import DownloadManager
 
         if os.path.exists(media_type):
             return media_type
@@ -242,13 +259,7 @@ class MediaCache:
             return final_folder
         shutil.rmtree(media_folder, ignore_errors=True)
         media_file = os.path.join(media_folder, media_type[media_type.rfind('='):])
-        downloader = Downloader(media_type, media_file, chunk_count=5)
-        downloader.start()
-        downloader.wait_for_finish()
-        if media_type.endswith('.zip'):
-            MediaCache.extract_zip(media_file)
-        elif media_type.endswith('.tar') or media_type.endswith('.gz'):
-            MediaCache.extract_tar(media_file)
+        DownloadManager().download_and_extract(media_type)
         shutil.rmtree(media_file, ignore_errors=True)
         shutil.move(media_folder, final_folder)
         return final_folder
