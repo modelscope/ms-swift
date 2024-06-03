@@ -230,8 +230,8 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
-        tool = example.get('tool', None)
-        tools = example.get('tools', None)
+        tool: Optional[str] = example.get('tool', None)
+        tools: Optional[list]  = example.get('tools', None)
         if history is None:
             history = []
         if len(history) > 0:
