@@ -3054,7 +3054,6 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
 
 def _patch_deepseek_vl(model) -> None:
-
     if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
         return
     if hasattr(model.language_model, '__old_forward'):
@@ -3077,11 +3076,6 @@ def _patch_deepseek_vl(model) -> None:
 
     model.language_model.forward = _new_forward
     model.language_model.__old_forward = __old_forward
-
-    model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
-    func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-    _use_submodel_func(model, 'language_model', func_list)
-    model.generation_config = model.language_model.generation_config
 
 
 @register_model(
@@ -3134,6 +3128,10 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     tokenizer.processor = processor
     if load_model:
         _patch_deepseek_vl(model)
+        model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
+        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
+        model.generation_config = model.language_model.generation_config
     return model, tokenizer
 
 
