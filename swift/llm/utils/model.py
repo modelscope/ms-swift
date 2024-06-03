@@ -2828,7 +2828,7 @@ def fix_internvl_inplace_bug(model) -> None:
     ModelType.mini_internvl_chat_4b_v1_5,
     'OpenGVLab/Mini-InternVL-Chat-4B-V1-5',
     LoRATM.phi3,
-    TemplateType.internvl,
+    TemplateType.internvl_phi3,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],

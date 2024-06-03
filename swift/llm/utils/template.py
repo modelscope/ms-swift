@@ -976,10 +976,11 @@ class InternvlTemplate(Template):
 
 
 class InternvlPhi3Template(InternvlTemplate):
+    system = 'You are an AI assistant whose name is Phi-3.'
 
     def __init__(self):
         Template.__init__(self, ['<s>'], ['<|user|>\n', [-100], '{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'],
-                          ['<|end|>'], None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+                          ['<|end|>'], self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
 
 register_template(
