@@ -46,6 +46,7 @@ class TemplateType:
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
     internvl = 'internvl'
+    internvl_phi3 = 'internvl-phi3'
     yi = 'yi'
     yi1_5 = 'yi1_5'
     yi_vl = 'yi-vl'
@@ -974,9 +975,25 @@ class InternvlTemplate(Template):
         return generate_ids[0].tolist()
 
 
+class InternvlPhi3Template(InternvlTemplate):
+
+    def __init__(self):
+        Template.__init__(self, ['<s>'], ['<|user|>\n', [-100], '{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'],
+                          ['<|end|>'], None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+
 register_template(
     TemplateType.internvl,
     InternvlTemplate(),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.internvl_phi3,
+    InternvlPhi3Template(),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',

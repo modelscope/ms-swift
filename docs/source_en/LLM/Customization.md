@@ -93,6 +93,14 @@ Multi-Round Dialogue
 
 **Format 4:**
 
+```jsonl
+{"system": "00000", "conversation": [{"human": "11111", "assistant": "22222"}]}
+{"conversation": [{"human": "aaaaa", "assistant": "bbbbb"}]}
+{"conversation": [{"human": "AAAAA", "assistant": "BBBBB"}, {"human": "CCCCC", "assistant": "DDDDD"}, {"human": "EEEEE", "assistant": "FFFFF"}]}
+```
+
+**Format 5:**
+
 ```csv
 system,instruction,input,output
 00000,11111,22222,33333
