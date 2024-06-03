@@ -1106,7 +1106,7 @@ register_dataset(
 def preprocess_text_caps(dataset):
     def preprocess(row):
         image = row['image']
-        response = np.random.choice(row['caption_str'])
+        response = np.random.choice(row['reference_strs'])
         return {
             'response': response,
             'images': image
