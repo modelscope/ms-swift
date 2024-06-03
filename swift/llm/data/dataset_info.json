@@ -228,32 +228,24 @@
         },
         "tags": ["zh", "caption", "quality"]
     },
-    "pope": {
-        "hf_dataset_id": "lmms-lab/POPE",
-        "columns": {
-            "question": "query",
-            "answer": "response",
-            "image": "images"
-        },
-        "tags": ["en", "vqa"]
-    },
     "chart-qa": {
-        "hf_dataset_id": "lmms-lab/ChartQA",
+        "hf_dataset_id": "HuggingFaceM4/ChartQA",
         "columns": {
-            "question": "query",
-            "answer": "response",
+            "query": "query",
+            "label": "response",
             "image": "images"
         },
-        "split": ["test"],
+        "split": ["train"],
         "tags": ["en", "vqa", "quality"]
     },
     "vqa-v2": {
-        "hf_dataset_id": "lmms-lab/VQAv2",
+        "hf_dataset_id": "HuggingFaceM4/VQAv2",
         "columns": {
             "question": "query",
             "multiple_choice_answer": "response",
             "image": "images"
         },
+        "split": ["train"],
         "tags": ["en", "vqa", "quality"]
     },
     "gpt4v-dataset": {
