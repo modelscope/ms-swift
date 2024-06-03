@@ -974,11 +974,14 @@ class InternvlTemplate(Template):
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
 
+
 class InternvlPhi3Template(InternvlTemplate):
+
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n', [-100], '{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
-    
+        Template.__init__(self, ['<s>'], ['<|user|>\n', [-100], '{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'],
+                          ['<|end|>'], None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+
 register_template(
     TemplateType.internvl,
     InternvlTemplate(),
