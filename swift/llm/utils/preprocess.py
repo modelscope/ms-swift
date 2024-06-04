@@ -171,7 +171,7 @@ class ToolConversationsPreprocessor:
                  conversations_key: str = 'conversations',
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
                                                 Optional[Dict[str, str]]] = _default_repair_conversations,
-                 error_strategy: Literal['delete', 'raise'] = 'raise'):
+                 error_strategy: Literal['delete', 'raise'] = 'delete'):
         self.tools_role = tools_role
         self.conversations_key = conversations_key
 
