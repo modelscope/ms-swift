@@ -229,6 +229,8 @@ class Template:
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
+        if 'images' in example and not isinstance(example['images'], (list, tuple)):
+            example['images'] = [example['images']]
         if history is None:
             history = []
         if len(history) > 0:
