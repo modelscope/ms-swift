@@ -2158,19 +2158,6 @@ def get_dataset(
         else:
             train_d, val_d = dataset, None
 
-        # Pack images from PIL to List
-
-        def _pack_images(row):
-            if 'images' in row and not isinstance(row['images'], (list, tuple)):
-                return {
-                    'images': [row['images']]
-                }
-            return {}
-
-        if train_d and 'images' in train_d[0]:
-            train_d = train_d.map(_pack_images, num_proc=4)
-        if val_d and 'images' in val_d[0]:
-            val_d = val_d.map(_pack_images, num_proc=4)
         assert train_d is not None or val_d is not None
         if train_d is not None:
             train_dataset_list.append(train_d)
