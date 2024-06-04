@@ -28,6 +28,11 @@ class SwiftPreprocessor:
             dataset = dataset.remove_columns(['history'])
             if has_history:
                 dataset = dataset.add_column('history', history)
+        if 'system' in dataset.features:
+            system = dataset['system']
+            has_system = len([sys for sys in system if sys not in {None, ''}]) > 0
+            if not has_system:
+                dataset = dataset.remove_columns(['system'])
         return dataset
 
 
