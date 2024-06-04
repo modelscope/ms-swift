@@ -4,7 +4,6 @@ from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
@@ -17,7 +16,11 @@ from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, upper_bound, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
-History = List[Union[Tuple[str, str], List[str]]]
+History = List[Union[Tuple[Any, Any], List[Any]]]
+Prompt = List[Union[Any, List[Any]]]
+StopWords = Prompt
+Context = Union[str, List[int]]
+TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
 class TemplateType:
@@ -96,53 +99,53 @@ class TemplateType:
         return res
 
 
-Prompt = List[Union[str, List[Union[str, int]]]]
-StopWords = Prompt
-
-Context = Union[str, List[int]]
-
-
 class StopWordsCriteria(StoppingCriteria):
-    # The returned sentence includes stop words.
+    """An extra class for stop words criteria of generation
+
+    Args:
+        tokenizer: The tokenizer instance.
+        stop_words: A list of stop words, whose types are str and List[int]
+    """
     def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
         self.tokenizer_kwargs = tokenizer_kwargs
         self.start_idx = -1
+        assert isinstance(self.stop_words, list)
+        stop_words = []
+        for stop_word in self.stop_words:
+            if isinstance(self.stop_words, str):
+                stop_words.append(self.tokenizer.encode(stop_word, add_special_tokens=False))
+        self.stop_words = stop_words
 
-    def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
+    def __call__(self, input_ids: Tensor, scores: Tensor, **kwargs) -> bool:
         if self.start_idx == -1:
             self.start_idx = len(input_ids[0]) - 1
-        tokenizer = self.tokenizer
         stop_words = self.stop_words
-        text = tokenizer.decode(input_ids[0, self.start_idx:], **self.tokenizer_kwargs)
         for stop_word in stop_words:
-            if isinstance(stop_word, str):
-                if stop_word in text:
-                    return True
-            else:  # list
-                if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
-                    return True
+            if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
+                return True
         return False
 
 
-def _has_system(prefix: Prompt) -> bool:
-    for p in prefix:
-        if '{{SYSTEM}}' in p:
-            return True
-    return False
-
-
-def _replace_system(prefix: Prompt) -> Prompt:
-    res = []
-    for p in prefix:
-        if '{{SYSTEM}}' in p:
-            p = p.replace('{{SYSTEM}}', '')
-        res.append(p)
-    return res
-
-
 class Template:
+    """A template class for all supported models.
+
+    Args:
+        prefix: Prefix tokens before the first turn's prompt
+        prompt: A list of elements whose types are str and list of integers. The input query part of every turn.
+        chat_sep: The chat separators between every turn.
+        suffix: The end tokens after the chat finished.
+        default_system: A default system instruction.
+        system_prefix: The prefix if the `system` is not empty.
+        auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
+            whether to add it based on `tokenizer.encode('')`.
+
+        Examples:
+            <start>system\nYou are a helpful assistant!<end>\n<bos><start>Who are you?<end>\n<start>assistant:I am a robot<end>\n<start>Who are you?<end>\n<start>assistant:I am a robot<end> # noqa
+            --------------- --------------------------         ---  ----- ------------ ----------------------- ----------- ----                                                         -----
+             system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
+    """
 
     def __init__(self,
                  prefix: Prompt,
@@ -150,20 +153,16 @@ class Template:
                  chat_sep: Optional[Prompt],
                  suffix: Prompt,
                  default_system: Optional[str] = None,
-                 prefix_has_system: Optional[Prompt] = None,
+                 system_prefix: Optional[Prompt] = None,
                  auto_add_bos: bool = False) -> None:
-        """
-        auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
-            whether to add it based on `tokenizer.encode('')`.
-        """
         if default_system == '':
             default_system = None
-        if _has_system(prefix):
-            assert prefix_has_system is None, 'The prefix already contains {{SYSTEM}}.'
-            prefix_has_system = prefix
-            prefix = _replace_system(prefix)
+        if self._has_system(prefix):
+            assert system_prefix is None, 'The prefix already contains {{SYSTEM}}.'
+            system_prefix = prefix
+            prefix = self._replace_system(prefix)
         self.prefix = prefix
-        self.prefix_has_system = prefix_has_system
+        self.prefix_has_system = system_prefix
         if self.prefix_has_system is None:
             assert default_system is None, 'The template does not support `system`.'
         self.prompt = prompt
@@ -176,8 +175,19 @@ class Template:
         self._is_init = False
 
     @staticmethod
+    def _replace_system(prefix: Prompt) -> Prompt:
+        return [p.replace('{{SYSTEM}}', '') for p in prefix]
+
+    @staticmethod
+    def _has_system(prefix: Prompt) -> bool:
+        return '{{SYSTEM}}' in ''.join(prefix)
+
+    @staticmethod
     def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
-        # e.g. [['eos_token_id']] -> [[2]]
+        """Turn `eos_token_id` to token id
+
+        e.g. [['eos_token_id']] -> [[2]]
+        """
         if value is None:
             return None
         res_value = []
@@ -529,9 +539,6 @@ class Template:
         else:
             assert is_finished and not return_delta
         return response
-
-
-TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
 def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
