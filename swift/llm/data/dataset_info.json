@@ -231,7 +231,6 @@
     "chart-qa": {
         "hf_dataset_id": "HuggingFaceM4/ChartQA",
         "columns": {
-            "query": "query",
             "label": "response",
             "image": "images"
         },
@@ -568,7 +567,7 @@
         "huge_dataset": true
     },
     "slim-orca": {
-        "hf_hub_url": "Open-Orca/SlimOrca",
+        "hf_dataset_id": "Open-Orca/SlimOrca",
         "conversations": {
             "user_role": "human",
             "assistant_role": "gpt",
@@ -580,7 +579,7 @@
         "tags": ["quality", "en"]
     },
     "slim-pajama-627b": {
-        "hf_hub_url": "cerebras/SlimPajama-627B",
+        "hf_dataset_id": "cerebras/SlimPajama-627B",
         "columns": {
             "text": "response"
         },
@@ -588,7 +587,7 @@
         "huge_dataset": true
     },
     "llava-plus-data": {
-        "hf_hub_url": "LLaVA-VL/llava-plus-data",
+        "hf_dataset_id": "LLaVA-VL/llava-plus-data",
         "conversations": {
             "user_role": "human",
             "assistant_role": "gpt",
@@ -601,7 +600,7 @@
         "tags": ["TODO"]
     },
     "moondream2-coyo-5M": {
-        "hf_hub_url": "isidentical/moondream2-coyo-5M-captions",
+        "hf_dataset_id": "isidentical/moondream2-coyo-5M-captions",
         "columns": {
             "url": "images",
             "moondream2_caption": "response"
@@ -610,7 +609,7 @@
         "huge_dataset": true
     },
     "no-robots": {
-        "hf_hub_url": "HuggingFaceH4/no_robots",
+        "hf_dataset_id": "HuggingFaceH4/no_robots",
         "conversations": {
             "user_role": "user",
             "assistant_role": "assistant",
@@ -622,7 +621,7 @@
         "tags": ["multi-task", "quality", "human-annotated"]
     },
     "open-hermes": {
-        "hf_hub_url": "teknium/OpenHermes-2.5",
+        "hf_dataset_id": "teknium/OpenHermes-2.5",
         "conversations": {
             "user_role": "human",
             "assistant_role": "gpt",
@@ -635,7 +634,7 @@
         "tags": ["cot", "en", "quality"]
     },
     "open-hermes-zh": {
-        "hf_hub_url": "wenbopan/OpenHermes-2.5-zh",
+        "hf_dataset_id": "wenbopan/OpenHermes-2.5-zh",
         "conversations": {
             "user_role": "human",
             "assistant_role": "gpt",
@@ -647,7 +646,7 @@
         "tags": ["cot", "agent", "zh", "quality"]
     },
     "github-code": {
-        "hf_hub_url": "codeparrot/github-code",
+        "hf_dataset_id": "codeparrot/github-code",
         "columns": {
             "code": "response"
         },
@@ -662,7 +661,7 @@
     },
     "math-instruct": {
         "dataset_id": "AI-ModelScope/MathInstruct",
-        "hf_hub_url": "TIGER-Lab/MathInstruct",
+        "hf_dataset_id": "TIGER-Lab/MathInstruct",
         "columns": {
           "prompt": "instruction",
           "response": "output"
