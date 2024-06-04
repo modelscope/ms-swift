@@ -14,7 +14,6 @@ import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                         GenerationConfig, GPTQConfig, snapshot_download)
-from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
@@ -25,6 +24,7 @@ from transformers.utils import strtobool
 from transformers.utils.versions import require_version
 
 from swift import get_logger
+from swift.hub.utils.utils import get_cache_dir
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
 from .utils import get_max_model_len, is_unsloth_available

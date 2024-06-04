@@ -152,6 +152,10 @@ class ArgumentsBase:
             elif quantization_bit == 8:
                 require_version('bitsandbytes')
                 load_in_4bit, load_in_8bit = False, True
+            else:
+                logger.warning('bnb only support 4/8 bits quantization, you should assign --quantization_bit 4 or 8,\
+                    Or specify another quantization method; No quantization will be performed here.')
+                load_in_4bit, load_in_8bit = False, False
         else:
             load_in_4bit, load_in_8bit = False, False
 
