@@ -123,7 +123,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             d = self.preprocess(d)
             h = d['history']
             sys = d['system']
-            med = d[self.media_name]
+            med = d.get(self.media_name)
             q = d['query']
             r = d['response']
             if isinstance(r, list):

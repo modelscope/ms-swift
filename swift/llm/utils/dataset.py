@@ -289,7 +289,8 @@ def load_ms_dataset(dataset_id: str,
         if use_hf:
             try:
                 dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
-            except Exception:
+            except Exception as e:
+                print(e)
                 continue
         else:
             if is_dist() and not is_local_master():
@@ -300,6 +301,7 @@ def load_ms_dataset(dataset_id: str,
             try:
                 dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
             except Exception:
+                print(e)
                 continue
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
@@ -2152,11 +2154,25 @@ def get_dataset(
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
             dataset = _preprocess_self_cognition_dataset(dataset, model_name, model_author)
+        
+        def _reduce_column(row):
+            res = {}
+            if 'query' in row and isinstance(row['query'], (list, tuple)):
+                res['query'] = np.random.choice(row['query'])
+            if 'response' in row and isinstance(row['response'], (list, tuple)):
+                res['response'] = np.random.choice(row['response'])
+            return res
+
         train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
         else:
             train_d, val_d = dataset, None
+        
+        if train_d:
+            train_d = train_d.map(_reduce_column)
+        if val_d:
+            val_d = val_d.map(_reduce_column)
 
         assert train_d is not None or val_d is not None
         if train_d is not None:
