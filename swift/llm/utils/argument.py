@@ -152,6 +152,8 @@ class ArgumentsBase:
             elif quantization_bit == 8:
                 require_version('bitsandbytes')
                 load_in_4bit, load_in_8bit = False, True
+            else:
+                load_in_4bit, load_in_8bit = False, False
         else:
             load_in_4bit, load_in_8bit = False, False
 
