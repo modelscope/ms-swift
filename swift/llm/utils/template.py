@@ -147,6 +147,8 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
+    special_tokens = ['<image>', '<video>', '<audio>', '<box>', '<object>']
+
     def __init__(self,
                  prefix: Prompt,
                  prompt: Prompt,
@@ -162,8 +164,8 @@ class Template:
             system_prefix = prefix
             prefix = self._replace_system(prefix)
         self.prefix = prefix
-        self.prefix_has_system = system_prefix
-        if self.prefix_has_system is None:
+        self.system_prefix = system_prefix
+        if self.system_prefix is None:
             assert default_system is None, 'The template does not support `system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
@@ -229,18 +231,21 @@ class Template:
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
 
+    def check_example(self, example):
+        return True
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
+        if not self.check_example(example):
+            raise ValueError(f'The example: {example.get("query", None)} cannot use with this model.')
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
-        if 'images' in example and not isinstance(example['images'], (list, tuple)):
-            example['images'] = [example['images']]
         if history is None:
             history = []
         if len(history) > 0:
@@ -252,12 +257,12 @@ class Template:
         elif system == '':
             system = None
         else:
-            assert self.prefix_has_system is not None, (
+            assert self.system_prefix is not None, (
                 f'The template does not support `system`, template_type: {template_type}')
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
+            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos, example=example)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -314,28 +319,52 @@ class Template:
         if len(temp) > 0:
             res.append(''.join(temp))
             res_loss_scale.append(0.0)
-        return res, res_loss_scale
+
+        return Template.split_special_tokens(res, res_loss_scale)
+
+    @staticmethod
+    def split_special_tokens(context_list, loss_scale_list):
+        from swift.utils.utils import split_str_parts_by
+        res = []
+        loss_scale_res = []
+        for context, loss_scale in zip(context_list, loss_scale_list):
+            contexts = []
+            for d in split_str_parts_by(context, Template.special_tokens):
+                contexts.extend([d['key'], d['content']])
+            contexts = [c for c in contexts if c]
+            res.extend(contexts)
+            loss_scale_res.extend([loss_scale] * len(contexts))
+        return res, loss_scale_res
+
+    def _tokenize(self, context, **tokenizer_kwargs):
+        return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False,
+                              **tokenizer_kwargs)['input_ids']
+
+    def pre_tokenize(self, context, rd, **kwargs):
+        return context
+
+    def post_tokenize(self, token_list, rd, **kwargs):
+        return token_list
 
     def _encode_context_list(
         self,
         context_list: List[Context],
         loss_scale_list: List[float],
+        **kwargs
     ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
-        tokenizer = self.tokenizer
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
+            context = self.pre_tokenize(context, i, **kwargs)
             if isinstance(context, str):
-                curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
-                self._concat_tokenizer_kwargs(tokenizer_kwargs, curr_tokenizer_kwargs)
-                token_list = tokenizer(
-                    context, return_attention_mask=False, add_special_tokens=False,
-                    **curr_tokenizer_kwargs)['input_ids']
+                curr_tokenizer_kwargs = {**tokenizer_kwargs, **self._get_tokenizer_kwargs(context)}
+                token_list = self._tokenize(context, **curr_tokenizer_kwargs)
             else:
                 token_list = context
+            token_list = self.post_tokenize(token_list, i, **kwargs)
             input_ids += token_list
             if loss_scale_list[i] > 0.0:
                 labels += token_list
@@ -350,7 +379,8 @@ class Template:
                 history: History,
                 system: Optional[str],
                 truncation_strategy: str,
-                auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+                auto_add_bos: bool = False,
+                **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
@@ -365,7 +395,7 @@ class Template:
         if system is None:
             prefix = self.prefix
         else:
-            prefix = self.prefix_has_system
+            prefix = self.system_prefix
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
         history.append([query, response])
         for i, (q, r) in enumerate(history):
@@ -382,7 +412,8 @@ class Template:
                     context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
 
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
-        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list,
+                                                                                    loss_scale_list, **kwargs)
 
         if response is None:
             labels = None
@@ -406,11 +437,6 @@ class Template:
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""
         return {}
-
-    def _concat_tokenizer_kwargs(self, old_tokenizer_kwargs: Dict[str, Any],
-                                 curr_tokenizer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        assert len(old_tokenizer_kwargs) == 0
-        return curr_tokenizer_kwargs
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -555,6 +581,18 @@ register_template(
              ['{{SYSTEM}}\n\n']))
 
 
+class MultiModalTemplate(Template):
+
+    def replace_image_tag(self, prompt: Prompt):
+        raise NotImplemented
+
+    def replace_video_tag(self, prompt: Prompt):
+        raise NotImplemented
+
+    def replace_audio_tag(self, prompt: Prompt):
+        raise NotImplemented
+
+
 # You can set the query as '' to serve as a template for pre-training.
 class DefaultGenerationTemplate(Template):
 
@@ -675,6 +713,22 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
 
 class YiVLTemplate(Template):
 
+    def pre_tokenize(self, prompt, rd, **kwargs):
+        example = kwargs['example']
+        objects = example.get('objects')
+        try:
+            if prompt == '<image>':
+                return [-200]
+            if prompt == '<object>':
+                object_pair = objects[0]
+                return object_pair[0]
+            if prompt == '<bbox>':
+                object_pair = objects[0]
+                return object_pair[1]
+        finally:
+            if not objects[0][0] and not objects[0][1]:
+                objects.pop(0)
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
@@ -704,7 +758,7 @@ class YiVLTemplate(Template):
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate([], ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
+    YiVLTemplate([], ['### Human: ', '\n{{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
                  ['{{SYSTEM}}\n\n']),
     use_model=True,
     infer_media_type='round',

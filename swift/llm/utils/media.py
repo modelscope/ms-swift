@@ -269,38 +269,3 @@ class MediaCache:
         return final_folder
 
 
-class MediaTemplateMixin:
-
-    def __init__(self, media_type: Literal['initial_only', 'anywhere']):
-        self.media_type = media_type
-
-
-class MediaPrompt:
-
-    def __init__(self):
-        self.elements = []
-        self.types = []
-
-    def image(self, token_or_prompt: Union[str, List, int]):
-        self.elements.append(token_or_prompt)
-        self.types.append('image')
-
-    def video(self, token_or_prompt: Union[str, List, int]):
-        self.elements.append(token_or_prompt)
-        self.types.append('video')
-
-    def audio(self, token_or_prompt: Union[str, List, int]):
-        self.elements.append(token_or_prompt)
-        self.types.append('audio')
-
-    def text(self, token_or_prompt: Union[str, List, int]):
-        self.elements.append(token_or_prompt)
-        self.types.append('text')
-
-    def simplify(self, media_type: Literal['initial_only', 'anywhere'], round):
-        assert self.elements
-        assert media_type == 'anywhere' or round == 0
-        for type, element in zip(self.types, self.elements):
-
-
-
