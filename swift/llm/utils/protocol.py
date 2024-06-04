@@ -12,6 +12,9 @@ def random_uuid() -> str:
 @dataclass
 class Model:
     id: str  # model_type
+    is_chat: bool  # chat model or generation model
+    is_multimodal: bool = False
+
     object: str = 'model'
     created: int = field(default_factory=lambda: int(time.time()))
     owned_by: str = 'swift'
@@ -57,13 +60,16 @@ class XRequestConfig:
 class CompletionRequestMixin:
     model: str
     prompt: str
+    images: List[str] = field(default_factory=list)
 
 
 @dataclass
 class ChatCompletionRequestMixin:
     model: str
     messages: List[Dict[str, str]]
-    tools: List[Dict[str, Union[str, Dict]]]
+    images: List[str] = field(default_factory=list)
+    tools: List[Dict[str, Union[str, Dict]]] = None
+
 
 
 @dataclass

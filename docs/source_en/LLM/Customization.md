@@ -9,8 +9,8 @@
 We support three methods for **customizing datasets**.
 
 1. \[Recommended\] using command line arguments: It is more convenient to support custom datasets, and it supports four dataset formats (using `SmartPreprocessor`) as well as the `dataset_id` and `dataset_path`.
-2. Adding datasets to `dataset_info.json` is more flexible than the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--dataset_info_path xxx.json` (for users who prefer pip install over git clone to expand datasets).
-3. Registering datasets: More flexible than the first two methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
+2. Adding datasets to `dataset_info.json` is more flexible but cumbersome compared to the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--custom_dataset_info xxx.json` (for users who prefer pip install over git clone to expand datasets).
+3. Registering datasets: More flexible but cumbersome compared to the first and second methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
 
 ### 📌 \[Recommended\] using Command Line Arguments
 
@@ -92,6 +92,14 @@ Multi-Round Dialogue
 ```
 
 **Format 4:**
+
+```jsonl
+{"system": "00000", "conversation": [{"human": "11111", "assistant": "22222"}]}
+{"conversation": [{"human": "aaaaa", "assistant": "bbbbb"}]}
+{"conversation": [{"human": "AAAAA", "assistant": "BBBBB"}, {"human": "CCCCC", "assistant": "DDDDD"}, {"human": "EEEEE", "assistant": "FFFFF"}]}
+```
+
+**Format 5:**
 
 ```csv
 system,instruction,input,output
@@ -237,13 +245,13 @@ class CustomTemplateType:
 
 
 @register_model(CustomModelType.tigerbot_7b,
-                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
+                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama,
                 TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b,
-                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
+                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama,
                 TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b_chat,
-                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama,
                 CustomTemplateType.tigerbot)
 def get_tigerbot_model_tokenizer(model_dir: str,
                                  torch_dtype: Dtype,

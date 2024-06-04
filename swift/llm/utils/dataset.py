@@ -20,7 +20,8 @@ from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
+                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
+                         preprocess_sharegpt)
 from .template import History
 from .utils import download_dataset
 
@@ -213,21 +214,26 @@ def register_local_dataset(
 
 
 def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
+    preprocess_func = None
+    if 'columns' in d_info:
+        preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
+        d_info.pop('columns')
+        d_info['preprocess_func'] = preprocess_func
+    elif 'conversations' in d_info:
+        preprocess_func = ConversationsPreprocessor(**d_info['conversations'])
+        d_info.pop('conversations')
+        d_info['preprocess_func'] = preprocess_func
+
     if 'dataset_path' in d_info:
         base_dir = kwargs.pop('base_dir', None)
         register_local_dataset(dataset_name, d_info.pop('dataset_path', None), base_dir, **d_info)
         return
 
     assert 'dataset_id' in d_info or 'hf_dataset_id' in d_info
-    preprocess_func = None
-    if 'columns' in d_info:
-        preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
-        d_info.pop('columns')
-    elif 'conversations' in d_info:
-        preprocess_func = ConversationsPreprocessor(**d_info['conversations'])
-        d_info.pop('conversations')
+
     dataset_id = d_info.pop('dataset_id', None)
     subsets = d_info.pop('subsets', None)
+    preprocess_func = d_info.pop('preprocess_func', None)
     register_dataset(dataset_name, dataset_id, subsets, preprocess_func, get_dataset_from_repo, **d_info, exist_ok=True)
 
 
@@ -809,30 +815,10 @@ register_dataset(
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
-
-def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
-    query = []
-    response = []
-    history: List[History] = []
-    for d in tqdm(dataset):
-        if isinstance(d['conversation'], str):
-            try:
-                conversation = ast.literal_eval(d['conversation'])
-            except SyntaxError:
-                continue
-        query.append(conversation[-1]['human'])
-        response.append(conversation[-1]['assistant'])
-        h = []
-        for c in conversation[:-1]:
-            h.append([c['human'], c['assistant']])
-        history.append(h)
-    return HfDataset.from_dict({'query': query, 'response': response, 'history': history})
-
-
 register_dataset(
     DatasetName.sharegpt,
     'huangjintao/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
-    _preprocess_sharegpt,
+    preprocess_sharegpt,
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round'])
 

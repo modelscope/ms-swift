@@ -22,10 +22,9 @@ from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
-from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME, PREFIX_CHECKPOINT_DIR,
-                                  SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME, WEIGHTS_NAME,
-                                  IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
+from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
+                                  PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
+                                  WEIGHTS_NAME, IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
@@ -383,6 +382,8 @@ class SwiftMixin:
         sft_args = getattr(self, 'sft_args', None)
         # tokenizer
         if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
+            if hasattr(self.tokenizer, 'processor'):
+                self.tokenizer.processor.save_pretrained(output_dir)
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
