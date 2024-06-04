@@ -241,7 +241,7 @@ class SmartPreprocessor:
             },
             'conversations': {
                 'required': ['conversations'],
-                'preprocessor': ConversationsPreprocessor()
+                'preprocessor': ToolConversationsPreprocessor(tools_role='tools',conversations_key='conversations')
             },
             'chatml': {
                 'required': ['messages'],
