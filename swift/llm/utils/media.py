@@ -188,9 +188,12 @@ class MediaTagReplacer:
             medias = media_round
 
         assert len(medias) == len(history) + 1
-        for round, media in zip(history, medias[:-1]):
-            round[0] = self.merge(round[0], media)
-        query = self.merge(query, medias[-1])
+        # for round, media in zip(history, medias[:-1]):
+        #     round[0] = self.merge(round[0], media)
+        # query = self.merge(query, medias[-1])
+        medias = [m for m in medias if m]
+        medias = medias if not isinstance(medias[0], list) else medias[0]
+        medias = medias if len(medias) > 1 else medias[0]
 
         if objects:
             if isinstance(objects, list):
@@ -206,7 +209,8 @@ class MediaTagReplacer:
         d['query'] = query
         if 'response' in d:
             d['response'] = response
-        d[self.media_keys[self.media_type]] = medias
+        if medias:
+            d[self.media_keys[self.media_type]] = medias
 
 
 class MediaCache:

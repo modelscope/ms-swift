@@ -56,8 +56,7 @@
         "dataset_id": "AI-ModelScope/OpenOrca-Chinese",
         "columns": {
             "system_prompt": "system",
-            "question": "query",
-            "response": "response"
+            "question": "query"
         },
         "tags": ["QA", "zh", "general", "quality"],
         "hf_dataset_id": "yys/OpenOrca-Chinese",
@@ -94,6 +93,7 @@
     },
     "math-plus": {
         "dataset_id": "TIGER-Lab/MATH-plus",
+        "subsets": ["train"],
         "tags": ["qa", "math", "en", "quality"],
         "hf_dataset_id": "TIGER-Lab/MATH-plus"
     },

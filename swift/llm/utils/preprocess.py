@@ -16,7 +16,7 @@ PreprocessFunc = Callable[[HfDataset], HfDataset]
 def parse_medias(d, media_key=None):
     if isinstance(media_key, str):
         if media_key in d:
-            medias = media_key
+            medias = d[media_key]
         else:
             medias = None
     elif media_key:
@@ -195,7 +195,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             conversations = d[self.conversations_key]
             conversations = self.repair_conversations(conversations)
             if conversations is None:
-                return {'system': '', 'history': [], 'query': '', 'response': ''}
+                return self.empty_row
             lo = 0
             sys = None
             h: History = []
