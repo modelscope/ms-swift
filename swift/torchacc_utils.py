@@ -9,6 +9,8 @@ from typing import List, Optional, Tuple
 import safetensors
 import torch
 import torch.nn.functional as F
+import transformers
+from packaging import version
 from peft import PeftModel
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, trainer
@@ -276,6 +278,7 @@ def ta_trim_graph():
         ta.mark_step()
 
 
+# Model patch
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., :x.shape[-1] // 2]
@@ -283,7 +286,7 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
     Args:
@@ -304,8 +307,12 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     Returns:
         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
     """
-    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
-    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    if position_ids is not None:
+        cos = cos[position_ids].unsqueeze(unsqueeze_dim)
+        sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    else:
+        cos = cos.unsqueeze(unsqueeze_dim)
+        sin = sin.unsqueeze(unsqueeze_dim)
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -330,15 +337,25 @@ def patch_acc_model(model, args):
 
 def patch_llama_model(model):
 
-    def llama_attn_forward(
+    def update_causal_mask(
         self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        attention_mask: torch.Tensor,
+        input_tensor: torch.Tensor,
+        cache_position: torch.Tensor,
+        past_seen_tokens: int,
+    ):
+        # attention_mask is not supported in TorchAcc.
+        return None
+
+    def llama_attn_forward(self,
+                           hidden_states: torch.Tensor,
+                           attention_mask: Optional[torch.Tensor] = None,
+                           position_ids: Optional[torch.Tensor] = None,
+                           past_key_value: Optional[Tuple[torch.Tensor]] = None,
+                           output_attentions: bool = False,
+                           use_cache: bool = False,
+                           cache_position: Optional[torch.LongTensor] = None,
+                           **kwargs) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         from torchacc.ops import flash_attn_varlen_xla
         import einops
 
@@ -353,8 +370,13 @@ def patch_llama_model(model):
         kv_seq_len = key_states.shape[-2]
         assert past_key_value is None, 'past_key_value is not supported'
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        if version.parse(transformers.__version__) >= version.parse('4.36'):
+            cos, sin = self.rotary_emb(value_states, position_ids)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        else:
+            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
         assert not output_attentions, 'output_attentions is not supported'
 
         if past_key_value is not None:
@@ -378,6 +400,9 @@ def patch_llama_model(model):
 
     for layer in model.model.layers:
         layer.self_attn.forward = types.MethodType(llama_attn_forward, layer.self_attn)
+
+    if version.parse(transformers.__version__) >= version.parse('4.40'):
+        model.model._update_causal_mask = types.MethodType(update_causal_mask, model.model)
 
     return model
 
@@ -403,7 +428,13 @@ def patah_chatglm_model(model):
         x_out2 = x_out2.flatten(3)
         return torch.cat((x_out2, x_pass), dim=-1)
 
-    def chatglm_attn_forward(self, hidden_states, attention_mask, rotary_pos_emb, kv_cache=None, use_cache=True):
+    def chatglm_attn_forward(self,
+                             hidden_states,
+                             attention_mask,
+                             rotary_pos_emb,
+                             kv_cache=None,
+                             use_cache=True,
+                             **kwargs):
         # hidden_states: [sq, b, h]
 
         # =================================================
@@ -508,14 +539,13 @@ def patah_chatglm_model(model):
 
 def patch_baichuan_model(model):
 
-    def baichuan_attn_forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    def baichuan_attn_forward(self,
+                              hidden_states: torch.Tensor,
+                              attention_mask: Optional[torch.Tensor] = None,
+                              past_key_value: Optional[Tuple[torch.Tensor]] = None,
+                              output_attentions: bool = False,
+                              use_cache: bool = False,
+                              **kwargs) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
 
         import einops
 
@@ -636,18 +666,17 @@ def patch_qwen2_model(model):
 
         return attn_output, attn_weights, past_key_value
 
-    def qwen2_forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ):
+    def qwen2_forward(self,
+                      input_ids: torch.LongTensor = None,
+                      attention_mask: Optional[torch.Tensor] = None,
+                      position_ids: Optional[torch.LongTensor] = None,
+                      past_key_values: Optional[List[torch.FloatTensor]] = None,
+                      inputs_embeds: Optional[torch.FloatTensor] = None,
+                      use_cache: Optional[bool] = None,
+                      output_attentions: Optional[bool] = None,
+                      output_hidden_states: Optional[bool] = None,
+                      return_dict: Optional[bool] = None,
+                      **kwargs):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states)
