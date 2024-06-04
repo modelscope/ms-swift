@@ -178,7 +178,7 @@ class Template:
         self.auto_add_bos = auto_add_bos
         self._is_init = False
         self.tools_prompt = tools_prompt
-        self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt # default as user
+        self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
 
     @staticmethod
     def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
@@ -234,12 +234,11 @@ class Template:
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
-        tool: Optional[str] = example.get('tool', None)
-        tools: Optional[list]  = example.get('tools', None)
-        conversations: Optional[list] = example.get('conversations', None)
-        if conversations is not None:
+        tools: Optional[list] = example.get('tools', None)
+        messages: Optional[list] = example.get('messages', None)
+        if messages is not None:
             # encode conversations with tool role
-            inputs, tokenizer_kwargs = self._encode_with_tool(conversations, tools, self.truncation_strategy)
+            inputs, tokenizer_kwargs = self._encode_with_tool(messages, tools, self.truncation_strategy)
             if inputs.get('labels') is None:
                 inputs.pop('loss_scale', None)
             return inputs, tokenizer_kwargs
@@ -263,7 +262,7 @@ class Template:
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query, response, history, system, tool, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
+            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -408,20 +407,19 @@ class Template:
         if self.use_loss_scale:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
-    
-    def _encode_with_tool(self, conversations:list, tools: list, truncation_strategy:str,  auto_add_bos: bool = False):
+
+    def _encode_with_tool(self, messages: list, tools: list, truncation_strategy: str, auto_add_bos: bool = False):
         """
         encode conversations which have system/user/assistant/function roles
 
         return: inputs, tokenizer_kwargs
         """
-        history = []
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
-        if conversations[0]['from'] == 'system':
-            system = conversations[0]['content']
-            conversations.pop(0)
-        
+        if messages[0]['from'] == 'system':
+            system = messages[0]['content']
+            messages.pop(0)
+
         if system is None:
             prefix = self.prefix
         else:
@@ -431,7 +429,7 @@ class Template:
             if system is None:
                 system = ''
             system += get_tools_prompt(tools, self.tools_prompt)
-        
+
         if auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
@@ -439,18 +437,18 @@ class Template:
                 loss_scale_list.append(0.)
         # {SYSTEM} -> SYSTEM
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
-        
-        for i in range(0, len(conversations), 2):
-            context_list = self.prompt.copy() if conversations[i]['from'] == 'user' else self.tool_prompt.copy()
-            if i < len(conversations) - 2:
+
+        for i in range(0, len(messages), 2):
+            context_list = self.prompt.copy() if messages[i]['from'] == 'user' else self.tool_prompt.copy()
+            if i < len(messages) - 2:
                 context_list.append('{{RESPONSE}}')
                 context_list += self.chat_sep
-            elif conversations[i+1]['content'] is not None:
+            elif messages[i + 1]['value'] is not None:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
-            q = conversations[i]['content']
-            r = conversations[i+1]['content']
+            q = messages[i]['value']
+            r = messages[i + 1]['value']
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
@@ -458,7 +456,7 @@ class Template:
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
-        response = conversations[-1]['content'] if conversations[-1]['from'] == 'assistant' else None
+        response = messages[-1]['content'] if messages[-1]['from'] == 'assistant' else None
 
         if response is None:
             labels = None
@@ -478,7 +476,6 @@ class Template:
         if self.use_loss_scale:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
-
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""

@@ -11,10 +11,11 @@ from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM, ModelType,
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, SwiftPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
-from .protocol import (ChatCompletionMessageToolCall,ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
-                       ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
-                       CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
-                       CompletionStreamResponse, DeltaMessage, Function, Model, ModelList, UsageInfo, XRequestConfig, random_uuid)
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
+                       ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
+                       ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
+                       CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, Function, Model,
+                       ModelList, UsageInfo, XRequestConfig, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWords, Template, TemplateType,
                        get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,

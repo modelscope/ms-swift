@@ -18,10 +18,11 @@ from swift.llm.agent.utils import split_action_action_input
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import ChatCompletionResponse  # noqa
-from .utils import (TEMPLATE_MAPPING, ChatCompletionRequest, ChatCompletionResponse,ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                    ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
-                    CompletionResponseChoice, CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage,
-                    DeployArguments, Model, ModelList, UsageInfo,decode_base64, inference, inference_stream, messages_to_history,
+from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest,
+                    ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
+                    ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
+                    CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
+                    Model, ModelList, UsageInfo, decode_base64, inference, inference_stream, messages_to_history,
                     random_uuid)
 
 logger = get_logger()
@@ -153,8 +154,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         token_str = tokenizer.decode(template.suffix[-1])
         if token_str not in generation_config.stop:
             generation_config.stop.append(token_str)
-    if True: # if args.tool_prompt == 'default'
-        generation_config.stop.append("Observation:")
+    if True:  # if args.tool_prompt == 'default'
+        generation_config.stop.append('Observation:')
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stream': request.stream})
     logger.info(request_info)
@@ -199,7 +200,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 action, action_input = split_action_action_input(response)
                 if action is not None:
                     toolcall = ChatCompletionMessageToolCall(
-                        id=f'cmpl-{random_uuid()}',
+                        id=f'toolcall-{random_uuid()}',
                         type='function',
                         function=Function(name=action, arguments=action_input))
                     choice = [
@@ -257,7 +258,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                         action, action_input = split_action_action_input(total_res[output.index])
                         if action is not None:
                             toolcall = ChatCompletionMessageToolCall(
-                                id=f'cmpl-{random_uuid()}',
+                                id=f'toolcall-{random_uuid()}',
                                 type='function',
                                 function=Function(name=action, arguments=action_input))
                     choice = ChatCompletionResponseStreamChoice(
@@ -408,7 +409,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             action, action_input = split_action_action_input(response)
             if action is not None:
                 toolcall = ChatCompletionMessageToolCall(
-                    id=f'cmpl-{random_uuid()}', type='function', function=Function(name=action, arguments=action_input))
+                    id=f'toolcall-{random_uuid()}',
+                    type='function',
+                    function=Function(name=action, arguments=action_input))
                 choices = [
                     ChatCompletionResponseChoice(
                         index=0,
@@ -448,13 +451,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **adapter_kwargs)
 
         print_idx = 0
-        total_res = ""
+        total_res = ''
         is_finished = False
         while not is_finished:
             try:
                 response, _ = next(gen)
             except StopIteration:
-                is_finished = True            
+                is_finished = True
             num_prompt_tokens = generation_info['num_prompt_tokens']
             num_generated_tokens = generation_info['num_generated_tokens']
             usage_info = UsageInfo(
@@ -470,12 +473,14 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                     action, action_input = split_action_action_input(total_res)
                     if action:
                         toolcall = ChatCompletionMessageToolCall(
-                            id=f'cmpl-{random_uuid()}',
+                            id=f'toolcall-{random_uuid()}',
                             type='function',
                             function=Function(name=action, arguments=action_input))
                 choices = [
                     ChatCompletionResponseStreamChoice(
-                        index=0, delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall), finish_reason=None)
+                        index=0,
+                        delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
+                        finish_reason=None)
                 ]
                 resp = ChatCompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -487,7 +492,6 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
         yield 'data:[DONE]\n\n'
-
 
     if request.stream:
         return StreamingResponse(_generate_stream())

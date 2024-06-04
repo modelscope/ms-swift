@@ -29,7 +29,7 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images', 'tools', 'conversations'}:
+        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images', 'tools', 'messages'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset

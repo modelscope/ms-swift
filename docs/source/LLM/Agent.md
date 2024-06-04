@@ -156,7 +156,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
           "content": "What'\''s the weather like in Boston today?"
         }
       ],
-  "tools": 
+  "tools":
     {
       "type": "function",
       "function": {
@@ -188,4 +188,3 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 ```json
 data:{"model": "llama3-8b-instruct", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "'fahrenheit'}\n\nObservation:", "tool_calls": {"id": "cmpl-99cbafaa0c744a449d57b240757c0776", "function": {"arguments": " {'location': 'Boston, MA', 'unit': 'fahrenheit'}", "name": " get_current_weather"}, "type": "function"}}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 262, "completion_tokens": 54, "total_tokens": 316}, "id": "chatcmpl-9d5c1c0d2f104459bf7d1b5b0ce3f85e", "object": "chat.completion.chunk", "created": 1717037941}
 ```
-

@@ -19,7 +19,7 @@ class SwiftPreprocessor:
             history: List[History] = []
             for h in tqdm(old_history):
                 if isinstance(h, str):
-                    h = ast.literal_eval(old_h)
+                    h = ast.literal_eval(h)
                 elif h is None:
                     h = []
                 if len(h) > 0:
@@ -171,23 +171,26 @@ class ConversationsPreprocessor:
         dataset = HfDataset.from_dict(kwargs)
         return dataset
 
-class ToolConversationsPreprocessor:
-    # conversations which include tools and tool role
-    def __init__(self,
-                 tools_role: str = 'tools', # fucntion
-                 conversations_key: str = 'conversations',
-                 repair_conversations: Callable[[Union[str, Dict[str, str]]],
-                                                Optional[Dict[str, str]]] = _default_repair_conversations,
-                 error_strategy: Literal['delete', 'raise'] = 'delete'):
-        self.tools_role = tools_role
-        self.conversations_key = conversations_key
 
-        self.repair_conversations = repair_conversations
+class ToolMessagesPreprocessor:
+    # messages which include tools and tool role
+    def __init__(
+            self,
+            tools_role: str = 'tools',  # fucntion
+            messages_key: str = 'messages',
+            repair_messages: Callable[[Union[str, Dict[str, str]]],
+                                      Optional[Dict[str, str]]] = _default_repair_conversations,
+            error_strategy: Literal['delete', 'raise'] = 'delete'):
+        # messages: [{'role': xxx , 'content': xxx},...]
+        self.tools_role = tools_role
+        self.messages_key = messages_key
+
+        self.repair_messages = repair_messages
         self.error_strategy = error_strategy
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
-        tools= []
-        conversations = []
+        tools = []
+        messages = []
         has_tools = False
         for d in tqdm(dataset):
             try:
@@ -196,17 +199,17 @@ class ToolConversationsPreprocessor:
                     tool = d['tools']
                     has_tools = True
                 tools.append(tool)
-                conversations = d[self.conversations_key]
-                conversations = self.repair_conversations(conversations)
-                conversations.append(conversations)
+                message = d[self.messages_key]
+                message = self.repair_messages(message)
+                messages.append(message)
             except (AssertionError, SyntaxError):
                 if self.error_strategy == 'raise':
-                    raise ValueError(f'conversations: {conversations}')
+                    raise ValueError(f'messages: {message}')
         kwargs = {}
         if has_tools:
             kwargs['tools'] = tools
         kwargs.update({
-            'conversations': conversations,
+            'messages': messages,
         })
         dataset = HfDataset.from_dict({**kwargs})
         return dataset
@@ -282,9 +285,10 @@ class SmartPreprocessor:
                 'preprocessor': AlpacaPreprocessor()
             },
             'conversations': {
-                'required': ['conversations'], # for test
-                'preprocessor': ToolConversationsPreprocessor(tools_role='tools',conversations_key='conversations')
+                'required': ['conversations'],  # for test
+                'preprocessor': ToolConversationsPreprocessor(tools_role='tools', conversations_key='conversations')
             },
+            # TODO: default tool-calling preprocessor?
             'chatml': {
                 'required': ['messages'],
                 'preprocessor':

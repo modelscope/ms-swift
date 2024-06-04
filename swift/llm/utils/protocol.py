@@ -71,7 +71,6 @@ class ChatCompletionRequestMixin:
     tools: List[Dict[str, Union[str, Dict]]] = None
 
 
-
 @dataclass
 class CompletionRequest(XRequestConfig, CompletionRequestMixin):
     pass
@@ -92,7 +91,7 @@ class UsageInfo:
 @dataclass
 class Function:
     arguments: Optional[str] = None
-    name: str = ""
+    name: str = ''
 
 
 @dataclass
