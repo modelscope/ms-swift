@@ -235,9 +235,10 @@ class Template:
         conversations: Optional[list] = example.get('conversations', None)
         if conversations is not None:
             # encode conversations with tool role
-
-
-            return 
+            inputs, tokenizer_kwargs = self._encode_with_tool(conversations, tools, self.truncation_strategy)
+            if inputs.get('labels') is None:
+                inputs.pop('loss_scale', None)
+            return inputs, tokenizer_kwargs
         if history is None:
             history = []
         if len(history) > 0:
@@ -348,7 +349,6 @@ class Template:
                 response: Optional[str],
                 history: History,
                 system: Optional[str],
-                tool: Optional[str],
                 truncation_strategy: str,
                 auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
@@ -412,31 +412,39 @@ class Template:
         history = []
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
-        if auto_add_bos:
-            bos_token_id = self.tokenizer.bos_token_id
-            if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
-                res_context_list.append([bos_token_id])
-                loss_scale_list.append(0.)
-
         if conversations[0]['from'] == 'system':
             system = conversations[0]['content']
+            conversations.pop(0)
         
         if system is None:
             prefix = self.prefix
         else:
             prefix = self.prefix_has_system
+
+        if tools:
+            if system is None:
+                system = ''
+            system += get_tools_prompt(tools, self.tools_prompt)
+        
+        if auto_add_bos:
+            bos_token_id = self.tokenizer.bos_token_id
+            if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
+                res_context_list.append([bos_token_id])
+                loss_scale_list.append(0.)
+        # {SYSTEM} -> SYSTEM
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
         
-        history.append([conversations[-2]['content'], conversations[-1]['content']])
-        for i, (q, r) in enumerate(history):
-            context_list = self.prompt.copy()
-            if i < len(history) - 1:
+        for i in range(0, len(conversations), 2):
+            context_list = self.prompt.copy() if conversations[i]['from'] == 'user' else self.tool_prompt.copy()
+            if i < len(conversations) - 2:
                 context_list.append('{{RESPONSE}}')
                 context_list += self.chat_sep
-            elif r is not None:
+            elif conversations[i+1]['content'] is not None:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
+            q = conversations[i]['content']
+            r = conversations[i+1]['content']
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)

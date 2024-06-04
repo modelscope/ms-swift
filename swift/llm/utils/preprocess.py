@@ -247,6 +247,12 @@ class SmartPreprocessor:
                 'required': ['messages'],
                 'preprocessor':
                 ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
+            },
+            # for test
+            'toolconv':{
+                'required': ['tools', 'conversations'],
+                'preprocessor':
+                ToolConversationsPreprocessor(tools_role='tools',conversations_key='conversations')
             }
         }
 
