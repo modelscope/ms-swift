@@ -240,7 +240,7 @@ class SmartPreprocessor:
                 'preprocessor': AlpacaPreprocessor()
             },
             'conversations': {
-                'required': ['conversations'],
+                'required': ['conversations'], # for test
                 'preprocessor': ToolConversationsPreprocessor(tools_role='tools',conversations_key='conversations')
             },
             'chatml': {
@@ -248,7 +248,6 @@ class SmartPreprocessor:
                 'preprocessor':
                 ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
             },
-            # for test
             'toolconv':{
                 'required': ['tools', 'conversations'],
                 'preprocessor':
