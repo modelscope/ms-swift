@@ -14,7 +14,7 @@ import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                         GenerationConfig, GPTQConfig, snapshot_download)
-from modelscope.hub.utils.utils import get_cache_dir
+from swift.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
