@@ -79,6 +79,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --output_dir output \
 
 # Using your own dataset
+# custom dataset format: https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Customization.md#custom-datasets
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset chatml.jsonl \

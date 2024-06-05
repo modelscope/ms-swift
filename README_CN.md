@@ -48,6 +48,10 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
+- 🔥2024.06.05: 支持glm4系列大模型和glm4v-9b-chat多模态大模型, 可以查看[glm4v最佳实践](docs/source/Multi-Modal/glm4v最佳实践.md).
+- 🔥2024.06.01: 支持**SimPO**训练，使用`swift simpo`来开始训练，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/SimPO算法最佳实践.md)
+- 🔥2024.06.01: 支持多模态大模型部署, 可以查看[多模态部署文档](docs/source/Multi-Modal/MLLM部署文档.md).
+- 2024.05.31: 支持Mini-Internvl多模态模型, 使用model_type `mini-internvl-chat-2b-v1_5`和`mini-internvl-chat-4b-v1_5`来训练.
 - 2024.05.24: 支持Phi3多模态模型, 使用model_type `phi3-vision-128k-instruct`来训练.
 - 2024.05.22: 支持DeepSeek-V2-lite系列模型, model_type为 `deepseek-v2-lite`和`deekseek-v2-lite-chat`
 - 2024.05.22: 支持TeleChat-12b-v2模型和量化版本, model_type为 `telechat-12b-v2`和`telechat-12b-v2-gptq-int4`
@@ -59,7 +63,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 - 2024.05.11: 支持使用[hqq](https://github.com/mobiusml/hqq)和[eetq](https://github.com/NetEase-FuXi/EETQ)进行qlora训练和量化推理，可以查看[LLM量化文档](https://github.com/modelscope/swift/tree/main/docs/source/LLM/LLM量化文档.md)
 - 2024.05.10: 支持序列并行. 先安装`pip install .[seq_parallel]`, 之后在DDP环境中添加`--sequence_parallel_size n`即可使用!
 - 2024.05.08: 支持DeepSeek-V2-Chat模型, 训练参考[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/deepseek-v2-chat/lora_ddp_ds3/sft.sh)。支持InternVL-Chat-V1.5-Int8模型，最佳实践参考[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/internvl最佳实践.md).
-- 🔥2024.05.07: 支持**ORPO**训练，使用`swift orpo`来开始使用， 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/ORPO算法最佳实践.md)
+- 🔥2024.05.07: 支持**ORPO**训练，使用`swift orpo`来开始训练， 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/ORPO算法最佳实践.md)
 - 2024.05.07: 支持来自xtuner的Llava-Llama3模型，model_type为`llava-llama-3-8b-v1_1`.
 - 2024.04.29: 支持InternVL-Chat-V1.5的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/internvl最佳实践.md).
 - 🔥2024.04.26: 支持**LISA** 和 **unsloth**训练！指定 `--lisa_activated_layers=2` 来开启LISA（显存使用降低至全参训练的30%），指定 `--tuner_backend unsloth` 来使用unsloth，用更少的显存（30%或更少）更快的速度（5x）训练一个超大模型！
@@ -233,7 +237,7 @@ swift web-ui
 | -------- |------------------------------------|
 | 预训练   | 文本生成                               |
 | 微调     | 单轮/多轮<br>Agent训练/自我认知<br>多模态视觉/多模态语音 |
-| 人类对齐 | DPO<br>ORPO                                |
+| 人类对齐 | DPO<br>ORPO<br>SimPO                |
 | 文生图   | DreamBooth等                        |
 | 文生视频 | -                                  |
 
@@ -530,9 +534,10 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llava                                     | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文 | 7B-34B          | chat模型 |
 | Llava-Next                                | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 8B-110B         | chat模型 |
 | mPLUG-Owl                                 | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文 | 11B             | chat模型 |
-| InternVL                                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 25.5B<br>包含量化版本 | chat模型 |
+| InternVL                                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 2B-25.5B<br>包含量化版本 | chat模型 |
 | Llava-llama3                              | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文 | 8B              | chat model |
-| Phi3                                      | Microsoft                                                                  | 英文 | 4B              | chat model |
+| Phi3-Vision                                | 微软              | 英文 | 4B              | chat model |
+| PaliGemma                                  | Google              | 英文 | 3B              | chat model |
 
 #### 扩散模型
 
@@ -610,7 +615,6 @@ make docs
 | [LLM评测](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.md) |
 | [LLM量化](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md) |
 | [LLM部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md) |
-| [DPO人类对齐训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/DPO%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) |
 | [AnimateDiff训练](https://github.com/modelscope/swift/blob/main/docs/source/AIGC/AnimateDiff%E5%BE%AE%E8%B0%83%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
 
 
@@ -632,6 +636,9 @@ make docs
 |  [Qwen1.5最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/Qwen1.5%E5%85%A8%E6%B5%81%E7%A8%8B%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
 | [多模态模型训练最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/Multi-Modal/index.md) |
 | [NPU推理与微调最佳实践](https://github.com/modelscope/swift/blob/main/docs/source/LLM/NPU%E6%8E%A8%E7%90%86%E4%B8%8E%E5%BE%AE%E8%B0%83%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+| [DPO人类对齐训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/DPO%E8%AE%AD%E7%BB%83%E6%96%87%E6%A1%A3.md) |
+| [ORPO人类对齐训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/ORPO%E7%AE%97%E6%B3%95%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
+| [SimPO人类对齐训练](https://github.com/modelscope/swift/blob/main/docs/source/LLM/SimPO%E7%AE%97%E6%B3%95%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md) |
 
 
 ### 深度学习教程

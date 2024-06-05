@@ -31,7 +31,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type minicpm-v-3b-chat
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< 描述这种图片
+<<< 描述这张图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 该图像的特点是一只黑白相间的猫，它的眼睛睁得大大的，似乎在凝视着相机。这只猫看起来很小，可能是一只幼猫。
 --------------------------------------------------

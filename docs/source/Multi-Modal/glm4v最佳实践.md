@@ -1,6 +1,5 @@
 
-# mPLUG-Owl2 最佳实践
-以下内容以`mplug-owl2_1-chat`为例, 你也可以选择`mplug-owl2-chat`.
+# GLM4V 最佳实践
 
 ## 目录
 - [环境准备](#环境准备)
@@ -17,37 +16,44 @@ pip install -e '.[llm]'
 ```
 
 模型链接:
-- mplug-owl2_1-chat: [https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary](https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary)
-- mplug-owl2-chat: [https://modelscope.cn/models/iic/mPLUG-Owl2/summary](https://modelscope.cn/models/iic/mPLUG-Owl2/summary)
-
+- glm4v-9b-chat: [https://modelscope.cn/models/ZhipuAI/glm-4v-9b/summary](https://modelscope.cn/models/ZhipuAI/glm-4v-9b/summary)
 
 ## 推理
 
-推理`mplug-owl2_1-chat`:
+推理glm4v-9b-chat:
 ```shell
-# Experimental environment: A10, 3090, V100...
-# 24GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type mplug-owl2_1-chat
+# Experimental environment: A100
+# 30GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type glm4v-9b-chat
 ```
 
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< Describe this image.
+<<< 描述这张图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-The image features a close-up of a cute, gray and white kitten with big blue eyes. The kitten is sitting on a table, looking directly at the viewer. The scene captures the kitten's adorable features, including its whiskers and the fur on its face. The kitten appears to be staring into the camera, creating a captivating and endearing atmosphere.
+这是一张特写照片，展示了一只毛茸茸的小猫。小猫的眼睛大而圆，呈深蓝色，眼珠呈金黄色，非常明亮。它的鼻子短而小巧，是粉色的。小猫的嘴巴紧闭，胡须细长。它的耳朵竖立着，耳朵内侧是白色的，外侧是棕色的。小猫的毛发看起来柔软而浓密，主要是白色和棕色相间的条纹图案。背景模糊不清，但似乎是一个室内环境。
 --------------------------------------------------
-<<< How many sheep are in the picture?
+<<< clear
+<<< 图中有几只羊
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
-There are four sheep in the picture.
+图中共有四只羊。其中最左边的羊身体较小，后边三只羊体型逐渐变大，且最右边的两只羊体型大小一致。
 --------------------------------------------------
-<<< What is the calculation result?
+<<< clear
+<<< 计算结果是多少?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is 1452 + 45304 = 46756.
+1452+45304=46756
 --------------------------------------------------
-<<< Write a poem based on the content of the picture.
+<<< clear
+<<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-In the stillness of the night, a boat glides across the water, its light shining bright. The stars twinkle above, casting a magical glow. A man and a dog are on board, enjoying the serene journey. The boat floats gently, as if it's floating on air. The calm waters reflect the stars, creating a breathtaking scene. The man and his dog are lost in their thoughts, taking in the beauty of nature. The boat seems to be floating in a dream, as if they are on a journey to find their way back home.
+湖光山色映小船，
+
+星辉点点伴旅程。
+
+人在画中寻诗意，
+
+心随景迁忘忧愁。
 """
 ```
 
@@ -82,7 +88,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.mplug_owl2_1_chat
+model_type = ModelType.glm4v_9b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -93,29 +99,28 @@ template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = 'How far is it from each city?'
+query = '距离各城市多远？'
 response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
-query = 'Which city is the farthest?'
-images = images * 2
+query = '距离最远的城市是哪？'
+images = images
 gen = inference_stream(model, template, query, history, images=images)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
-for response, history in gen:
+for response, _ in gen:
     delta = response[print_idx:]
     print(delta, end='', flush=True)
     print_idx = len(response)
 print()
-print(f'history: {history}')
+
 """
-query: How far is it from each city?
-response: From the given information, it is 14 km from the city of Mata, 62 km from Yangjiang, and 293 km from Guangzhou.
-query: Which city is the farthest?
-response: The farthest city is Guangzhou, which is 293 km away.
-history: [['How far is it from each city?', 'From the given information, it is 14 km from the city of Mata, 62 km from Yangjiang, and 293 km from Guangzhou.'], ['Which city is the farthest?', 'The farthest city is Guangzhou, which is 293 km away.']]
+query: 距离各城市多远？
+response: 距离马踏还有14Km，距离阳江还有62Km，距离广州还有293Km。
+query: 距离最远的城市是哪？
+response: 距离最远的城市是广州，有293Km。
 """
 ```
 
@@ -129,23 +134,30 @@ road:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
-(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`. 支持全参数微调.)
+(默认对语言和视觉模型的qkv进行lora微调. 如果你想对所有linear都进行微调, 可以指定`--lora_target_modules ALL`)
 ```shell
-# Experimental environment: A10, 3090, V100...
-# 24GB GPU memory
+# Experimental environment: A100
+# 40GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type mplug-owl2_1-chat \
+    --model_type glm4v-9b-chat \
     --dataset coco-en-2-mini \
+
+# DDP
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_type glm4v-9b-chat \
+    --dataset coco-en-2-mini#10000 \
+    --ddp_find_unused_parameters true \
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(支持多轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+(支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path", "image_path2", "image_path3"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
 ```
 
 
@@ -153,17 +165,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/mplug-owl2_1-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/glm4v-9b-chat/vx-xxx/checkpoint-xxx \
     --load_dataset_config true \
 ```
 
 **merge-lora**并推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/mplug-owl2_1-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/glm4v-9b-chat/vx-xxx/checkpoint-xxx \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/mplug-owl2_1-chat/vx-xxx/checkpoint-xxx-merged \
+    --ckpt_dir output/glm4v-9b-chat/vx-xxx/checkpoint-xxx-merged \
     --load_dataset_config true
 ```

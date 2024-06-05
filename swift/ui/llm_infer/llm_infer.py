@@ -362,13 +362,7 @@ class LLMInfer(BaseUI):
         stream_resp_with_history = ''
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
-                model_type,
-                prompt,
-                old_history,
-                system=system,
-                port=args['port'],
-                adapter_name='default-lora' if sft_type in ('lora', 'longlora') else None,
-                request_config=request_config)
+                model_type, prompt, old_history, system=system, port=args['port'], request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
                 qr_pair = [prompt, stream_resp_with_history]
@@ -376,12 +370,7 @@ class LLMInfer(BaseUI):
                 yield '', total_history
         else:
             request_config.max_tokens = max_new_tokens
-            stream_resp = inference_client(
-                model_type,
-                prompt,
-                port=args['port'],
-                adapter_name='default-lora' if sft_type in ('lora', 'longlora') else None,
-                request_config=request_config)
+            stream_resp = inference_client(model_type, prompt, port=args['port'], request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].text
                 qr_pair = [prompt, stream_resp_with_history]

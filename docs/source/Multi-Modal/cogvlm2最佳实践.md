@@ -32,7 +32,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm2-19b-chat
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< 描述这种图片
+<<< 描述这张图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 这是一张特写照片，展示了一只灰色和白色相间的猫。这只猫的眼睛是灰色的，鼻子是粉色的，嘴巴微微张开。它的毛发看起来柔软而蓬松，背景模糊，突出了猫的面部特征。
 --------------------------------------------------
