@@ -1,4 +1,5 @@
 accelerate
+binpacking
 dacite
 jieba
 matplotlib
@@ -16,4 +17,3 @@ tqdm
 transformers>=4.33,<4.42
 transformers_stream_generator
 trl>=0.8.2
-binpacking
