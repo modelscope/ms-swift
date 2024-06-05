@@ -172,49 +172,6 @@ class ConversationsPreprocessor:
         return dataset
 
 
-class ToolMessagesPreprocessor:
-    # messages which include tools and tool role
-    def __init__(
-            self,
-            tools_role: str = 'tools',  # fucntion
-            messages_key: str = 'messages',
-            repair_messages: Callable[[Union[str, Dict[str, str]]],
-                                      Optional[Dict[str, str]]] = _default_repair_conversations,
-            error_strategy: Literal['delete', 'raise'] = 'delete'):
-        # messages: [{'role': xxx , 'content': xxx},...]
-        self.tools_role = tools_role
-        self.messages_key = messages_key
-
-        self.repair_messages = repair_messages
-        self.error_strategy = error_strategy
-
-    def __call__(self, dataset: HfDataset) -> HfDataset:
-        tools = []
-        messages = []
-        has_tools = False
-        for d in tqdm(dataset):
-            try:
-                tool = []
-                if 'tools' in d:
-                    tool = d['tools']
-                    has_tools = True
-                tools.append(tool)
-                message = d[self.messages_key]
-                message = self.repair_messages(message)
-                messages.append(message)
-            except (AssertionError, SyntaxError):
-                if self.error_strategy == 'raise':
-                    raise ValueError(f'messages: {message}')
-        kwargs = {}
-        if has_tools:
-            kwargs['tools'] = tools
-        kwargs.update({
-            'messages': messages,
-        })
-        dataset = HfDataset.from_dict({**kwargs})
-        return dataset
-
-
 class ComposePreprocessor:
 
     def __init__(self, preprocessor_list: List[PreprocessFunc]) -> None:
