@@ -217,6 +217,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
+            else:
+                return self.empty_row
         kwargs = {'system': system, 'history': history}
         kwargs.update({
             'query': query,

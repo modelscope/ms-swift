@@ -301,7 +301,7 @@ def load_ms_dataset(dataset_id: str,
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
             try:
                 dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
-            except Exception:
+            except Exception as e:
                 print(e)
                 continue
             if hasattr(dataset, 'to_hf_dataset'):
@@ -409,29 +409,17 @@ register_dataset(
 def preprocess_sharegpt_4o_images(dataset):
     url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
     local_dir = MediaCache.download(url, 'sharegpt_4o_images')
-
+    prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
     def preprocess_row(row):
         image = row['image']
-        image = os.path.join(local_dir, image)
-        return {'image', image}
+        image = os.path.join(prefix_path, image)
+        if not os.path.exists(image):
+            return {'image': '', 'conversations': []}
+        return {'image': image}
 
-    dataset = dataset.map(preprocess_row)
+    dataset = dataset.map(preprocess_row, load_from_cache_file=False)
     return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
-                                     media_type='image')(dataset)
-
-
-def preprocess_sharegpt_4o_videos(dataset):
-    url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=videos.zip'
-    local_dir = MediaCache.download(url, 'sharegpt_4o_images')
-
-    def preprocess_row(row):
-        video = row['video']
-        video = os.path.join(local_dir, video)
-        return {'video', video}
-
-    dataset = dataset.map(preprocess_row)
-    return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
-                                     media_type='video')(dataset)
+                                     media_type='image', error_strategy='delete')(dataset)
 
 
 register_dataset(
@@ -440,16 +428,7 @@ register_dataset(
     ['image_caption'],
     preprocess_sharegpt_4o_images,
     get_dataset_from_repo,
-    tags=['vqa', 'multi-modal'],
-    hf_dataset_id='OpenGVLab/ShareGPT-4o')
-
-
-register_dataset(
-    DatasetName.sharegpt_4o_video,
-    'AI-ModelScope/ShareGPT-4o',
-    ['video_caption'],
-    preprocess_sharegpt_4o_videos,
-    get_dataset_from_repo,
+    split=['images'],
     tags=['vqa', 'multi-modal'],
     hf_dataset_id='OpenGVLab/ShareGPT-4o')
 
@@ -1286,8 +1265,8 @@ def preprocess_ocr_vqa(dataset):
     def preprocess(row):
         image = row['image']
         idx = np.random.choice(range(len(row['questions'])))
-        query = np.random.choice(row['questions'][idx])
-        response = np.random.choice(row['rationales'][idx])
+        query = row['questions'][idx]
+        response = row['answers'][idx]
         return {
             'response': response,
             'images': image,
@@ -1444,20 +1423,18 @@ register_dataset(
 def preprocess_gqa(dataset):
     all_image_dataset = dataset['train_all_images']
     all_instruct_dataset = dataset['train_all_instructions']
-    import pandas as pd
-    df1 = all_image_dataset.to_pandas()
-    df2 = all_instruct_dataset.to_pandas()
-    merged_df = pd.merge(df1, df2, left_on='id', right_on='imageId', how="inner")
-    dataset = HfDataset.from_pandas(merged_df)
-
+    dict_index = {}
+    for idx, row in tqdm(enumerate(all_image_dataset)):
+        dict_index[row['id']] = idx
+    
     def preprocess_row(row):
         return {
             'query': row['question'],
             'response': row['fullAnswer'],
-            'images': row['image'],
+            'images': all_image_dataset[dict_index[row['imageId']]],
         }
 
-    return dataset.map(preprocess_row)
+    return all_instruct_dataset.map(preprocess_row)
 
 
 def get_gqa_dataset(dataset_id: str,
@@ -1477,8 +1454,9 @@ def get_gqa_dataset(dataset_id: str,
         subset_split_list = split
     else:
         subset_split_list = list(itertools.product(subsets, split))
-    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf)
-    preprocess_func(dataset)
+    train_all_images = load_ms_dataset(dataset_id, [('train_all_images', 'train')], use_hf)
+    train_all_instructions = load_ms_dataset(dataset_id, [('train_all_instructions', 'train')], use_hf)
+    preprocess_func({'train_all_images': train_all_images, 'train_all_instructions': train_all_instructions})
     return _post_preprocess(dataset, dataset_sample, random_state, lambda d: d, dataset_test_ratio,
                             remove_useless_columns)
 

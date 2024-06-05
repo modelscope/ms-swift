@@ -202,51 +202,6 @@
         },
         "tags": ["zh", "medical", "vqa"]
     },
-    "allava-4v-text": {
-        "hf_dataset_id": "FreedomIntelligence/ALLaVA-4V",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
-        "subsets": ["allava_text"],
-        "tags": ["en"]
-    },
-    "allava-4v-laion": {
-        "hf_dataset_id": "FreedomIntelligence/ALLaVA-4V",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete",
-            "media_type": "image",
-            "media_key": "url"
-        },
-        "subsets": ["allava_laion"],
-        "split": ["caption", "instruct"],
-        "tags": ["en"]
-    },
-    "allava-4v-zh-laion": {
-        "hf_dataset_id": "FreedomIntelligence/ALLaVA-4V-Chinese",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete",
-            "media_type": "image",
-            "media_key": "url"
-        },
-        "subsets": ["allava_laion"],
-        "split": ["caption", "instruct"],
-        "tags": ["zh"]
-    },
     "chart-qa": {
         "hf_dataset_id": "HuggingFaceM4/ChartQA",
         "columns": {

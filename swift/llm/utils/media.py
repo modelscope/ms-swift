@@ -252,20 +252,14 @@ class MediaCache:
         if media_type in MediaCache.media_type_urls:
             media_type = MediaCache.media_type_urls[media_type]
 
-        from datasets.download.download_manager import DownloadManager
-
-        if os.path.exists(media_type):
-            return media_type
-
-        media_folder = os.path.join(MediaCache.cache_dir, media_name + '_temp')
+        from datasets.download.download_manager import DownloadManager, DownloadConfig
         final_folder = os.path.join(MediaCache.cache_dir, media_name)
         if os.path.exists(final_folder):
             return final_folder
-        shutil.rmtree(media_folder, ignore_errors=True)
-        media_file = os.path.join(media_folder, media_type[media_type.rfind('='):])
-        DownloadManager().download_and_extract(media_type)
-        shutil.rmtree(media_file, ignore_errors=True)
-        shutil.move(media_folder, final_folder)
+        local_dirs = DownloadManager(download_config=DownloadConfig(cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
+        shutil.move(str(local_dirs), final_folder)
         return final_folder
+    
+    def 
 
 
