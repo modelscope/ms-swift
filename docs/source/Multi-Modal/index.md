@@ -20,6 +20,6 @@
 
 
 整个对话围绕一张图片:
-1. [CogVLM最佳实践](cogvlm最佳实践.md), [CogVLM2最佳实践](cogvlm2最佳实践.md)
+1. [CogVLM最佳实践](cogvlm最佳实践.md), [CogVLM2最佳实践](cogvlm2最佳实践.md), [glm4v最佳实践](glm4v最佳实践.md)
 2. [MiniCPM-V最佳实践](minicpm-v最佳实践.md), [MiniCPM-V-2最佳实践](minicpm-v-2最佳实践.md), [MiniCPM-V-2.5最佳实践](minicpm-v-2.5最佳实践.md)
 3. [InternVL-Chat-V1.5最佳实践](internvl最佳实践.md)
