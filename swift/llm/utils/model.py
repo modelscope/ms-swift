@@ -542,22 +542,6 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
 
 
 @register_model(
-    ModelType.cogvlm2_en_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
-@register_model(
-    ModelType.cogvlm2_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
-@register_model(
     ModelType.atom_7b,
     'FlagAlpha/Atom-7B',
     LoRATM.llama,
@@ -886,6 +870,39 @@ def get_model_tokenizer_from_repo(model_dir: str,
 
 
 @register_model(
+    ModelType.cogvlm2_en_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
+@register_model(
+    ModelType.cogvlm2_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
+def get_model_tokenizer_cogvlm2(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
+    if model is not None:
+        # fix device map 4
+        def _output_device_map_hook(module, input, output):
+            return output.to(input[0].device)
+
+        for layer in model.model.vision.transformer.layers:
+            layer.mlp.register_forward_hook(_output_device_map_hook)
+            layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
+
+        device = next(model.model.vision.linear_proj.parameters()).device
+        model.model.vision.boi.data = model.model.vision.boi.to(device)
+        model.model.vision.eoi.data = model.model.vision.eoi.to(device)
+    return model, tokenizer
+
+
+@register_model(
     ModelType.llava_llama3_8b_v1_1,
     'AI-ModelScope/llava-llama-3-8b-v1_1-transformers',
     LoRATM.llama,
@@ -1162,6 +1179,8 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor
+    if model is not None:
+        model.max_position_embeddings = model.language_model.config.max_position_embeddings
     return model, tokenizer
 
 
@@ -2916,6 +2935,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
+        model.config.max_position_embeddings = model.language_model.config.max_position_embeddings
         _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
