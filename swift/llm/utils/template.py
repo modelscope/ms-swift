@@ -364,6 +364,14 @@ class Template:
         """
         return: inputs, tokenizer_kwargs
         """
+        if history_roles is None:
+            history_roles = [('user', 'assistant') for _ in range(len(history))]
+
+        if query is not None:
+            if query_role is None:
+                query_role = 'user'
+            history_roles.append([query_role, 'assistant'])
+
         history = history.copy()
 
         res_context_list: List[Context] = []
@@ -378,20 +386,15 @@ class Template:
         else:
             prefix = self.prefix_has_system
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
+
         history.append([query, response])
 
-        if history_roles is None:
-            history_roles = [('user', 'assistant') for _ in range(len(history))]
-        if query is not None:
-            if query_role is None: 
-                query_role = 'user'
-            history_roles.append([query_role, 'assistant'])
-        
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
             context_list = self.tool_prompt.copy() if qr == 'tool' else self.prompt.copy()
             if i < len(history) - 1:
                 context_list.append('{{RESPONSE}}')
-                context_list += self.chat_sep
+                if history[i + 1][0]:
+                    context_list += self.chat_sep
             elif r is not None:
                 # last response
                 context_list.append('{{RESPONSE}}')
