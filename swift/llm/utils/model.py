@@ -1438,9 +1438,10 @@ def get_model_tokenizer_chatglm(model_dir: str,
             return __old_forward(self, inputs, target)
 
         CrossEntropyLoss.forward = cross_entropy_forward
-        
+
         if kv_cache_patch:
             device = next(model.parameters()).device.type
+
             def _output_device_map_hook(module, input, output):
                 kv_cache = output[1]
                 if kv_cache is not None and isinstance(kv_cache, torch.Tensor):
