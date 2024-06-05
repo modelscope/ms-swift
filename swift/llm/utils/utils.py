@@ -219,8 +219,8 @@ class ConstantLengthDataset(IterableDataset):
         packed_sequence = []
         for sequence in binpacked:
             packed = {}
-            for key in sequence[0].keys():
-                packed[key] = np.concatenate([s[key] for s in sequence])
+            for key in sequence[0][0].keys():
+                packed[key] = np.concatenate([s[0][key] for s in sequence])
             packed_sequence.append(packed)
         return packed_sequence
 

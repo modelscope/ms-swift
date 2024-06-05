@@ -845,8 +845,8 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if rope_scaling:
         max_position_embeddings = getattr(model_config, "max_position_embeddings", None)
         max_length = kwargs.get('max_length') or max_position_embeddings
-        scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
-        setattr(model_config, "rope_scaling", {"type": rope_scaling, "factor": scaling_factor})
+        rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
+        setattr(model_config, "rope_scaling", {"type": rope_scaling, "factor": rope_scaling_factor})
 
     if load_model:
         if kwargs.get('use_unsloth', False):
