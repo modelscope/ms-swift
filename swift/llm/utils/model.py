@@ -417,6 +417,7 @@ class LoRATM(NamedTuple):
         'vision_expert_query_key_value', 'vision_expert_dense', 'language_expert_query_key_value',
         'language_expert_dense'
     ]
+    glm4v = ['self_attention.query_key_value']
     phi = ['Wqkv']
     phi3 = ['qkv_proj']
     internlm2 = ['wqkv']
@@ -1347,7 +1348,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
 @register_model(
     ModelType.glm4v_9b_chat,
     'ZhipuAI/glm-4v-9b',
-    LoRATM.chatglm,
+    LoRATM.glm4v,
     TemplateType.glm4v,
     eos_token='<|endoftext|>',
     tags=['multi-modal', 'vision'],
