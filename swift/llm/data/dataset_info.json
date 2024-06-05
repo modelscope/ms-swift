@@ -314,11 +314,6 @@
         "hf_dataset_id": "BelleGroup/school_math_0.25M",
         "tags": ["math", "zh"]
     },
-    "open-platypus": {
-        "dataset_id": "AI-ModelScope/Open-Platypus",
-        "hf_dataset_id": "garage-bAInd/Open-Platypus",
-        "tags": ["cot", "en", "quality"]
-    },
     "codealpaca-20k": {
         "dataset_id": "AI-ModelScope/CodeAlpaca-20k",
         "hf_dataset_id": "HuggingFaceH4/CodeAlpaca_20K",
