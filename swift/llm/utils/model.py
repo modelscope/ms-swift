@@ -1334,6 +1334,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    function_kwargs={'kv_cache_patch': True},
     hf_model_id='THUDM/glm-4-9b-chat')
 @register_model(
     ModelType.glm4_9b_chat_1m,
@@ -1341,6 +1342,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    function_kwargs={'kv_cache_patch': True},
     hf_model_id='THUDM/glm-4-9b-chat-1m')
 @register_model(
     ModelType.glm4v_9b_chat,
@@ -1415,6 +1417,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
+    kv_cache_patch = kwargs.pop('kv_cache_patch', False)
     if model_kwargs.get('quantization_config') is not None:
         model_kwargs['quantization_config'].llm_int8_skip_modules = ['output_layer']
     # fix transformers>=4.34 bug
@@ -1435,6 +1438,17 @@ def get_model_tokenizer_chatglm(model_dir: str,
             return __old_forward(self, inputs, target)
 
         CrossEntropyLoss.forward = cross_entropy_forward
+        
+        if kv_cache_patch:
+            device = next(model.parameters()).device.type
+            def _output_device_map_hook(module, input, output):
+                kv_cache = output[1]
+                if kv_cache is not None and isinstance(kv_cache, torch.Tensor):
+                    kv_cache = kv_cache.to(f'{device}:0')
+                return output[0], kv_cache
+
+            for layer in model.transformer.encoder.layers:
+                layer.register_forward_hook(_output_device_map_hook)
     return model, tokenizer
 
 
