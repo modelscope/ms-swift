@@ -84,9 +84,10 @@ def add_version_to_work_dir(work_dir: str) -> str:
     if dist.is_initialized() and is_dist():
         sub_folder = broadcast_string(sub_folder)
     if use_torchacc():
+        import torchacc as ta
         # Initialize in advance
         if not dist.is_initialized():
-            dist.init_process_group(backend='nccl')
+            dist.init_process_group(backend=ta.dist.BACKEND_NAME)
         # Make sure to set the same output_dir when using DDP.
         sub_folder = broadcast_string(sub_folder)
 

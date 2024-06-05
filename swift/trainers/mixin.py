@@ -30,8 +30,8 @@ from transformers.training_args import TrainingArguments
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import (save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
-                                  ta_trim_graph)
+from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_load_optimizer_and_scheduler,
+                                  ta_save_optimizer_and_scheduler, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc
 from swift.utils.constants import Invoke
@@ -315,13 +315,13 @@ class SwiftMixin:
         return
 
     def _save_optimizer_and_scheduler(self, output_dir):
-        if not use_torchacc():
+        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
             return super()._save_optimizer_and_scheduler(output_dir)
 
         ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
 
     def _load_optimizer_and_scheduler(self, checkpoint):
-        if not use_torchacc():
+        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
             return super()._load_optimizer_and_scheduler(checkpoint)
 
         if checkpoint is None or self.args.save_only_model:
@@ -335,8 +335,10 @@ class SwiftMixin:
             return super()._save_tpu(output_dir)
 
         output_dir = output_dir if output_dir is not None else self.args.output_dir
-        logger.info(f'Saving model checkpoint to {output_dir}')
-        save_ta_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        if self.sft_args.fsdp_num > 1:
+            save_ta_fsdp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        else:
+            save_ta_ddp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -455,8 +457,9 @@ class SwiftMixin:
             model = self.model
         if use_torchacc():
             # Loading checkpoint of TorchAcc has been done in tuner.py when
-            # sft_type if 'full'.
-            model = model._get_underlay_model().module.module
+            # sft_type is 'full'.
+            if self.sft_args.fsdp_num > 1:
+                model = model._get_underlay_model().module.module
             if isinstance(model, PreTrainedModel):
                 return
         elif not isinstance(model, SwiftModel):

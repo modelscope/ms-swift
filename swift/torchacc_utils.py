@@ -227,7 +227,48 @@ def ta_load_optimizer_and_scheduler(optimizer, lr_scheduler, checkpoint, device)
     return optimizer, lr_scheduler
 
 
-def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
+def save_ta_ddp_checkpoint(self_model, tokenizer, args, output_dir: Optional[str] = None):
+    output_dir = output_dir if output_dir is not None else args.output_dir
+    import torch_xla.core.xla_model as xm
+
+    model = self_model
+
+    if xm.is_master_ordinal():
+        os.makedirs(output_dir, exist_ok=True)
+        torch.save(args, os.path.join(output_dir, 'training_args.bin'))
+
+        xm.mark_step()
+        # Save a trained model and configuration using `save_pretrained()`.
+        # They can then be reloaded using `from_pretrained()`
+        supported_classes = (PreTrainedModel, PeftModel)
+        if not isinstance(model, supported_classes):
+            if isinstance(unwrap_model(model), supported_classes):
+                unwrap_model(model).save_pretrained(
+                    output_dir,
+                    is_main_process=args.should_save,
+                    state_dict=xm._maybe_convert_to_cpu(model.state_dict()),
+                    save_function=xm.save,
+                    safe_serialization=args.save_safetensors,
+                )
+            else:
+                logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
+                state_dict = xm._maybe_convert_to_cpu(model.state_dict())
+                if args.save_safetensors:
+                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
+                else:
+                    torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
+        else:
+            model.save_pretrained(
+                output_dir,
+                is_main_process=args.should_save,
+                save_function=xm.save,
+                safe_serialization=args.save_safetensors,
+                state_dict=xm._maybe_convert_to_cpu(model.state_dict()))
+        if tokenizer is not None and args.should_save:
+            tokenizer.save_pretrained(output_dir)
+
+
+def save_ta_fsdp_checkpoint(self_model, tokenizer, args, output_dir):
     import torch_xla.core.xla_model as xm
     xm.mark_step()
 
@@ -236,8 +277,6 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
         torch.save(args, os.path.join(output_dir, 'training_args.bin'))
 
     model = self_model._get_underlay_model().module.module
-    if args.save_safetensors:
-        model.to('cpu')
 
     supported_classes = (PreTrainedModel, PeftModel)
     save_safetensors = args.save_safetensors
@@ -246,18 +285,26 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
     xm.rendezvous('saving_checkpoint')
     out_dir = os.path.join(output_dir, f'{xm.get_ordinal()}')
     if not isinstance(model, supported_classes):
-        state_dict = model.state_dict()
-        _unwrap_model = unwrap_model(model)
-        if isinstance(_unwrap_model, supported_classes):
-            _unwrap_model.save_pretrained(out_dir, safe_serialization=save_safetensors)
+        if isinstance(unwrap_model(model), supported_classes):
+            unwrap_model(model).save_pretrained(
+                out_dir,
+                state_dict=xm._maybe_convert_to_cpu(model.state_dict()),
+                save_function=xm.save,
+                safe_serialization=args.save_safetensors,
+            )
         else:
             logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
+            state_dict = xm._maybe_convert_to_cpu(model.state_dict())
             if save_safetensors:
                 safetensors.torch.save_file(state_dict, os.path.join(out_dir, 'model.safetensors'))
             else:
                 torch.save(state_dict, os.path.join(out_dir, 'pytorch_model.bin'))
     else:
-        model.save_pretrained(out_dir, safe_serialization=save_safetensors)
+        model.save_pretrained(
+            out_dir,
+            save_function=xm.save,
+            safe_serialization=args.save_safetensors,
+            state_dict=xm._maybe_convert_to_cpu(model.state_dict()))
     # save shard_metadata for consolidation.
     shard_meta = self_model._get_underlay_model().get_shard_metadata()
     xm.save(shard_meta, os.path.join(out_dir, 'shard_meta.pth'))
@@ -265,11 +312,6 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
 
     if tokenizer is not None and args.should_save:
         tokenizer.save_pretrained(output_dir, is_main_process=xm.is_master_ordinal(local=False), save_function=xm.save)
-
-    # We moved the model from TPU -> CPU for saving the weights.
-    # Now we should move it back to subsequent compute still works.
-    if args.save_safetensors:
-        model.to(args.device)
 
 
 def ta_trim_graph():
@@ -511,7 +553,8 @@ def patah_chatglm_model(model):
         qkv = qkv.transpose(1, 3)
         qkv = einops.rearrange(qkv, 'b s ... -> (b s) ...')
         cu_q_lens = torch.arange(0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
-        context_layer = flash_attn_varlen_qkvpacked_xla(qkv, cu_q_lens, q_len, 0.0, None, True, False)
+        context_layer = flash_attn_varlen_qkvpacked_xla(
+            qkv, cu_q_lens, q_len, dropout_p=0.0, softmax_scale=None, causal=True)
         context_layer = einops.rearrange(context_layer, '(b s) ... -> b s ...', b=bsz)
         context_layer = context_layer.permute(1, 0, 2, 3)
         new_context_layer_shape = context_layer.size()[:-2] + (self.core_attention.hidden_size_per_partition, )
