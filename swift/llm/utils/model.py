@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import math
 import os
 import sys
 from contextlib import nullcontext
@@ -864,6 +865,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.placeholder_tokens = placeholder_tokens
         tokenizer.placeholder_tokens_id = [tokenizer.convert_tokens_to_ids(token) for token in placeholder_tokens]
     model = None
+
+    rope_scaling = kwargs.pop('rope_scaling', None)
+    max_position_embeddings = getattr(model_config, 'max_position_embeddings', None)
+    if rope_scaling and max_position_embeddings:
+        max_length = kwargs.get('max_length') or max_position_embeddings
+        rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
+        setattr(model_config, 'rope_scaling', {'type': rope_scaling, 'factor': rope_scaling_factor})
+
     if load_model:
         if kwargs.get('use_unsloth', False):
             assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'

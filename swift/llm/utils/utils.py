@@ -186,7 +186,7 @@ class ConstantLengthDataset(IterableDataset):
     def get_packed_dataset(template: 'Template',
                            dataset,
                            seq_length=1024,
-                           num_of_sequences=1024,
+                           num_of_sequences=2048,
                            chars_per_token=3.6,
                            append_concat_token=True,
                            add_special_tokens=True,
@@ -197,20 +197,25 @@ class ConstantLengthDataset(IterableDataset):
         if lazy_tokenize:
             return constant_length_iterator
 
-        def data_generator(constant_length_iterator):
-            yield from constant_length_iterator
-
-        try:
-            packed_dataset = HfDataset.from_generator(
-                data_generator, gen_kwargs={'constant_length_iterator': constant_length_iterator})
-        except (DatasetGenerationError, SchemaInferenceError) as exc:
-            raise ValueError(
-                'Error occurred while packing the dataset. '
-                'Make sure that your dataset has enough samples to at least yield one packed sequence.') from exc
-        return packed_dataset
+        dataset_list = []
+        for item in constant_length_iterator:
+            dataset_list.append(item)
+        return HfDataset.from_list(dataset_list)
 
     def __len__(self):
         return len(self.dataset)
+
+    def calculate_matched_group(self, sequences: Dict[str, List[int]]):
+        # https://arxiv.org/pdf/2404.10830
+        import binpacking
+        binpacked = binpacking.to_constant_volume(sequences, self.seq_length, weight_pos=1)
+        packed_sequence = []
+        for sequence in binpacked:
+            packed = {}
+            for key in sequence[0][0].keys():
+                packed[key] = np.concatenate([s[0][key] for s in sequence])
+            packed_sequence.append(packed)
+        return packed_sequence
 
     def __iter__(self):
         iterator = iter(self.dataset)
@@ -229,18 +234,14 @@ class ConstantLengthDataset(IterableDataset):
                     more_examples = False
                     break
 
-            packed_sequences = {}
+            sequences = []
             for example in buffer:
                 input, _ = self.template.encode(example)
-                for key in input.keys():
-                    if key not in packed_sequences:
-                        packed_sequences[key] = []
-                    packed_sequences[key].extend(input[key])
+                sequences.append((input, len(input['input_ids'])))
 
-            lens = len(packed_sequences[list(packed_sequences.keys())[0]])
-            for i in range(0, lens, self.seq_length):
-                example = {key: value[i:i + self.seq_length] for key, value in packed_sequences.items()}
-                yield example
+            packed_sequences = self.calculate_matched_group(sequences)
+            for sequence in packed_sequences:
+                yield sequence
 
 
 class LazyLLMDataset(Dataset):

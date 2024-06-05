@@ -487,6 +487,9 @@ class SftArguments(ArgumentsBase):
     # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false']
     init_lora_weights: str = 'true'
 
+    # rope-scaling
+    rope_scaling: Literal['linear', 'dynamic'] = None
+
     # BOFT
     boft_block_size: int = 4
     boft_block_num: int = 0
@@ -1035,6 +1038,9 @@ class InferArguments(ArgumentsBase):
     repetition_penalty: float = 1.
     num_beams: int = 1
     stop_words: List[str] = None
+
+    # rope-scaling
+    rope_scaling: Literal['linear', 'dynamic'] = None
 
     # other
     use_flash_attn: Optional[bool] = None
