@@ -1421,51 +1421,24 @@ register_dataset(
 
 
 def preprocess_gqa(dataset):
-    all_image_dataset = dataset['train_all_images']
+    local_cache = MediaCache.download('gqa')
     all_instruct_dataset = dataset['train_all_instructions']
-    dict_index = {}
-    for idx, row in tqdm(enumerate(all_image_dataset)):
-        dict_index[row['id']] = idx
-    
+
     def preprocess_row(row):
         return {
             'query': row['question'],
             'response': row['fullAnswer'],
-            'images': all_image_dataset[dict_index[row['imageId']]],
+            'images': os.path.join(local_cache, 'images', row['imageId'] + '.jpg'),
         }
 
     return all_instruct_dataset.map(preprocess_row)
 
 
-def get_gqa_dataset(dataset_id: str,
-                    subsets: Optional[List[str]],
-                    preprocess_func: PreprocessFunc,
-                    split: List[str],
-                    dataset_sample: int = -1,
-                    *,
-                    random_state: Optional[RandomState] = None,
-                    dataset_test_ratio: float = 0.,
-                    remove_useless_columns: bool = True,
-                    use_hf: bool = False):
-    if subsets is None:
-        subsets = []
-    assert len(split) > 0
-    if len(subsets) == 0:
-        subset_split_list = split
-    else:
-        subset_split_list = list(itertools.product(subsets, split))
-    train_all_images = load_ms_dataset(dataset_id, [('train_all_images', 'train')], use_hf)
-    train_all_instructions = load_ms_dataset(dataset_id, [('train_all_instructions', 'train')], use_hf)
-    preprocess_func({'train_all_images': train_all_images, 'train_all_instructions': train_all_instructions})
-    return _post_preprocess(dataset, dataset_sample, random_state, lambda d: d, dataset_test_ratio,
-                            remove_useless_columns)
-
-
 register_dataset(
     DatasetName.gqa,
-    None, ["train_all_images", "train_all_instructions"],
+    None, ["train_all_instructions"],
     preprocess_gqa,
-    get_function=get_gqa_dataset,
+    get_function=get_dataset_from_repo,
     hf_dataset_id="lmms-lab/GQA",
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
