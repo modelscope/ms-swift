@@ -178,11 +178,11 @@ class Template:
 
     @staticmethod
     def _replace_system(prefix: Prompt) -> Prompt:
-        return [p.replace('{{SYSTEM}}', '') for p in prefix]
+        return [p.replace('{{SYSTEM}}', '') for p in prefix if '{{SYSTEM}}' in p]
 
     @staticmethod
     def _has_system(prefix: Prompt) -> bool:
-        return '{{SYSTEM}}' in ''.join(prefix)
+        return any(['{{SYSTEM}}' in p for p in prefix])
 
     @staticmethod
     def _preprocess_prompt(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
@@ -217,7 +217,7 @@ class Template:
         if default_system == '':
             self.default_system = None
         elif default_system is not None:
-            assert self.prefix_has_system is not None, (
+            assert self.system_prefix is not None, (
                 f'The template does not support `system`, template_type: {getattr(self, "template_type", None)}')
             self.default_system = default_system
         self.max_length = max_length
@@ -226,7 +226,7 @@ class Template:
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
 
-        for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system']:
+        for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
@@ -234,6 +234,19 @@ class Template:
     def check_example(self, example):
         return True
 
+    def add_default_tags(self, example):
+        history: Optional[History] = example.get('history', [])
+        query: Optional[str] = example.get('query', '')
+        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
+            if media_key in example and media_tag not in ''.join([h[0] for h in history]) + query:
+                media_len = len(example[media_key]) if isinstance(example[media_key], (tuple, list)) else 1
+                if history:
+                    history[0][0] = ''.join([media_tag] * media_len) + history[0][0]
+                else:
+                    query = ''.join([media_tag] * media_len) + query
+        
+        example['query'] = query
+                
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
@@ -241,11 +254,14 @@ class Template:
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
         if not self.check_example(example):
             raise ValueError(f'The example: {example.get("query", None)} cannot use with this model.')
+        self.add_default_tags(example)
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
+        if 'images' in example and not isinstance(example['images'], (tuple, list)):
+            example['images'] = [example['images']]
         if history is None:
             history = []
         if len(history) > 0:
@@ -339,9 +355,34 @@ class Template:
     def _tokenize(self, context, **tokenizer_kwargs):
         return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False,
                               **tokenizer_kwargs)['input_ids']
+    
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], example):
+        raise NotImplemented()
+    
+    def replace_object(self, example):
+        raise NotImplemented()
 
-    def pre_tokenize(self, context, rd, **kwargs):
-        return context
+    def replace_bbox(self, example):
+        raise NotImplemented()
+
+    def pre_tokenize(self, prompt, rd, **kwargs):
+        try:
+            if prompt == '<image>':
+                return self.replace_tag('image', kwargs.get('example'))
+            if prompt == '<video>':
+                return self.replace_tag('video', kwargs.get('example'))
+            if prompt == '<audio>':
+                return self.replace_tag('audio', kwargs.get('example'))          
+            if prompt == '<object>':
+                return self.replace_object(kwargs.get('example')) 
+            if prompt == '<bbox>':
+                return self.replace_bbox(kwargs.get('example')) 
+        finally:
+            if 'objects' in example:
+                objects = example['objects']
+                if not objects[0][0] and not objects[0][1]:
+                    objects.pop(0)
+        return prompt
 
     def post_tokenize(self, token_list, rd, **kwargs):
         return token_list
@@ -713,21 +754,8 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
 
 class YiVLTemplate(Template):
 
-    def pre_tokenize(self, prompt, rd, **kwargs):
-        example = kwargs['example']
-        objects = example.get('objects')
-        try:
-            if prompt == '<image>':
-                return [-200]
-            if prompt == '<object>':
-                object_pair = objects[0]
-                return object_pair[0]
-            if prompt == '<bbox>':
-                object_pair = objects[0]
-                return object_pair[1]
-        finally:
-            if not objects[0][0] and not objects[0][1]:
-                objects.pop(0)
+    def replace_tag(media_type, example):
+        return [-200]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
@@ -888,8 +916,8 @@ class InternLMXComposer2(Template):
         prompt = ['[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n']
         chat_sep = ['[UNUSED_TOKEN_145]\n']
         suffix = ['[UNUSED_TOKEN_145]']
-        prefix_has_system = ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n']
-        super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER2_SYSTEM, prefix_has_system)
+        system_prefix = ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n']
+        super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER2_SYSTEM, system_prefix)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
