@@ -17,8 +17,7 @@ from peft import PeftModel
 from swift.llm.agent.utils import split_action_action_input
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import ChatCompletionResponse  # noqa
-from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest,
+from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest,ChatCompletionResponse,
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
