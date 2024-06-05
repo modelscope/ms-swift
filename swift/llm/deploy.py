@@ -326,7 +326,6 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         example = messages_to_history(messages)
         if len(images) > 0:
             example['images'] = images
-        example = messages_to_history(request.messages)
         if request.tools is not None:
             example['tools'] = request.tools
         input_ids = template.encode(example)[0]['input_ids']
