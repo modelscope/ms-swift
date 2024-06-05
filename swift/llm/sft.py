@@ -101,6 +101,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
+    if args.rope_scaling:
+        kwargs['rope_scaling'] = args.rope_scaling
+        kwargs['max_length'] = args.max_length
     model, tokenizer = get_model_tokenizer(
         args.model_type,
         args.torch_dtype,
