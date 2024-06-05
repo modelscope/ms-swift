@@ -542,22 +542,6 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
 
 
 @register_model(
-    ModelType.cogvlm2_en_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
-@register_model(
-    ModelType.cogvlm2_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
-@register_model(
     ModelType.atom_7b,
     'FlagAlpha/Atom-7B',
     LoRATM.llama,
@@ -882,6 +866,39 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.cogvlm2_en_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
+@register_model(
+    ModelType.cogvlm2_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
+def get_model_tokenizer_cogvlm2(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
+    if model is not None:
+        # fix device map 4
+        def _output_device_map_hook(module, input, output):
+            return output.to(input[0].device)
+
+        for layer in model.model.vision.transformer.layers:
+            layer.mlp.register_forward_hook(_output_device_map_hook)
+            layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
+
+        device = next(model.model.vision.linear_proj.parameters()).device
+        model.model.vision.boi.data = model.model.vision.boi.to(device)
+        model.model.vision.eoi.data = model.model.vision.eoi.to(device)
     return model, tokenizer
 
 
