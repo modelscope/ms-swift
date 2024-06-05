@@ -230,18 +230,13 @@ class Template:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
         query: Optional[str] = example.get('query', None)
+        query_role: Optional[str] = example.get('query_role', None)
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
+        history_roles: Optional[list[str]] = example.get('history_roles', None)
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
         tools: Optional[list] = example.get('tools', None)
-        messages: Optional[list] = example.get('messages', None)
-        if messages is not None:
-            # encode conversations with tool role
-            inputs, tokenizer_kwargs = self._encode_with_tool(messages, tools, self.truncation_strategy)
-            if inputs.get('labels') is None:
-                inputs.pop('loss_scale', None)
-            return inputs, tokenizer_kwargs
         if history is None:
             history = []
         if len(history) > 0:
@@ -262,7 +257,7 @@ class Template:
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
+            query, query_role, response, history, history_roles, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -351,8 +346,10 @@ class Template:
 
     def _encode(self,
                 query: str,
+                query_role: str,
                 response: Optional[str],
                 history: History,
+                history_roles: Optional[list[str]],
                 system: Optional[str],
                 truncation_strategy: str,
                 auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -360,6 +357,7 @@ class Template:
         return: inputs, tokenizer_kwargs
         """
         history = history.copy()
+
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
         if auto_add_bos:
@@ -373,7 +371,8 @@ class Template:
             prefix = self.prefix_has_system
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
         history.append([query, response])
-        for i, (q, r) in enumerate(history):
+        history_roles.append(query_role)
+        for i, ((q, r),(qr,rr)) in enumerate(zip(history,history_roles)):
             context_list = self.prompt.copy()
             if i < len(history) - 1:
                 context_list.append('{{RESPONSE}}')

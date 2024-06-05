@@ -823,21 +823,24 @@ def history_to_messages(history: Optional[History],
 
 
 def messages_to_history(messages: Messages) -> Dict[str, Any]:
-    if any(m['role'] == 'tool' for m in messages):
-        return {'messages': messages}
-    system = None
     if messages[0]['role'] == 'system':
         system = messages[0]['content']
         messages = messages[1::]
     history = []
+    history_roles = []
     for q, r in zip(messages[::2], messages[1::2]):
         history.append([q['content'], r['content']])
+        history_roles.append([q['role'], r['role']])
     query = None
+    query_role = None
     if len(messages) % 2 == 1:
         query = messages[-1]['content']
+        query_role = messages[-1]['role']
     return {
         'history': history,
+        'history_roles': history_roles,
         'query': query,
+        'query_role': query_role,
         'system': system,
     }
 
