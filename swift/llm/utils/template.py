@@ -64,6 +64,7 @@ class TemplateType:
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
     cogvlm = 'cogvlm'
+    glm4v = 'glm4v'
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
     orion = 'orion'
@@ -685,6 +686,46 @@ class YiVLTemplate(Template):
         return res
 
 
+class GLM4VTemplate(Template):
+
+    def __init__(self):
+        return super().__init__('[gMASK]<sop>', ['<|user|>\n', [-100], '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'],
+                                None, ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        from .utils import history_to_messages
+
+        example = example.copy()
+        images_path = example.pop('images', [])
+        assert len(images_path) == 1
+        image = _read_from_path(images_path[0])
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, -100)
+        if len(idx_list) >= 2:
+            input_ids = _remove_idx(input_ids, idx_list[1:])
+            if labels is not None:
+                labels = _remove_idx(labels, idx_list[1:])
+        idx = idx_list[0]
+        placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
+        placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
+        input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
+        if labels is not None:
+            labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
+        messages = history_to_messages(example.get('history', []), example['query'], example.get('system', None))
+        messages[0]['image'] = image
+        inputs2 = self.tokenizer.apply_chat_template(messages, return_dict=True)
+        inputs['images'] = inputs2['images']
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        return inputs, {}
+
+
+register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True)
+
 register_template(
     TemplateType.yi_vl,
     YiVLTemplate([], ['### Human: ', [-200], '\n{{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
@@ -700,13 +741,13 @@ register_template(
 
 register_template(
     TemplateType.chatglm_generation,
-    Template([[64790, 64792]], ['{{QUERY}}'], None, [['eos_token_id']]),
+    Template(['[gMASK]<sop>'], ['{{QUERY}}'], None, [['eos_token_id']]),
     is_generation=True)
 
 register_template(
     TemplateType.chatglm3,
-    Template([[64790, 64792]], [[64795], '\n {{QUERY}}', [64796], '\n'], [], [[64795]], None,
-             [[64790, 64792, 64794], '\n {{SYSTEM}}']))
+    Template(['[gMASK]<sop>'], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None,
+             ['[gMASK]<sop><|system|>\n{{SYSTEM}}']))
 
 register_template(
     TemplateType.deepseek,

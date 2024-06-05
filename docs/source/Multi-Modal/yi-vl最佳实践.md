@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-vl-6b-chat
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< 描述这种图片
+<<< 描述这张图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 图片显示一只小猫坐在地板上,眼睛睁开,凝视着摄像机。小猫看起来很可爱,有灰色和白色的毛皮,以及蓝色的眼睛。它似乎正在看摄像机,可能对周围环境很好奇。
 --------------------------------------------------
