@@ -356,35 +356,44 @@ class Template:
         return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False,
                               **tokenizer_kwargs)['input_ids']
     
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], example):
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         raise NotImplemented()
     
-    def replace_object(self, example):
-        raise NotImplemented()
+    def replace_object(self, index, example):
+        objects = example['objects']
+        object = objects[index]
+        return object[0]
 
-    def replace_bbox(self, example):
-        raise NotImplemented()
+    def replace_bbox(self, index, example):
+        objects = example['objects']
+        object = objects[index]
+        return f'({object[0]},{object[1]}),({object[2]},{object[3]})'
 
-    def pre_tokenize(self, prompt, rd, **kwargs):
-        try:
-            if prompt == '<image>':
-                return self.replace_tag('image', kwargs.get('example'))
-            if prompt == '<video>':
-                return self.replace_tag('video', kwargs.get('example'))
-            if prompt == '<audio>':
-                return self.replace_tag('audio', kwargs.get('example'))          
-            if prompt == '<object>':
-                return self.replace_object(kwargs.get('example')) 
-            if prompt == '<bbox>':
-                return self.replace_bbox(kwargs.get('example')) 
-        finally:
-            if 'objects' in example:
-                objects = example['objects']
-                if not objects[0][0] and not objects[0][1]:
-                    objects.pop(0)
+    def pre_tokenize(self, prompt, **kwargs):
+        example = kwargs['example']
+        if prompt == '<image>':
+            content = self.replace_tag('image', example.get('image_index', 0), example)
+            example['image_index'] = example.get('image_index', 0) + 1
+            return content
+        if prompt == '<video>':
+            content = self.replace_tag('video', example.get('video_index', 0), example)
+            example['video_index'] = example.get('video_index', 0) + 1
+            return content
+        if prompt == '<audio>':
+            content = self.replace_tag('audio', example.get('audio_index', 0), example)
+            example['audio_index'] = example.get('audio_index', 0) + 1
+            return content
+        if prompt == '<object>':
+            content = self.replace_object(kwargs.get('object_index', 0), example)
+            example['object_index'] = example.get('object_index', 0) + 1
+            return content
+        if prompt == '<bbox>':
+            content = self.replace_object(kwargs.get('bbox_index', 0), example)
+            example['bbox_index'] = example.get('bbox_index', 0) + 1
+            return content
         return prompt
 
-    def post_tokenize(self, token_list, rd, **kwargs):
+    def post_tokenize(self, token_list, **kwargs):
         return token_list
 
     def _encode_context_list(
@@ -399,13 +408,13 @@ class Template:
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
-            context = self.pre_tokenize(context, i, **kwargs)
+            context = self.pre_tokenize(context, **kwargs)
             if isinstance(context, str):
                 curr_tokenizer_kwargs = {**tokenizer_kwargs, **self._get_tokenizer_kwargs(context)}
                 token_list = self._tokenize(context, **curr_tokenizer_kwargs)
             else:
                 token_list = context
-            token_list = self.post_tokenize(token_list, i, **kwargs)
+            token_list = self.post_tokenize(token_list, **kwargs)
             input_ids += token_list
             if loss_scale_list[i] > 0.0:
                 labels += token_list
@@ -622,18 +631,6 @@ register_template(
              ['{{SYSTEM}}\n\n']))
 
 
-class MultiModalTemplate(Template):
-
-    def replace_image_tag(self, prompt: Prompt):
-        raise NotImplemented
-
-    def replace_video_tag(self, prompt: Prompt):
-        raise NotImplemented
-
-    def replace_audio_tag(self, prompt: Prompt):
-        raise NotImplemented
-
-
 # You can set the query as '' to serve as a template for pre-training.
 class DefaultGenerationTemplate(Template):
 
@@ -655,6 +652,31 @@ class QwenTemplate(Template):
                          ['<|im_end|>'],
                          DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
                          auto_add_bos=auto_add_bos)
+
+
+class QwenVLTemplate(QwenTemplate):
+
+    def check_example(self, example):
+        images = example.get('images')
+        from swift.llm.utils.utils import fetch_one
+        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        assert media_type == 'image'
+        images = example.get('images')
+        image = images[index]
+        assert isinstance(image, str)
+        return f'<img>{image}</img>'
+
+    def replace_object(self, index, example):
+        objects = example['objects']
+        object = objects[index]
+        return f'<ref>{object[0]}</ref>'
+
+    def replace_bbox(self, index, example):
+        objects = example['objects']
+        object = objects[index]
+        return f'<box>({object[0]},{object[1]}),({object[2]},{object[3]})</box>'
 
 
 register_template(TemplateType.qwen, QwenTemplate())
@@ -754,7 +776,7 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
 
 class YiVLTemplate(Template):
 
-    def replace_tag(media_type, example):
+    def replace_tag(self, media_type, index, example):
         return [-200]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1019,8 +1041,11 @@ class InternvlTemplate(Template):
     num_image_token = 256
 
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n', [-100], '{{QUERY}}<|im_end|><|im_start|>assistant\n'],
+        super().__init__(['<s>'], ['<|im_start|>user\n', '{{QUERY}}<|im_end|><|im_start|>assistant\n'],
                          ['<|im_end|>'], ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
+
+    def replace_tag(self, media_type, index, example):
+        return [-100]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
@@ -1244,42 +1269,32 @@ class Phi3VisionTemplate(Template):
         Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        example = example.copy()
-        history = example.pop('history', None)
-        if history is None:
-            history = []
-        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<s>')
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
-        inputs, _ = super().encode(example)
-        if len(inputs) == 0:
-            return inputs, {}
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
-        idx_list = _findall(input_ids, 1)[1:]  # 1: <s>
-        if len(images) > 0:
-            processor = self.tokenizer.processor
-            inputs.update(processor.image_processor(images, return_tensors='pt'))
-            assert len(idx_list) == len(images)
-            res_input_ids = []
-            res_labels = []
-            num_img_tokens = inputs.pop('num_img_tokens').tolist()
-            idx_list.insert(0, -1)
-            for i in range(len(idx_list) - 1):
-                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [-1] * num_img_tokens[i] + [1]
-                if labels is not None:
-                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
-            res_input_ids += input_ids[idx_list[-1] + 1:]
-            input_ids = res_input_ids
-            if labels is not None:
-                res_labels += labels[idx_list[-1] + 1:]
-                labels = res_labels
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        if media_type == 'image':
+            image = example['image_info'][index]
+            if 'num_img_tokens' in image:
+                num_img_tokens = image['num_img_tokens']
+            else:
+                assert 'num_crops' in image, 'num_crops must be provided in images if num_img_tokens is not provided'
+                num_crops = image['num_crops']
+                num_img_tokens = [_num_crops * example['num_img_tokens'] for _num_crops in num_crops]
+            return [-index-1] * num_img_tokens[0]
 
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        image_path = example.get('images')
+        if image_path:
+            raw_images = [_read_from_path(path) for path in image_path]
+            image_infos = [
+                self.model.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images
+            ]
+            pixel_values = torch.concat([image_info['pixel_values'] for image_info in image_infos], dim=0)
+            image_sizes = torch.concat([image_info['image_sizes'] for image_info in image_infos], dim=0)
+            example['image_info'] = image_infos
+            example['num_img_tokens'] = self.model.processor.image_processor.num_img_tokens
+        inputs, _ = super().encode(example)
+        if image_path:
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_sizes'] = image_sizes
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1300,10 +1315,13 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
 
     def __init__(self):
         Template.__init__(self, [], [
-            '<|start_header_id|>user<|end_header_id|>\n\n', [-200],
+            '<|start_header_id|>user<|end_header_id|>\n\n',
             '\n{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
         ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
                           ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
+
+    def replace_tag(self, prompt, **kwargs):
+        return [-200]
 
 
 register_template(
@@ -1318,9 +1336,12 @@ class LLavaQwenTemplate(LLavaTemplate):
     llavayi_query_template = 'You are a helpful assistant'
 
     def __init__(self):
-        Template.__init__(self, [], ['<|im_start|>user\n', [-200], '{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        Template.__init__(self, [], ['<|im_start|>user\n', '{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
                           ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+
+    def replace_tag(self, prompt, **kwargs):
+        return [-200]
 
 
 register_template(
