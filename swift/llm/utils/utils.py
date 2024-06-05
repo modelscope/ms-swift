@@ -197,17 +197,10 @@ class ConstantLengthDataset(IterableDataset):
         if lazy_tokenize:
             return constant_length_iterator
 
-        def data_generator(constant_length_iterator):
-            yield from constant_length_iterator
-
-        try:
-            packed_dataset = HfDataset.from_generator(
-                data_generator, gen_kwargs={'constant_length_iterator': constant_length_iterator})
-        except (DatasetGenerationError, SchemaInferenceError) as exc:
-            raise ValueError(
-                'Error occurred while packing the dataset. '
-                'Make sure that your dataset has enough samples to at least yield one packed sequence.') from exc
-        return packed_dataset
+        dataset_list = []
+        for item in constant_length_iterator:
+            dataset_list.append(item)
+        return HfDataset.from_list(dataset_list)
 
     def __len__(self):
         return len(self.dataset)
