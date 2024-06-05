@@ -410,20 +410,21 @@ class Template:
 
     def _encode_with_tool(self, messages: list, tools: list, truncation_strategy: str, auto_add_bos: bool = False):
         """
-        encode conversations which have system/user/assistant/function roles
-
+        encode messages which have system/user/assistant/tool roles
+        messages{
+            'role': 'tool', 'value': 'tool calling return',...
+        }
         return: inputs, tokenizer_kwargs
         """
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
-        if messages[0]['from'] == 'system':
+        if messages[0]['role'] == 'system':
             system = messages[0]['content']
             messages.pop(0)
-
-        if system is None:
-            prefix = self.prefix
-        else:
             prefix = self.prefix_has_system
+        else:
+            system = None
+            prefix = self.prefix
 
         if tools:
             if system is None:
@@ -439,16 +440,18 @@ class Template:
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
 
         for i in range(0, len(messages), 2):
-            context_list = self.prompt.copy() if messages[i]['from'] == 'user' else self.tool_prompt.copy()
+            context_list = self.prompt.copy() if messages[i]['role'] == 'user' else self.tool_prompt.copy()
+            q, r = None, None
             if i < len(messages) - 2:
                 context_list.append('{{RESPONSE}}')
                 context_list += self.chat_sep
-            elif messages[i + 1]['value'] is not None:
+                r = messages[i + 1]['content']
+            elif i + 1 < len(messages) and messages[i + 1]['content'] is not None:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
-            q = messages[i]['value']
-            r = messages[i + 1]['value']
+                r = messages[i + 1]['content']
+            q = messages[i]['content']
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
@@ -456,7 +459,7 @@ class Template:
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
-        response = messages[-1]['content'] if messages[-1]['from'] == 'assistant' else None
+        response = messages[-1]['content'] if messages[-1]['role'] == 'assistant' else None
 
         if response is None:
             labels = None

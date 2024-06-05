@@ -217,6 +217,8 @@ def split_str_parts_by(text: str, delimiters: List[str]):
                 break
         if last_words == text:
             text = ''
-
-    text_list[-1]['content'] = last_words
+    if len(text_list):
+        text_list[-1]['content'] = last_words
+    else:
+        text_list.append({'key': '', 'content': last_words})
     return text_list

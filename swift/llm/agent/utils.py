@@ -85,8 +85,11 @@ def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[st
             action = c['content']
         elif c['key'].lower() == 'action input:':
             action_input = c['content']
-    return action.replace('\n', ''), action_input.replace('\n', '')
-
+    if action:
+        action = action.strip().replace('\n', '')
+    if action_input:
+        action_input.strip().replace('\n', '')
+    return action, action_input
 
 def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'default') -> Optional[str]:
     TOOL_DESC = """{tool_name}: Call this tool to interact with the {tool_name} API. \

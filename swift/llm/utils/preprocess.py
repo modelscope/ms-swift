@@ -286,7 +286,7 @@ class SmartPreprocessor:
             },
             'conversations': {
                 'required': ['conversations'],  # for test
-                'preprocessor': ToolConversationsPreprocessor(tools_role='tools', conversations_key='conversations')
+                'preprocessor': ToolMessagesPreprocessor(tools_role='tools', messages_key='conversations')
             },
             # TODO: default tool-calling preprocessor?
             'chatml': {
