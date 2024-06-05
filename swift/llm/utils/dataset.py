@@ -171,7 +171,8 @@ class DatasetName:
     # additional images
     sharegpt4v = 'sharegpt4v'
     llava_instruct_150k = 'llava-instruct-150k'
-
+    allava_4v_laion = 'allava-4v-laion'
+    allava_4v_zh_laion = 'allava-4v-zh-laion'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
