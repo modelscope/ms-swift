@@ -454,6 +454,7 @@ class SftArguments(ArgumentsBase):
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
     system: Optional[str] = None
+    tools_prompt: Literal['default', 'toolbench'] = 'default'
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
@@ -1011,6 +1012,7 @@ class InferArguments(ArgumentsBase):
     show_dataset_sample: int = 10
     save_result: bool = True
     system: Optional[str] = None
+    tools_prompt: Literal['default', 'toolbench'] = 'default'
     max_length: int = -1  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'

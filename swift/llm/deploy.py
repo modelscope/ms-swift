@@ -419,7 +419,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 choices = [
                     ChatCompletionResponseChoice(
                         index=0,
-                        message=ChatMessage(role='assistant', content=None, tool_calls=toolcall),
+                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                         finish_reason=None,
                     )
                 ]
