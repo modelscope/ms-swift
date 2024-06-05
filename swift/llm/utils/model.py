@@ -14,7 +14,6 @@ import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                         GenerationConfig, GPTQConfig, snapshot_download)
-from swift.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
@@ -25,6 +24,7 @@ from transformers.utils import strtobool
 from transformers.utils.versions import require_version
 
 from swift import get_logger
+from swift.hub.utils.utils import get_cache_dir
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
 from .utils import get_max_model_len, is_unsloth_available
@@ -121,6 +121,10 @@ class ModelType:
     chatglm3_6b_32k = 'chatglm3-6b-32k'
     chatglm3_6b_128k = 'chatglm3-6b-128k'
     codegeex2_6b = 'codegeex2-6b'
+    glm4v_9b_chat = 'glm4v-9b-chat'
+    glm4_9b = 'glm4-9b'
+    glm4_9b_chat = 'glm4-9b-chat'
+    glm4_9b_chat_1m = 'glm4-9b-chat-1m'
     # llama2
     llama2_7b = 'llama2-7b'
     llama2_7b_chat = 'llama2-7b-chat'
@@ -1317,6 +1321,35 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
             setattr(tokenizer_cls, k, tokenizer_config[k])
 
 
+@register_model(
+    ModelType.glm4_9b,
+    'ZhipuAI/glm-4-9b',
+    LoRATM.chatglm,
+    TemplateType.chatglm_generation,
+    support_vllm=True,
+    hf_model_id='THUDM/glm-4-9b')
+@register_model(
+    ModelType.glm4_9b_chat,
+    'ZhipuAI/glm-4-9b-chat',
+    LoRATM.chatglm,
+    TemplateType.chatglm3,
+    support_vllm=True,
+    hf_model_id='THUDM/glm-4-9b-chat')
+@register_model(
+    ModelType.glm4_9b_chat_1m,
+    'ZhipuAI/glm-4-9b-chat-1m',
+    LoRATM.chatglm,
+    TemplateType.chatglm3,
+    support_vllm=True,
+    hf_model_id='THUDM/glm-4-9b-chat-1m')
+@register_model(
+    ModelType.glm4v_9b_chat,
+    'ZhipuAI/glm-4v-9b',
+    LoRATM.chatglm,
+    TemplateType.glm4v,
+    eos_token='<|endoftext|>',
+    tags=['multi-modal', 'vision'],
+    hf_model_id='THUDM/glm-4v-9b')
 @register_model(
     ModelType.codefuse_codegeex2_6b_chat,
     'codefuse-ai/CodeFuse-CodeGeeX2-6B',

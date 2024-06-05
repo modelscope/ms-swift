@@ -194,7 +194,7 @@ class ArgumentsBase:
                 for sn in DATASET_MAPPING['toolbench-for-alpha-umi']['subsets']
             },
             'medical-mini-zh': 'medical-zh#50000',
-            'cmnli-mini-zh': 'cmnli-zh#20000/200',
+            'cmnli-mini-zh': 'cmnli-zh#20000',
             'coco-mini-en': 'coco-en-mini',
             'coco-mini-en-2': 'coco-en-2-mini',
             'aishell1-mini-zh': 'aishell1-zh-mini',
