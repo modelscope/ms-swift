@@ -17,12 +17,12 @@ from peft import PeftModel
 from swift.llm.agent.utils import split_action_action_input
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest,ChatCompletionResponse,
+from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, UsageInfo, decode_base64, inference, inference_stream, messages_to_history,
-                    random_uuid)
+                    Model, ModelList, UsageInfo, decode_base64, inference, inference_stream, messages_join_observation,
+                    messages_to_history, random_uuid)
 
 logger = get_logger()
 
@@ -106,6 +106,10 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{llm_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
+
+        # For agent, check if response is endwith observations and join tool observation
+        messages_join_observation(request.messages)
+
         example = messages_to_history(request.messages)
         if request.tools is not None:
             example['tools'] = request.tools
@@ -313,6 +317,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 f'the model `{model.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         messages = request.messages
+        # For agent, check if response is endwith observations and join tool observation
+        messages_join_observation(messages)
         images = request.images
         if _args.is_multimodal:
             messages = decode_base64(messages=messages)['messages']

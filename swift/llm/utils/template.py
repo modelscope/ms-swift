@@ -257,7 +257,14 @@ class Template:
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query, query_role, response, history, history_roles, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
+            query,
+            query_role,
+            response,
+            history,
+            history_roles,
+            system,
+            self.truncation_strategy,
+            auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -372,8 +379,8 @@ class Template:
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
         history.append([query, response])
         history_roles.append([query_role, 'assistant'])
-        for i, ((q, r),(qr,rr)) in enumerate(zip(history,history_roles)):
-            context_list = self.prompt.copy()
+        for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
+            context_list = self.tool_prompt.copy() if qr == 'tool' else self.prompt.copy()
             if i < len(history) - 1:
                 context_list.append('{{RESPONSE}}')
                 context_list += self.chat_sep

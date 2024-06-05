@@ -91,6 +91,7 @@ def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[st
         action_input.strip().replace('\n', '')
     return action, action_input
 
+
 def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'default') -> Optional[str]:
     TOOL_DESC = """{tool_name}: Call this tool to interact with the {tool_name} API. \
     What is the {tool_name} API useful for? {tool_desc} \
