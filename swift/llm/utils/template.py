@@ -233,7 +233,7 @@ class Template:
         query_role: Optional[str] = example.get('query_role', None)
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
-        history_roles: Optional[list[str]] = example.get('history_roles', None)
+        history_roles: Optional[History] = example.get('history_roles', None)
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
         tools: Optional[list] = example.get('tools', None)
@@ -349,7 +349,7 @@ class Template:
                 query_role: str,
                 response: Optional[str],
                 history: History,
-                history_roles: Optional[list[str]],
+                history_roles: History,
                 system: Optional[str],
                 truncation_strategy: str,
                 auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -371,7 +371,7 @@ class Template:
             prefix = self.prefix_has_system
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
         history.append([query, response])
-        history_roles.append(query_role)
+        history_roles.append([query_role, 'assistant'])
         for i, ((q, r),(qr,rr)) in enumerate(zip(history,history_roles)):
             context_list = self.prompt.copy()
             if i < len(history) - 1:
