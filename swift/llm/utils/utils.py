@@ -823,6 +823,7 @@ def history_to_messages(history: Optional[History],
 
 
 def messages_to_history(messages: Messages) -> Dict[str, Any]:
+    system = None
     if messages[0]['role'] == 'system':
         system = messages[0]['content']
         messages = messages[1::]
