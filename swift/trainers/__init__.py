@@ -18,7 +18,7 @@ else:
         'dpo_trainers': ['DPOTrainer'],
         'orpo_trainers': ['ORPOTrainer'],
         'simpo_trainers': ['SimPOTrainer'],
-        'rlhf_trainers': ['TrainerFactory'],
+        'rlhf_trainers': ['RLHFTrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'utils': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
