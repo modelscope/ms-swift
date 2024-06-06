@@ -1374,7 +1374,7 @@ register_dataset(
     DatasetName.llava_instruct_mix,
     None, [],
     preprocess_llava_mix_sft,
-    get_function=preprocess_llava_mix_sft,
+    get_function=get_dataset_from_repo,
     split=['test'],
     hf_dataset_id="HuggingFaceH4/llava-instruct-mix-vsft",
     tags=['multi-modal', 'en', 'vqa', 'quality'])
