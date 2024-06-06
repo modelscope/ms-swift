@@ -264,7 +264,7 @@ You can also use the --model_type parameter to specify the  template.')
         trainer_kwargs['ref_model'] = ref_model
     trainer_kwargs['args'].generation_config = generation_config
     trainer_cls = RLHFTrainerFactory.get_trainer(args.rlhf_type)
-    
+
     trainer = trainer_cls(
         model=model,
         train_dataset=train_dataset,
