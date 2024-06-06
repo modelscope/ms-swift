@@ -2440,17 +2440,6 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-GPTQ-Int8')
 @register_model(
-    ModelType.qwen2_72b_instruct_awq,
-    'qwen/Qwen2-72B-Instruct-AWQ',
-    LoRATM.llama,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    function_kwargs={'is_awq': True},
-    torch_dtype=torch.float16,
-    requires=['transformers>=4.37', 'autoawq'],
-    hf_model_id='Qwen/Qwen2-72B-Instruct-AWQ')
-@register_model(
     ModelType.qwen2_0_5b_instruct_awq,
     'qwen/Qwen2-0.5B-Instruct-AWQ',
     LoRATM.llama,
@@ -2483,6 +2472,17 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen2-7B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_72b_instruct_awq,
+    'qwen/Qwen2-72B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-72B-Instruct-AWQ')
 @register_model(
     ModelType.qwen2_0_5b_instruct,
     'qwen/Qwen2-0.5B-Instruct',
