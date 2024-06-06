@@ -268,6 +268,3 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 ```json
 {"model":"llama3-8b-instruct","choices":[{"index":0,"message":{"role":"assistant","content":"\n\nAnswer: The weather in Boston today is 32°F (0°C), with clear skies.","tool_calls":null},"finish_reason":null}],"usage":{"prompt_tokens":93,"completion_tokens":21,"total_tokens":114},"id":"chatcmpl-5e63cee5155f48a48d1366001d16502b","object":"chat.completion","created":1717590962}
 ```
-
-
-

@@ -241,11 +241,10 @@ class SmartPreprocessor:
                 'required': ['instruction', 'output'],
                 'preprocessor': AlpacaPreprocessor()
             },
-            'conversations': {
-                'required': ['conversations'],  # for test
-                'preprocessor': ToolMessagesPreprocessor(tools_role='tools', messages_key='conversations')
+            'conversations': {  # qwen
+                'required': ['conversations'],
+                'preprocessor': ConversationsPreprocessor(tools_role='tools', messages_key='conversations')
             },
-            # TODO: default tool-calling preprocessor?
             'chatml': {
                 'required': ['messages'],
                 'preprocessor':

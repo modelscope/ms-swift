@@ -111,8 +111,18 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         messages_join_observation(request.messages)
 
         example = messages_to_history(request.messages)
-        if request.tools is not None:
-            example['tools'] = request.tools
+
+        # tool choice
+        if request.tool_choice is not None and request.tools is not None:
+            if isinstance(request.tool_choice, dict):
+                name = request.tool_choice["function"]["name"]
+                tool = next((t for t in request.tools if t["function"]["name"] == name), None)
+                if tool is None:
+                    raise ValueError(f"Tool choice '{name}' not found in tools.")
+                example['tools'] = [tool]
+            elif request.tool_choice == 'auto':
+                example['tools'] = request.tools
+        
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = request.messages
@@ -326,8 +336,17 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         example = messages_to_history(messages)
         if len(images) > 0:
             example['images'] = images
-        if request.tools is not None:
-            example['tools'] = request.tools
+        
+        if request.tool_choice is not None and request.tools is not None:
+            if isinstance(request.tool_choice, dict):
+                name = request.tool_choice["function"]["name"]
+                tool = next((t for t in request.tools if t["function"]["name"] == name), None)
+                if tool is None:
+                    raise ValueError(f"Tool choice '{name}' not found in tools.")
+                example['tools'] = [tool]
+            elif request.tool_choice == 'auto':
+                example['tools'] = request.tools
+
         input_ids = template.encode(example)[0]['input_ids']
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = messages

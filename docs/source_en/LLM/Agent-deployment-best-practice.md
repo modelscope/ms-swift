@@ -173,7 +173,7 @@ If you have a better tools system prompt, please feel free to let us know or con
 
 ## Deployment
 
-Taking the deployment of vLLM as an example, with non-streaming invocation and ReAct prompt, we demonstrate the model deployment. 
+Taking the deployment of vLLM as an example, with non-streaming invocation and ReAct prompt, we demonstrate the model deployment.
 
 Here, we choose the llama3-8b-instruct model as an example.
 
@@ -230,4 +230,3 @@ result
 ```json
 {"model":"llama3-8b-instruct","choices":[{"index":0,"message":{"role":"assistant","content":"\n\nAnswer: The weather in Boston today is 32°F (0°C), with clear skies.","tool_calls":null},"finish_reason":null}],"usage":{"prompt_tokens":93,"completion_tokens":21,"total_tokens":114},"id":"chatcmpl-5e63cee5155f48a48d1366001d16502b","object":"chat.completion","created":1717590962}
 ```
-
