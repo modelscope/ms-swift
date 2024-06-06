@@ -3,6 +3,8 @@
 
 这里介绍对**Qwen1.5-7B-Chat**和对**Qwen1.5-72B-Chat**进行推理, 自我认知微调, 量化, 部署. 分别对应**低配置和高配置**环境.
 
+使用双卡80GiB A100对**Qwen2-72B-Instruct**进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
+
 
 ## 目录
 - [环境准备](#环境准备)
