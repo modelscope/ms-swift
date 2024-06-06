@@ -680,7 +680,7 @@ class QwenVLTemplate(QwenTemplate):
     def replace_bbox(self, index, example):
         objects = example['objects']
         object = objects[index]
-        return f'<box>({object[0]},{object[1]}),({object[2]},{object[3]})</box>'
+        return f'<box>({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})</box>'
 
 
 register_template(TemplateType.qwen, QwenTemplate())
