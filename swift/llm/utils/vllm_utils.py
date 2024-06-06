@@ -103,16 +103,17 @@ def get_vllm_engine(model_type: str,
         _engine.tokenizer.tokenizer = tokenizer
 
         # fix vllm==0.4 bug (very slow)
-        _tokenizer_len = len(tokenizer)
-        __old_len__ = tokenizer.__class__.__len__
+        if version.parse(vllm.__version__) >= version.parse('0.4'):
+            _tokenizer_len = len(tokenizer)
+            __old_len__ = tokenizer.__class__.__len__
 
-        def __len__(self) -> int:
-            if self is tokenizer:
-                return _tokenizer_len
-            else:
-                return __old_len__(self)
+            def __len__(self) -> int:
+                if self is tokenizer:
+                    return _tokenizer_len
+                else:
+                    return __old_len__(self)
 
-        tokenizer.__class__.__len__ = __len__
+            tokenizer.__class__.__len__ = __len__
 
     else:
         assert isinstance(_engine.tokenizer, PreTrainedTokenizerBase)
@@ -266,7 +267,10 @@ def inference_stream_vllm(llm_engine: LLMEngine,
             resp_list[i] = {'response': '', 'history': history}
             continue
         input_ids = inputs['input_ids']
-        llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
+        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+            llm_engine.add_request(str(i), {'prompt_token_ids': input_ids}, generation_config, **add_request_kwargs)
+        else:
+            llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     print_idx_list = [[0] for _ in range(len(request_list))]
     prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
@@ -353,7 +357,10 @@ def inference_vllm(llm_engine: LLMEngine,
             resp_list[i] = {'response': '', 'history': history}
             continue
         input_ids = inputs['input_ids']
-        llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
+        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+            llm_engine.add_request(str(i), {'prompt_token_ids': input_ids}, generation_config, **add_request_kwargs)
+        else:
+            llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     if use_tqdm is True:
         assert verbose is False

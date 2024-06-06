@@ -1,11 +1,13 @@
-# ORPO算法最佳实践
-[ORPO](https://arxiv.org/abs/2403.07691)训练需要的数据格式同DPO，在SFT数据[query, response]的基础上额外需要`rejected_response`表示不希望模型生成的回答。
+# SimPO算法最佳实践
+[SimPO](https://arxiv.org/abs/2405.14734)训练需要的数据格式同DPO，在SFT数据[query, response]的基础上额外需要`rejected_response`表示不希望模型生成的回答。
 
-ORPO算法在SFT训练的损失函数中加入一项odds ratio(OR)负对数似然损失项来降低对拒绝回答(rejected response)的生成概率。相比DPO，不需要参考模型，所需的训练显存更少。
+SimPO算法对奖励作了回答长度正则，替代了DPO中的参考模型对数概率项, 并且在偏好建模中加入了reward margin项来扩大两个回答的奖励差距
 
-其中超参`beta`表示OR损失项的系数，beta越大表示对`rejected_response`的惩罚越大，默认为0.1
+相比DPO，SimPO算法不需要参考模型，所需的训练显存更少。
 
-本期最佳实践将使用ORPO算法训练[llama3-8b-instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct/summary)模型，使其能够用中文回答。
+其中超参`beta`同DPO作为奖励系数, 通常取2.0-2.5, 默认为2.0, `gamma`作为reward margin, 通常取0.5-1.5, 默认为1.0
+
+本期最佳实践将使用SimPO算法训练[llama3-8b-instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct/summary)模型，使其能够用中文回答。
 
 ## 目录
 - [环境准备](#环境准备)
@@ -45,57 +47,18 @@ swift内置了处理方法将`answer_zh`作为`response`,将`answer_en`作为`re
 ```shell
 # Experimental environment: A100
 # DDP + MP
-# Memory usage: 4*24G
+# Memory usage: 4*56G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=2 \
-swift orpo \
+swift simpo \
     --model_type  llama3-8b-instruct \
-    --beta 0.5 \
-    --sft_type  lora \
+    --sft_type  full \
     --dataset shareai-llama3-dpo-zh-en-emoji \
-    --num_train_epochs  2  \
-    --lora_target_modules  ALL  \
     --gradient_checkpointing  true  \
-    --batch_size  1  \
-    --learning_rate  5e-5  \
-    --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
-    --warmup_ratio  0.03  \
-    --save_total_limit  2
-# MP(device map)
-# Memory usage: 2*24G
-CUDA_VISIBLE_DEVICES=0,1 \
-swift orpo \
-    --model_type  llama3-8b-instruct \
-    --beta 0.5 \
-    --sft_type  lora \
-    --dataset shareai-llama3-dpo-zh-en-emoji \
-    --num_train_epochs  2  \
-    --lora_target_modules  ALL  \
-    --gradient_checkpointing  true  \
-    --batch_size  1  \
-    --learning_rate  5e-5  \
-    --gradient_accumulation_steps  16  \
-    --warmup_ratio  0.03  \
-    --save_total_limit  2
-
-# Memory usage: 40G
-CUDA_VISIBLE_DEVICES=0 \
-swift orpo \
-    --model_type  llama3-8b-instruct \
-    --beta 0.5 \
-    --sft_type  lora \
-    --dataset shareai-llama3-dpo-zh-en-emoji \
-    --num_train_epochs  2  \
-    --lora_target_modules  ALL  \
-    --gradient_checkpointing  true  \
-    --batch_size  1  \
-    --learning_rate  5e-5  \
-    --gradient_accumulation_steps  16  \
-    --warmup_ratio  0.03  \
-    --save_total_limit  2
+    --learning_rate  2e-6
 ```
 **提示**:
-
+- 测试发现SimPO+LoRA表现不佳，推荐使用全量微调。
 - 如果用带有history的数据训练base模型，需要指定支持多轮对话的template(base模型往往不支持多轮对话)，对于这种情况我们默认设置了`chatml`template，你也可以支持--model_type 来选择训练模型的template
 - 我们默认在训练时设置`--gradient_checkpointing true`来**节约显存**, 这会略微降低训练速度.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
@@ -122,9 +85,10 @@ swift orpo \
 ### 训练后推理
 > 你是谁
 
-![orpo6](../../resources/orpo6.png)
+![simpo1](../../resources/simpo1.png)
 
 > 西湖醋鱼怎么做
 
-![orpo7](../../resources/orpo7.png)
-![orpo8](../../resources/orpo8.png)
+![simpo2](../../resources/simpo2.png)
+![simpo3](../../resources/simpo3.png)
+![simpo4](../../resources/simpo4.png)

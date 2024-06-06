@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import math
 import os
 import sys
 from contextlib import nullcontext
@@ -14,7 +15,6 @@ import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                         GenerationConfig, GPTQConfig, snapshot_download)
-from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
@@ -25,6 +25,7 @@ from transformers.utils import strtobool
 from transformers.utils.versions import require_version
 
 from swift import get_logger
+from swift.hub.utils.utils import get_cache_dir
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
 from .utils import get_max_model_len, is_unsloth_available
@@ -134,6 +135,10 @@ class ModelType:
     chatglm3_6b_32k = 'chatglm3-6b-32k'
     chatglm3_6b_128k = 'chatglm3-6b-128k'
     codegeex2_6b = 'codegeex2-6b'
+    glm4v_9b_chat = 'glm4v-9b-chat'
+    glm4_9b = 'glm4-9b'
+    glm4_9b_chat = 'glm4-9b-chat'
+    glm4_9b_chat_1m = 'glm4-9b-chat-1m'
     # llama2
     llama2_7b = 'llama2-7b'
     llama2_7b_chat = 'llama2-7b-chat'
@@ -426,6 +431,7 @@ class LoRATM(NamedTuple):
         'vision_expert_query_key_value', 'vision_expert_dense', 'language_expert_query_key_value',
         'language_expert_dense'
     ]
+    glm4v = ['self_attention.query_key_value']
     phi = ['Wqkv']
     phi3 = ['qkv_proj']
     internlm2 = ['wqkv']
@@ -549,22 +555,6 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
         QuantLinear.forward = _new_forward
 
 
-@register_model(
-    ModelType.cogvlm2_en_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
-@register_model(
-    ModelType.cogvlm2_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
 @register_model(
     ModelType.atom_7b,
     'FlagAlpha/Atom-7B',
@@ -872,6 +862,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.placeholder_tokens = placeholder_tokens
         tokenizer.placeholder_tokens_id = [tokenizer.convert_tokens_to_ids(token) for token in placeholder_tokens]
     model = None
+
+    rope_scaling = kwargs.pop('rope_scaling', None)
+    max_position_embeddings = getattr(model_config, 'max_position_embeddings', None)
+    if rope_scaling and max_position_embeddings:
+        max_length = kwargs.get('max_length') or max_position_embeddings
+        rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
+        setattr(model_config, 'rope_scaling', {'type': rope_scaling, 'factor': rope_scaling_factor})
+
     if load_model:
         if kwargs.get('use_unsloth', False):
             assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
@@ -890,6 +888,39 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.cogvlm2_en_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
+@register_model(
+    ModelType.cogvlm2_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
+def get_model_tokenizer_cogvlm2(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
+    if model is not None:
+        # fix device map 4
+        def _output_device_map_hook(module, input, output):
+            return output.to(input[0].device)
+
+        for layer in model.model.vision.transformer.layers:
+            layer.mlp.register_forward_hook(_output_device_map_hook)
+            layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
+
+        device = next(model.model.vision.linear_proj.parameters()).device
+        model.model.vision.boi.data = model.model.vision.boi.to(device)
+        model.model.vision.eoi.data = model.model.vision.eoi.to(device)
     return model, tokenizer
 
 
@@ -1170,7 +1201,13 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor
+    if model is not None:
+        model.max_position_embeddings = model.language_model.config.max_position_embeddings
     return model, tokenizer
+
+
+def _clone_hook(module, input, output):
+    return output.requires_grad_(True).clone()
 
 
 @register_model(
@@ -1180,7 +1217,6 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     TemplateType.phi3_vl,
     support_flash_attn=True,
     requires=['transformers>=4.36'],
-    disable_require_grads=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='microsoft/Phi-3-vision-128k-instruct')
 def get_model_tokenizer_phi3_vision(model_dir: str,
@@ -1192,6 +1228,9 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
+
+    if load_model:
+        model.model.vision_embed_tokens.wte.register_forward_hook(_clone_hook)
 
     return model, tokenizer
 
@@ -1325,6 +1364,37 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
 
 
 @register_model(
+    ModelType.glm4_9b,
+    'ZhipuAI/glm-4-9b',
+    LoRATM.chatglm,
+    TemplateType.chatglm_generation,
+    support_vllm=True,
+    hf_model_id='THUDM/glm-4-9b')
+@register_model(
+    ModelType.glm4_9b_chat,
+    'ZhipuAI/glm-4-9b-chat',
+    LoRATM.chatglm,
+    TemplateType.chatglm3,
+    support_vllm=True,
+    function_kwargs={'kv_cache_patch': True},
+    hf_model_id='THUDM/glm-4-9b-chat')
+@register_model(
+    ModelType.glm4_9b_chat_1m,
+    'ZhipuAI/glm-4-9b-chat-1m',
+    LoRATM.chatglm,
+    TemplateType.chatglm3,
+    support_vllm=True,
+    function_kwargs={'kv_cache_patch': True},
+    hf_model_id='THUDM/glm-4-9b-chat-1m')
+@register_model(
+    ModelType.glm4v_9b_chat,
+    'ZhipuAI/glm-4v-9b',
+    LoRATM.glm4v,
+    TemplateType.glm4v,
+    eos_token='<|endoftext|>',
+    tags=['multi-modal', 'vision'],
+    hf_model_id='THUDM/glm-4v-9b')
+@register_model(
     ModelType.codefuse_codegeex2_6b_chat,
     'codefuse-ai/CodeFuse-CodeGeeX2-6B',
     LoRATM.chatglm,
@@ -1389,6 +1459,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
+    kv_cache_patch = kwargs.pop('kv_cache_patch', False)
     if model_kwargs.get('quantization_config') is not None:
         model_kwargs['quantization_config'].llm_int8_skip_modules = ['output_layer']
     # fix transformers>=4.34 bug
@@ -1409,6 +1480,18 @@ def get_model_tokenizer_chatglm(model_dir: str,
             return __old_forward(self, inputs, target)
 
         CrossEntropyLoss.forward = cross_entropy_forward
+
+        if kv_cache_patch:
+            device = next(model.parameters()).device.type
+
+            def _output_device_map_hook(module, input, output):
+                kv_cache = output[1]
+                if kv_cache is not None and isinstance(kv_cache, torch.Tensor):
+                    kv_cache = kv_cache.to(f'{device}:0')
+                return output[0], kv_cache
+
+            for layer in model.transformer.encoder.layers:
+                layer.register_forward_hook(_output_device_map_hook)
     return model, tokenizer
 
 
@@ -2934,7 +3017,7 @@ def fix_internvl_inplace_bug(model) -> None:
     ModelType.mini_internvl_chat_4b_v1_5,
     'OpenGVLab/Mini-InternVL-Chat-4B-V1-5',
     LoRATM.phi3,
-    TemplateType.internvl,
+    TemplateType.internvl_phi3,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -2973,6 +3056,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
+        model.config.max_position_embeddings = model.language_model.config.max_position_embeddings
         _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching
@@ -3160,7 +3244,6 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
 
 def _patch_deepseek_vl(model) -> None:
-
     if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
         return
     if hasattr(model.language_model, '__old_forward'):
@@ -3183,11 +3266,6 @@ def _patch_deepseek_vl(model) -> None:
 
     model.language_model.forward = _new_forward
     model.language_model.__old_forward = __old_forward
-
-    model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
-    func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
-    _use_submodel_func(model, 'language_model', func_list)
-    model.generation_config = model.language_model.generation_config
 
 
 @register_model(
@@ -3240,6 +3318,10 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     tokenizer.processor = processor
     if load_model:
         _patch_deepseek_vl(model)
+        model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
+        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
+        model.generation_config = model.language_model.generation_config
     return model, tokenizer
 
 

@@ -206,7 +206,8 @@ class TestRun(unittest.TestCase):
             # ignore citest error in github
             return
         train_dataset_fnames = [
-            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl', 'swift_multi.json'
+            'alpaca.csv', 'chatml.jsonl', 'swift_pre.jsonl', 'swift_single.csv', 'swift_multi.jsonl',
+            'swift_multi.json', 'sharegpt.jsonl'
         ]
         val_dataset_fnames = [
             'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl', 'swift_pre.csv', 'swift_single.jsonl'
@@ -330,7 +331,26 @@ class TestRun(unittest.TestCase):
                 lora_target_modules='ALL',
                 train_dataset_sample=100,
                 eval_steps=5,
-                custom_train_dataset_path=[os.path.join(folder, 'multi_modal.jsonl')],
+                custom_train_dataset_path=[os.path.join(folder, 'multi_modal_2.jsonl')],
+                lazy_tokenize=False))
+        best_model_checkpoint = output['best_model_checkpoint']
+        torch.cuda.empty_cache()
+        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+
+    def test_glm4v_9b_chat(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        folder = os.path.join(os.path.dirname(__file__), 'data')
+        torch.cuda.empty_cache()
+        output = sft_main(
+            SftArguments(
+                model_type=ModelType.glm4v_9b_chat,
+                #   dataset=DatasetName.capcha_images,
+                lora_target_modules='ALL',
+                train_dataset_sample=100,
+                eval_steps=5,
+                custom_train_dataset_path=[os.path.join(folder, 'multi_modal_3.jsonl')],
                 lazy_tokenize=False))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
@@ -409,7 +429,7 @@ class TestRun(unittest.TestCase):
                 lora_target_modules='ALL',
                 train_dataset_sample=100,
                 eval_steps=5,
-                custom_train_dataset_path=[os.path.join(folder, 'multi_modal2.jsonl')],
+                custom_train_dataset_path=[os.path.join(folder, 'multi_modal_1.jsonl')],
                 lazy_tokenize=False))
 
 

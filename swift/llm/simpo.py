@@ -9,17 +9,17 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
-from swift.trainers.orpo_trainers import ORPOTrainer
+from swift.trainers.simpo_trainers import SimPOTrainer
 from swift.utils import (check_json_format, get_dist_setting, get_logger, get_main, get_model_info, is_ddp_plus_mp,
                          is_dist, is_master, plot_images, seed_everything, show_layers)
 from .tuner import prepare_model
-from .utils import (ORPOArguments, Template, get_dataset, get_model_tokenizer, get_template, get_time_info,
+from .utils import (SimPOArguments, Template, get_dataset, get_model_tokenizer, get_template, get_time_info,
                     set_generation_config)
 
 logger = get_logger()
 
 
-def llm_orpo(args: ORPOArguments) -> str:
+def llm_simpo(args: SimPOArguments) -> str:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
@@ -45,7 +45,6 @@ def llm_orpo(args: ORPOArguments) -> str:
             model_kwargs['device_map'] = {'': local_rank}
         else:
             model_kwargs['device_map'] = 'auto'
-
     if args.quant_method == 'hqq':
         from transformers import HqqConfig
         if args.hqq_dynamic_config_path is not None:
@@ -93,7 +92,6 @@ def llm_orpo(args: ORPOArguments) -> str:
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
         **kwargs)
-
     logger.info(f'model_config: {model.config}')
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model device_map {model.hf_device_map}')
@@ -168,32 +166,19 @@ You can also use the --model_type parameter to specify the  template.')
     if args.check_model_is_latest is False:
         trainer_kwargs['check_model'] = False
 
-    if not hasattr(training_args, 'model_init_kwargs'):
-        training_args.model_init_kwargs = None
-    if not hasattr(training_args, 'generate_during_eval'):
-        training_args.generate_during_eval = False
-    if not hasattr(training_args, 'max_completion_length'):  # encoder-decoder
-        training_args.max_completion_length = None
-    if not hasattr(training_args, 'padding_value'):
-        training_args.padding_value = 0
-    if not hasattr(training_args, 'dataset_num_proc'):
-        training_args.dataset_num_proc = None
-    if not hasattr(training_args, 'label_pad_token_id'):
-        training_args.label_pad_token_id = -100
-    if not hasattr(training_args, 'disable_dropout'):
-        training_args.disable_dropout = True
-    training_args.truncation_mode = 'keep_end' if args.truncation_strategy == 'truncation_left' else 'keep_start'
-    training_args.max_length = args.max_length
-    training_args.max_prompt_length = args.max_prompt_length
-    training_args.beta = args.beta
-
-    trainer = ORPOTrainer(
+    trainer = SimPOTrainer(
         model=model,
+        beta=args.beta,
+        gamma=args.gamma,
+        label_smoothing=args.label_smoothing,
+        loss_type=args.loss_type,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         template=template,
+        max_prompt_length=args.max_prompt_length,
+        max_length=args.max_length,
         test_oom_error=args.test_oom_error,
         **trainer_kwargs)
     trainer.sft_args = args
@@ -236,4 +221,4 @@ You can also use the --model_type parameter to specify the  template.')
     return run_info
 
 
-orpo_main = get_main(ORPOArguments, llm_orpo)
+simpo_main = get_main(SimPOArguments, llm_simpo)
