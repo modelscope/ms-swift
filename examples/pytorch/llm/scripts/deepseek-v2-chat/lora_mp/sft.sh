@@ -17,7 +17,7 @@ swift sft \
     --lora_dropout_p 0.05 \
     --lora_dtype AUTO \
     --lora_target_modules DEFAULT \
-    --gradient_checkpointing true \
+    --gradient_checkpointing false \
     --use_flash_attn true \
     --batch_size 1 \
     --weight_decay 0.1 \
