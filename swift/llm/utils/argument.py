@@ -906,7 +906,7 @@ class SftArguments(ArgumentsBase):
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
         if 'include_num_input_tokens_seen' in parameters:
             kwargs['include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
-        if version.parse(transformers.__version__) >= version.parse('4.41'):
+        if 'eval_strategy' in parameters:
             kwargs['eval_strategy'] = self.evaluation_strategy
         else:
             kwargs['evaluation_strategy'] = self.evaluation_strategy
