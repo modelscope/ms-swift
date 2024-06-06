@@ -110,17 +110,28 @@ class ModelType:
     # qwen2
     qwen2_0_5b = 'qwen2-0_5b'
     qwen2_0_5b_instruct = 'qwen2-0_5b-instruct'
+    qwen2_0_5b_instruct_int4 = 'qwen2-0_5b-instruct-int4'
+    qwen2_0_5b_instruct_int8 = 'qwen2-0_5b-instruct-int8'
+    qwen2_0_5b_instruct_awq = 'qwen2-0_5b-instruct-awq'
     qwen2_1_5b = 'qwen2-1_5b'
     qwen2_1_5b_instruct = 'qwen2-1_5b-instruct'
+    qwen2_1_5b_instruct_int4 = 'qwen2-1_5b-instruct-int4'
+    qwen2_1_5b_instruct_int8 = 'qwen2-1_5b-instruct-int8'
+    qwen2_1_5b_instruct_awq = 'qwen2-1_5b-instruct-awq'
     qwen2_7b = 'qwen2-7b'
     qwen2_7b_instruct = 'qwen2-7b-instruct'
+    qwen2_7b_instruct_int4 = 'qwen2-7b-instruct-int4'
+    qwen2_7b_instruct_int8 = 'qwen2-7b-instruct-int8'
+    qwen2_7b_instruct_awq = 'qwen2-7b-instruct-awq'
     qwen2_72b = 'qwen2-72b'
     qwen2_72b_instruct = 'qwen2-72b-instruct'
     qwen2_72b_instruct_int4 = 'qwen2-72b-instruct-int4'
     qwen2_72b_instruct_int8 = 'qwen2-72b-instruct-int8'
     qwen2_72b_instruct_awq = 'qwen2-72b-instruct-awq'
-    qwen2_moe_57b_a14b = 'qwen2-moe-57b-a14b'
-    qwen2_moe_57b_a14b_instruct = 'qwen2-moe-57b-a14b-instruct'
+    qwen2_57b_a14b = 'qwen2-57b-a14b'
+    qwen2_57b_a14b_instruct = 'qwen2-57b-a14b-instruct'
+    qwen2_57b_a14b_instruct_int4 = 'qwen2-57b-a14b-instruct-int4'
+
 
     # qwen-vl
     qwen_vl = 'qwen-vl'
@@ -1500,25 +1511,15 @@ def get_model_tokenizer_chatglm(model_dir: str,
 
 
 @register_model(
-    ModelType.qwen2_moe_57b_a14b_instruct,
-    'qwen/Qwen2-MoE-57B-A14B-Instruct',
-    LoRATM.llama,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_gradient_checkpointing=False,
-    requires=['transformers>=4.40'],
-    hf_model_id='Qwen/Qwen2-MoE-57B-A14B-Instruct')
-@register_model(
-    ModelType.qwen2_moe_57b_a14b,
-    'qwen/Qwen2-MoE-57B-A14B',
+    ModelType.qwen2_57b_a14b,
+    'qwen/Qwen2-57B-A14B',
     LoRATM.llama,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
     support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
-    hf_model_id='Qwen/Qwen2-MoE-57B-A14B')
+    hf_model_id='Qwen/Qwen2-57B-A14B')
 @register_model(
     ModelType.qwen2_0_5b,
     'qwen/Qwen2-0.5B',
@@ -2328,7 +2329,94 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
-
+@register_model(
+    ModelType.qwen2_57b_a14b_instruct_int4,
+    'qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    requires=['auto_gptq>=0.5', 'transformers>=4.40'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    hf_model_id='Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_57b_a14b_instruct,
+    'qwen/Qwen2-57B-A14B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    requires=['transformers>=4.40'],
+    hf_model_id='Qwen/Qwen2-57B-A14B-Instruct')
+@register_model(
+    ModelType.qwen2_0_5b_instruct_int4,
+    'qwen/Qwen2-0.5B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-0.5B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_0_5b_instruct_int8,
+    'qwen/Qwen2-0.5B-Instruct-GPTQ-Int8',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-0.5B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_1_5b_instruct_int4,
+    'qwen/Qwen2-1.5B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_1_5b_instruct_int8,
+    'qwen/Qwen2-1.5B-Instruct-GPTQ-Int8',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-1_5B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_7b_instruct_int4,
+    'qwen/Qwen2-7B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-7B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_7b_instruct_int8,
+    'qwen/Qwen2-7B-Instruct-GPTQ-Int8',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-7B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.qwen2_72b_instruct_int4,
     'qwen/Qwen2-72B-Instruct-GPTQ-Int4',
@@ -2362,6 +2450,39 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_0_5b_instruct_awq,
+    'qwen/Qwen2-0.5B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-0.5B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_1_5b_instruct_awq,
+    'qwen/Qwen2-1.5B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-1.5B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_7b_instruct_awq,
+    'qwen/Qwen2-7B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-7B-Instruct-AWQ')
 @register_model(
     ModelType.qwen2_0_5b_instruct,
     'qwen/Qwen2-0.5B-Instruct',
