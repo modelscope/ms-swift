@@ -296,7 +296,8 @@ def load_ms_dataset(dataset_id: str,
             try:
                 dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
             except Exception as e:
-                print(e)
+                logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
+                             f'split={split} with error: {e}')
                 continue
         else:
             if is_dist() and not is_local_master():
@@ -307,7 +308,8 @@ def load_ms_dataset(dataset_id: str,
             try:
                 dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
             except Exception as e:
-                print(e)
+                logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
+                             f'split={split} with error: {e}')
                 continue
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()

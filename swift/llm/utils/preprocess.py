@@ -36,18 +36,13 @@ class MediaMixin:
         self.media_tag = media_tag
         self.media_type = media_type
         self.media_replacer = MediaTagReplacer(media_type, media_tag)
-        self._empty_row = {
-            'system': None,
-            'history': None,
-            'query': '',
-            'response': '',
-        }
-        if self.media_name:
-            self._empty_row[self.media_name] = None
 
     @property
     def empty_row(self):
-        return self._empty_row.copy()
+        return {
+            'query': '',
+            'response': '',
+        }
 
     @property
     def media_name(self):
@@ -74,7 +69,7 @@ class SwiftPreprocessor:
             history: List[History] = []
             for h in tqdm(old_history):
                 if isinstance(h, str):
-                    h = ast.literal_eval(old_h)
+                    h = ast.literal_eval(h)
                 elif h is None:
                     h = []
                 if len(h) > 0:
@@ -128,15 +123,13 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         medias = None
         for i, d in enumerate(tqdm(dataset)):
             d = self.preprocess(d)
-            h = d['history']
-            sys = d['system']
-            med = d.get(self.media_name)
             q = d['query']
             r = d['response']
-            if isinstance(r, list):
-                r = np.random.choice(r)
             if not q and not r:
                 continue
+            h = d.get('history')
+            sys = d.get('system')
+            med = d.get(self.media_name)
             if history is None and h is not None:
                 history = [None for _ in range(i - 1)]
             if system is None and sys is not None:
@@ -193,11 +186,6 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         super().__init__(**kwargs)
 
     def preprocess(self, d):
-        query: str = ''
-        response: str = ''
-        system: Optional[str] = None
-
-        history: Optional[History] = None
         try:
             conversations = d[self.conversations_key]
             conversations = self.repair_conversations(conversations)
@@ -247,13 +235,13 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
         for d in tqdm(dataset):
             d = self.preprocess(d)
-            h = d['history']
-            sys = d['system']
-            med = d[self.media_name]
             q = d['query']
             r = d['response']
             if not q and not r:
                 continue
+            h = d.get('history')
+            sys = d.get('system')
+            med = d.get(self.media_name)
             if h:
                 has_history = True
             if sys:
@@ -315,7 +303,6 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 'history': history,
                 'query': query,
                 'response': response,
-                'system': None,
             }
             self.media_replacer(d_dict, self.parse_medias(d))
         except:
@@ -326,7 +313,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
         return d_dict
 
     def __call__(self, dataset: HfDataset):
-        return dataset.map(self.preprocess).filter(lambda d: d.get('query'))
+        return dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('query'))
 
 
 class ComposePreprocessor:
