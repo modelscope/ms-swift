@@ -1117,7 +1117,10 @@ def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
         use_hf = strtobool(os.environ.get('USE_HF', 'False'))
     elif isinstance(use_hf, str):
         use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
-    part1, dataset_sample = _safe_split(other, '#', True)
+    if not (other.endswith('.json') or other.endswith('.jsonl') or other.endswith('.csv')):
+        part1, dataset_sample = _safe_split(other, '#', True)
+    else:
+        part1, dataset_sample = other, None
     dataset_name, subsets = _safe_split(part1, ':', True)
     if subsets is not None:
         subset_list = subsets.split('/')
