@@ -2,6 +2,7 @@
 import inspect
 import math
 import os
+import platform
 import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Set, Tuple, Union
@@ -16,7 +17,6 @@ from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
-import platform
 
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
@@ -855,7 +855,7 @@ class SftArguments(ArgumentsBase):
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        if self.dataloader_num_workers is None: 
+        if self.dataloader_num_workers is None:
             if 'dataloader_num_workers' in template_info:
                 self.dataloader_num_workers = template_info['dataloader_num_workers']
             elif platform.system() == 'Windows':
