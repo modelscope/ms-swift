@@ -48,7 +48,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
-- 🔥2024.06.07: 支持Qwen2系列LLM, 包括0.5B、1.5B、7B、72B的Base和Instruct模型, 其中72B的Instruct模型包括int4、int8量化版本.
+- 🔥2024.06.07: 支持Qwen2系列LLM, 包括0.5B、1.5B、7B、72B的Base和Instruct模型, 以及对应的gptq-int4、gptq-int8、awq-int4量化版本.
 - 🔥2024.06.05: 支持glm4系列大模型和glm4v-9b-chat多模态大模型, 可以查看[glm4v最佳实践](docs/source/Multi-Modal/glm4v最佳实践.md).
 - 🔥2024.06.01: 支持**SimPO**训练，使用`swift simpo`来开始训练，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/SimPO算法最佳实践.md)
 - 🔥2024.06.01: 支持多模态大模型部署, 可以查看[多模态部署文档](docs/source/Multi-Modal/MLLM部署文档.md).
