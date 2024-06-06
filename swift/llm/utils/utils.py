@@ -277,8 +277,8 @@ class LazyLLMDataset(Dataset):
             data = self.dataset[i]
             try:
                 res = self.template.encode(data)
-            except:
-                print('error when fetching data')
+            except Exception as e:
+                logger.error(f'error fetching data: {e}, continue with the next one.')
                 continue
             if len(res[0]) > 0:
                 return res

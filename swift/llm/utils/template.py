@@ -411,10 +411,8 @@ class Template:
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
-        contents = []
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             context = self.pre_tokenize(context, **kwargs)
-            contents.append(context)
             if isinstance(context, str):
                 curr_tokenizer_kwargs = {**tokenizer_kwargs, **self._get_tokenizer_kwargs(context)}
                 token_list = self._tokenize(context, **curr_tokenizer_kwargs)
@@ -763,7 +761,7 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
-            content = requests.get('https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg').content
+            content = requests.get(img_path).content
             image = Image.open(BytesIO(content))
         elif os.path.exists(img_path):
             image = Image.open(img_path)
