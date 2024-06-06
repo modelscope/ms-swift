@@ -847,7 +847,7 @@ def messages_to_history(messages: Messages) -> Dict[str, Any]:
     }
 
 
-def messages_join_observation(messages: Messages) -> Messages:
+def messages_join_observation(messages: Messages):
     """
         Joins observations from 'tool' message into the 'assistant' response.
 
@@ -876,6 +876,7 @@ def messages_join_observation(messages: Messages) -> Messages:
         messages.pop(-1)
         messages[-1]['content'] += observations
     return
+
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
