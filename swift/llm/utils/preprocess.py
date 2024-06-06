@@ -19,7 +19,7 @@ class SwiftPreprocessor:
             history: List[History] = []
             for h in tqdm(old_history):
                 if isinstance(h, str):
-                    h = ast.literal_eval(old_h)
+                    h = ast.literal_eval(h)
                 elif h is None:
                     h = []
                 if len(h) > 0:
