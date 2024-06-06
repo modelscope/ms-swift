@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from .dpo_trainers import DPOTrainer
     from .orpo_trainers import ORPOTrainer
     from .simpo_trainers import SimPOTrainer
+    from .rlhf_trainers import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .utils import EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, \
         IntervalStrategy, SchedulerType, ShardedDDPOption, TrainerCallback
@@ -17,6 +18,7 @@ else:
         'dpo_trainers': ['DPOTrainer'],
         'orpo_trainers': ['ORPOTrainer'],
         'simpo_trainers': ['SimPOTrainer'],
+        'rlhf_trainers': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'utils': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',

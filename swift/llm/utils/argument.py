@@ -4,7 +4,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Set, Tuple, Union
+from typing import List, Literal, Optional, Set, Tuple, Type, Union
 
 import json
 import numpy as np
@@ -1331,6 +1331,53 @@ class ExportArguments(InferArguments):
                 self.quant_output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
             logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
         assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
+
+
+@dataclass
+class RLHFArguments(SftArguments):
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto'] = 'dpo'
+    ref_model_type: Optional[str] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+
+    ref_model_id_or_path: Optional[str] = None
+    ref_model_free = False
+    max_prompt_length: int = 1024
+    beta: Optional[int] = None
+    label_smoothing: float = 0.0
+    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
+    sft_beta: float = 0.1
+    gamma = 1.0  # reward margin hyperparameter in SimPO
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        # without reference model
+        self.ref_model_free = self.rlhf_type in ['orpo', 'simpo']
+        self.set_default_beta()
+        self.set_default_config()
+
+    def set_default_beta(self):
+        if self.beta is None:
+            if self.rlhf_type in ['dpo', 'orpo', 'kto']:
+                self.beta = 0.1
+            elif self.rlhf_type == 'simpo':
+                self.beta = 2.0
+
+    def set_default_config(self):
+        import importlib
+        from dataclasses import fields
+        trl_trainer_module = importlib.import_module('trl.trainer')
+        CONFIG_MAPPING = {
+            'orpo': getattr(trl_trainer_module, 'orpo_config', None),
+            'kto': getattr(trl_trainer_module, 'kto_config', None),
+        }
+        if self.rlhf_type in CONFIG_MAPPING and CONFIG_MAPPING[self.rlhf_type] is not None:
+            cls = CONFIG_MAPPING[self.rlhf_type]
+            kwargs = {f.name: getattr(self, f.name) for f in fields(cls) if hasattr(self, f.name)}
+            kwargs = {f.name: getattr(self.training_args, f.name) for f in fields(cls) if hasattr(self, f.name)}
+            self.rlhf_config_args = cls(**kwargs)
+        else:
+            # DPO, SimPO
+            self.rlhf_config_args = self.training_args
 
 
 @dataclass

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .sft import sft_main
     from .export import export_main
     from .eval import eval_main
+    from .rlhf import rlhf_main
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -24,6 +25,7 @@ else:
         'dpo': ['dpo_main'],
         'orpo': ['orpo_main'],
         'simpo': ['simpo_main'],
+        'rlhf': ['rlhf_main'],
         'infer': ['merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
         'rome': ['rome_main'],
         'sft': ['sft_main'],

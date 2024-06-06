@@ -15,6 +15,7 @@ ROUTE_MAPPING: Dict[str, str] = {
     'dpo': 'swift.cli.dpo',
     'orpo': 'swift.cli.orpo',
     'simpo': 'swift.cli.simpo',
+    'rlhf': 'swift.cli.rlhf',
     'export': 'swift.cli.export',
     'eval': 'swift.cli.eval'
 }
