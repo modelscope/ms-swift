@@ -116,7 +116,7 @@ class ConversationsPreprocessor:
         query: List[str] = []
         response: List[str] = []
         system: List[Optional[str]] = []
-        tools: List[List[Dict[str, any]]] = []
+        tools: List[List[Dict[str, Any]]] = []
         has_system = False
         history: List[History] = []
         has_history = False

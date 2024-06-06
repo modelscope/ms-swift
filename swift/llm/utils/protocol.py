@@ -2,7 +2,7 @@
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union, Any
 
 
 def random_uuid() -> str:
@@ -68,7 +68,7 @@ class ChatCompletionRequestMixin:
     model: str
     messages: List[Dict[str, str]]
     tools: List[Dict[str, Union[str, Dict]]] = None
-    tool_choice: Optional[Union[str, any]] = 'auto'
+    tool_choice: Optional[Union[str, Any]] = 'auto'
     images: List[str] = field(default_factory=list)
 
 
