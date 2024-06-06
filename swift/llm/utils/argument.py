@@ -399,7 +399,7 @@ class ArgumentsBase:
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
                 if self.model_type is None:
                     raise ValueError(f"model_id_or_path: '{model_id_or_path}' is not registered. "
-                                     'Please set `--model_type <model_type>` additionally.')
+                                     'Please set `--model_type <model_type> --model_id_or_path <model_id_or_path>`.')
                 assert self.model_cache_dir is None
 
         error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
