@@ -263,7 +263,7 @@ You can also use the --model_type parameter to specify the  template.')
     if not args.ref_model_free and ref_model is not None:
         trainer_kwargs['ref_model'] = ref_model
     trainer_kwargs['args'].generation_config = generation_config
-    trainer_cls = RLHFTrainerFactory.get_trainer
+    trainer_cls = RLHFTrainerFactory.get_trainer(args.rlhf_type)
     
     trainer = trainer_cls(
         model=model,
