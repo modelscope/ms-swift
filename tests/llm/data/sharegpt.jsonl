@@ -1,0 +1,3 @@
+{"system": "00000", "conversation": [{"human": "11111", "assistant": "22222"}]}
+{"conversation": [{"human": "aaaaa", "assistant": "bbbbb"}]}
+{"conversation": [{"human": "AAAAA", "assistant": "BBBBB"}, {"human": "CCCCC", "assistant": "DDDDD"}, {"human": "EEEEE", "assistant": "FFFFF"}]}

@@ -70,17 +70,24 @@ class SwiftPreprocessor:
     def __call__(self, dataset: HfDataset) -> HfDataset:
         if 'history' in dataset.features:
             old_history = dataset['history']
-
+            has_history = False
             history: List[History] = []
-            for old_h in tqdm(old_history):
-                if isinstance(old_h, list):
-                    break
-                h = None
-                if old_h is not None:
+            for h in tqdm(old_history):
+                if isinstance(h, str):
                     h = ast.literal_eval(old_h)
+                elif h is None:
+                    h = []
+                if len(h) > 0:
+                    has_history = True
                 history.append(h)
-            else:
-                dataset = dataset.remove_columns(['history']).add_column('history', history)
+            dataset = dataset.remove_columns(['history'])
+            if has_history:
+                dataset = dataset.add_column('history', history)
+        if 'system' in dataset.features:
+            system = dataset['system']
+            has_system = len([sys for sys in system if sys not in {None, ''}]) > 0
+            if not has_system:
+                dataset = dataset.remove_columns(['system'])
         return dataset
 
 
@@ -270,7 +277,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             'query': query,
             'response': response,
         })
-        dataset = HfDataset.from_dict({**kwargs})
+        dataset = HfDataset.from_dict(kwargs)
         return dataset
 
 
@@ -344,6 +351,41 @@ class RenameColumnsPreprocessor:
         return dataset
 
 
+def preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
+    query = []
+    response = []
+    system: List[Optional[str]] = []
+    has_system = False
+    history: List[History] = []
+    has_history = False
+    for d in tqdm(dataset):
+        if isinstance(d['conversation'], str):
+            try:
+                conversation = ast.literal_eval(d['conversation'])
+            except SyntaxError:
+                continue
+        else:
+            conversation = d['conversation']
+        query.append(conversation[-1]['human'])
+        response.append(conversation[-1]['assistant'])
+        h = []
+        for c in conversation[:-1]:
+            h.append([c['human'], c['assistant']])
+        if len(h) > 0:
+            has_history = True
+        history.append(h)
+        sys = d.get('system')
+        if sys is not None:
+            has_system = True
+        system.append(sys)
+    kwargs = {'query': query, 'response': response}
+    if has_history:
+        kwargs['history'] = history
+    if has_system:
+        kwargs['system'] = system
+    return HfDataset.from_dict(kwargs)
+
+
 class SmartPreprocessor:
 
     def __init__(self) -> None:
@@ -356,7 +398,7 @@ class SmartPreprocessor:
                 'required': ['instruction', 'output'],
                 'preprocessor': AlpacaPreprocessor()
             },
-            'conversations': {
+            'conversations': {  # qwen
                 'required': ['conversations'],
                 'preprocessor': ConversationsPreprocessor()
             },
@@ -364,6 +406,10 @@ class SmartPreprocessor:
                 'required': ['messages'],
                 'preprocessor':
                 ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
+            },
+            'sharegpt': {
+                'required': ['conversation'],
+                'preprocessor': preprocess_sharegpt
             }
         }
 

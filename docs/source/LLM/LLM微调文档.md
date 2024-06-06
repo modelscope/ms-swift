@@ -83,6 +83,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --output_dir output \
 
 # 使用自己的数据集
+# 自定义数据集格式查看: https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset chatml.jsonl \
