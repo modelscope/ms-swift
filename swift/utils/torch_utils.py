@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn import Module
-from transformers.utils import is_torch_npu_available
+from transformers.utils import is_torch_npu_available, strtobool
 
 from .logger import get_logger, is_master
 
@@ -75,11 +75,11 @@ def is_local_master():
 
 
 def use_torchacc() -> bool:
-    return os.getenv('USE_TORCHACC', '0').upper() in ['ON', '1', 'YES', 'TRUE', 'Y']
+    return strtobool(os.getenv('USE_TORCHACC', '0'))
 
 
 def torchacc_trim_graph():
-    return os.getenv('TORCHACC_TRIM_GRAPH', '0').upper() in ['ON', '1', 'YES', 'TRUE', 'Y']
+    return strtobool(os.getenv('TORCHACC_TRIM_GRAPH', '0'))
 
 
 def is_dist():
