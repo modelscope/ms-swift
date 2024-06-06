@@ -2332,7 +2332,9 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.qwen2_72b_instruct_int8,
@@ -2341,7 +2343,9 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'],
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.qwen2_72b_instruct_awq,
@@ -2350,7 +2354,9 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers>=4.37'],
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-AWQ')
 @register_model(
     ModelType.qwen2_0_5b_instruct,
