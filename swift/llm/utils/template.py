@@ -770,6 +770,8 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
                 raise ValueError(f'invalid image: {error}')
     else:
         image = img_path
+    if not image:
+        print()
     if image.mode != 'RGB':
         image = image.convert('RGB')
     return image
