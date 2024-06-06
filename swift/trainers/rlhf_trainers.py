@@ -13,7 +13,7 @@ def filter_args(func, args: RLHFArguments) -> Dict[str, Any]:
     return valid_args
 
 
-class TrainerFactory:
+class RLHFTrainerFactory:
     TRAINERS_MAPPING = {
         'dpo': 'swift.trainers.dpo_trainers.DPOTrainer',
         'simpo': 'swift.trainers.simpo_trainers.SimPOTrainer',
@@ -43,13 +43,8 @@ class TrainerFactory:
         return trainer_kwargs
 
     @staticmethod
-    def get_trainer(*args, **kwargs):
-
-        if args.rlhf_type not in TrainerFactory.TRAINERS_MAPPING:
-            raise ValueError(f'Unknown rlhf type: {args.rlhf_type}')
-
-        module_path, class_name = TrainerFactory.TRAINERS_MAPPING[args.rlhf_type].rsplit('.', 1)
+    def get_trainer(rlhf_type):
+        module_path, class_name = RLHFTrainerFactory.TRAINERS_MAPPING[rlhf_type].rsplit('.', 1)
         module = importlib.import_module(module_path)
         trainer_class = getattr(module, class_name)
-        filtered_args = filter_args(trainer_class.__init__, args)
-        return trainer_class(**filtered_args)
+        return trainer_class

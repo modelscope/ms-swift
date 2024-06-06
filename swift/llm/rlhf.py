@@ -10,7 +10,7 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
-from swift.trainers import TrainerFactory
+from swift.trainers import RLHFTrainerFactory
 from swift.utils import (check_json_format, get_dist_setting, get_logger, get_main, get_model_info, is_ddp_plus_mp,
                          is_dist, is_master, plot_images, seed_everything, show_layers)
 from .tuner import prepare_model
@@ -258,12 +258,14 @@ You can also use the --model_type parameter to specify the  template.')
     # Trainer
     logger.info(f'training_args: {training_args}')
 
-    trainer_kwargs = TrainerFactory.get_training_args(args)
+    trainer_kwargs = RLHFTrainerFactory.get_training_args(args)
 
     if not args.ref_model_free and ref_model is not None:
         trainer_kwargs['ref_model'] = ref_model
     trainer_kwargs['args'].generation_config = generation_config
-    trainer = TrainerFactory.get_trainer(
+    trainer_cls = RLHFTrainerFactory.get_trainer
+    
+    trainer = trainer_cls(
         model=model,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
