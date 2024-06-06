@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from functools import partial
 
 import json
 import numpy as np
@@ -14,8 +15,8 @@ from swift.utils import (check_json_format, get_dist_setting, get_logger, get_ma
                          is_dist, is_master, plot_images, seed_everything, show_layers)
 from .tuner import prepare_model
 from .utils import (RLHFArguments, Template, get_dataset, get_model_tokenizer, get_template, get_time_info,
-                    set_generation_config)
-
+                    set_generation_config, MODEL_MAPPING, TEMPLATE_MAPPING, LazyLLMDataset, dataset_map,
+                    print_example,sort_by_max_length, stat_dataset)
 logger = get_logger()
 
 
@@ -41,6 +42,12 @@ def llm_rlhf(args: RLHFArguments) -> str:
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
         model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
+    elif args.device_map_config_path is not None:
+        cwd = os.getcwd()
+        config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(
+            cwd, args.device_map_config_path)
+        with open(config_path, 'r') as json_file:
+            model_kwargs = {'device_map': json.load(json_file)}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
@@ -86,6 +93,15 @@ def llm_rlhf(args: RLHFArguments) -> str:
     }
     if args.use_flash_attn is not None:
         kwargs['use_flash_attn'] = args.use_flash_attn
+    if args.local_repo_path:
+        kwargs['local_repo_path'] = args.local_repo_path
+    if args.quant_method == 'awq':
+        kwargs['is_awq'] = True
+    elif args.quant_method == 'aqlm':
+        kwargs['is_aqlm'] = True
+    elif args.quant_method == 'gptq':
+        kwargs['is_gptq'] = True
+
     if args.rope_scaling:
         kwargs['rope_scaling'] = args.rope_scaling
         kwargs['max_length'] = args.max_length
@@ -96,22 +112,10 @@ def llm_rlhf(args: RLHFArguments) -> str:
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
+        is_training=True,
         **kwargs)
-
-    if args.ref_model_free and args.ref_model_type is not None:
-        ref_model, _ = get_model_tokenizer(
-            args.ref_model_type,
-            args.torch_dtype,
-            model_kwargs,
-            model_id_or_path=args.ref_model_id_or_path,
-            revision=args.model_revision,
-            **kwargs)
-    else:
-        ref_model = None
-
     logger.info(f'model_config: {model.config}')
-    if hasattr(model, 'hf_device_map'):
-        logger.info(f'model device_map {model.hf_device_map}')
+
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -124,21 +128,37 @@ def llm_rlhf(args: RLHFArguments) -> str:
         eos_token_id=tokenizer.eos_token_id)
     logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
-    training_args.generation_config = generation_config
 
+    # Preparing LoRA
     model, _ = prepare_model(model, args)
 
     show_layers(model)
+    logger.info(model)
     model_info = None
     if not is_deepspeed_zero3_enabled():
         model_info = get_model_info(model)
         logger.info(model_info)
-    logger.info(model)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
+
+    if args.ref_model_free and args.ref_model_type is not None:
+        ref_model, _ = get_model_tokenizer(
+            args.ref_model_type,
+            args.torch_dtype,
+            model_kwargs,
+            model_id_or_path=args.ref_model_id_or_path,
+            revision=args.model_revision,
+            **kwargs)
+        
+        set_generation_config(ref_model, generation_config)
+    else:
+        ref_model = None
+
+    if hasattr(model, 'hf_device_map'):
+        logger.info(f'model device_map {model.hf_device_map}')
 
     # Loading Dataset
     train_dataset, val_dataset = get_dataset(
@@ -160,12 +180,21 @@ def llm_rlhf(args: RLHFArguments) -> str:
             model_author=args.model_author)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
-
-    if val_dataset is None:
-        training_args.evaluation_strategy = IntervalStrategy.NO
-        training_args.do_eval = False
+    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
+
+    template_kwargs = {}
+    template_info = TEMPLATE_MAPPING[args.template_type]
+    use_model = template_info.get('use_model', False)
+    if use_model:
+        template_kwargs['model'] = model
+
+    template_kwargs['use_loss_scale'] = args.use_loss_scale
+
+    if args.sequence_parallel_size and args.sequence_parallel_size > 1:
+        template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
+
     template: Template = get_template(
         args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     if not template.support_multi_round and 'history' in train_dataset[0]:
@@ -176,6 +205,55 @@ You can also use the --model_type parameter to specify the  template.')
             'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
+    logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
+    if args.packing:
+        from swift.llm.utils.utils import ConstantLengthDataset
+        train_dataset = ConstantLengthDataset.get_packed_dataset(
+            template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        if val_dataset is not None:
+            val_dataset = ConstantLengthDataset.get_packed_dataset(
+                template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        dataset_info = {}
+        if not args.lazy_tokenize:
+            td0 = train_dataset[0]
+            print_example(td0, tokenizer, {})
+            dataset_info['train_dataset'] = stat_dataset(train_dataset)
+            if val_dataset is not None:
+                dataset_info['val_dataset'] = stat_dataset(val_dataset)
+    elif not args.lazy_tokenize:
+        dataset_info = {}
+        logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
+        if val_dataset is not None:
+            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc)
+        if args.test_oom_error:
+            train_dataset = sort_by_max_length(train_dataset, 20000)
+        # Data analysis
+        if train_dataset is None:
+            logger.error('Error accessing train_dataset properties. '
+                         'Please ensure that the dataset is properly initialized,'
+                         'and every sample of the train_dataset not empty.')
+            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
+                                 '(1) The dataset contains None for input or labels;\n'
+                                 "(2) The 'max_length' setting is too short causing data truncation.")
+        td0, tkwargs0 = train_dataset.data[0]
+        print_example(td0, tokenizer, tkwargs0)
+        dataset_info['train_dataset'] = stat_dataset(train_dataset)
+        if val_dataset is not None:
+            dataset_info['val_dataset'] = stat_dataset(val_dataset)
+    else:
+        dataset_info = None
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
+        train_dataset = LazyLLMDataset(train_dataset, template)
+        if val_dataset is not None:
+            val_dataset = LazyLLMDataset(val_dataset, template)
+    if val_dataset is None:
+        training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.do_eval = False
+    logger.info(f'train_dataset: {train_dataset}')
+    logger.info(f'val_dataset: {val_dataset}')
+    
 
     # Trainer
     logger.info(f'training_args: {training_args}')
@@ -184,7 +262,7 @@ You can also use the --model_type parameter to specify the  template.')
 
     if not args.ref_model_free and ref_model is not None:
         trainer_kwargs['ref_model'] = ref_model
-
+    trainer_kwargs['args'].generation_config = generation_config
     trainer = TrainerFactory.get_trainer(
         model=model,
         train_dataset=train_dataset,
