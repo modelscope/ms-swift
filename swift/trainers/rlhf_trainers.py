@@ -1,14 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, Any
-from swift.llm.utils import RLHFArguments
 import importlib
+from typing import Any, Dict
+
+from swift.llm.utils import RLHFArguments
+
 
 def filter_args(func, args: RLHFArguments) -> Dict[str, Any]:
     import inspect
     func_signature = inspect.signature(func)
-    args_dict = args.__dict__ 
+    args_dict = args.__dict__
     valid_args = {k: v for k, v in args_dict.items() if k in func_signature.parameters}
     return valid_args
+
 
 class TrainerFactory:
     TRAINERS_MAPPING = {
@@ -16,6 +19,7 @@ class TrainerFactory:
         'simpo': 'swift.trainers.simpo_trainers.SimPOTrainer',
         'orpo': 'swift.trainers.orpo_trainers.ORPOTrainer',
     }
+
     @staticmethod
     def get_training_args(args: RLHFArguments):
         # get trainer kwargs
@@ -36,14 +40,12 @@ class TrainerFactory:
         if args.rlhf_type == 'simpo':
             trainer_kwargs['gamma'] = args.gamma
 
-
-            
         return trainer_kwargs
 
     @staticmethod
     def get_trainer(args: RLHFArguments, kwargs):
         if args.rlhf_type not in TrainerFactory.TRAINERS_MAPPING:
-            raise ValueError(f"Unknown trainer type: {args.rlhf_type}")
+            raise ValueError(f'Unknown rlhf type: {args.rlhf_type}')
 
         module_path, class_name = TrainerFactory.TRAINERS_MAPPING[args.rlhf_type].rsplit('.', 1)
         module = importlib.import_module(module_path)

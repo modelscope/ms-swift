@@ -8,6 +8,7 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
+
 from swift.trainers import TrainerFactory
 from swift.utils import (check_json_format, get_dist_setting, get_logger, get_main, get_model_info, is_ddp_plus_mp,
                          is_dist, is_master, plot_images, seed_everything, show_layers)
@@ -46,7 +47,7 @@ def llm_rlhf(args: RLHFArguments) -> str:
             model_kwargs['device_map'] = {'': local_rank}
         else:
             model_kwargs['device_map'] = 'auto'
-    
+
     # quantization
     if args.quant_method == 'hqq':
         from transformers import HqqConfig
@@ -96,7 +97,7 @@ def llm_rlhf(args: RLHFArguments) -> str:
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
         **kwargs)
-    
+
     if args.ref_model_free and args.ref_model_type is not None:
         ref_model, _ = get_model_tokenizer(
             args.ref_model_type,
@@ -147,7 +148,7 @@ def llm_rlhf(args: RLHFArguments) -> str:
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
         model_author=args.model_author)
-    
+
     if len(args.val_dataset) > 0:
         # Loading val dataset
         _, val_dataset = get_dataset(
@@ -183,7 +184,7 @@ You can also use the --model_type parameter to specify the  template.')
 
     if not args.ref_model_free and ref_model is not None:
         trainer_kwargs['ref_model'] = ref_model
-    
+
     trainer = TrainerFactory.get_trainer(
         model=model,
         train_dataset=train_dataset,
