@@ -900,6 +900,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     placeholder_tokens=['<|reserved_special_token_0|>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
 @register_model(
     ModelType.cogvlm2_19b_chat,
@@ -908,6 +909,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     placeholder_tokens=['<|reserved_special_token_0|>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
 def get_model_tokenizer_cogvlm2(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
