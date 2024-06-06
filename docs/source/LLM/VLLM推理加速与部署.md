@@ -527,7 +527,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model_type llama2-7b-chat \
-    --dataset self-cognition#500 sharegpt-gpt4-mini#1000 \
+    --dataset self-cognition#500 sharegpt-gpt4:default#1000 \
     --logging_steps 5 \
     --max_length 4096 \
     --learning_rate 5e-5 \
