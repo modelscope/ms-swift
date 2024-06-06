@@ -1181,7 +1181,7 @@ class InferArguments(ArgumentsBase):
             sft_args = json.load(f)
         imported_keys = [
             'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quantization_bit',
-            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
         ]
         if self.load_dataset_config:
             imported_keys += [
