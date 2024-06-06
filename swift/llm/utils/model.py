@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import math
 import os
 import sys
 from contextlib import nullcontext
@@ -542,22 +543,6 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
 
 
 @register_model(
-    ModelType.cogvlm2_en_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
-@register_model(
-    ModelType.cogvlm2_19b_chat,
-    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
-    support_gradient_checkpointing=False,
-    placeholder_tokens=['<|reserved_special_token_0|>'],
-    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
-@register_model(
     ModelType.atom_7b,
     'FlagAlpha/Atom-7B',
     LoRATM.llama,
@@ -864,6 +849,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.placeholder_tokens = placeholder_tokens
         tokenizer.placeholder_tokens_id = [tokenizer.convert_tokens_to_ids(token) for token in placeholder_tokens]
     model = None
+
+    rope_scaling = kwargs.pop('rope_scaling', None)
+    max_position_embeddings = getattr(model_config, 'max_position_embeddings', None)
+    if rope_scaling and max_position_embeddings:
+        max_length = kwargs.get('max_length') or max_position_embeddings
+        rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
+        setattr(model_config, 'rope_scaling', {'type': rope_scaling, 'factor': rope_scaling_factor})
+
     if load_model:
         if kwargs.get('use_unsloth', False):
             assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
@@ -882,6 +875,39 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.cogvlm2_en_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
+@register_model(
+    ModelType.cogvlm2_19b_chat,
+    'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm,
+    support_gradient_checkpointing=False,
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
+def get_model_tokenizer_cogvlm2(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
+    if model is not None:
+        # fix device map 4
+        def _output_device_map_hook(module, input, output):
+            return output.to(input[0].device)
+
+        for layer in model.model.vision.transformer.layers:
+            layer.mlp.register_forward_hook(_output_device_map_hook)
+            layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
+
+        device = next(model.model.vision.linear_proj.parameters()).device
+        model.model.vision.boi.data = model.model.vision.boi.to(device)
+        model.model.vision.eoi.data = model.model.vision.eoi.to(device)
     return model, tokenizer
 
 
@@ -1162,6 +1188,8 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor
+    if model is not None:
+        model.max_position_embeddings = model.language_model.config.max_position_embeddings
     return model, tokenizer
 
 
@@ -2916,6 +2944,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
+        model.config.max_position_embeddings = model.language_model.config.max_position_embeddings
         _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         fix_internvl_inplace_bug(model)
         if not hasattr(model, '__old_forward'):  # Avoid double patching

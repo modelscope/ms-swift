@@ -103,16 +103,17 @@ def get_vllm_engine(model_type: str,
         _engine.tokenizer.tokenizer = tokenizer
 
         # fix vllm==0.4 bug (very slow)
-        _tokenizer_len = len(tokenizer)
-        __old_len__ = tokenizer.__class__.__len__
+        if version.parse(vllm.__version__) >= version.parse('0.4'):
+            _tokenizer_len = len(tokenizer)
+            __old_len__ = tokenizer.__class__.__len__
 
-        def __len__(self) -> int:
-            if self is tokenizer:
-                return _tokenizer_len
-            else:
-                return __old_len__(self)
+            def __len__(self) -> int:
+                if self is tokenizer:
+                    return _tokenizer_len
+                else:
+                    return __old_len__(self)
 
-        tokenizer.__class__.__len__ = __len__
+            tokenizer.__class__.__len__ = __len__
 
     else:
         assert isinstance(_engine.tokenizer, PreTrainedTokenizerBase)
