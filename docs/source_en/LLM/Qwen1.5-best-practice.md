@@ -2,6 +2,9 @@
 
 This introduces how to perform inference, self-cognition fine-tuning, quantization, and deployment on **Qwen1.5-7B-Chat** and **Qwen1.5-72B-Chat**, corresponding to **low-resource and high-resource** environments respectively.
 
+The best practice for self-cognition fine-tuning, inference and deployment of Qwen2-72B-Instruct using dual-card 80GiB A100 can be found [here](https://github.com/modelscope/swift/issues/1092).
+
+
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
 - [Qwen1.5-7B-Chat](#qwen15-7b-chat)

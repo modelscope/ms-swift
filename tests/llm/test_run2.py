@@ -18,7 +18,7 @@ NO_EVAL_HUMAN = True
 logger = get_logger()
 
 
-class TestRun(unittest.TestCase):
+class TestRun2(unittest.TestCase):
 
     def setUp(self):
         print(f'Testing {type(self).__name__}.{self._testMethodName}')
