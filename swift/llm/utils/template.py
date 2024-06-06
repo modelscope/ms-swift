@@ -800,13 +800,16 @@ class YiVLTemplate(Template):
             background_color = tuple(int(x * 255) for x in image_processor.image_mean)
             image = expand2square(image, background_color)
             images.append(image)
-        image_tensor = image_processor.preprocess(images, return_tensors='pt')['pixel_values']
-        inputs['images'] = image_tensor.to(model.dtype)
+        if images:
+            image_tensor = image_processor.preprocess(images, return_tensors='pt')['pixel_values']
+            inputs['images'] = image_tensor.to(model.dtype)
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        res['images'] = torch.concat([b['images'] for b in batch])
+        images = [b['images'] for b in batch if 'images' in b]
+        if images:
+            res['images'] = torch.concat(images)
         return res
 
 

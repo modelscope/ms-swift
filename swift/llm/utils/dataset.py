@@ -495,33 +495,26 @@ register_dataset(
 
 
 def preprocess_llava_data(dataset):
-    local_dir = MediaCache.download('coco2017')
+    local_dir = MediaCache.download('coco')
 
     def preprocess_row(row):
-        images = [os.path.join(local_dir, p['path']) for p in row['images']]
+        images = []
+        if row['images']:
+            images = [os.path.join(local_dir, p['path'] if not p['path'].startswith('coco/') else p['path'][len('coco/'):]) for p in row['images']]
+            if any([not os.path.exists(image) for image in images]):
+                return {'conversation': [], 'images': []}
         return {'images': images}
 
-    dataset = dataset.map(preprocess_row)
+    dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['conversation'])
     return ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
                               from_key='role', value_key='content', media_type='image',
                               media_key='images')(dataset)
 
 
 register_dataset(
-    DatasetName.llava_data_pretrain,
-    None,
-    ['llava-pretrain'],
-    preprocess_llava_data,
-    get_dataset_from_repo,
-    split=['train'],
-    tags=['pretrain', 'multi-modal', 'quality'],
-    hf_dataset_id="TIGER-Lab/llava-data")
-
-
-register_dataset(
     DatasetName.llava_data_instruct,
     None,
-    ['llava-instruct'],
+    ['llava_instruct'],
     preprocess_llava_data,
     get_dataset_from_repo,
     split=['train'],
@@ -1128,96 +1121,6 @@ register_dataset(
     tags=['medical', 'en', 'vqa'])
 
 
-# def ref_coco_preprocessor(dataset: HfDataset, task_type):
-#     def preprocess(row):
-#         image = row['image']
-#         bbox = row['bbox']
-#         answer = np.random.choice(row['answer'])
-#
-#         d = {
-#             'query': None,
-#             'response': None,
-#         }
-#
-#         points = [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]
-#         MediaTagReplacer('image', task_type=task_type)(d, medias=image)
-#         d['objects'] = [(answer, points)]
-#         return d
-#
-#     return dataset.map(preprocess)
-#
-#
-# register_dataset(
-#     DatasetName.ref_coco_grounding,
-#     None, ["val", "test"],
-#     preprocess_func=partial(ref_coco_preprocessor, task_type='ref_grounding'),
-#     get_function=get_dataset_from_repo,
-#     hf_dataset_id="lmms-lab/RefCOCO",
-#     tags=['multi-modal', 'en', 'ref-grounding'])
-#
-# register_dataset(
-#     DatasetName.ref_coco_caption,
-#     None, ["val", "test"],
-#     preprocess_func=partial(ref_coco_preprocessor, task_type='grounding_caption'),
-#     get_function=get_dataset_from_repo,
-#     hf_dataset_id="lmms-lab/RefCOCO",
-#     tags=['multi-modal', 'en', 'grounding-caption'])
-#
-# register_dataset(
-#     DatasetName.ref_cocog_grounding,
-#     None, ["val", "test"],
-#     preprocess_func=partial(ref_coco_preprocessor, task_type='ref_grounding'),
-#     get_function=get_dataset_from_repo,
-#     hf_dataset_id="lmms-lab/RefCOCOg",
-#     tags=['multi-modal', 'en', 'ref-grounding'])
-#
-# register_dataset(
-#     DatasetName.ref_cocog_caption,
-#     None, ["val", "test"],
-#     preprocess_func=partial(ref_coco_preprocessor, task_type='grounding_caption'),
-#     get_function=get_dataset_from_repo,
-#     hf_dataset_id="lmms-lab/RefCOCOg",
-#     tags=['multi-modal', 'en', 'grounding-caption'])
-#
-# register_dataset(
-#     DatasetName.ref_cocoplus_grounding,
-#     None, ["val", "test"],
-#     preprocess_func=partial(ref_coco_preprocessor, task_type='ref_grounding'),
-#     get_function=get_dataset_from_repo,
-#     hf_dataset_id="lmms-lab/RefCOCOplus",
-#     tags=['multi-modal', 'en', 'ref-grounding'])
-#
-# register_dataset(
-#     DatasetName.ref_cocoplus_caption,
-#     None, ["val", "test"],
-#     preprocess_func=partial(ref_coco_preprocessor, task_type='grounding_caption'),
-#     get_function=get_dataset_from_repo,
-#     hf_dataset_id="lmms-lab/RefCOCOplus",
-#     tags=['multi-modal', 'en', 'grounding-caption'])
-
-
-def preprocess_text_caps(dataset):
-    def preprocess(row):
-        image = row['image']
-        response = np.random.choice(row['reference_strs'])
-        return {
-            'response': response,
-            'images': image
-        }
-
-    return dataset.map(preprocess)
-
-
-register_dataset(
-    DatasetName.text_caps,
-    None, [],
-    preprocess_func=preprocess_text_caps,
-    get_function=get_dataset_from_repo,
-    split=["train", "val"],
-    hf_dataset_id="HuggingFaceM4/TextCaps",
-    tags=['multi-modal', 'en', 'caption', 'quality'])
-
-
 def preprocess_okvqa(dataset):
     def preprocess(row):
         image = row['image']
@@ -1293,7 +1196,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.lnqa,
-    None, [],
+    'swift/lnqa', [],
     preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
     get_function=get_dataset_from_repo,
     split=["train", "validation"],

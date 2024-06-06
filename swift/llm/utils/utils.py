@@ -275,11 +275,7 @@ class LazyLLMDataset(Dataset):
         idx = np.random.permutation(len(self))[:self.try_fetch_time - 1]
         for i in [first_idx] + idx.tolist():
             data = self.dataset[i]
-            try:
-                res = self.template.encode(data)
-            except Exception as e:
-                logger.error(f'error fetching data: {e}, continue with the next one.')
-                continue
+            res = self.template.encode(data)
             if len(res[0]) > 0:
                 return res
 

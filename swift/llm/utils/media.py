@@ -53,32 +53,14 @@ class MediaTagReplacer:
         },
     }
 
-    @staticmethod
-    def ref_tag(ref: str):
-        return ref
-
-    @staticmethod
-    def bbox_tag(bboxes: List):
-        bbox_str = ''
-        for bbox in bboxes:
-            bbox_str += f'({bbox[0]},{bbox[1]}),({bbox[2]},{bbox[3]})'
-
     def __init__(self,
                  media_type: Literal['image', 'audio', 'video'],
                  media_tag=None,
                  task_type: Literal['caption_with_grounding', 'ref_grounding',
-                 'grounding_caption', 'ocr', 'vqa'] = 'vqa',
-                 ref_tag_func=None,
-                 bbox_tag_func=None):
+                 'grounding_caption', 'ocr', 'vqa'] = 'vqa'):
         self.media_type = media_type
         self.task_type = task_type
         self.media_tag = media_tag or '<unused_tag>'
-        self.ref_tag = ref_tag_func
-        self.bbox_tag = bbox_tag_func
-        if not self.ref_tag:
-            self.ref_tag = self.ref_tag
-        if not self.bbox_tag:
-            self.bbox_tag = self.bbox_tag
         self.tag_pairs = {
             'image': ('<img>', '</img>'),
             'audio': ('<audio>', '</audio>'),
@@ -122,16 +104,6 @@ class MediaTagReplacer:
             text = self.replace_tag(text, media)
         return text
 
-    def replace_bbox(self, text, bbox_pair):
-        if '<object>' in text:
-            assert text.count('<object>') == 1
-            text = text.replace('<object>', self.ref_tag(bbox_pair[0]))
-        elif '<box>' in text:
-            assert text.count('<box>') == 1
-            text = text.replace('<box>', self.bbox_tag(bbox_pair[1]))
-
-        return text
-
     def split(self, text: str):
         if not self.media_type:
             return text, None
@@ -153,11 +125,10 @@ class MediaTagReplacer:
                     a single media(one round, one media), or a tuple of media list(multiple rounds)
             objects: A list of object-bbox pairs(one round), or a tuple of object-bbox lists(multiple rounds)
         """
-        if not self.media_type or not medias:
+        if not self.media_type:
             return
-
-        if not isinstance(medias, (list, tuple)):
-            medias = [medias]
+        
+        media_cnt = len(medias) if isinstance(medias, (tuple, list)) else 1 if medias else 0
 
         history = d.get('history') or []
         query = d.get('query')
@@ -172,44 +143,21 @@ class MediaTagReplacer:
         else:
             pass
         standard_tag = self.standard_tags[self.media_type]
-        if isinstance(medias, list):
-            all_queries = ''.join([h[0] for h in history]) + query
-            if self.media_tag in all_queries:
-                media_round = []
-                assert all_queries.count(self.media_tag) == len(medias)
-                for h in history:
-                    h[0] = h[0].replace(self.media_tag, standard_tag)
-                    tags_cnt = h[0].count(standard_tag)
-                    media_round.append(medias[:tags_cnt])
-                    medias = medias[tags_cnt:]
-                media_round.append(medias)
-            else:
-                media_round = [medias] + [[]] * len(history)
-            medias = media_round
 
-        assert len(medias) == len(history) + 1
-        # for round, media in zip(history, medias[:-1]):
-        #     round[0] = self.merge(round[0], media)
-        # query = self.merge(query, medias[-1])
-        medias = [m for m in medias if m]
-        medias = medias if not isinstance(medias[0], list) else medias[0]
-        medias = medias if len(medias) > 1 else medias[0]
+        all_queries = ''.join([h[0] for h in history]) + query
+        if self.media_tag in all_queries:
+            assert all_queries.count(self.media_tag) == media_cnt
+            for h in history:
+                h[0] = h[0].replace(self.media_tag, standard_tag)
 
-        if objects:
-            if isinstance(objects, list):
-                objects = [objects] + [[]] * len(history)
-            for h, object in zip(history, objects[:-1]):
-                h[0] = self.replace_bbox(h[0], object)
-                h[1] = self.replace_bbox(h[1], object)
-            query = self.replace_bbox(query, objects[-1])
-            response = self.replace_bbox(response, objects[-1])
+        query = query.replace(self.media_tag, standard_tag)
 
-        if history:
+        if 'history' in d:
             d['history'] = history
         d['query'] = query
         if 'response' in d:
             d['response'] = response
-        if medias:
+        if self.media_type:
             d[self.media_keys[self.media_type]] = medias
 
 
