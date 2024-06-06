@@ -267,6 +267,8 @@ class ArgumentsBase:
                 self.eval_batch_size = self.per_device_eval_batch_size
             if self.deepspeed_config_path is not None:
                 self.deepspeed = self.deepspeed_config_path
+            if self.eval_strategy is not None:
+                self.evaluation_strategy = self.eval_strategy
 
     def handle_custom_dataset_info(self):
         if self.custom_dataset_info is None:
@@ -638,6 +640,7 @@ class SftArguments(ArgumentsBase):
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
+    eval_strategy: Literal['steps', 'epoch', 'no', None] = None
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
     train_dataset_mix_ratio: float = 0.
@@ -897,10 +900,13 @@ class SftArguments(ArgumentsBase):
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
         if 'include_num_input_tokens_seen' in parameters:
             kwargs['include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
+        if version.parse(transformers.__version__) >= version.parse('4.41'):
+            kwargs['eval_strategy'] = self.evaluation_strategy
+        else:
+            kwargs['evaluation_strategy'] = self.evaluation_strategy
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
-            evaluation_strategy=self.evaluation_strategy,
             logging_dir=self.logging_dir,
             per_device_train_batch_size=self.batch_size,
             per_device_eval_batch_size=self.eval_batch_size,
@@ -938,7 +944,6 @@ class SftArguments(ArgumentsBase):
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
             predict_with_generate=self.predict_with_generate,
-            # generation_config=generation_config,
             local_rank=get_dist_setting()[1],
             save_only_model=self.save_only_model,
             train_sampler_random=self.train_sampler_random,
