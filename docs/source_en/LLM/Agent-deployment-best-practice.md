@@ -186,6 +186,47 @@ swift deploy \
 Use the curl command to call the interface. Because the ReAct format ends with Observation:, we need to specify Observation: in the stop parameter as a stop word to truncate the model's response. Some models treat Observation:\n as a single token, so we also include it as a stop word.
 
 If you are using the ToolBench prompt, specifying stop words is not necessary (although including them won't cause any issues).
+```shell
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "llama3-8b-instruct",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What'\''s the weather like in Boston today?"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_current_weather",
+          "description": "Get the current weather in a given location",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "The city and state, e.g. San Francisco, CA"
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["celsius", "fahrenheit"]
+              }
+            },
+            "required": ["location"]
+          }
+        }
+      }
+    ],
+    "stream": false,
+    "stop": ["Observation:", "Observation:\n"]
+  }'
+```
+
+You can also select a tool from the tools field by specifying the `tool_choice` field, for example: `"tool_choice": {"type": "function", "function": {"name": "my_function"}}`. By default, all tools are selected, but you can set it to None to disable the tools field.
+
 
 result
 ```json
@@ -230,3 +271,5 @@ result
 ```json
 {"model":"llama3-8b-instruct","choices":[{"index":0,"message":{"role":"assistant","content":"\n\nAnswer: The weather in Boston today is 32°F (0°C), with clear skies.","tool_calls":null},"finish_reason":null}],"usage":{"prompt_tokens":93,"completion_tokens":21,"total_tokens":114},"id":"chatcmpl-5e63cee5155f48a48d1366001d16502b","object":"chat.completion","created":1717590962}
 ```
+
+If you want to integrate code and tools to complete the entire workflow loop, we recommend reading the [OpenAI tutorial](https://cookbook.openai.com/examples/how_to_call_functions_with_chat_models).
