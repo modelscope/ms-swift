@@ -254,8 +254,8 @@ class Template:
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
-        self.check_example(example)
         self.add_default_tags(example)
+        self.check_example(example)
         if example.get('objects') and isinstance(example['objects'], str):
             # reload grounding from str
             example['objects'] = json.loads(example['objects'])
@@ -389,17 +389,14 @@ class Template:
             example['audio_index'] = example.get('audio_index', 0) + 1
             return content
         if prompt == '<object>':
-            content = self.replace_object(kwargs.get('object_index', 0), example)
+            content = self.replace_object(example.get('object_index', 0), example)
             example['object_index'] = example.get('object_index', 0) + 1
             return content
         if prompt == '<box>':
-            content = self.replace_box(kwargs.get('box_index', 0), example)
+            content = self.replace_box(example.get('box_index', 0), example)
             example['box_index'] = example.get('box_index', 0) + 1
             return content
         return prompt
-
-    def post_tokenize(self, token_list, **kwargs):
-        return token_list
 
     def _encode_context_list(
         self,
@@ -419,7 +416,6 @@ class Template:
                 token_list = self._tokenize(context, **curr_tokenizer_kwargs)
             else:
                 token_list = context
-            token_list = self.post_tokenize(token_list, **kwargs)
             input_ids += token_list
             if loss_scale_list[i] > 0.0:
                 labels += token_list
