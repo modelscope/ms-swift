@@ -16,6 +16,7 @@ from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
+import platform
 
 from swift.hub import HubApi, ModelScopeConfig
 from swift.trainers import Seq2SeqTrainingArguments
@@ -571,7 +572,7 @@ class SftArguments(ArgumentsBase):
     save_only_model: Optional[bool] = None
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
-    dataloader_num_workers: int = 1
+    dataloader_num_workers: Optional[int] = None
     dataloader_pin_memory: bool = True
     dataloader_drop_last: bool = False
 
@@ -854,8 +855,13 @@ class SftArguments(ArgumentsBase):
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        if 'dataloader_num_workers' in template_info:
-            self.dataloader_num_workers = template_info['dataloader_num_workers']
+        if self.dataloader_num_workers is None: 
+            if 'dataloader_num_workers' in template_info:
+                self.dataloader_num_workers = template_info['dataloader_num_workers']
+            elif platform.system() == 'Windows':
+                self.dataloader_num_workers = 0
+            else:
+                self.dataloader_num_workers = 1
             logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
         if 'dataloader_pin_memory' in template_info:
             self.dataloader_pin_memory = template_info['dataloader_pin_memory']

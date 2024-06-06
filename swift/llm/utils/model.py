@@ -1503,9 +1503,10 @@ def get_model_tokenizer_chatglm(model_dir: str,
     ModelType.qwen2_moe_57b_a14b_instruct,
     'qwen/Qwen2-MoE-57B-A14B-Instruct',
     LoRATM.llama,
-    TemplateType.default_generation,
+    TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-MoE-57B-A14B-Instruct')
 @register_model(
@@ -1515,6 +1516,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-MoE-57B-A14B')
 @register_model(

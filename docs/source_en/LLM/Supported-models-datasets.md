@@ -392,7 +392,7 @@ The table below introduces the datasets supported by SWIFT:
 |poetry-zh|[modelscope/chinese-poetry-collection](https://modelscope.cn/datasets/modelscope/chinese-poetry-collection/summary)||390309|55.2±9.4, min=23, max=83|text-generation, poetry|-|
 |webnovel-zh|[AI-ModelScope/webnovel_cn](https://modelscope.cn/datasets/AI-ModelScope/webnovel_cn/summary)||50000|1478.9±11526.1, min=100, max=490484|chat, novel|[zxbsmk/webnovel_cn](https://huggingface.co/datasets/zxbsmk/webnovel_cn)|
 |generated-chat-zh|[AI-ModelScope/generated_chat_0.4M](https://modelscope.cn/datasets/AI-ModelScope/generated_chat_0.4M/summary)||396004|273.3±52.0, min=32, max=873|chat, character-dialogue|[BelleGroup/generated_chat_0.4M](https://huggingface.co/datasets/BelleGroup/generated_chat_0.4M)|
-|🔥self-cognition|[None](https://modelscope.cn/datasets/None/summary)||134|53.6±18.6, min=29, max=121|chat, self_cognition|-|
+|🔥self-cognition|[swift/self-cognition](https://modelscope.cn/datasets/swift/self-cognition/summary)||134|53.6±18.6, min=29, max=121|chat, self-cognition|[modelscope/self-cognition](https://huggingface.co/datasets/modelscope/self-cognition)|
 |cls-fudan-news-zh|[damo/zh_cls_fudan-news](https://modelscope.cn/datasets/damo/zh_cls_fudan-news/summary)||4959|3234.4±2547.5, min=91, max=19548|chat, classification|-|
 |ner-jave-zh|[damo/zh_ner-JAVE](https://modelscope.cn/datasets/damo/zh_ner-JAVE/summary)||1266|118.3±45.5, min=44, max=223|chat, ner|-|
 |coco-en|[modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption/summary)|coco_2014_caption|454617|299.8±2.8, min=295, max=352|chat, multi-modal, vision|-|

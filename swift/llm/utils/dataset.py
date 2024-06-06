@@ -1121,7 +1121,11 @@ def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
         part1, dataset_sample = other, None
     else:
         part1, dataset_sample = _safe_split(other, '#', True)
-    dataset_name, subsets = _safe_split(part1, ':', True)
+    if os.path.isfile(part1):
+        dataset_name, subsets = part1, None
+    else:
+        dataset_name, subsets = _safe_split(part1, ':', True)
+
     if subsets is not None:
         subset_list = subsets.split('/')
         subset_list = [subset.strip() for subset in subset_list]
