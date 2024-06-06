@@ -116,7 +116,7 @@ class ConversationsPreprocessor:
         query: List[str] = []
         response: List[str] = []
         system: List[Optional[str]] = []
-        tools: List[List[Dict[str, Union[str, Dict]]]] = []
+        tools: List[List[Dict[str, any]]] = []
         has_system = False
         history: List[History] = []
         has_history = False
@@ -124,9 +124,8 @@ class ConversationsPreprocessor:
 
         for d in tqdm(dataset):
             try:
-                tool = []
-                if 'tools' in d:
-                    tool = d['tools']
+                tool = d.get('tools', [])
+                if len(tool) > 0:
                     has_tools = True
                 tools.append(tool)
                 conversations = d[self.conversations_key]
@@ -243,7 +242,7 @@ class SmartPreprocessor:
             },
             'conversations': {  # qwen
                 'required': ['conversations'],
-                'preprocessor': ConversationsPreprocessor(tools_role='tools', messages_key='conversations')
+                'preprocessor': ConversationsPreprocessor()
             },
             'chatml': {
                 'required': ['messages'],

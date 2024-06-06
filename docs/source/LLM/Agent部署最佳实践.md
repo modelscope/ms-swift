@@ -5,7 +5,7 @@
 - [环境安装](#环境安装)
 - [tools字段](#tools字段)
 - [部署](#部署)
-
+- [总结](#总结)
 
 ## 环境安装
 ```bash
@@ -226,6 +226,8 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 ```
 
+你也可以通过指定`tool_choice`字段来选择tools中的tool，比如`"tool_choice":{"type": "function", "function": {"name": "my_function"}}`. 默认选择所有tools，也可以设置为None来屏蔽tools字段
+
 调用结果
 ```json
 {"model":"llama3-8b-instruct","choices":[[{"index":0,"message":{"role":"assistant","content":"Question: What's the weather like in Boston today?\n\nThought: I need to get the current weather in Boston to answer this question.\n\nAction: get_current_weather\n\nAction Input: {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\nObservation:","tool_calls":{"id":"toolcall-f534d907ae254f2ab96e06c25179ddf9","function":{"arguments":" {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\n","name":"get_current_weather"},"type":"function"}},"finish_reason":"stop"}]],"usage":{"prompt_tokens":262,"completion_tokens":54,"total_tokens":316},"id":"chatcmpl-8630e8d675c941c0aca958a37633a3c9","object":"chat.completion","created":1717590756}
@@ -268,3 +270,5 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 ```json
 {"model":"llama3-8b-instruct","choices":[{"index":0,"message":{"role":"assistant","content":"\n\nAnswer: The weather in Boston today is 32°F (0°C), with clear skies.","tool_calls":null},"finish_reason":null}],"usage":{"prompt_tokens":93,"completion_tokens":21,"total_tokens":114},"id":"chatcmpl-5e63cee5155f48a48d1366001d16502b","object":"chat.completion","created":1717590962}
 ```
+
+如果你想要结合代码和tools完成整个链路闭环，推荐阅读[OpenAI教程](https://cookbook.openai.com/examples/how_to_call_functions_with_chat_models)

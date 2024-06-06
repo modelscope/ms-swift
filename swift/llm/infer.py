@@ -211,7 +211,6 @@ def prepare_model_template(args: InferArguments,
         show_layers(model)
         logger.info(model)
     logger.info(get_model_info(model))
-    template_kwargs = {'tools_prompt': args.tools_prompt}
     template: Template = get_template(
         args.template_type,
         tokenizer,
@@ -219,7 +218,7 @@ def prepare_model_template(args: InferArguments,
         args.max_length,
         args.truncation_strategy,
         model=model,
-        **template_kwargs)
+        tools_prompt=args.tools_prompt)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     return model, template

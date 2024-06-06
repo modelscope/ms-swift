@@ -875,8 +875,7 @@ def messages_join_observation(messages: Messages) -> Messages:
         observations = messages[-1]['content']
         messages.pop(-1)
         messages[-1]['content'] += observations
-    return messages
-
+    return
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)

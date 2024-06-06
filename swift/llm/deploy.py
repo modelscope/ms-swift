@@ -169,8 +169,6 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         token_str = tokenizer.decode(template.suffix[-1])
         if token_str not in generation_config.stop:
             generation_config.stop.append(token_str)
-    if True:  # if args.tool_prompt == 'default'
-        generation_config.stop.append('Observation:')
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stream': request.stream})
     logger.info(request_info)
@@ -213,24 +211,17 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             for output in result.outputs:
                 response = template.generate_ids_to_response(output.token_ids)
                 action, action_input = split_action_action_input(response)
+                toolcall = None
                 if action is not None:
                     toolcall = ChatCompletionMessageToolCall(
                         id=f'toolcall-{random_uuid()}',
                         type='function',
                         function=Function(name=action, arguments=action_input))
-                    choice = [
-                        ChatCompletionResponseChoice(
-                            index=output.index,
-                            message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                            finish_reason=output.finish_reason,
-                        )
-                    ]
-                else:
-                    choice = ChatCompletionResponseChoice(
-                        index=output.index,
-                        message=ChatMessage(role='assistant', content=response),
-                        finish_reason=output.finish_reason,
-                    )
+                choice = ChatCompletionResponseChoice(
+                    index=output.index,
+                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                    finish_reason=output.finish_reason,
+                )
                 choices.append(choice)
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -250,7 +241,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
 
     async def _generate_stream():
         print_idx_list = [[0] for _ in range(request.n)]
-        total_res = {}
+        total_res = ['' for _ in range(request.n)]
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
             num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
@@ -262,8 +253,6 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             for output in result.outputs:
                 output.delta_text = template.generate_ids_to_response(
                     output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
-                if output.index not in total_res:
-                    total_res[output.index] = ''
                 total_res[output.index] += output.delta_text
             if isinstance(request, ChatCompletionRequest):
                 choices = []
@@ -432,26 +421,19 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         )
         if isinstance(request, ChatCompletionRequest):
             action, action_input = split_action_action_input(response)
+            toolcall = None
             if action is not None:
                 toolcall = ChatCompletionMessageToolCall(
                     id=f'toolcall-{random_uuid()}',
                     type='function',
                     function=Function(name=action, arguments=action_input))
-                choices = [
-                    ChatCompletionResponseChoice(
-                        index=0,
-                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                        finish_reason=None,
-                    )
-                ]
-            else:
-                choices = [
-                    ChatCompletionResponseChoice(
-                        index=0,
-                        message=ChatMessage(role='assistant', content=response, tool_calls=None),
-                        finish_reason=None,
-                    )
-                ]
+            choices = [
+                ChatCompletionResponseChoice(
+                    index=0,
+                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                    finish_reason=None,
+                )
+            ]
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         else:

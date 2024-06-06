@@ -155,7 +155,7 @@ class Template:
                  prefix_has_system: Optional[Prompt] = None,
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'default',
-                 tool_prompt: Prompt = None) -> None:
+                 tool_prompt: Optional[Prompt] = None) -> None:
         """
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
             whether to add it based on `tokenizer.encode('')`.
