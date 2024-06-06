@@ -150,7 +150,12 @@ class MediaTagReplacer:
             for h in history:
                 h[0] = h[0].replace(self.media_tag, standard_tag)
 
-        query = query.replace(self.media_tag, standard_tag)
+            query = query.replace(self.media_tag, standard_tag)
+        else:
+            if history:
+                history[0][0] = ''.join([standard_tag]*media_cnt)+history[0][0]
+            else:
+                query = ''.join([standard_tag]*media_cnt)+query
 
         if 'history' in d:
             d['history'] = history
