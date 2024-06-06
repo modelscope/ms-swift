@@ -269,7 +269,6 @@ You can also use the --model_type parameter to specify the  template.')
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         template=template,
-        test_oom_error=args.test_oom_error,
         **trainer_kwargs)
 
     trainer.sft_args = args

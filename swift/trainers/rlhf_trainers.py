@@ -43,7 +43,8 @@ class TrainerFactory:
         return trainer_kwargs
 
     @staticmethod
-    def get_trainer(args: RLHFArguments, kwargs):
+    def get_trainer(*args, **kwargs):
+
         if args.rlhf_type not in TrainerFactory.TRAINERS_MAPPING:
             raise ValueError(f'Unknown rlhf type: {args.rlhf_type}')
 
