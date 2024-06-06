@@ -460,12 +460,9 @@ def preprocess_mantis_instruct(dataset):
     all_subset = ['birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption',
      'docvqa', 'dreamsim', 'dvqa', 'iconqa', 'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa',
      'nlvr2', 'spot-the-diff', 'star', 'visual_story_telling']
-    endpoint = os.environ.get('HF_ENDPOINT', 'https://huggingface.co')
-    if not endpoint.endswith('/'):
-        endpoint = endpoint + '/'
     all_local_dirs = {}
     for subset in all_subset:
-        url = endpoint + f'datasets/TIGER-Lab/Mantis-Instruct/blob/main/{subset}/train_images.zip'
+        url = 'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'
         local_dir = MediaCache.download(url, f'mantis_{subset}')
         all_local_dirs[subset] = local_dir
 
@@ -483,7 +480,7 @@ def preprocess_mantis_instruct(dataset):
 
 register_dataset(
     DatasetName.mantis_instruct,
-    None,
+    'swift/Mantis-Instruct',
     ['birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption',
      'docvqa', 'dreamsim', 'dvqa', 'iconqa', 'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa',
      'nlvr2', 'spot-the-diff', 'star', 'visual_story_telling'],
@@ -1194,29 +1191,17 @@ register_dataset(
     tags=['multi-modal', 'en', 'ocr-vqa'])
 
 
-register_dataset(
-    DatasetName.lnqa,
-    'swift/lnqa', [],
-    preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
-    get_function=get_dataset_from_repo,
-    split=["train", "validation"],
-    hf_dataset_id="vikhyatk/lnqa",
-    tags=['multi-modal', 'en', 'ocr-vqa', 'quality'])
-
-
 def preprocess_science_qa(dataset):
 
     def preprocess_row(row):
-        image = row['image']
         query = row['question']
-        response = np.random.choice(row['choices'])
+        response = row['choices'][row['answer']]
         solution = row['solution']
         return {
             'query': query,
-            'images': image,
             'response': f'{solution}\nSo the final answer is:{response}'
         }
-    return dataset.map(preprocess_row)
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['image']).rename_columns({'image': 'images'})
 
 
 register_dataset(
