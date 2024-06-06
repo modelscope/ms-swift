@@ -152,6 +152,10 @@ class ArgumentsBase:
             elif quantization_bit == 8:
                 require_version('bitsandbytes')
                 load_in_4bit, load_in_8bit = False, True
+            else:
+                logger.warning('bnb only support 4/8 bits quantization, you should assign --quantization_bit 4 or 8,\
+                    Or specify another quantization method; No quantization will be performed here.')
+                load_in_4bit, load_in_8bit = False, False
         else:
             load_in_4bit, load_in_8bit = False, False
 
@@ -194,7 +198,7 @@ class ArgumentsBase:
                 for sn in DATASET_MAPPING['toolbench-for-alpha-umi']['subsets']
             },
             'medical-mini-zh': 'medical-zh#50000',
-            'cmnli-mini-zh': 'cmnli-zh#20000/200',
+            'cmnli-mini-zh': 'cmnli-zh#20000',
             'coco-mini-en': 'coco-en-mini',
             'coco-mini-en-2': 'coco-en-2-mini',
             'aishell1-mini-zh': 'aishell1-zh-mini',
@@ -278,9 +282,10 @@ class ArgumentsBase:
         train_sample = parse_dataset_name(_dataset)[3]
         if train_sample == -1:
             train_sample = self.train_dataset_sample
-        elif self.train_dataset_sample < train_sample:
+        else:
             _dataset = _dataset[:_dataset.find('#')]
-            train_sample = self.train_dataset_sample
+            if self.train_dataset_sample < train_sample:
+                train_sample = self.train_dataset_sample
         _dataset = f'{_dataset}#{train_sample}'
         self.dataset[0] = _dataset
         self.train_dataset_sample = -1
@@ -481,6 +486,9 @@ class SftArguments(ArgumentsBase):
     use_dora: bool = False
     # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false']
     init_lora_weights: str = 'true'
+
+    # rope-scaling
+    rope_scaling: Literal['linear', 'dynamic'] = None
 
     # BOFT
     boft_block_size: int = 4
@@ -1030,6 +1038,9 @@ class InferArguments(ArgumentsBase):
     repetition_penalty: float = 1.
     num_beams: int = 1
     stop_words: List[str] = None
+
+    # rope-scaling
+    rope_scaling: Literal['linear', 'dynamic'] = None
 
     # other
     use_flash_attn: Optional[bool] = None

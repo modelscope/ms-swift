@@ -717,8 +717,9 @@
         "tags": ["chat", "medical"]
     },
     "self-cognition": {
-        "dataset_path": "self_cognition.jsonl",
+        "dataset_id": "swift/self-cognition",
+        "hf_dataset_id": "modelscope/self-cognition",
         "remove_useless_columns": false,
-        "tags": ["chat", "self_cognition", "🔥"]
+        "tags": ["chat", "self-cognition", "🔥"]
     }
 }
