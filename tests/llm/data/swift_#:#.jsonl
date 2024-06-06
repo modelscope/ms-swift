@@ -1,0 +1,3 @@
+{"system": "00000", "query": "55555", "response": "66666"}
+{"query": "eeeee", "response": "fffff", "history": []}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
