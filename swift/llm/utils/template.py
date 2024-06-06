@@ -234,7 +234,7 @@ class Template:
             setattr(self, key, value)
 
     def check_example(self, example):
-        return True
+        pass
 
     def add_default_tags(self, example):
         history: Optional[History] = example.get('history', [])
@@ -246,18 +246,18 @@ class Template:
                     history[0][0] = ''.join([media_tag] * media_len) + history[0][0]
                 else:
                     query = ''.join([media_tag] * media_len) + query
-        
+
         example['query'] = query
-                
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
-        if not self.check_example(example):
-            raise ValueError(f'The example: {example.get("query", None)} cannot use with this model.')
+        self.check_example(example)
         self.add_default_tags(example)
-        if 'objects' in example and isinstance(example['objects'], str):
+        if example.get('objects') and isinstance(example['objects'], str):
+            # reload grounding from str
             example['objects'] = json.loads(example['objects'])
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
@@ -265,6 +265,7 @@ class Template:
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
         if 'images' in example and not isinstance(example['images'], (tuple, list)):
+            # change images field to list
             example['images'] = [example['images']]
         if history is None:
             history = []
@@ -368,7 +369,7 @@ class Template:
         object = objects[index]
         return object[0]
 
-    def replace_bbox(self, index, example):
+    def replace_box(self, index, example):
         objects = example['objects']
         object = objects[index]
         return f'({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})'
@@ -392,7 +393,7 @@ class Template:
             example['object_index'] = example.get('object_index', 0) + 1
             return content
         if prompt == '<box>':
-            content = self.replace_bbox(kwargs.get('box_index', 0), example)
+            content = self.replace_box(kwargs.get('box_index', 0), example)
             example['box_index'] = example.get('box_index', 0) + 1
             return content
         return prompt
@@ -677,10 +678,10 @@ class QwenVLTemplate(QwenTemplate):
         object = objects[index]
         return f'<ref>{object[0]}</ref>'
 
-    def replace_bbox(self, index, example):
+    def replace_box(self, index, example):
         objects = example['objects']
         object = objects[index]
-        return f'<box>({object[0]},{object[1]}),({object[2]},{object[3]})</box>'
+        return f'<box>({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})</box>'
 
 
 register_template(TemplateType.qwen, QwenTemplate())

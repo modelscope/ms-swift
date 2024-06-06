@@ -1,7 +1,7 @@
 import os
 import shutil
 import time
-from typing import Literal, Union, List
+from typing import Literal, Union, List, Optional
 
 import numpy as np
 
@@ -53,68 +53,26 @@ class MediaTagReplacer:
         },
     }
 
+    standard_tags = {
+        'image': '<image>',
+        'audio': '<audio>',
+        'video': '<video>',
+    }
+
+    media_keys = {
+        'audio': 'audios',
+        'image': 'images',
+        'video': 'videos',
+    }
+
     def __init__(self,
-                 media_type: Literal['image', 'audio', 'video'],
+                 media_type: Optional[Literal['image', 'audio', 'video']],
                  media_tag=None,
                  task_type: Literal['caption_with_grounding', 'ref_grounding',
                  'grounding_caption', 'ocr', 'vqa'] = 'vqa'):
         self.media_type = media_type
         self.task_type = task_type
         self.media_tag = media_tag or '<unused_tag>'
-        self.tag_pairs = {
-            'image': ('<img>', '</img>'),
-            'audio': ('<audio>', '</audio>'),
-            'video': ('<video>', '</video>'),
-        }
-
-        self.standard_tags = {
-            'image': '<image>',
-            'audio': '<audio>',
-            'video': '<video>',
-        }
-
-        self.media_keys = {
-            'audio': 'audios',
-            'image': 'images',
-            'video': 'videos',
-        }
-
-    def replace_tag(self, text, url_or_base64):
-        standard_tag = self.standard_tags[self.media_type]
-        tag_pair = self.tag_pairs[self.media_type]
-        return text.replace(standard_tag, f'{tag_pair[0]}{url_or_base64}{tag_pair[1]}', count=1)
-
-    def split_tag(self, text: str):
-        tag_pair = self.tag_pairs[self.media_type]
-        if tag_pair[0] not in text or tag_pair[1] not in text:
-            return text, None
-
-        head, left = text.split(tag_pair[0], maxsplit=1)
-        url_or_base64, tail = left.split(tag_pair[1], maxsplit=1)
-        return f'{head}{self.standard_tags[self.media_type]}{tail}', url_or_base64
-
-    def merge(self, text: str, medias: List):
-        if not self.media_type or not medias or not isinstance(medias[0], str):
-            return text
-        if self.media_tag in text:
-            assert text.count(self.media_tag) == len(medias)
-        else:
-            text = ''.join([self.media_tag] * len(medias)) + text
-        for media in medias:
-            text = self.replace_tag(text, media)
-        return text
-
-    def split(self, text: str):
-        if not self.media_type:
-            return text, None
-        medias = []
-        while True:
-            text, media = self.split_tag(text)
-            if media is None:
-                break
-            else:
-                medias.append(media)
-        return text, medias
 
     def __call__(self, d: dict, medias: Union[tuple, list], objects: List = None):
         """Format the query/response/history with medias
@@ -150,15 +108,14 @@ class MediaTagReplacer:
             for h in history:
                 h[0] = h[0].replace(self.media_tag, standard_tag)
 
-        query = query.replace(self.media_tag, standard_tag)
+            query = query.replace(self.media_tag, standard_tag)
 
         if 'history' in d:
             d['history'] = history
         d['query'] = query
         if 'response' in d:
             d['response'] = response
-        if self.media_type:
-            d[self.media_keys[self.media_type]] = medias
+        d[self.media_keys[self.media_type]] = medias
 
 
 class MediaCache:
@@ -204,7 +161,8 @@ class MediaCache:
         final_folder = os.path.join(MediaCache.cache_dir, media_name)
         if os.path.exists(final_folder):
             return final_folder
-        local_dirs = DownloadManager(download_config=DownloadConfig(cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
+        local_dirs = DownloadManager(download_config=DownloadConfig(cache_dir=MediaCache.cache_dir)
+                                     ).download_and_extract(media_type)
         shutil.move(str(local_dirs), final_folder)
         return final_folder
 

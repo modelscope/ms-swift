@@ -10,7 +10,7 @@ from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union, Set
 
 import accelerate
 import multiprocess
@@ -138,7 +138,7 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
     return new_max_memory
 
 
-def fetch_one(element: Union[tuple, list, set, dict, Any]) -> Any:
+def fetch_one(element: Union[Tuple, List, Set, Dict, Any]) -> Any:
     if isinstance(element, (tuple, set, list)):
         for ele in element:
             out = fetch_one(ele)
