@@ -132,7 +132,6 @@ class ModelType:
     qwen2_57b_a14b_instruct = 'qwen2-57b-a14b-instruct'
     qwen2_57b_a14b_instruct_int4 = 'qwen2-57b-a14b-instruct-int4'
 
-
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -2328,6 +2327,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
 
 @register_model(
     ModelType.qwen2_57b_a14b_instruct_int4,
