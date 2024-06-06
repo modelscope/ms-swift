@@ -3,7 +3,7 @@ import re
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
+import json
 import requests
 import torch
 import torch.nn.functional as F
@@ -255,6 +255,8 @@ class Template:
         if not self.check_example(example):
             raise ValueError(f'The example: {example.get("query", None)} cannot use with this model.')
         self.add_default_tags(example)
+        if 'objects' in example and isinstance(example['objects'], str):
+            example['objects'] = json.loads(example['objects'])
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
@@ -367,7 +369,7 @@ class Template:
     def replace_bbox(self, index, example):
         objects = example['objects']
         object = objects[index]
-        return f'({object[0]},{object[1]}),({object[2]},{object[3]})'
+        return f'({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})'
 
     def pre_tokenize(self, prompt, **kwargs):
         example = kwargs['example']
@@ -387,9 +389,9 @@ class Template:
             content = self.replace_object(kwargs.get('object_index', 0), example)
             example['object_index'] = example.get('object_index', 0) + 1
             return content
-        if prompt == '<bbox>':
-            content = self.replace_object(kwargs.get('bbox_index', 0), example)
-            example['bbox_index'] = example.get('bbox_index', 0) + 1
+        if prompt == '<box>':
+            content = self.replace_bbox(kwargs.get('box_index', 0), example)
+            example['box_index'] = example.get('box_index', 0) + 1
             return content
         return prompt
 
@@ -407,8 +409,10 @@ class Template:
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
+        contents = []
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             context = self.pre_tokenize(context, **kwargs)
+            contents.append(context)
             if isinstance(context, str):
                 curr_tokenizer_kwargs = {**tokenizer_kwargs, **self._get_tokenizer_kwargs(context)}
                 token_list = self._tokenize(context, **curr_tokenizer_kwargs)
@@ -757,7 +761,7 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
-            content = requests.get(img_path).content
+            content = requests.get('https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg').content
             image = Image.open(BytesIO(content))
         elif os.path.exists(img_path):
             image = Image.open(img_path)

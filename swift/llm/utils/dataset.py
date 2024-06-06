@@ -33,7 +33,7 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images'}:
+        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images', 'objects', 'videos', 'audios'}:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -1229,7 +1229,7 @@ def preprocess_okvqa(dataset):
 
 register_dataset(
     DatasetName.okvqa,
-    None, [],
+    'swift/OK-VQA_train', [],
     preprocess_func=preprocess_okvqa,
     get_function=get_dataset_from_repo,
     split=["train"],
@@ -1253,7 +1253,7 @@ def preprocess_a_okvqa(dataset):
 
 register_dataset(
     DatasetName.a_okvqa,
-    None, [],
+    'swift/A-OKVQA', [],
     preprocess_func=preprocess_a_okvqa,
     get_function=get_dataset_from_repo,
     split=["train", "validation"],
@@ -1370,10 +1370,10 @@ def preprocess_grit(dataset):
         result = []
         last_end = 0
         for start, end in start_ends:
-            result.append(response[last_end:start])
+            result.append(response[int(last_end):int(start)])
             result.append('<object><box>')
             last_end = end
-        result.append(response[last_end:])
+        result.append(response[int(last_end):])
         return ''.join(result)
 
     def preprocess_row(row):
@@ -1388,8 +1388,8 @@ def preprocess_grit(dataset):
             conf = ref_exp[6]
             start_end_pairs.append(ref_exp[0:2])
 
-            object_part = caption[start:end]
-            objects.append([object_part, [ref_exp[2:6]]])
+            object_part = caption[int(start):int(end)]
+            objects.append([object_part, ref_exp[2:6]])
 
         start_end_pairs.sort(key=lambda x: (x[0], x[1]))
         if has_overlap(start_end_pairs):
@@ -1404,15 +1404,15 @@ def preprocess_grit(dataset):
         return {
             'images': images,
             'response': response,
-            'objects': objects
+            'objects': json.dumps(objects or [])
         }
 
-    return dataset.map(preprocess_row)
+    return dataset.map(preprocess_row).filter(lambda row: row['objects'])
 
 
 register_dataset(
     DatasetName.grit,
-    None, [],
+    'swift/GRIT', [],
     preprocess_func=preprocess_grit,
     get_function=get_dataset_from_repo,
     split=["train"],
@@ -1422,16 +1422,17 @@ register_dataset(
 
 def preprocess_gqa(dataset):
     local_cache = MediaCache.download('gqa')
-    all_instruct_dataset = dataset['train_all_instructions']
-
     def preprocess_row(row):
-        return {
-            'query': row['question'],
-            'response': row['fullAnswer'],
-            'images': os.path.join(local_cache, 'images', row['imageId'] + '.jpg'),
-        }
+        if os.path.join(local_cache, 'images', row['imageId'] + '.jpg'):
+            return {
+                'query': row['question'],
+                'response': row['fullAnswer'],
+                'images': os.path.join(local_cache, 'images', row['imageId'] + '.jpg'),
+            }
+        else:
+            return {'query': '', 'response': '', 'images': ''}
 
-    return all_instruct_dataset.map(preprocess_row)
+    return dataset.map(preprocess_row).filter(lambda row: row['query'])
 
 
 register_dataset(

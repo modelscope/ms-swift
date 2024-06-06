@@ -237,8 +237,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
         dataset_info = None
-        td0, tkwargs0 = template.encode(train_dataset[0])
-        print_example(td0, tokenizer, tkwargs0)
+        try:
+            td0, tkwargs0 = template.encode(train_dataset[0])
+            print_example(td0, tokenizer, tkwargs0)
+        except:
+            pass
         train_dataset = LazyLLMDataset(train_dataset, template)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)

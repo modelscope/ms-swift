@@ -250,7 +250,7 @@ class MediaCache:
     def _safe_download(media_type, media_name=None):
         media_name = media_name or media_type
         if media_type in MediaCache.media_type_urls:
-            media_type = MediaCache.media_type_urls[media_type]
+            media_type = MediaCache.get_url(media_type)
 
         from datasets.download.download_manager import DownloadManager, DownloadConfig
         final_folder = os.path.join(MediaCache.cache_dir, media_name)
@@ -259,7 +259,5 @@ class MediaCache:
         local_dirs = DownloadManager(download_config=DownloadConfig(cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
         shutil.move(str(local_dirs), final_folder)
         return final_folder
-    
-    def 
 
 
