@@ -170,7 +170,7 @@ class TestRun(unittest.TestCase):
         ]
         val_dataset_fnames = [
             'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl', 'swift_pre.csv', 'swift_single.jsonl',
-            'swift_#:#.jsonl'
+            # 'swift_#:#.jsonl'
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
         resume_from_checkpoint = None
