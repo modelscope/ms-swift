@@ -118,7 +118,7 @@ def llm_export(args: ExportArguments) -> None:
         show_layers(model)
         logger.info('Saving quantized weights...')
         model_cache_dir = model.model_dir
-        save_checkpoint(None, template.tokenizer, model_cache_dir, args.ckpt_dir, args.quant_output_dir)
+        save_checkpoint(None, template.tokenizer, model_cache_dir, args.ckpt_dir, args.quant_output_dir, dtype=args.dtype)
         logger.info(f'Successfully quantized the model and saved in {args.quant_output_dir}.')
         args.ckpt_dir = args.quant_output_dir
 
