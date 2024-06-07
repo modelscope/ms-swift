@@ -42,6 +42,7 @@ class TemplateType:
     llava_yi_instruct = 'llava-yi-instruct'
     llava_llama_instruct = 'llava-llama-instruct'
     llava_qwen_instruct = 'llava-qwen-instruct'
+    llava_qwen2_instruct = 'llava-qwen2-instruct'
     llama_llava_next = 'llama-llava-next'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -237,11 +238,12 @@ class Template:
         pass
 
     def add_default_tags(self, example):
-        history: Optional[History] = example.get('history', [])
+        history: Optional[History] = example.get('history') or []
         query: Optional[str] = example.get('query', '')
         for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if media_key in example and media_tag not in ''.join([h[0] for h in history]) + query:
-                media_len = len(example[media_key]) if isinstance(example[media_key], (tuple, list)) else 1
+                example[media_key] = [m for m in example[media_key] if m]
+                media_len = len(example[media_key]) if isinstance(example[media_key], (tuple, list)) else 1 if example[media_key] else 0
                 if history:
                     history[0][0] = ''.join([media_tag] * media_len) + history[0][0]
                 else:
@@ -254,6 +256,9 @@ class Template:
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
+        if 'images' in example and not isinstance(example['images'], (tuple, list)):
+            # change images field to list
+            example['images'] = [example['images']]
         self.add_default_tags(example)
         self.check_example(example)
         if example.get('objects') and isinstance(example['objects'], str):
@@ -264,9 +269,6 @@ class Template:
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
-        if 'images' in example and not isinstance(example['images'], (tuple, list)):
-            # change images field to list
-            example['images'] = [example['images']]
         if history is None:
             history = []
         if len(history) > 0:
@@ -1383,7 +1385,7 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
         ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
                           ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
 
-    def replace_tag(self, prompt, **kwargs):
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         return [-200]
 
 
@@ -1403,12 +1405,49 @@ class LLavaQwenTemplate(LLavaTemplate):
                           ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
 
-    def replace_tag(self, prompt, **kwargs):
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         return [-200]
 
 
 register_template(
     TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+
+
+class LLavaQwen2Template(Template):
+    llavayi_query_template = 'You are a helpful assistant'
+
+    def __init__(self):
+        Template.__init__(self, [], ['<|im_start|>user\n', '{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+                          ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
+                          ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        return [151646]
+    
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        if example['images']:
+            pixel_values = []
+            for image_path in example['images']:
+                raw_image = _read_from_path(image_path)
+                pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+                pixel_values = pixel_values.to(self.model.dtype)
+            inputs['pixel_values'] = pixel_values
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
+        if pixel_values:
+            res['pixel_values'] = torch.concat(pixel_values)
+        # res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch if 'pixel_values' in b])
+        return res
+
+
+register_template(
+    TemplateType.llava_qwen2_instruct, LLavaQwen2Template(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:

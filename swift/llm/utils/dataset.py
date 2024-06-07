@@ -419,12 +419,14 @@ def preprocess_sharegpt_4o_images(dataset):
     prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
     def preprocess_row(row):
         image = row['image']
+        if not image:
+            return {'image': []}
         image = os.path.join(prefix_path, image)
         if not os.path.exists(image):
-            return {'image': '', 'conversations': []}
-        return {'image': image}
+            return {'image': [], 'conversations': []}
+        return {'image': [image]}
 
-    dataset = dataset.map(preprocess_row, load_from_cache_file=False)
+    dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['conversations'])
     return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
                                      media_type='image', error_strategy='delete')(dataset)
 
@@ -502,6 +504,8 @@ def preprocess_llava_data(dataset):
             images = [os.path.join(local_dir, p['path'] if not p['path'].startswith('coco/') else p['path'][len('coco/'):]) for p in row['images']]
             if any([not os.path.exists(image) for image in images]):
                 return {'conversation': [], 'images': []}
+        elif not row['images']:
+            return {'conversation': [], 'images': []}
         return {'images': images}
 
     dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['conversation'])
