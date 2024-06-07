@@ -1364,20 +1364,23 @@ class RLHFArguments(SftArguments):
 
     def set_default_config(self):
         import importlib
-        from dataclasses import fields
+        from dataclasses import fields, MISSING
         trl_trainer_module = importlib.import_module('trl.trainer')
         CONFIG_MAPPING = {
             'orpo': getattr(trl_trainer_module, 'orpo_config', None),
             'kto': getattr(trl_trainer_module, 'kto_config', None),
+            'simpo': getattr(trl_trainer_module, 'cpo_config', None),
         }
-        if self.rlhf_type in CONFIG_MAPPING and CONFIG_MAPPING[self.rlhf_type] is not None:
+        if self.rlhf_type in CONFIG_MAPPING:
+            assert CONFIG_MAPPING[self.rlhf_type] is not None
             cls = CONFIG_MAPPING[self.rlhf_type]
-            kwargs = {f.name: getattr(self, f.name) for f in fields(cls) if hasattr(self, f.name)}
-            kwargs = {f.name: getattr(self.training_args, f.name) for f in fields(cls) if hasattr(self, f.name)}
-            self.rlhf_config_args = cls(**kwargs)
-        else:
-            # DPO, SimPO
-            self.rlhf_config_args = self.training_args
+            for f in fields(cls):
+                if hasattr(self.training_args, f.name):
+                    continue
+                elif f.default != MISSING:
+                    setattr(self.training_args, f.name, f.default)
+                elif f.default_factory != MISSING:
+                    setattr(self.training_args, f.name, f.default_factory())
 
 
 @dataclass

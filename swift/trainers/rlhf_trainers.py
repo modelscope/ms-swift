@@ -25,7 +25,7 @@ class RLHFTrainerFactory:
         # get trainer kwargs
         trainer_kwargs = {}
         # common
-        trainer_kwargs['args'] = args.rlhf_config_args
+        trainer_kwargs['args'] = args.training_args
         trainer_kwargs['check_model'] = args.check_model_is_latest
         trainer_kwargs['test_oom_error'] = args.test_oom_error
 

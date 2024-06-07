@@ -36,8 +36,6 @@ def llm_rlhf(args: RLHFArguments) -> str:
         for device_id in range(torch.cuda.device_count()):
             torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
-    # Loading Model and Tokenizer
-
     # device map
     if is_deepspeed_zero3_enabled():
         model_kwargs = {'device_map': None}
@@ -145,16 +143,19 @@ def llm_rlhf(args: RLHFArguments) -> str:
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
 
-    if args.ref_model_free and args.ref_model_type is not None:
-        ref_model, _ = get_model_tokenizer(
-            args.ref_model_type,
-            args.torch_dtype,
-            model_kwargs,
-            model_id_or_path=args.ref_model_id_or_path,
-            revision=args.model_revision,
-            **kwargs)
-
-        set_generation_config(ref_model, generation_config)
+    if args.ref_model_type is not None:
+        if args.ref_model_free:
+            logger.warning(f"{args.rlhf_type} algorithm don't require ref model,\
+                     therefore the ref model will not be loaded here.")
+            ref_model = None
+        else:
+            ref_model, _ = get_model_tokenizer(
+                args.ref_model_type,
+                args.torch_dtype,
+                model_kwargs,
+                model_id_or_path=args.ref_model_id_or_path,
+                revision=args.model_revision,
+                **kwargs)
     else:
         ref_model = None
 
@@ -181,7 +182,9 @@ def llm_rlhf(args: RLHFArguments) -> str:
             model_author=args.model_author)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
-    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
+    if val_dataset is None:
+        training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.do_eval = False
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
 
@@ -206,62 +209,15 @@ You can also use the --model_type parameter to specify the  template.')
             'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
-    logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
-    if args.packing:
-        from swift.llm.utils.utils import ConstantLengthDataset
-        train_dataset = ConstantLengthDataset.get_packed_dataset(
-            template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
-        if val_dataset is not None:
-            val_dataset = ConstantLengthDataset.get_packed_dataset(
-                template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
-        dataset_info = {}
-        if not args.lazy_tokenize:
-            td0 = train_dataset[0]
-            print_example(td0, tokenizer, {})
-            dataset_info['train_dataset'] = stat_dataset(train_dataset)
-            if val_dataset is not None:
-                dataset_info['val_dataset'] = stat_dataset(val_dataset)
-    elif not args.lazy_tokenize:
-        dataset_info = {}
-        logger.info(f'Using num_proc: {args.preprocess_num_proc}')
-        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
-        if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc)
-        if args.test_oom_error:
-            train_dataset = sort_by_max_length(train_dataset, 20000)
-        # Data analysis
-        if train_dataset is None:
-            logger.error('Error accessing train_dataset properties. '
-                         'Please ensure that the dataset is properly initialized,'
-                         'and every sample of the train_dataset not empty.')
-            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
-                                 '(1) The dataset contains None for input or labels;\n'
-                                 "(2) The 'max_length' setting is too short causing data truncation.")
-        td0, tkwargs0 = train_dataset.data[0]
-        print_example(td0, tokenizer, tkwargs0)
-        dataset_info['train_dataset'] = stat_dataset(train_dataset)
-        if val_dataset is not None:
-            dataset_info['val_dataset'] = stat_dataset(val_dataset)
-    else:
-        dataset_info = None
-        td0, tkwargs0 = template.encode(train_dataset[0])
-        print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, template)
-        if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, template)
-    if val_dataset is None:
-        training_args.evaluation_strategy = IntervalStrategy.NO
-        training_args.do_eval = False
-    logger.info(f'train_dataset: {train_dataset}')
-    logger.info(f'val_dataset: {val_dataset}')
 
     # Trainer
     logger.info(f'training_args: {training_args}')
 
     trainer_kwargs = RLHFTrainerFactory.get_training_args(args)
 
-    if not args.ref_model_free and ref_model is not None:
+    if ref_model is not None:
         trainer_kwargs['ref_model'] = ref_model
+
     trainer_kwargs['args'].generation_config = generation_config
     trainer_cls = RLHFTrainerFactory.get_trainer(args.rlhf_type)
 

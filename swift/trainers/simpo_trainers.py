@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from transformers import PreTrainedModel, trainer
+from trl import CPOTrainer as HFCPOTrainer  # TODO: change base class to CPOTrainer
 from trl import DPOTrainer as HFDPOTrainer
 
 from swift.llm.utils.template import Context, Template
