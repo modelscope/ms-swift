@@ -22,6 +22,8 @@ class Runtime(BaseUI):
 
     group = 'llm_infer'
 
+    cmd = 'deploy'
+
     log_event = None
 
     locale_dict = {
@@ -156,10 +158,10 @@ class Runtime(BaseUI):
         except IOError:
             pass
 
-    @staticmethod
-    def get_all_ports():
+    @classmethod
+    def get_all_ports(cls):
         process_name = 'swift'
-        cmd_name = 'deploy'
+        cmd_name = cls.cmd
         ports = set()
         for proc in psutil.process_iter():
             try:
@@ -175,12 +177,12 @@ class Runtime(BaseUI):
                     pass
         return ports
 
-    @staticmethod
-    def refresh_tasks(running_task=None):
+    @classmethod
+    def refresh_tasks(cls, running_task=None):
         log_file = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
         negative_name = 'swift.exe'
-        cmd_name = 'deploy'
+        cmd_name = cls.cmd
         process = []
         selected = None
         for proc in psutil.process_iter():
@@ -230,15 +232,15 @@ class Runtime(BaseUI):
         return f'pid:{pid}/create:{create_time_formatted}' \
                f'/running:{format_time(ts - create_time)}/cmd:{" ".join(proc.cmdline())}'
 
-    @staticmethod
-    def parse_info_from_cmdline(task):
+    @classmethod
+    def parse_info_from_cmdline(cls, task):
         pid = None
         for i in range(3):
             slash = task.find('/')
             if i == 0:
                 pid = task[:slash].split(':')[1]
             task = task[slash + 1:]
-        args = task.split('swift deploy')[1]
+        args = task.split(f'swift {cls.cmd}')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
         for i in range(len(args)):
