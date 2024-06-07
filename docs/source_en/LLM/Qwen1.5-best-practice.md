@@ -191,8 +191,7 @@ sft_args = SftArguments(
              f'{DatasetName.self_cognition}#500'],
     logging_steps=5,
     max_length=2048,
-    learning_rate=5e-5,
-    warmup_ratio=0.4,
+    learning_rate=1e-4,
     output_dir='output',
     lora_target_modules=['ALL'],
     model_name=['小黄', 'Xiao Huang'],
@@ -215,8 +214,7 @@ swift sft \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --learning_rate 1e-4 \
     --output_dir output \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
@@ -234,8 +232,7 @@ swift sft \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --learning_rate 1e-4 \
     --output_dir output \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
@@ -488,8 +485,7 @@ swift sft \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 4096 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --learning_rate 1e-4 \
     --output_dir output \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
