@@ -1,14 +1,7 @@
-import collections
 import os.path
-import sys
-import time
-from datetime import datetime
-from typing import Dict, List, Tuple, Type
+from typing import Type
 
 import gradio as gr
-import json
-import psutil
-from gradio import Accordion, Tab
 from packaging import version
 
 from swift.ui.base import BaseUI

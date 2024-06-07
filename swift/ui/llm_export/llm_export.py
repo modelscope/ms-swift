@@ -12,23 +12,23 @@ import torch
 from gradio import Accordion, Tab
 
 from swift import snapshot_download
-from swift.llm import (EvalArguments)
+from swift.llm import (ExportArguments)
 from swift.ui.base import BaseUI
-from swift.ui.llm_eval.eval import Eval
-from swift.ui.llm_eval.model import Model
-from swift.ui.llm_eval.runtime import EvalRuntime
+from swift.ui.llm_export.export import Export
+from swift.ui.llm_export.model import Model
+from swift.ui.llm_export.runtime import EvalRuntime
 
 
-class LLMEval(BaseUI):
-    group = 'llm_eval'
+class LLMExport(BaseUI):
+    group = 'llm_export'
 
-    sub_ui = [Model, Eval, EvalRuntime]
+    sub_ui = [Model, Export, EvalRuntime]
 
     locale_dict = {
-        'llm_eval': {
+        'llm_export': {
             'label': {
-                'zh': 'LLM评测',
-                'en': 'LLM evaluation',
+                'zh': 'LLM导出',
+                'en': 'LLM export',
             }
         },
         'more_params': {
@@ -41,10 +41,10 @@ class LLMEval(BaseUI):
                 'en': 'Fill in with json format'
             }
         },
-        'evaluate': {
+        'export': {
             'value': {
-                'zh': '开始评估',
-                'en': 'Begin Evaluation'
+                'zh': '开始导出',
+                'en': 'Begin Export'
             },
         },
         'gpu_id': {
@@ -59,12 +59,12 @@ class LLMEval(BaseUI):
         },
     }
 
-    choice_dict = BaseUI.get_choices_from_dataclass(EvalArguments)
-    arguments = BaseUI.get_argument_names(EvalArguments)
+    choice_dict = BaseUI.get_choices_from_dataclass(ExportArguments)
+    arguments = BaseUI.get_argument_names(ExportArguments)
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.TabItem(elem_id='llm_eval', label=''):
+        with gr.TabItem(elem_id='llm_export', label=''):
             gpu_count = 0
             default_device = 'cpu'
             if torch.cuda.is_available():
@@ -73,11 +73,11 @@ class LLMEval(BaseUI):
             with gr.Blocks():
                 model_and_template = gr.State([])
                 Model.build_ui(base_tab)
-                Eval.build_ui(base_tab)
+                Export.build_ui(base_tab)
                 EvalRuntime.build_ui(base_tab)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
-                    gr.Button(elem_id='evaluate', scale=2, variant='primary')
+                    gr.Button(elem_id='export', scale=2, variant='primary')
                 gr.Dropdown(
                     elem_id='gpu_id',
                     multiselect=True,
@@ -85,8 +85,8 @@ class LLMEval(BaseUI):
                     value=default_device,
                     scale=8)
 
-                cls.element('evaluate').click(
-                    cls.eval_model,
+                cls.element('export').click(
+                    cls.export_model,
                     [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
                     [cls.element('runtime_tab'),
                      cls.element('running_tasks'), model_and_template])
@@ -104,18 +104,18 @@ class LLMEval(BaseUI):
                 )
 
     @classmethod
-    def eval(cls, *args):
-        eval_args = cls.get_default_value_from_dataclass(EvalArguments)
+    def export(cls, *args):
+        export_args = cls.get_default_value_from_dataclass(ExportArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
-            compare_value = eval_args.get(key)
+            compare_value = export_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
             compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
-            if key in eval_args and compare_value_ui != compare_value_arg and value:
+            if key in export_args and compare_value_ui != compare_value_arg and value:
                 if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                     value = int(value)
                 elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
@@ -139,7 +139,7 @@ class LLMEval(BaseUI):
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
                 kwargs['sft_type'] = _json['sft_type']
-        eval_args = EvalArguments(
+        export_args = ExportArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
                 for key, value in kwargs.items()
@@ -159,26 +159,26 @@ class LLMEval(BaseUI):
             cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
         now = datetime.now()
         time_str = f'{now.year}{now.month}{now.day}{now.hour}{now.minute}{now.second}'
-        file_path = f'output/{eval_args.model_type}-{time_str}'
+        file_path = f'output/{export_args.model_type}-{time_str}'
         if not os.path.exists(file_path):
             os.makedirs(file_path, exist_ok=True)
-        log_file = os.path.join(os.getcwd(), f'{file_path}/run_eval.log')
-        eval_args.log_file = log_file
+        log_file = os.path.join(os.getcwd(), f'{file_path}/run_export.log')
+        export_args.log_file = log_file
         params += f'--log_file "{log_file}" '
         params += '--ignore_args_error true '
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
-            run_command = f'{cuda_param}start /b swift eval {params} > {log_file} 2>&1'
+            run_command = f'{cuda_param}start /b swift export {params} > {log_file} 2>&1'
         else:
-            run_command = f'{cuda_param} nohup swift eval {params} > {log_file} 2>&1 &'
-        return run_command, eval_args, log_file
+            run_command = f'{cuda_param} nohup swift export {params} > {log_file} 2>&1 &'
+        return run_command, export_args, log_file
 
     @classmethod
-    def eval_model(cls, *args):
-        run_command, eval_args, log_file = cls.eval(*args)
+    def export_model(cls, *args):
+        run_command, export_args, log_file = cls.export(*args)
         os.system(run_command)
         time.sleep(2)
         return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [
-            eval_args.sft_type
+            export_args.sft_type
         ]

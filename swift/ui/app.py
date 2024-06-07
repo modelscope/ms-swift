@@ -4,6 +4,8 @@ import gradio as gr
 from packaging import version
 
 from swift.ui.base import all_langs
+from swift.ui.llm_eval.llm_eval import LLMEval
+from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_infer.llm_infer import LLMInfer
 from swift.ui.llm_train.llm_train import LLMTrain
 
@@ -41,6 +43,8 @@ else:
 def run_ui():
     LLMTrain.set_lang(lang)
     LLMInfer.set_lang(lang)
+    LLMExport.set_lang(lang)
+    LLMEval.set_lang(lang)
     with gr.Blocks(title='SWIFT WebUI') as app:
         gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
         gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
@@ -53,9 +57,13 @@ def run_ui():
             if is_shared_ui:
                 LLMInfer.build_ui(LLMInfer)
                 LLMTrain.build_ui(LLMTrain)
+                LLMExport.build_ui(LLMExport)
+                LLMEval.build_ui(LLMEval)
             else:
                 LLMTrain.build_ui(LLMTrain)
                 LLMInfer.build_ui(LLMInfer)
+                LLMExport.build_ui(LLMExport)
+                LLMEval.build_ui(LLMEval)
 
     port = os.environ.get('WEBUI_PORT', None)
     concurrent = {}
