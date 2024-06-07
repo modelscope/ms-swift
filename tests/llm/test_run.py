@@ -169,7 +169,11 @@ class TestRun(unittest.TestCase):
             'swift_multi.json', 'sharegpt.jsonl'
         ]
         val_dataset_fnames = [
-            'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl', 'swift_pre.csv', 'swift_single.jsonl',
+            'alpaca.jsonl',
+            'alpaca2.csv',
+            'conversations.jsonl',
+            'swift_pre.csv',
+            'swift_single.jsonl',
             # 'swift_#:#.jsonl'
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
