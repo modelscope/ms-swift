@@ -15,7 +15,7 @@ from transformers import HfArgumentParser, enable_full_determinism, set_seed
 
 from .logger import get_logger
 from .np_utils import stat_array
-from .torch_utils import broadcast_string, is_dist, is_local_master
+from .torch_utils import broadcast_string, is_dist, is_local_master, use_torchacc
 
 logger = get_logger()
 
@@ -83,6 +83,14 @@ def add_version_to_work_dir(work_dir: str) -> str:
     sub_folder = f'v{version}-{time}'
     if dist.is_initialized() and is_dist():
         sub_folder = broadcast_string(sub_folder)
+    if use_torchacc():
+        import torchacc as ta
+        # Initialize in advance
+        if not dist.is_initialized():
+            dist.init_process_group(backend=ta.dist.BACKEND_NAME)
+        # Make sure to set the same output_dir when using DDP.
+        sub_folder = broadcast_string(sub_folder)
+
     work_dir = os.path.join(work_dir, sub_folder)
     return work_dir
 
