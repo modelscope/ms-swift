@@ -43,7 +43,7 @@ class LLMEval(BaseUI):
         },
         'evaluate': {
             'value': {
-                'zh': '开始评估',
+                'zh': '开始评测',
                 'en': 'Begin Evaluation'
             },
         },
@@ -60,6 +60,7 @@ class LLMEval(BaseUI):
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(EvalArguments)
+    default_dict = BaseUI.get_default_value_from_dataclass(EvalArguments)
     arguments = BaseUI.get_argument_names(EvalArguments)
 
     @classmethod

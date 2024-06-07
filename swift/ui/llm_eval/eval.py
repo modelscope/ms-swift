@@ -102,7 +102,8 @@ class Eval(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
             name = gr.Textbox(elem_id='name', scale=20)
-            eval_dataset = gr.Dropdown(elem_id='eval_dataset', is_list=True, multiselect=True, scale=20)
+            eval_dataset = gr.Dropdown(elem_id='eval_dataset', is_list=True, choices=['ceval', 'gsm8k', 'arc'],
+                                       multiselect=True, scale=20)
             eval_few_shot = gr.Textbox(elem_id='eval_few_shot', scale=20)
             eval_limit = gr.Textbox(elem_id='eval_limit', scale=20)
             eval_use_cache = gr.Checkbox(elem_id='eval_use_cache', scale=20)

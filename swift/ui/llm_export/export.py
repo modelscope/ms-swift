@@ -2,6 +2,7 @@ from typing import Type
 
 import gradio as gr
 
+from swift.llm import DATASET_MAPPING
 from swift.ui.base import BaseUI
 
 
@@ -40,6 +41,12 @@ class Export(BaseUI):
                 'en': 'Output dir for quantization'
             },
         },
+        'dataset': {
+            'label': {
+                'zh': '校准数据集',
+                'en': 'Calibration datasets'
+            },
+        },
     }
 
     @classmethod
@@ -50,4 +57,5 @@ class Export(BaseUI):
             quant_n_samples = gr.Textbox(elem_id='quant_n_samples', scale=20)
             quant_seqlen = gr.Textbox(elem_id='quant_seqlen', scale=20)
         with gr.Row():
-            quant_output_dir = gr.Textbox(elem_id='quant_output_dir', scale=20)
+            quant_output_dir = gr.Textbox(elem_id='quant_output_dir', value='output', scale=20)
+            dataset = gr.Dropdown(elem_id='dataset', multiselect=True, choices=list(DATASET_MAPPING.keys()), scale=20)

@@ -60,6 +60,7 @@ class LLMExport(BaseUI):
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(ExportArguments)
+    default_dict = BaseUI.get_default_value_from_dataclass(ExportArguments)
     arguments = BaseUI.get_argument_names(ExportArguments)
 
     @classmethod
@@ -166,12 +167,17 @@ class LLMExport(BaseUI):
         export_args.log_file = log_file
         params += f'--log_file "{log_file}" '
         params += '--ignore_args_error true '
+        additional_param = ''
+        if export_args.quant_method == 'gptq':
+            additional_param = f'OMP_NUM_THREADS=14'
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
-            run_command = f'{cuda_param}start /b swift export {params} > {log_file} 2>&1'
+            if additional_param:
+                additional_param = f'set {additional_param} && '
+            run_command = f'{cuda_param}{additional_param}start /b swift export {params} > {log_file} 2>&1'
         else:
-            run_command = f'{cuda_param} nohup swift export {params} > {log_file} 2>&1 &'
+            run_command = f'{cuda_param} {additional_param} nohup swift export {params} > {log_file} 2>&1 &'
         return run_command, export_args, log_file
 
     @classmethod

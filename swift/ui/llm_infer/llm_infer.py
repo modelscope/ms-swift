@@ -100,6 +100,7 @@ class LLMInfer(BaseUI):
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(InferArguments)
+    default_dict = BaseUI.get_default_value_from_dataclass(InferArguments)
     arguments = BaseUI.get_argument_names(InferArguments)
 
     @classmethod
