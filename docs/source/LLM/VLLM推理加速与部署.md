@@ -530,8 +530,7 @@ swift sft \
     --dataset self-cognition#500 sharegpt-gpt4:default#1000 \
     --logging_steps 5 \
     --max_length 4096 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --learning_rate 1e-4 \
     --output_dir output \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
