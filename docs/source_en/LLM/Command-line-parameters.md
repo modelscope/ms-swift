@@ -104,7 +104,7 @@
 - `--ignore_args_error`: Whether to ignore Error thrown by command line parameter errors, default is `False`. Set to True if need to copy code to notebook to run.
 - `--check_model_is_latest`: Check if model is latest, default is `True`. Set this to `False` if you need to train offline.
 - `--logging_dir`: Default is `None`. I.e. set to `f'{self.output_dir}/runs'`, representing path to store tensorboard files.
-- `--report_to`: Default is `['tensorboard']`.
+- `--report_to`: Default is `['tensorboard']`. You can set `--report_to all` to report to all installed integrations.
 - `--acc_strategy`: Default is `'token'`, options include: 'token', 'sentence'.
 - `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
 - `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'epoch', no'.
