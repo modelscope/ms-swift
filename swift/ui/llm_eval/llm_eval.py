@@ -26,7 +26,38 @@ class LLMEval(BaseUI):
     sub_ui = [Model, Runtime]
 
     locale_dict = {
-
+        'llm_eval': {
+            'label': {
+                'zh': 'LLM评测',
+                'en': 'LLM evaluation',
+            }
+        },
+        'more_params': {
+            'label': {
+                'zh': '更多参数',
+                'en': 'More params'
+            },
+            'info': {
+                'zh': '以json格式填入',
+                'en': 'Fill in with json format'
+            }
+        },
+        'evaluate': {
+            'value': {
+                'zh': '开始评估',
+                'en': 'Begin Evaluation'
+            },
+        },
+        'gpu_id': {
+            'label': {
+                'zh': '选择可用GPU',
+                'en': 'Choose GPU'
+            },
+            'info': {
+                'zh': '选择训练使用的GPU号，如CUDA不可用只能选择CPU',
+                'en': 'Select GPU to train'
+            }
+        },
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(EvalArguments)
@@ -43,6 +74,9 @@ class LLMEval(BaseUI):
             with gr.Blocks():
                 model_and_template = gr.State([])
                 Model.build_ui(base_tab)
+                with gr.Row():
+                    gr.Textbox(elem_id='more_params', lines=4, scale=20)
+                    gr.Button(elem_id='evaluate', scale=2, variant='primary')
                 Runtime.build_ui(base_tab)
                 gr.Dropdown(
                     elem_id='gpu_id',
@@ -52,7 +86,7 @@ class LLMEval(BaseUI):
                     scale=8)
 
                 cls.element('evaluate').click(
-                    cls.deploy_model,
+                    cls.eval_model,
                     [value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))],
                     [cls.element('runtime_tab'),
                      cls.element('running_tasks'), model_and_template])
@@ -70,18 +104,18 @@ class LLMEval(BaseUI):
                 )
 
     @classmethod
-    def deploy(cls, *args):
-        deploy_args = cls.get_default_value_from_dataclass(DeployArguments)
+    def eval(cls, *args):
+        eval_args = cls.get_default_value_from_dataclass(EvalArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
-            compare_value = deploy_args.get(key)
+            compare_value = eval_args.get(key)
             compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
             compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
-            if key in deploy_args and compare_value_ui != compare_value_arg and value:
+            if key in eval_args and compare_value_ui != compare_value_arg and value:
                 if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                     value = int(value)
                 elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
@@ -105,21 +139,17 @@ class LLMEval(BaseUI):
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
                 kwargs['sft_type'] = _json['sft_type']
-        deploy_args = DeployArguments(
+        eval_args = EvalArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
                 for key, value in kwargs.items()
             })
-        if deploy_args.port in Runtime.get_all_ports('deploy'):
-            raise gr.Error(cls.locale('port_alert', cls.lang)['value'])
         params = ''
         for e in kwargs:
             if e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
-        if 'port' not in kwargs:
-            params += f'--port "{deploy_args.port}" '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -129,29 +159,29 @@ class LLMEval(BaseUI):
             cuda_param = f'CUDA_VISIBLE_DEVICES={gpus}'
         now = datetime.now()
         time_str = f'{now.year}{now.month}{now.day}{now.hour}{now.minute}{now.second}'
-        file_path = f'output/{deploy_args.model_type}-{time_str}'
+        file_path = f'output/{eval_args.model_type}-{time_str}'
         if not os.path.exists(file_path):
             os.makedirs(file_path, exist_ok=True)
-        log_file = os.path.join(os.getcwd(), f'{file_path}/run_deploy.log')
-        deploy_args.log_file = log_file
+        log_file = os.path.join(os.getcwd(), f'{file_path}/run_eval.log')
+        eval_args.log_file = log_file
         params += f'--log_file "{log_file}" '
         params += '--ignore_args_error true '
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
-            run_command = f'{cuda_param}start /b swift deploy {params} > {log_file} 2>&1'
+            run_command = f'{cuda_param}start /b swift eval {params} > {log_file} 2>&1'
         else:
-            run_command = f'{cuda_param} nohup swift deploy {params} > {log_file} 2>&1 &'
-        return run_command, deploy_args, log_file
+            run_command = f'{cuda_param} nohup swift eval {params} > {log_file} 2>&1 &'
+        return run_command, eval_args, log_file
 
     @classmethod
-    def deploy_model(cls, *args):
-        run_command, deploy_args, log_file = cls.deploy(*args)
+    def eval_model(cls, *args):
+        run_command, eval_args, log_file = cls.eval(*args)
         os.system(run_command)
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         return gr.update(open=True), Runtime.refresh_tasks(log_file), [
-            deploy_args.model_type, deploy_args.template_type, deploy_args.sft_type
+            eval_args.sft_type
         ]
 
     @classmethod
@@ -169,123 +199,3 @@ class LLMEval(BaseUI):
     @classmethod
     def reset_memory(cls):
         return []
-
-    @classmethod
-    def prepare_checkpoint(cls, *args):
-        torch.cuda.empty_cache()
-        infer_args = cls.get_default_value_from_dataclass(InferArguments)
-        kwargs = {}
-        kwargs_is_list = {}
-        other_kwargs = {}
-        more_params = {}
-        keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
-        for key, value in zip(keys, args):
-            compare_value = infer_args.get(key)
-            compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
-            compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
-            if key in infer_args and compare_value_ui != compare_value_arg and value:
-                if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
-                    value = int(value)
-                elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
-                    value = float(value)
-                kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
-                kwargs_is_list[key] = isinstance(value, list)
-            else:
-                other_kwargs[key] = value
-            if key == 'more_params' and value:
-                more_params = json.loads(value)
-
-        kwargs.update(more_params)
-        if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
-            model_dir = kwargs.pop('model_id_or_path')
-            if not os.path.exists(model_dir):
-                model_dir = snapshot_download(model_dir)
-            kwargs['ckpt_dir'] = model_dir
-        if 'ckpt_dir' in kwargs or ('model_id_or_path' in kwargs and not os.path.exists(kwargs['model_id_or_path'])):
-            kwargs.pop('model_type', None)
-
-        devices = other_kwargs['gpu_id']
-        devices = [d for d in devices if d]
-        assert (len(devices) == 1 or 'cpu' not in devices)
-        gpus = ','.join(devices)
-        if gpus != 'cpu':
-            os.environ['CUDA_VISIBLE_DEVICES'] = gpus
-        infer_args = InferArguments(**kwargs)
-        model, template = prepare_model_template(infer_args)
-        gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
-        return [model, template]
-
-    @classmethod
-    def clear_session(cls):
-        return '', None
-
-    @classmethod
-    def change_interactive(cls):
-        return gr.update(interactive=True)
-
-    @classmethod
-    def send_message(cls, running_task, model_and_template, template_type, prompt: str, history, system, max_new_tokens,
-                     temperature, top_k, top_p, repetition_penalty):
-        if not model_and_template:
-            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None
-        _, args = Runtime.parse_info_from_cmdline(running_task)
-        model_type, template, sft_type = model_and_template
-        old_history, history = history or [], []
-        request_config = XRequestConfig(
-            temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
-        request_config.stream = True
-        request_config.stop = ['Observation:']
-        stream_resp_with_history = ''
-        if not template_type.endswith('generation'):
-            stream_resp = inference_client(
-                model_type, prompt, old_history, system=system, port=args['port'], request_config=request_config)
-            for chunk in stream_resp:
-                stream_resp_with_history += chunk.choices[0].delta.content
-                qr_pair = [prompt, stream_resp_with_history]
-                total_history = old_history + [qr_pair]
-                yield '', total_history
-        else:
-            request_config.max_tokens = max_new_tokens
-            stream_resp = inference_client(model_type, prompt, port=args['port'], request_config=request_config)
-            for chunk in stream_resp:
-                stream_resp_with_history += chunk.choices[0].text
-                qr_pair = [prompt, stream_resp_with_history]
-                total_history = old_history + [qr_pair]
-                yield '', total_history
-
-    @classmethod
-    def generate_chat(cls, model_and_template, template_type, prompt: str, history, system, max_new_tokens, temperature,
-                      do_sample, top_k, top_p, repetition_penalty):
-        if not model_and_template:
-            gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None
-        model, template = model_and_template
-        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            model.cuda()
-        if not template_type.endswith('generation'):
-            old_history, history = limit_history_length(template, prompt, history, int(max_new_tokens))
-        else:
-            old_history = []
-            history = []
-
-        generation_config = GenerationConfig(
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            do_sample=do_sample,
-            max_new_tokens=int(max_new_tokens),
-            repetition_penalty=repetition_penalty)
-        gen = inference_stream(
-            model,
-            template,
-            prompt,
-            history,
-            system=system,
-            generation_config=generation_config,
-            stop_words=['Observation:'])
-        for _, history in gen:
-            total_history = old_history + history
-            yield '', total_history
-        if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
-            model.cpu()
