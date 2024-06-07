@@ -224,9 +224,13 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, boft_config)
                 logger.info(f'boft_config: {boft_config}')
         else:
-            if use_torchacc() and args.fsdp_num > 1:
-                consolidate_checkpoint(args.resume_from_checkpoint, 'adapter_model')
-            model = Swift.from_pretrained(model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
+            if use_torchacc():
+                if args.fsdp_num > 1:
+                    consolidate_checkpoint(args.resume_from_checkpoint, 'adapter_model')
+                model = Swift.from_pretrained(
+                    model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
+            else:
+                model = Swift.from_pretrained(model, args.resume_from_checkpoint, is_trainable=True)
         # fix bug: Attempting to unscale FP16 gradients.
         #   peft: https://github.com/huggingface/peft/issues/1249
         #   modules_to_save + fp16
