@@ -169,12 +169,8 @@ class TestRun(unittest.TestCase):
             'swift_multi.json', 'sharegpt.jsonl'
         ]
         val_dataset_fnames = [
-            'alpaca.jsonl',
-            'alpaca2.csv',
-            'conversations.jsonl',
-            'swift_pre.csv',
-            'swift_single.jsonl',
-            # 'swift_#:#.jsonl'
+            'alpaca.jsonl', 'alpaca2.csv', 'conversations.jsonl', 'swift_pre.csv', 'swift_single.jsonl',
+            'swift_#:#.jsonl#3'
         ]
         folder = os.path.join(os.path.dirname(__file__), 'data')
         resume_from_checkpoint = None
@@ -210,41 +206,6 @@ class TestRun(unittest.TestCase):
                 **kwargs)
             torch.cuda.empty_cache()
             infer_main(infer_args)
-
-    def test_self_cognition(self):
-        if not __name__ == '__main__':
-            # ignore citest error in github
-            return
-        for dataset in [[], [DatasetName.alpaca_zh, DatasetName.alpaca_en]]:
-            sft_args = SftArguments(
-                model_type=ModelType.qwen1half_1_8b_chat_int4,
-                dataset=dataset,  # no dataset
-                train_dataset_sample=100,
-                dtype='fp16',
-                eval_steps=5,
-                output_dir='output',
-                lora_target_modules=['ALL', 'EMBEDDING'],
-                lazy_tokenize=True,
-                max_length=512,
-                self_cognition_sample=100,
-                model_name=['小黄', 'Xiao Huang'],
-                model_author=['魔搭', 'ModelScope'],
-                use_flash_attn=True)
-            torch.cuda.empty_cache()
-            output = sft_main(sft_args)
-            last_model_checkpoint = output['last_model_checkpoint']
-            best_model_checkpoint = output['best_model_checkpoint']
-            print(f'last_model_checkpoint: {last_model_checkpoint}')
-            print(f'best_model_checkpoint: {best_model_checkpoint}')
-            ckpt_dir = best_model_checkpoint or last_model_checkpoint
-            if len(dataset) == 0:
-                continue
-            infer_args = InferArguments(
-                ckpt_dir=ckpt_dir, val_dataset_sample=2, verbose=False, load_dataset_config=True)
-            # merge_lora_main(infer_args)
-            torch.cuda.empty_cache()
-            result = infer_main(infer_args)
-            print(result)
 
     def test_cogagent_instruct(self):
         if not __name__ == '__main__':
@@ -441,4 +402,5 @@ class TestTrainer(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    TestRun().test_custom_dataset()
+    # unittest.main()
