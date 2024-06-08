@@ -228,11 +228,9 @@ class Template:
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
         query: Optional[str] = example.get('query', None)
         response: Optional[str] = example.get('response', None)
-        history: Optional[History] = example.get('history', None)
+        history: Optional[History] = example.get('history', [])
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
-        if history is None:
-            history = []
         if len(history) > 0:
             assert self.support_multi_round, (
                 f'The template does not support multi-round chat, template_type: {template_type}')

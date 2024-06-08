@@ -15,9 +15,10 @@ def filter_args(func, args: RLHFArguments) -> Dict[str, Any]:
 
 class RLHFTrainerFactory:
     TRAINERS_MAPPING = {
-        'dpo': 'swift.trainers.dpo_trainers.DPOTrainer',
-        'simpo': 'swift.trainers.simpo_trainers.SimPOTrainer',
-        'orpo': 'swift.trainers.orpo_trainers.ORPOTrainer',
+        'dpo': 'swift.trainers.dpo_trainer.DPOTrainer',
+        'simpo': 'swift.trainers.simpo_trainer.SimPOTrainer',
+        'orpo': 'swift.trainers.orpo_trainer.ORPOTrainer',
+        'kto': 'swift.trainers.kto_trainer.KTOTrainer'
     }
 
     @staticmethod

@@ -194,8 +194,6 @@ def llm_rlhf(args: RLHFArguments) -> str:
     if use_model:
         template_kwargs['model'] = model
 
-    template_kwargs['use_loss_scale'] = args.use_loss_scale
-
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
 
