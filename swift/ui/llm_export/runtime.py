@@ -4,7 +4,7 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
-class EvalRuntime(Runtime):
+class ExportRuntime(Runtime):
 
     group = 'llm_export'
 

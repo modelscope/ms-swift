@@ -24,6 +24,8 @@ class LLMEval(BaseUI):
 
     sub_ui = [Model, Eval, EvalRuntime]
 
+    cmd = 'eval'
+
     locale_dict = {
         'llm_eval': {
             'label': {

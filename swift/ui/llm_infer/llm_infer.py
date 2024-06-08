@@ -125,7 +125,7 @@ class LLMInfer(BaseUI):
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
-                    image = gr.Image()
+                    image = gr.Image(type='filepath')
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
@@ -374,11 +374,10 @@ class LLMInfer(BaseUI):
             if image:
                 medias.append(image)
             return '', medias, None
-
-        medias = medias or []
-        if image:
+        elif not medias or medias[-1] != image:
             medias.append(image)
 
+        medias = medias or []
         _, args = Runtime.parse_info_from_cmdline(running_task)
         model_type, template, sft_type = model_and_template
         old_history, history = history or [], []

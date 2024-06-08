@@ -107,6 +107,7 @@ class Eval(BaseUI):
             eval_few_shot = gr.Textbox(elem_id='eval_few_shot', scale=20)
             eval_limit = gr.Textbox(elem_id='eval_limit', scale=20)
             eval_use_cache = gr.Checkbox(elem_id='eval_use_cache', scale=20)
+            infer_backend = gr.Dropdown(elem_id='infer_backend', scale=20)
         with gr.Row():
             custom_eval_config = gr.Textbox(elem_id='custom_eval_config', scale=20)
         with gr.Row():

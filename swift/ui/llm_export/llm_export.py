@@ -16,13 +16,13 @@ from swift.llm import (ExportArguments)
 from swift.ui.base import BaseUI
 from swift.ui.llm_export.export import Export
 from swift.ui.llm_export.model import Model
-from swift.ui.llm_export.runtime import EvalRuntime
+from swift.ui.llm_export.runtime import ExportRuntime
 
 
 class LLMExport(BaseUI):
     group = 'llm_export'
 
-    sub_ui = [Model, Export, EvalRuntime]
+    sub_ui = [Model, Export, ExportRuntime]
 
     locale_dict = {
         'llm_export': {
@@ -75,7 +75,7 @@ class LLMExport(BaseUI):
                 model_and_template = gr.State([])
                 Model.build_ui(base_tab)
                 Export.build_ui(base_tab)
-                EvalRuntime.build_ui(base_tab)
+                ExportRuntime.build_ui(base_tab)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
                     gr.Button(elem_id='export', scale=2, variant='primary')
@@ -93,15 +93,15 @@ class LLMExport(BaseUI):
                      cls.element('running_tasks'), model_and_template])
 
                 base_tab.element('running_tasks').change(
-                    partial(EvalRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
+                    partial(ExportRuntime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
                     [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
                     + [cls.element('log'), model_and_template],
-                    cancels=EvalRuntime.log_event)
-                EvalRuntime.element('kill_task').click(
-                    EvalRuntime.kill_task,
-                    [EvalRuntime.element('running_tasks')],
-                    [EvalRuntime.element('running_tasks')] + [EvalRuntime.element('log')],
-                    cancels=[EvalRuntime.log_event],
+                    cancels=ExportRuntime.log_event)
+                ExportRuntime.element('kill_task').click(
+                    ExportRuntime.kill_task,
+                    [ExportRuntime.element('running_tasks')],
+                    [ExportRuntime.element('running_tasks')] + [ExportRuntime.element('log')],
+                    cancels=[ExportRuntime.log_event],
                 )
 
     @classmethod
@@ -185,6 +185,6 @@ class LLMExport(BaseUI):
         run_command, export_args, log_file = cls.export(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [
+        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file), [
             export_args.sft_type
         ]

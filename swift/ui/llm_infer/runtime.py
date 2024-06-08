@@ -106,13 +106,13 @@ class Runtime(BaseUI):
                 if version.parse(gr.__version__) >= version.parse('4.0.0') and os.environ.get(
                         'MODELSCOPE_ENVIRONMENT') != 'studio':
                     concurrency_limit = {'concurrency_limit': 5}
-                cls.log_event = base_tab.element('show_log').click(Runtime.update_log, [], [cls.element('log')]).then(
-                    Runtime.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)
+                cls.log_event = base_tab.element('show_log').click(cls.update_log, [], [cls.element('log')]).then(
+                    cls.wait, [base_tab.element('running_tasks')], [cls.element('log')], **concurrency_limit)
 
                 base_tab.element('stop_show_log').click(lambda: None, cancels=cls.log_event)
 
                 base_tab.element('refresh_tasks').click(
-                    Runtime.refresh_tasks,
+                    cls.refresh_tasks,
                     [base_tab.element('running_tasks')],
                     [base_tab.element('running_tasks')],
                 )
@@ -172,7 +172,7 @@ class Runtime(BaseUI):
                 [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
                 try:
                     ports.add(
-                        int(Runtime.parse_info_from_cmdline(Runtime.construct_running_task(proc))[1].get('port', 8000)))
+                        int(cls.parse_info_from_cmdline(cls.construct_running_task(proc))[1].get('port', 8000)))
                 except IndexError:
                     pass
         return ports
@@ -194,10 +194,10 @@ class Runtime(BaseUI):
                     for cmdline in cmdlines]) and not any([negative_name in cmdline
                                                            for cmdline in cmdlines]) and any(  # noqa
                                                                [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
-                process.append(Runtime.construct_running_task(proc))
+                process.append(cls.construct_running_task(proc))
                 if log_file is not None and any(  # noqa
                     [log_file == cmdline for cmdline in cmdlines]):  # noqa
-                    selected = Runtime.construct_running_task(proc)
+                    selected = cls.construct_running_task(proc)
         if not selected:
             if running_task and running_task in process:
                 selected = running_task
@@ -249,21 +249,21 @@ class Runtime(BaseUI):
             all_args[splits[0]] = splits[1]
         return pid, all_args
 
-    @staticmethod
-    def kill_task(task):
-        pid, all_args = Runtime.parse_info_from_cmdline(task)
+    @classmethod
+    def kill_task(cls, task):
+        pid, all_args = cls.parse_info_from_cmdline(task)
         log_file = all_args['log_file']
         if sys.platform == 'win32':
             os.system(f'taskkill /f /t /pid "{pid}"')
         else:
             os.system(f'pkill -9 -f {log_file}')
         time.sleep(1)
-        return [Runtime.refresh_tasks()] + [gr.update(value=None)]
+        return [cls.refresh_tasks()] + [gr.update(value=None)]
 
-    @staticmethod
-    def task_changed(task, base_tab):
+    @classmethod
+    def task_changed(cls, task, base_tab):
         if task:
-            _, all_args = Runtime.parse_info_from_cmdline(task)
+            _, all_args = cls.parse_info_from_cmdline(task)
         else:
             all_args = {}
         elements = [value for value in base_tab.elements().values() if not isinstance(value, (Tab, Accordion))]
