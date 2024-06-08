@@ -5,13 +5,14 @@ from torch import nn
 from transformers import trainer
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.llm.utils.template import Context, Template, History
+from swift.llm.utils.template import Context, History, Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 logger = get_logger()
+
 
 def encode_batch(batch: Dict[str, List[Any]], template: Template):
     """
@@ -40,7 +41,7 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
             system = template.default_system
     else:
         assert template.prefix_has_system is not None, 'not support `system`'
-    
+
     res_context_list: List[Context] = []
     compute_loss_idx: List[float] = []
 
@@ -53,26 +54,17 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
     template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
 
     for i, (q, r) in enumerate(history):
-        template._concat_context_list(
-            [
-                *template.prompt,
-                '{{RESPONSE}}',
-                *template.chat_sep
-            ],
-            res_context_list,
-            compute_loss_idx,
-            query=q,
-            response=r,
-            round0=i)
+        template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
+                                      res_context_list,
+                                      compute_loss_idx,
+                                      query=q,
+                                      response=r,
+                                      round0=i)
     template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
     res_context_list, compute_loss_idx = template._simplify_context_list(res_context_list, compute_loss_idx)
-    prompt= ''.join(res_context_list)
+    prompt = ''.join(res_context_list)
 
-    return {
-        'prompt':prompt,
-        'completion':batch['completion'],
-        'label': batch['label']
-    }
+    return {'prompt': prompt, 'completion': batch['completion'], 'label': batch['label']}
 
 
 class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
@@ -80,16 +72,16 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
     def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.train_dataset = self.train_dataset.map(
             encode_batch,
-            fn_kwargs={"template": template},
+            fn_kwargs={'template': template},
             batched=True,
-            desc="Encode dataset with template",
+            desc='Encode dataset with template',
         )
         if self.eval_dataset is not None:
             self.eval_dataset = self.eval_dataset.map(
                 encode_batch,
-                fn_kwargs={"template": template},
+                fn_kwargs={'template': template},
                 batched=True,
-                desc="Encode dataset with template",
+                desc='Encode dataset with template',
             )
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)

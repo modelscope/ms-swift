@@ -808,6 +808,7 @@ def process_shareai_dpo(dataset):
 
     return dataset.map(reorganize_row)
 
+
 def process_ultrafeedback_kto(dataset: HfDataset):
 
     def reorganize_row(row):

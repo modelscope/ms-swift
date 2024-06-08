@@ -1348,6 +1348,10 @@ class RLHFArguments(SftArguments):
     sft_beta: float = 0.1
     gamma = 1.0  # reward margin hyperparameter in SimPO
 
+    # KTO
+    desirable_weight: float = 1.0
+    undesirable_weight: float = 1.0
+
     def __post_init__(self) -> None:
         super().__post_init__()
         # without reference model
@@ -1365,11 +1369,10 @@ class RLHFArguments(SftArguments):
     def set_default_config(self):
         import importlib
         from dataclasses import fields, MISSING
-        trl_trainer_module = importlib.import_module('trl.trainer')
         CONFIG_MAPPING = {
-            'orpo': getattr(trl_trainer_module, 'orpo_config', None),
-            'kto': getattr(trl_trainer_module, 'kto_config', None),
-            'simpo': getattr(trl_trainer_module, 'cpo_config', None),
+            'orpo': 'trl.trainer.orpo_config.orpo_config',
+            'kto': 'trl.trainer.kto_config.kto_config',
+            'simpo': 'trl.trainer.cpo_config.cpo_config',
         }
         if self.rlhf_type in CONFIG_MAPPING:
             assert CONFIG_MAPPING[self.rlhf_type] is not None

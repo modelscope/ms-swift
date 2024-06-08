@@ -11,6 +11,7 @@ from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
 from .utils import build_tokenized_answer, concat_template
+
 logger = get_logger()
 
 

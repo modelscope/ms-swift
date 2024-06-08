@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from transformers import PreTrainedModel, trainer
-from trl import CPOTrainer as HFCPOTrainer  
+from trl import CPOTrainer as HFCPOTrainer
 from trl import DPOTrainer as HFDPOTrainer
 
 from swift.llm.utils.template import Context, Template
@@ -14,6 +14,7 @@ from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallba
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 logger = get_logger()
+
 
 # TODO: change base class to CPOTrainer
 class SimPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
@@ -55,7 +56,7 @@ class SimPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if system is None:
             assert self.template.prefix != self.template.prefix_has_system, f'template.prefix: {self.template.prefix}'
             prefix = self.template.prefix
-            
+
         else:
             prefix = self.template.prefix_has_system
         self.template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
@@ -87,7 +88,7 @@ class SimPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             input_ids=tgt_input_ids,
             attention_mask=[1] * len(tgt_input_ids),
         )
-    
+
     def tokenize_row(self, feature, model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
         batch = {}
         if not self.is_encoder_decoder:

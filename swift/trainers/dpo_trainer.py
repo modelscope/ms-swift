@@ -11,6 +11,7 @@ from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
 from .utils import build_tokenized_answer, concat_template
+
 logger = get_logger()
 
 
@@ -38,7 +39,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         for i in range(torch.cuda.device_count()):
             self.perf['memory'][f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
         return res
-
 
     def tokenize_row(self, feature, model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
         batch = {}
