@@ -354,19 +354,17 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def _replace_tag_with_media(cls, history):
-        cnt = 0
         total_history = []
         for h in history:
             for m in h[2]:
-                total_history.append([(m,), None])
+                total_history.append([(m, ), None])
             if h[0] and h[0].strip():
                 total_history.append(h[:2])
         return total_history
 
     @classmethod
-    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image,
-                     history, system, max_new_tokens,
-                     temperature, top_k, top_p, repetition_penalty):
+    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history, system,
+                     max_new_tokens, temperature, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None, None, []
@@ -392,8 +390,13 @@ class LLMInfer(BaseUI):
         medias = [m for h in old_history for m in h[2]]
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
-                model_type, prompt, images=medias, history=[h[:2] for h in old_history if h[0]],
-                system=system, port=args['port'], request_config=request_config)
+                model_type,
+                prompt,
+                images=medias,
+                history=[h[:2] for h in old_history if h[0]],
+                system=system,
+                port=args['port'],
+                request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
                 old_history[-1][0] = prompt
@@ -401,7 +404,8 @@ class LLMInfer(BaseUI):
                 yield '', cls._replace_tag_with_media(old_history), None, old_history
         else:
             request_config.max_tokens = max_new_tokens
-            stream_resp = inference_client(model_type, prompt, images=old_history[-1][2], port=args['port'], request_config=request_config)
+            stream_resp = inference_client(
+                model_type, prompt, images=old_history[-1][2], port=args['port'], request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].text
                 old_history[-1][0] = prompt
@@ -409,9 +413,8 @@ class LLMInfer(BaseUI):
                 yield '', cls._replace_tag_with_media(old_history), None, old_history
 
     @classmethod
-    def generate_chat(cls, model_and_template, template_type, prompt: str, image,
-                    history, system, max_new_tokens, temperature,
-                      do_sample, top_k, top_p, repetition_penalty):
+    def generate_chat(cls, model_and_template, template_type, prompt: str, image, history, system, max_new_tokens,
+                      temperature, do_sample, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None, None, []

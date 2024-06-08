@@ -5,6 +5,7 @@ import gradio as gr
 
 from swift.ui.base import BaseUI
 
+
 class Eval(BaseUI):
 
     group = 'llm_eval'
@@ -76,8 +77,11 @@ class Eval(BaseUI):
                 'en': 'The eval url'
             },
             'info': {
-                'zh': 'OpenAI样式的评测链接(如：http://localhost:8080/v1)，用于评测接口（模型类型输入为实际模型类型）',
-                'en': 'The OpenAI style link(like: http://localhost:8080/v1) for evaluation(Input actual model type into model_type)'
+                'zh':
+                'OpenAI样式的评测链接(如：http://localhost:8080/v1)，用于评测接口（模型类型输入为实际模型类型）',
+                'en':
+                'The OpenAI style link(like: http://localhost:8080/v1) for '
+                'evaluation(Input actual model type into model_type)'
             }
         },
         'eval_token': {
@@ -107,16 +111,16 @@ class Eval(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
-            name = gr.Textbox(elem_id='name', scale=20)
-            eval_dataset = gr.Dropdown(elem_id='eval_dataset', is_list=True, choices=['ceval', 'gsm8k', 'arc'],
-                                       multiselect=True, scale=20)
-            eval_few_shot = gr.Textbox(elem_id='eval_few_shot', scale=20)
-            eval_limit = gr.Textbox(elem_id='eval_limit', scale=20)
-            eval_use_cache = gr.Checkbox(elem_id='eval_use_cache', scale=20)
-            infer_backend = gr.Dropdown(elem_id='infer_backend', scale=20)
+            gr.Textbox(elem_id='name', scale=20)
+            gr.Dropdown(
+                elem_id='eval_dataset', is_list=True, choices=['ceval', 'gsm8k', 'arc'], multiselect=True, scale=20)
+            gr.Textbox(elem_id='eval_few_shot', scale=20)
+            gr.Textbox(elem_id='eval_limit', scale=20)
+            gr.Checkbox(elem_id='eval_use_cache', scale=20)
+            gr.Dropdown(elem_id='infer_backend', scale=20)
         with gr.Row():
-            custom_eval_config = gr.Textbox(elem_id='custom_eval_config', scale=20)
+            gr.Textbox(elem_id='custom_eval_config', scale=20)
         with gr.Row():
-            eval_url = gr.Textbox(elem_id='eval_url', scale=20)
-            eval_token = gr.Textbox(elem_id='eval_token', scale=20)
-            eval_is_chat_model = gr.Checkbox(elem_id='eval_is_chat_model', scale=20)
+            gr.Textbox(elem_id='eval_url', scale=20)
+            gr.Textbox(elem_id='eval_token', scale=20)
+            gr.Checkbox(elem_id='eval_is_chat_model', scale=20)

@@ -171,8 +171,7 @@ class Runtime(BaseUI):
             if any([process_name in cmdline for cmdline in cmdlines]) and any(  # noqa
                 [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
                 try:
-                    ports.add(
-                        int(cls.parse_info_from_cmdline(cls.construct_running_task(proc))[1].get('port', 8000)))
+                    ports.add(int(cls.parse_info_from_cmdline(cls.construct_running_task(proc))[1].get('port', 8000)))
                 except IndexError:
                     pass
         return ports
