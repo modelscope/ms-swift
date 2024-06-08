@@ -5,14 +5,6 @@ from typing import Any, Dict
 from swift.llm.utils import RLHFArguments
 
 
-def filter_args(func, args: RLHFArguments) -> Dict[str, Any]:
-    import inspect
-    func_signature = inspect.signature(func)
-    args_dict = args.__dict__
-    valid_args = {k: v for k, v in args_dict.items() if k in func_signature.parameters}
-    return valid_args
-
-
 class RLHFTrainerFactory:
     TRAINERS_MAPPING = {
         'dpo': 'swift.trainers.dpo_trainer.DPOTrainer',
