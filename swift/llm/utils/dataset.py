@@ -1834,11 +1834,14 @@ def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['non
     return dataset
 
 
-def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
+def _safe_split(s: str, sep: str, use_0: bool, split_mode: Literal['left', 'right'] = 'left') -> Tuple[str, str]:
     # use_0: When the length of the part is 1, is it considered as part0 or part1.
     if s is None or len(s) == 0:
         return None, None
-    part = s.split(sep)
+    if split_mode == 'left':
+        part = s.split(sep, 1)
+    else:
+        part = s.rsplit(sep, 1)
     if len(part) == 1:
         if use_0:
             part = part[0], None
@@ -1856,8 +1859,15 @@ def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
         use_hf = strtobool(os.environ.get('USE_HF', 'False'))
     elif isinstance(use_hf, str):
         use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
-    part1, dataset_sample = _safe_split(other, '#', True)
-    dataset_name, subsets = _safe_split(part1, ':', True)
+    if os.path.isfile(other):
+        part1, dataset_sample = other, None
+    else:
+        part1, dataset_sample = _safe_split(other, '#', True, 'right')
+    if os.path.isfile(part1):
+        dataset_name, subsets = part1, None
+    else:
+        dataset_name, subsets = _safe_split(part1, ':', True)
+
     if subsets is not None:
         subset_list = subsets.split('/')
         subset_list = [subset.strip() for subset in subset_list]

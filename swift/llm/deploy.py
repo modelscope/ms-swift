@@ -61,7 +61,9 @@ async def check_length(request: Union[ChatCompletionRequest, CompletionRequest],
     num_tokens = len(input_ids)
     max_tokens = request.max_tokens
     if max_model_len is None:
-        return
+        max_model_len = 8192
+        logger.warning(
+            'The current model is unable to retrieve `max_model_len`. It is set to the default value of 8192.')
     if max_tokens is None:
         max_tokens = max_model_len - num_tokens
         request.max_tokens = max_tokens

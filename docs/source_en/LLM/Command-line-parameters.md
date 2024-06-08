@@ -90,7 +90,7 @@
 - `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `None`, i.e. if `sft_type` is 'lora' and not using deepspeed (`deepspeed` is `None`), set to False, otherwise set to True (e.g. using full fine-tuning or deepspeed).
 - `--save_total_limit`: Number of checkpoints to save, default is `2`, i.e. save best and last checkpoint. If set to -1, save all checkpoints.
 - `--logging_steps`: Print training information (e.g. loss, learning_rate, etc.) every this many steps, default is `5`.
-- `--dataloader_num_workers`: Default is `1`.
+- `--dataloader_num_workers`: Default value is `None`. If running on a Windows machine, set it to `0`; otherwise, set it to `1`.
 - `--push_to_hub`: Whether to sync push trained checkpoint to ModelScope Hub, default is `False`.
 - `--hub_model_id`: Model_id to push to on ModelScope Hub, default is `None`, i.e. set to `f'{model_type}-{sft_type}'`. You can set this to model_id or repo_name. We will infer user_name based on hub_token. If the remote repository to push to does not exist, a new repository will be created, otherwise the previous repository will be reused. This parameter only takes effect when `push_to_hub` is set to True.
 - `--hub_token`: SDK token needed for pushing. Can be obtained from [https://modelscope.cn/my/myaccesstoken](https://modelscope.cn/my/myaccesstoken), default is `None`, i.e. obtained from environment variable `MODELSCOPE_API_TOKEN`. This parameter only takes effect when `push_to_hub` is set to True.
@@ -104,7 +104,7 @@
 - `--ignore_args_error`: Whether to ignore Error thrown by command line parameter errors, default is `False`. Set to True if need to copy code to notebook to run.
 - `--check_model_is_latest`: Check if model is latest, default is `True`. Set this to `False` if you need to train offline.
 - `--logging_dir`: Default is `None`. I.e. set to `f'{self.output_dir}/runs'`, representing path to store tensorboard files.
-- `--report_to`: Default is `['tensorboard']`.
+- `--report_to`: Default is `['tensorboard']`. You can set `--report_to all` to report to all installed integrations.
 - `--acc_strategy`: Default is `'token'`, options include: 'token', 'sentence'.
 - `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
 - `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'epoch', no'.
