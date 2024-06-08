@@ -1360,6 +1360,7 @@ class RLHFArguments(SftArguments):
         self.set_default_config()
 
     def set_default_beta(self):
+        # TODO: comfirm self.beta or self.training_args.beta ?
         if self.beta is None:
             if self.rlhf_type in ['dpo', 'orpo', 'kto']:
                 self.beta = 0.1
@@ -1383,6 +1384,8 @@ class RLHFArguments(SftArguments):
             for f in fields(cls):
                 if hasattr(self.training_args, f.name):
                     continue
+                elif hasattr(self, f.name):
+                    setattr(self.training_args, f.name, getattr(self, f.name))
                 elif f.default != MISSING:
                     setattr(self.training_args, f.name, f.default)
                 elif f.default_factory != MISSING:

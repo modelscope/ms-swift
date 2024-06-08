@@ -75,14 +75,12 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         train_dataset = train_dataset.map(
             encode_batch,
             fn_kwargs={'template': template},
-            batched=True,
             desc='Encode dataset with template',
         )
         if eval_dataset is not None:
             eval_dataset = eval_dataset.map(
                 encode_batch,
                 fn_kwargs={'template': template},
-                batched=True,
                 desc='Encode dataset with template',
             )
         super().__init__(*args, **kwargs)
@@ -111,13 +109,10 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         from datasets import Dataset as HfDataset
         from swift.utils.np_utils import stat_array
         if isinstance(llm_dataset, HfDataset):
-            chosen = llm_dataset['chosen_input_ids']
-            rejected = llm_dataset['rejected_input_ids']
-            for cc, rr in zip(chosen, rejected):
-                _token_len.append(max(len(cc), len(rr)))
-        else:
-            for d in llm_dataset:
-                _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
+            prompt_input_ids = llm_dataset['prompt_input_ids']
+            answer_input_ids = llm_dataset['answer_input_ids']
+            for pi, ai in zip(prompt_input_ids, answer_input_ids):
+                _token_len.append(len(pi)+len(ai))
         _, stat_str = stat_array(_token_len)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
