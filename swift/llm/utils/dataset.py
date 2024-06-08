@@ -1196,7 +1196,7 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
 
     dataset_list = []
     res_dataset = []
-    # Add dataset_id or dataset_path to the dataset_list, and add dataset_name to res_dataset.
+    # Add dataset_id or dataset_path to dataset_list, and add dataset_name to res_dataset.
     for d in dataset_name_list:
         use_hf, d_name = parse_dataset_name(d)[:2]
         if d_name in DATASET_MAPPING:
