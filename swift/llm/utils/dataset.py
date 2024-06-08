@@ -1194,15 +1194,15 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
                 container[v[k_name]] = []
             container[v[k_name]].append(k)
 
-    dataset_list = []
     res_dataset = []
+    dataset_list = []
     # Add dataset_id or dataset_path to dataset_list, and add dataset_name to res_dataset.
     for d in dataset_name_list:
         use_hf, d_name = parse_dataset_name(d)[:2]
         if d_name in DATASET_MAPPING:
             res_dataset.append(d)
-            continue
-        dataset_list.append((d, use_hf, d_name))
+        else:
+            dataset_list.append((d, use_hf, d_name))
 
     extra_dataset = []
     for d, use_hf, d_id_or_path in dataset_list:
