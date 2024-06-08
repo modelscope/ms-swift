@@ -6,6 +6,7 @@ import gradio as gr
 from swift.llm import MODEL_MAPPING, ModelType
 from swift.ui.base import BaseUI
 
+
 class Model(BaseUI):
 
     group = 'llm_export'
@@ -81,13 +82,10 @@ class Model(BaseUI):
             model_state[model_type] = path
             return model_state
 
-        model_type.change(
-            update_input_model, inputs=[model_type, model_state], outputs=[model_id_or_path])
+        model_type.change(update_input_model, inputs=[model_type, model_state], outputs=[model_id_or_path])
 
         model_id_or_path.change(
-            update_model_id_or_path,
-            inputs=[model_type, model_id_or_path, model_state],
-            outputs=[model_state])
+            update_model_id_or_path, inputs=[model_type, model_id_or_path, model_state], outputs=[model_state])
 
         def reset(model_type):
             model_id_or_path = update_input_model(model_type)

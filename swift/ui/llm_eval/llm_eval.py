@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import sys
@@ -8,11 +7,12 @@ from functools import partial
 from typing import Type
 
 import gradio as gr
+import json
 import torch
 from gradio import Accordion, Tab
 
 from swift import snapshot_download
-from swift.llm import (EvalArguments)
+from swift.llm import EvalArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_eval.eval import Eval
 from swift.ui.llm_eval.model import Model
@@ -182,6 +182,4 @@ class LLMEval(BaseUI):
         run_command, eval_args, log_file = cls.eval(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [
-            eval_args.sft_type
-        ]
+        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [eval_args.sft_type]

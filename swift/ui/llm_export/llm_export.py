@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import sys
@@ -8,11 +7,12 @@ from functools import partial
 from typing import Type
 
 import gradio as gr
+import json
 import torch
 from gradio import Accordion, Tab
 
 from swift import snapshot_download
-from swift.llm import (ExportArguments)
+from swift.llm import ExportArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_export.export import Export
 from swift.ui.llm_export.model import Model
@@ -169,7 +169,7 @@ class LLMExport(BaseUI):
         params += '--ignore_args_error true '
         additional_param = ''
         if export_args.quant_method == 'gptq':
-            additional_param = f'OMP_NUM_THREADS=14'
+            additional_param = 'OMP_NUM_THREADS=14'
         if sys.platform == 'win32':
             if cuda_param:
                 cuda_param = f'set {cuda_param} && '
@@ -185,6 +185,4 @@ class LLMExport(BaseUI):
         run_command, export_args, log_file = cls.export(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file), [
-            export_args.sft_type
-        ]
+        return gr.update(open=True), ExportRuntime.refresh_tasks(log_file), [export_args.sft_type]
