@@ -12,7 +12,7 @@ def random_uuid() -> str:
 @dataclass
 class Model:
     id: str  # model_type
-    is_chat: bool  # chat model or generation model
+    is_chat: Optional[bool] = None  # chat model or generation model
     is_multimodal: bool = False
 
     object: str = 'model'

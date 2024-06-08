@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 import inspect
 import math
 import os
@@ -1260,7 +1261,7 @@ class DeployArguments(InferArguments):
 @dataclass
 class EvalArguments(InferArguments):
 
-    name: Optional[str] = None
+    name: Optional[str] = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
 
     eval_url: Optional[str] = None
 
