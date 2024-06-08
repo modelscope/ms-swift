@@ -1249,7 +1249,6 @@ def get_dataset(
     dataset_name_list = _dataset_id_to_name(dataset_name_list)
     for dataset_name in dataset_name_list:
         use_hf, dataset_name, subsets, dataset_sample = parse_dataset_name(dataset_name)
-        assert dataset_name in DATASET_MAPPING, f'dataset_name: {dataset_name}'
         dataset_info = DATASET_MAPPING[dataset_name]
         if subsets is None:
             subsets = dataset_info['subsets']
