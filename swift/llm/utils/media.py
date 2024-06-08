@@ -165,5 +165,15 @@ class MediaCache:
                                      ).download_and_extract(media_type)
         shutil.move(str(local_dirs), final_folder)
         return final_folder
+    
+    @staticmethod
+    def safe_save(image, file_name, folder, format="JPEG"):
+        folder = os.path.join(MediaCache.cache_dir, folder)
+        os.makedirs(folder, exist_ok=True)
+        file = os.path.join(folder, file_name)
+        if os.path.exists(file):
+            return file
+        image.save(file, format=format)
+        return file
 
 

@@ -555,20 +555,8 @@
         "tags": ["pretrain", "quality"],
         "huge_dataset": true
     },
-    "llava-plus-data": {
-        "hf_dataset_id": "LLaVA-VL/llava-plus-data",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete",
-            "media_type": "image"
-        },
-        "tags": ["TODO"]
-    },
     "moondream2-coyo-5M": {
+        "dataset_id": "swift/moondream2-coyo-5M-captions",
         "hf_dataset_id": "isidentical/moondream2-coyo-5M-captions",
         "columns": {
             "url": "images",

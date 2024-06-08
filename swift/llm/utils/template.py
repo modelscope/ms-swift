@@ -1428,12 +1428,14 @@ class LLavaQwen2Template(Template):
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
+        if 'there are numerous guinea pigs housed in a concrete pen' in example['query']:
+            print()
         if example['images']:
             pixel_values = []
             for image_path in example['images']:
                 raw_image = _read_from_path(image_path)
-                pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
-                pixel_values = pixel_values.to(self.model.dtype)
+                pixel_value = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+                pixel_values.append(pixel_value.to(self.model.dtype))
             inputs['pixel_values'] = pixel_values
         return inputs, {}
 
@@ -1441,7 +1443,7 @@ class LLavaQwen2Template(Template):
         res = super().data_collator(batch, padding_to)
         pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
         if pixel_values:
-            res['pixel_values'] = torch.concat(pixel_values)
+            res['pixel_values'] = torch.concat(*pixel_values)
         # res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch if 'pixel_values' in b])
         return res
 

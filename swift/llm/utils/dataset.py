@@ -166,6 +166,7 @@ class DatasetName:
     mind2web = 'mind2web'
     sharegpt_4o_image = 'sharegpt-4o-image'
     sharegpt_4o_video = 'sharegpt-4o-video'
+    llava_plus_data = 'llava-plus-data'
 
     m3it = 'm3it'
     # additional images
@@ -945,24 +946,38 @@ def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
 
 
 def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
-    if not hasattr(dataset, '_image_dir'):
-        split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
-        IMAGE_DATASET_REQUIREMENTS = {
-            'ShareGPT4V': ['coco', 'sam', 'llava', 'wikiart', 'share_textvqa', 'web-celebrity', 'web-landmark'],
-            'ShareGPT4V-PT': ['coco', 'sam', 'llava']
-        }
+    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
+    IMAGE_DATASET_REQUIREMENTS = {
+        'ShareGPT4V': ['coco', 'sam', 'llava', 'wikiart', 'share_textvqa', 'web-celebrity', 'web-landmark'],
+        'ShareGPT4V-PT': ['coco', 'sam', 'llava']
+    }
 
-        if isinstance(split, str):
-            split = [split]
-        for sp in split:
-            for media_type in IMAGE_DATASET_REQUIREMENTS[sp]:
-                MediaCache.download(media_type)
-        dataset._image_dir = MediaCache.cache_dir
+    if isinstance(split, str):
+        split = [split]
+    all_folders = {}
+    for sp in split:
+        for media_type in IMAGE_DATASET_REQUIREMENTS[sp]:
+            all_folders[media_type] = MediaCache.download(media_type)
+    dataset._image_dir = all_folders
 
     def preprocess_image(example):
-        image_path = os.path.join(dataset._image_dir, example['image'])
-        if os.path.exists(image_path):
-            example['images'] = image_path
+        image = example['image']
+        if 'coco/' in image:
+            image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+        elif 'sam/' in image:
+            image = os.path.join(dataset._image_dir['sam'], image.replace('sam/images/', ''))
+        elif 'llava/' in image:
+            image = os.path.join(dataset._image_dir['llava'], image.replace('llava/llava_pretrain/images/', ''))
+        elif 'wikiart/' in image:
+            image = os.path.join(dataset._image_dir['wikiart'], image.replace('wikiart/images/', 'data/wikiart/images/'))
+        elif 'share_textvqa/' in image:
+            image = os.path.join(dataset._image_dir['share_textvqa'], image.replace('share_textvqa/images/', 'data/share_textvqa/images/'))
+        elif 'web-celebrity/' in image:
+            image = os.path.join(dataset._image_dir['web-celebrity'], image.replace('web-celebrity/images/', 'data/web-celebrity/images/'))
+        elif 'web-landmark/' in image:
+            image = os.path.join(dataset._image_dir['web-landmark'], image.replace('web-landmark/images/', 'data/web-landmark/images/'))
+        if os.path.exists(image):
+            example['images'] = image
         else:
             example['images'] = None
         return example
@@ -1001,15 +1016,27 @@ register_dataset(
 
 
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
-    if not hasattr(dataset, '_image_dir'):
+    all_folders = {}
+    for sp in split:
         for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
-            MediaCache.download(media_type)
-        dataset._image_dir = MediaCache.cache_dir
+            all_folders[media_type] = MediaCache.download(media_type)
+    dataset._image_dir = all_folders
 
     def preprocess_image(example):
-        image_path = os.path.join(dataset._image_dir, example['image'])
-        if os.path.exists(image_path):
-            example['images'] = image_path
+        if 'coco/' in image:
+            image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+        elif 'gqa/' in image:
+            image = os.path.join(dataset._image_dir['gqa'], image.replace('gqa/', ''))
+        elif 'ocr_vqa/' in image:
+            image = os.path.join(dataset._image_dir['ocr_vqa'], image.replace('ocr_vqa/', ''))
+        elif 'textvqa/' in image:
+            image = os.path.join(dataset._image_dir['textvqa'], image.replace('textvqa/', ''))
+        elif 'VG_100K/' in image:
+            image = os.path.join(dataset._image_dir['VG_100K'], image.replace('VG_100K/', ''))
+        elif 'VG_100K_2/' in image:
+            image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('VG_100K_2/', ''))
+        if os.path.exists(image):
+            example['images'] = image
         else:
             example['images'] = None
         return example
@@ -1360,10 +1387,9 @@ def preprocess_llava_mix_sft(dataset):
 
             rounds.append({'role': role, 'content': text})
 
-        return {'messages': rounds, 'images': row['images']}
+        return {'messages': rounds}
 
-    dataset = dataset.map(preprocess_row)
-    return ConversationsPreprocessor(
+    dataset = dataset.map(preprocess_row).map(ConversationsPreprocessor(
         user_role='user',
         assistant_role='assistant',
         conversations_key='messages',
@@ -1371,12 +1397,13 @@ def preprocess_llava_mix_sft(dataset):
         value_key='content',
         media_key='images',
         media_type='image',
-    )(dataset)
+    ).preprocess)
+    return dataset
 
 
 register_dataset(
     DatasetName.llava_instruct_mix,
-    None, [],
+    'swift/llava-instruct-mix-vsft', [],
     preprocess_llava_mix_sft,
     get_function=get_dataset_from_repo,
     split=['test'],
@@ -1618,36 +1645,35 @@ register_dataset(
 def preprocess_mind2web(dataset):
 
     def preprocess_row(row):
-        raw_html = row['raw_html']
+        raw_html = row['cleaned_html']
         screenshot = row['screenshot']
+        row['screenshot'] = MediaCache.safe_save(screenshot, row['action_uid'] + '.jpg', 'mind2web')
         action = row['target_action_reprs']
-        action = action.split('->')
-        if len(action) == 1:
-            return {
-                'query': f'<image>{raw_html}',
-                'images': screenshot,
-                'response': f'Action: {action}',
-            }
-        else:
-            return {
-                'query': f'<image>{raw_html}',
-                'images': screenshot,
-                'response': f'Action: {action[1].strip()}\nAction Input: {action[0].strip()}'
-            }
+        actions = action.split('->')
+        row['query'] = f'The snapshot of screen:<image>\nThe html source code:{raw_html}\n'
+        action = actions[-1]
+        where = actions[0] if len(actions) > 1 else ''
+        what = ''
+        if ':' in action:
+            action, what = action[:action.find(':')], action[action.find(':')+1:]
+        row['response'] = f'Action: {action.strip()}\nAction Input: {where.strip()}{"," + what.strip()}'
+        return row
 
     conversations = []
     tools = [
-        {'api': 'CLICK', 'desc': 'Choose and click an element in the web page'},
-        {'api': 'TYPE', 'desc': 'Input some text into a web element like <input> or <textbox>'},
-        {'api': 'SELECT', 'desc': 'Select an element from a combobox'}
+        {'api': 'CLICK', 'desc': 'Choose and click an element in the web page', 'parameter': [{'element': 'string, the element in the web page to click'}]},
+        {'api': 'TYPE', 'desc': 'Input some text into a web element like <input> or <textbox>', 
+        'parameter': [{'element': 'string, the element in the web page to input to', 'content': 'string, what content to input into the textbox elment'}]},
+        {'api': 'SELECT', 'desc': 'Select an element from a combobox',
+        'parameter': [{'element': 'string, the combobox or dropdown in the web page on which the select happens', 'content': 'string, which choices to choose'}]}
     ]
     history = []
     images = []
-    for row in dataset:
+    for row in tqdm(dataset):
         target_action_index = row['target_action_index']
         row = preprocess_row(row)
         query = row['query']
-        if target_action_index == 0:
+        if target_action_index == '0':
             if history:
                 query, response = history.pop(-1)
                 conversations.append({'history': history,
@@ -1659,7 +1685,7 @@ def preprocess_mind2web(dataset):
                 history = []
             query = query + '\n' + row['confirmed_task']
         history.append([query, row['response']])
-        images.append([row['images']])
+        images.append([row['screenshot']])
 
     if history:
         query, response = history.pop(-1)
@@ -1673,7 +1699,7 @@ def preprocess_mind2web(dataset):
 
 register_dataset(
     DatasetName.mind2web,
-    None, [],
+    'swift/Multimodal-Mind2Web', [],
     preprocess_mind2web,
     get_dataset_from_repo,
     hf_dataset_id="osunlp/Multimodal-Mind2Web",
