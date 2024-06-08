@@ -17,12 +17,6 @@ class Model(BaseUI):
                 'en': 'Trained model'
             }
         },
-        'url': {
-            'value': {
-                'zh': 'http接口',
-                'en': 'Http interface'
-            }
-        },
         'model_type': {
             'label': {
                 'zh': '选择模型',
@@ -56,18 +50,17 @@ class Model(BaseUI):
         with gr.Row():
             model_type = gr.Dropdown(
                 elem_id='model_type',
-                choices=[base_tab.locale('checkpoint', cls.lang)['value'],
-                         base_tab.locale('url', cls.lang)['value']] + ModelType.get_model_name_list()
+                choices=[base_tab.locale('checkpoint', cls.lang)['value']] + ModelType.get_model_name_list()
                 + cls.get_custom_name_list(),
                 value=base_tab.locale('checkpoint', cls.lang)['value'],
+                allow_custom_value=True,
                 scale=20)
             model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
             reset_btn = gr.Button(elem_id='reset', scale=2)
             model_state = gr.State({})
 
         def update_input_model(choice, model_state=None):
-            if choice in (base_tab.locale('checkpoint', cls.lang)['value'],
-                          base_tab.locale('url', cls.lang)['value']):
+            if choice == base_tab.locale('checkpoint', cls.lang)['value']:
                 if model_state and choice in model_state:
                     model_id_or_path = model_state[choice]
                 else:
@@ -76,7 +69,7 @@ class Model(BaseUI):
                 if model_state and choice in model_state:
                     model_id_or_path = model_state[choice]
                 else:
-                    model_id_or_path = MODEL_MAPPING[choice]['model_id_or_path']
+                    model_id_or_path = MODEL_MAPPING.get(choice, {}).get('model_id_or_path')
             return model_id_or_path
 
         def update_model_id_or_path(model_type, path, model_state):

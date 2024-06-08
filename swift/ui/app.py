@@ -19,10 +19,10 @@ locale_dict = {
     'sub_title': {
         'zh':
         '请查看 <a href=\"https://github.com/modelscope/swift/tree/main/docs/source\" target=\"_blank\">'
-        'SWIFT 文档</a>来查看更多功能',
+        'SWIFT 文档</a>来查看更多功能，使用SWIFT_UI_LANG=en环境变量来切换英文界面',
         'en':
         'Please check <a href=\"https://github.com/modelscope/swift/tree/main/docs/source_en\" target=\"_blank\">'
-        'SWIFT Documentation</a> for more usages',
+        'SWIFT Documentation</a> for more usages, Use SWIFT_UI_LANG=zh variable to switch to Chinese UI',
     },
     'star_beggar': {
         'zh':

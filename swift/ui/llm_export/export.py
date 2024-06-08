@@ -11,6 +11,12 @@ class Export(BaseUI):
     group = 'llm_export'
 
     locale_dict = {
+        'merge_lora': {
+            'label': {
+                'zh': '合并lora',
+                'en': 'Merge lora'
+            },
+        },
         'quant_bits': {
             'label': {
                 'zh': '量化比特数',
@@ -52,6 +58,7 @@ class Export(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Row():
+            merge_lora = gr.Checkbox(elem_id='merge_lora', scale=20)
             quant_bits = gr.Textbox(elem_id='quant_bits', scale=20)
             quant_method = gr.Dropdown(elem_id='quant_method', scale=20)
             quant_n_samples = gr.Textbox(elem_id='quant_n_samples', scale=20)
