@@ -73,4 +73,5 @@ def run_ui():
         server_name=os.environ.get('WEBUI_SERVER', None),
         server_port=port if port is None else int(port),
         height=800,
+        allowed_paths=[],
         share=bool(int(os.environ.get('WEBUI_SHARE', '0'))))
