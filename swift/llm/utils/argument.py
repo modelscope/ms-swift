@@ -1367,16 +1367,19 @@ class RLHFArguments(SftArguments):
                 self.beta = 2.0
 
     def set_default_config(self):
-        import importlib
+        from importlib import import_module
         from dataclasses import fields, MISSING
         CONFIG_MAPPING = {
-            'orpo': 'trl.trainer.orpo_config.orpo_config',
-            'kto': 'trl.trainer.kto_config.kto_config',
-            'simpo': 'trl.trainer.cpo_config.cpo_config',
+            'orpo': 'trl.trainer.orpo_config.ORPOConfig',
+            'kto': 'trl.trainer.kto_config.KTOConfig',
+            'simpo': 'trl.trainer.cpo_config.CPOConfig',
         }
         if self.rlhf_type in CONFIG_MAPPING:
-            assert CONFIG_MAPPING[self.rlhf_type] is not None
-            cls = CONFIG_MAPPING[self.rlhf_type]
+            config_path = CONFIG_MAPPING[self.rlhf_type]
+            module_path, config_name = config_path.rsplit('.', 1)
+            config_module = import_module(module_path)
+            cls = getattr(config_module, config_name, None)
+            assert cls is not None
             for f in fields(cls):
                 if hasattr(self.training_args, f.name):
                     continue

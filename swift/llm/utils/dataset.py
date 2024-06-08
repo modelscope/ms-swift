@@ -832,7 +832,8 @@ register_dataset(
     DatasetName.ultrafeedback_kto,
     'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto', ['default'],
     process_ultrafeedback_kto,
-    get_dataset_from_repo(remove_useless_columns=False),
+    get_dataset_from_repo,
+    remove_useless_columns=False,
     tags=['rlhf', 'kto'])
 
 register_dataset(
