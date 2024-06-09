@@ -1335,7 +1335,7 @@ class ExportArguments(InferArguments):
 
 @dataclass
 class RLHFArguments(SftArguments):
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
 
@@ -1344,9 +1344,9 @@ class RLHFArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: Optional[int] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
+    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'simpo'] = 'sigmoid'
     sft_beta: float = 0.1
-    gamma = 1.0  # reward margin hyperparameter in SimPO
+    simpo_gamma = 1.0  # reward margin hyperparameter in SimPO
 
     # KTO
     desirable_weight: float = 1.0
@@ -1356,16 +1356,18 @@ class RLHFArguments(SftArguments):
         super().__post_init__()
         # without reference model
         self.ref_model_free = self.rlhf_type in ['orpo', 'simpo']
+        if self.rlhf_type == 'simpo':
+            self.loss_type = 'simpo'  # compatibility with trl
+
         self.set_default_beta()
         self.set_default_config()
 
     def set_default_beta(self):
-        # TODO: comfirm self.beta or self.training_args.beta ?
         if self.beta is None:
-            if self.rlhf_type in ['dpo', 'orpo', 'kto']:
+            if self.rlhf_type in ['dpo', 'orpo', 'kto', 'cpo']:
                 self.beta = 0.1
             elif self.rlhf_type == 'simpo':
-                self.beta = 2.0
+                self.beta = 2.
 
     def set_default_config(self):
         from importlib import import_module
@@ -1374,7 +1376,9 @@ class RLHFArguments(SftArguments):
             'orpo': 'trl.trainer.orpo_config.ORPOConfig',
             'kto': 'trl.trainer.kto_config.KTOConfig',
             'simpo': 'trl.trainer.cpo_config.CPOConfig',
+            'cpo': 'trl.trainer.cpo_config.CPOConfig'
         }
+
         if self.rlhf_type in CONFIG_MAPPING:
             config_path = CONFIG_MAPPING[self.rlhf_type]
             module_path, config_name = config_path.rsplit('.', 1)
@@ -1392,31 +1396,29 @@ class RLHFArguments(SftArguments):
                     setattr(self.training_args, f.name, f.default_factory())
 
 
-@dataclass
-class DPOArguments(SftArguments):
+# @dataclass
+# class DPOArguments(SftArguments):
 
-    ref_model_type: Optional[str] = field(
-        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+#     ref_model_type: Optional[str] = field(
+#         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
 
-    ref_model_id_or_path: Optional[str] = None
+#     ref_model_id_or_path: Optional[str] = None
 
-    max_prompt_length: int = 1024
-    beta: float = 0.1
-    label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
-    sft_beta: float = 0.1
+#     max_prompt_length: int = 1024
+#     beta: float = 0.1
+#     label_smoothing: float = 0.0
+#     loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
+#     sft_beta: float = 0.1
 
+# @dataclass
+# class SimPOArguments(DPOArguments):
+#     beta: float = 2.0
+#     gamma: float = 1.0
 
-@dataclass
-class SimPOArguments(DPOArguments):
-    beta: float = 2.0
-    gamma: float = 1.0
-
-
-@dataclass
-class ORPOArguments(SftArguments):
-    max_prompt_length: int = 1024
-    beta: float = 0.1
+# @dataclass
+# class ORPOArguments(SftArguments):
+#     max_prompt_length: int = 1024
+#     beta: float = 0.1
 
 
 @dataclass

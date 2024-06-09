@@ -10,7 +10,8 @@ class RLHFTrainerFactory:
         'dpo': 'swift.trainers.dpo_trainer.DPOTrainer',
         'simpo': 'swift.trainers.simpo_trainer.SimPOTrainer',
         'orpo': 'swift.trainers.orpo_trainer.ORPOTrainer',
-        'kto': 'swift.trainers.kto_trainer.KTOTrainer'
+        'kto': 'swift.trainers.kto_trainer.KTOTrainer',
+        'cpo': 'swift.trainers.kto_trainer.CPOTrainer'
     }
 
     @staticmethod
@@ -18,13 +19,10 @@ class RLHFTrainerFactory:
         # get trainer kwargs
         trainer_kwargs = {}
 
-        # common
-        # args.training_args.max_length = args.max_length
-        # args.training_args.max_prompt_length = args.max_prompt_length
-
         trainer_kwargs['args'] = args.training_args
         trainer_kwargs['check_model'] = args.check_model_is_latest
         trainer_kwargs['test_oom_error'] = args.test_oom_error
+
         if args.rlhf_type in ['dpo', 'simpo']:
             trainer_kwargs['beta'] = args.beta
             trainer_kwargs['label_smoothing'] = args.label_smoothing
@@ -36,12 +34,16 @@ class RLHFTrainerFactory:
         if args.rlhf_type == 'simpo':
             trainer_kwargs['gamma'] = args.gamma
 
-
         return trainer_kwargs
 
     @staticmethod
     def get_trainer(rlhf_type):
         module_path, class_name = RLHFTrainerFactory.TRAINERS_MAPPING[rlhf_type].rsplit('.', 1)
+        if rlhf_type == 'simpo':
+            import trl
+            from packaging import version
+            if version.parse(trl.__version__) <= version.parse('0.9.4'):
+                trainer_class = 'OldSimPOTrainer'
         module = importlib.import_module(module_path)
         trainer_class = getattr(module, class_name)
         return trainer_class

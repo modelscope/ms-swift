@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional
 
 import torch
-from torch import nn
 from transformers import trainer
 from trl import KTOTrainer as HFKTOTrainer
 
@@ -112,7 +111,7 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
             prompt_input_ids = llm_dataset['prompt_input_ids']
             answer_input_ids = llm_dataset['answer_input_ids']
             for pi, ai in zip(prompt_input_ids, answer_input_ids):
-                _token_len.append(len(pi)+len(ai))
+                _token_len.append(len(pi) + len(ai))
         _, stat_str = stat_array(_token_len)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
