@@ -257,14 +257,14 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         kwargs = {}
         if has_system:
             kwargs['system'] = system
-        if has_history:
-            kwargs['history'] = history
         if has_medias:
             kwargs[self.media_name] = medias
         kwargs.update({
             'query': query,
             'response': response,
         })
+        if has_history:
+            kwargs['history'] = history
         dataset = HfDataset.from_dict(kwargs)
         return dataset
 

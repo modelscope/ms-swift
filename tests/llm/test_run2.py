@@ -105,7 +105,9 @@ class TestRun2(unittest.TestCase):
                 lazy_tokenize=False))
         best_model_checkpoint = output['best_model_checkpoint']
         torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+        infer_main(
+            InferArguments(
+                ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2, merge_lora=True))
 
     def test_baichuan2_chat_int4(self):
         if not __name__ == '__main__':

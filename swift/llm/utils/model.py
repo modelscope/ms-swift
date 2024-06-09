@@ -1516,6 +1516,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.init_kwargs['image_size'] = 1120
     if model is not None:
         from torch.nn import CrossEntropyLoss
         __old_forward = CrossEntropyLoss.forward
