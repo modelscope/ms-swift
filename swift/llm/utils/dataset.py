@@ -1017,24 +1017,24 @@ register_dataset(
 
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
     all_folders = {}
-    for sp in split:
-        for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
-            all_folders[media_type] = MediaCache.download(media_type)
+    for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
+        all_folders[media_type] = MediaCache.download(media_type)
     dataset._image_dir = all_folders
 
     def preprocess_image(example):
+        image = example['image']
         if 'coco/' in image:
             image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
         elif 'gqa/' in image:
             image = os.path.join(dataset._image_dir['gqa'], image.replace('gqa/', ''))
         elif 'ocr_vqa/' in image:
-            image = os.path.join(dataset._image_dir['ocr_vqa'], image.replace('ocr_vqa/', ''))
+            image = os.path.join(dataset._image_dir['ocr_vqa'], image)
         elif 'textvqa/' in image:
             image = os.path.join(dataset._image_dir['textvqa'], image.replace('textvqa/', ''))
         elif 'VG_100K/' in image:
-            image = os.path.join(dataset._image_dir['VG_100K'], image.replace('VG_100K/', ''))
+            image = os.path.join(dataset._image_dir['VG_100K'], image.replace('vg/', ''))
         elif 'VG_100K_2/' in image:
-            image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('VG_100K_2/', ''))
+            image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('vg/', ''))
         if os.path.exists(image):
             example['images'] = image
         else:
