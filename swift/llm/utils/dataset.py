@@ -422,15 +422,18 @@ def preprocess_mantis_instruct(dataset):
 
     def preprocess_row(row):
         source = row['source']
-        local_dir = all_local_dirs[source]
-        images = [os.path.join(local_dir, p['path']) for p in row['images']]
-        return {'images': images}
+        if source in all_local_dirs:
+            local_dir = all_local_dirs[source]
+            images = [os.path.join(local_dir, p['path']) for p in row['images']]
+            return {'images': images}
+        else:
+            return {'images': []}
 
-    dataset = dataset.map(preprocess_row)
+    dataset = dataset.map(preprocess_row).filter(lambda row: row['images'])
     return ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
                               from_key='role', value_key='content',
                               media_type='image',
-                              media_key='images')(dataset)
+                              media_key='images', error_strategy='delete')(dataset)
 
 register_dataset(
     DatasetName.mantis_instruct,
