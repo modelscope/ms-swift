@@ -41,14 +41,14 @@ def write_dataset_info() -> None:
         ['llm', 'vision', 'audio'],
         [ModelType.qwen_7b_chat, ModelType.qwen_vl_chat, ModelType.qwen_audio_chat],
     )
-    try:
-        for task_type, model_type in _iter:
-            _, tokenizer = get_model_tokenizer(model_type, load_model=False)
-            template_type = get_default_template_type(model_type)
-            template = get_template(template_type, tokenizer)
-            mapping[task_type] = template
+    for task_type, model_type in _iter:
+        _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        mapping[task_type] = template
 
-        for dataset_name in dataset_name_list:
+    for dataset_name in dataset_name_list:
+        try:
             dataset_info = DATASET_MAPPING[dataset_name]
             tags = dataset_info.get('tags', [])
             subsets = dataset_info.get('subsets', [])
@@ -68,8 +68,8 @@ def write_dataset_info() -> None:
                     stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:
                     train_dataset, val_dataset = get_dataset([dataset_name],
-                                                             model_name=['小黄', 'Xiao Huang'],
-                                                             model_author=['魔搭', 'ModelScope'])
+                                                                model_name=['小黄', 'Xiao Huang'],
+                                                                model_author=['魔搭', 'ModelScope'])
                     dataset_size = len(train_dataset)
                     assert val_dataset is None
 
@@ -107,18 +107,19 @@ def write_dataset_info() -> None:
                 hf_dataset_id_str = f'[{hf_dataset_id}]({hf_url})'
 
             res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|"
-                                 f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
+                                    f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
             print(res_text_list[-1], flush=True)
-    except Exception as e:
-        raise e
-    else:
-        for idx in range(len(fpaths)):
-            text = '\n'.join(res_text_list)
-            text = pre_texts[idx] + text + '\n'
-            with open(fpaths[idx], 'w', encoding='utf-8') as f:
-                f.write(text)
-    finally:
-        print(f'数据集总数: {len(dataset_name_list)}')
+        except Exception as e:
+            import traceback
+            print('here is the error:')
+            print(traceback.format_exc())
+
+    for idx in range(len(fpaths)):
+        text = '\n'.join(res_text_list)
+        text = pre_texts[idx] + text + '\n'
+        with open(fpaths[idx], 'w', encoding='utf-8') as f:
+            f.write(text)
+    print(f'数据集总数: {len(dataset_name_list)}')
 
 
 if __name__ == '__main__':
