@@ -82,6 +82,8 @@ class ArgumentsBase:
             logger.warning(f'use_flash_attn: {self.use_flash_attn}, ' f'but support_flash_attn: {support_flash_attn}')
 
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
+        if self.temperature == 0:
+            self.do_sample = False
         if self.do_sample is False:
             # fix warning
             self.temperature = 1.
@@ -560,6 +562,7 @@ class SftArguments(ArgumentsBase):
     optim: str = 'adamw_torch'
     adam_beta1: float = 0.9
     adam_beta2: float = 0.999
+    adam_epsilon: float = 1e-8
     learning_rate: Optional[float] = None
     weight_decay: float = 0.1
     gradient_accumulation_steps: Optional[int] = None
@@ -941,6 +944,7 @@ class SftArguments(ArgumentsBase):
             optim=self.optim,
             adam_beta1=self.adam_beta1,
             adam_beta2=self.adam_beta2,
+            adam_epsilon=self.adam_epsilon,
             hub_model_id=self.hub_model_id,
             hub_private_repo=self.hub_private_repo,
             push_hub_strategy=self.push_hub_strategy,
@@ -1261,23 +1265,25 @@ class DeployArguments(InferArguments):
 @dataclass
 class EvalArguments(InferArguments):
 
-    name: Optional[str] = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
-
-    eval_url: Optional[str] = None
-
-    eval_token: Optional[str] = 'EMPTY'
-
-    eval_is_chat_model: bool = None
-
-    eval_dataset: List[str] = field(default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
-
+    eval_dataset: List[str] = field(
+        default_factory=lambda: ['ceval', 'gsm8k', 'arc'],
+        metadata={'help': f"dataset choices: {['arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa']}"})
     eval_few_shot: Optional[int] = None
-
     eval_limit: Optional[int] = None
 
-    custom_eval_config: Optional[str] = None
+    name: str = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    eval_url: Optional[str] = None
+    eval_token: str = 'EMPTY'
+    eval_is_chat_model: Optional[bool] = None
+    custom_eval_config: Optional[str] = None  # path
+    eval_use_cache: bool = False
 
-    eval_use_cache: Optional[bool] = False
+    def __post_init__(self):
+        super().__post_init__()
+        if isinstance(self.eval_dataset, str):
+            self.eval_dataset = [self.eval_dataset]
+        if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
+            args.eval_dataset = []
 
     def select_dtype(self):
         if self.eval_url is None:

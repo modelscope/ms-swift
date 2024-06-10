@@ -139,10 +139,10 @@ def inference_client(
     system: Optional[str] = None,
     images: Optional[List[str]] = None,
     *,
+    is_chat_request: Optional[bool] = None,
     request_config: Optional[XRequestConfig] = None,
     host: str = '127.0.0.1',
     port: str = '8000',
-    is_chat_request: Optional[bool] = None,
 ) -> Union[ChatCompletionResponse, CompletionResponse, Iterator[ChatCompletionStreamResponse],
            Iterator[CompletionStreamResponse]]:
     if request_config is None:

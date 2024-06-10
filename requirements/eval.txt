@@ -1,1 +1,2 @@
-llmuses>=0.3.0
+aiohttp
+llmuses>=0.3.1
