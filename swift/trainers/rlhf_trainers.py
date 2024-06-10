@@ -8,10 +8,10 @@ from swift.llm.utils import RLHFArguments
 class RLHFTrainerFactory:
     TRAINERS_MAPPING = {
         'dpo': 'swift.trainers.dpo_trainer.DPOTrainer',
-        'simpo': 'swift.trainers.simpo_trainer.SimPOTrainer',
+        'simpo': 'swift.trainers.cpo_trainer.CPOTrainer',
         'orpo': 'swift.trainers.orpo_trainer.ORPOTrainer',
         'kto': 'swift.trainers.kto_trainer.KTOTrainer',
-        'cpo': 'swift.trainers.kto_trainer.CPOTrainer'
+        'cpo': 'swift.trainers.cpo_trainer.CPOTrainer'
     }
 
     @staticmethod
@@ -43,7 +43,8 @@ class RLHFTrainerFactory:
             import trl
             from packaging import version
             if version.parse(trl.__version__) <= version.parse('0.9.4'):
-                trainer_class = 'OldSimPOTrainer'
+                module_path = 'swift.trainers.simpo_trainer'
+                trainer_class = 'SimPOTrainer'
         module = importlib.import_module(module_path)
         trainer_class = getattr(module, class_name)
         return trainer_class

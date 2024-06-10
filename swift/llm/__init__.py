@@ -8,9 +8,6 @@ if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
     from .deploy import deploy_main
-    from .dpo import dpo_main
-    from .orpo import orpo_main
-    from .simpo import simpo_main
     from .infer import merge_lora, prepare_model_template, infer_main, merge_lora_main
     from .rome import rome_main
     from .sft import sft_main
@@ -22,9 +19,6 @@ else:
     _import_structure = {
         'app_ui': ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
         'deploy': ['deploy_main'],
-        'dpo': ['dpo_main'],
-        'orpo': ['orpo_main'],
-        'simpo': ['simpo_main'],
         'rlhf': ['rlhf_main'],
         'infer': ['merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
         'rome': ['rome_main'],

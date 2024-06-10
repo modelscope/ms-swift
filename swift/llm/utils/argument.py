@@ -1355,7 +1355,7 @@ class RLHFArguments(SftArguments):
     def __post_init__(self) -> None:
         super().__post_init__()
         # without reference model
-        self.ref_model_free = self.rlhf_type in ['orpo', 'simpo']
+        self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
         if self.rlhf_type == 'simpo':
             self.loss_type = 'simpo'  # compatibility with trl
 
@@ -1394,31 +1394,6 @@ class RLHFArguments(SftArguments):
                     setattr(self.training_args, f.name, f.default)
                 elif f.default_factory != MISSING:
                     setattr(self.training_args, f.name, f.default_factory())
-
-
-# @dataclass
-# class DPOArguments(SftArguments):
-
-#     ref_model_type: Optional[str] = field(
-#         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-
-#     ref_model_id_or_path: Optional[str] = None
-
-#     max_prompt_length: int = 1024
-#     beta: float = 0.1
-#     label_smoothing: float = 0.0
-#     loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
-#     sft_beta: float = 0.1
-
-# @dataclass
-# class SimPOArguments(DPOArguments):
-#     beta: float = 2.0
-#     gamma: float = 1.0
-
-# @dataclass
-# class ORPOArguments(SftArguments):
-#     max_prompt_length: int = 1024
-#     beta: float = 0.1
 
 
 @dataclass
