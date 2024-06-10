@@ -108,14 +108,17 @@ def write_dataset_info() -> None:
 
             res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|"
                                  f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
-    finally:
-        print(f'数据集总数: {len(dataset_name_list)}')
-
+            print(res_text_list[-1], flush=True)
+    except Exception as e:
+        raise e
+    else:
         for idx in range(len(fpaths)):
             text = '\n'.join(res_text_list)
             text = pre_texts[idx] + text + '\n'
             with open(fpaths[idx], 'w', encoding='utf-8') as f:
                 f.write(text)
+    finally:
+        print(f'数据集总数: {len(dataset_name_list)}')
 
 
 if __name__ == '__main__':

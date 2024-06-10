@@ -98,6 +98,7 @@
         "hf_dataset_id": "TIGER-Lab/MATH-plus"
     },
     "RLAIF-v-dataset": {
+        "dataset_id": "swift/RLAIF-V-Dataset",
         "hf_dataset_id": "openbmb/RLAIF-V-Dataset",
         "columns": {
             "image": "images",
@@ -108,6 +109,7 @@
         "tags": ["multi-modal", "rlhf", "quality"]
     },
     "path-vqa": {
+        "dataset_id": "swift/path-vqa",
         "hf_dataset_id": "flaviagiammarino/path-vqa",
         "columns": {
             "image": "images",
@@ -117,6 +119,7 @@
         "tags": ["multi-modal", "vqa", "medical"]
     },
     "aya-collection": {
+        "dataset_id": "swift/aya_collection",
         "hf_dataset_id": "CohereForAI/aya_collection",
         "subsets": ["aya_dataset"],
         "columns": {
@@ -126,6 +129,7 @@
         "tags": ["multi-lingual", "qa"]
     },
     "web-instruct-sub": {
+        "dataset_id": "swift/WebInstructSub",
         "hf_dataset_id": "TIGER-Lab/WebInstructSub",
         "columns": {
             "question": "query",
@@ -135,6 +139,7 @@
         "huge_dataset": true
     },
     "cinepile": {
+        "dataset_id": "swift/cinepile",
         "hf_dataset_id": "tomg-group-umd/cinepile",
         "columns": {
             "yt_clip_link": "videos",
@@ -145,6 +150,7 @@
         "huge_dataset": true
     },
     "tagengo-gpt4": {
+        "dataset_id": "swift/tagengo-gpt4",
         "hf_dataset_id": "lightblue/tagengo-gpt4",
         "conversations": {
             "user_role": "human",
@@ -189,6 +195,7 @@
         "huge_dataset": true
     },
     "llava-med-zh-instruct": {
+        "dataset_id": "swift/llava-med-zh-instruct-60k",
         "hf_dataset_id": "BUAADreamer/llava-med-zh-instruct-60k",
         "conversations": {
             "user_role": "user",
@@ -203,6 +210,7 @@
         "tags": ["zh", "medical", "vqa"]
     },
     "chart-qa": {
+        "dataset_id": "swift/ChartQA",
         "hf_dataset_id": "HuggingFaceM4/ChartQA",
         "columns": {
             "label": "response",
@@ -212,6 +220,7 @@
         "tags": ["en", "vqa", "quality"]
     },
     "vqa-v2": {
+        "dataset_id": "swift/VQAv2",
         "hf_dataset_id": "HuggingFaceM4/VQAv2",
         "columns": {
             "question": "query",
@@ -222,6 +231,7 @@
         "tags": ["en", "vqa", "quality"]
     },
     "gpt4v-dataset": {
+        "dataset_id": "swift/gpt4v-dataset",
         "hf_dataset_id": "laion/gpt4v-dataset",
         "columns": {
             "caption": "response",
@@ -230,6 +240,7 @@
         "tags": ["en", "caption", "multi-modal", "quality"]
     },
     "belle-train-3.5M-CN": {
+        "dataset_id": "swift/train_3.5M_CN",
         "hf_dataset_id": "BelleGroup/train_3.5M_CN",
         "conversations": {
             "user_role": "human",
@@ -342,6 +353,7 @@
         "huge_dataset": true
     },
     "cosmopedia-100k": {
+        "dataset_id": "swift/cosmopedia-100k",
         "hf_dataset_id": "HuggingFaceTB/cosmopedia-100k",
         "columns": {
             "prompt": "query",
@@ -374,6 +386,7 @@
         "huge_dataset": true
     },
     "redpajama-data-v2": {
+        "dataset_id": "swift/RedPajama-Data-V2",
         "hf_dataset_id": "togethercomputer/RedPajama-Data-V2",
         "columns": {
             "raw_content": "response"
@@ -382,6 +395,7 @@
         "huge_dataset": true
     },
     "redpajama-data-1t": {
+        "dataset_id": "swift/RedPajama-Data-1T",
         "hf_dataset_id": "togethercomputer/RedPajama-Data-1T",
         "columns": {
             "text": "response"
@@ -390,6 +404,7 @@
         "huge_dataset": true
     },
     "wikipedia": {
+        "dataset_id": "swift/wikipedia",
         "hf_dataset_id": "wikipedia",
         "columns": {
             "text": "response"
@@ -398,6 +413,7 @@
         "huge_dataset": true
     },
     "dolphin": {
+        "dataset_id": "swift/dolphin",
         "hf_dataset_id": "cognitivecomputations/dolphin",
         "subsets": ["flan1m-alpaca-uncensored", "flan5m-alpaca-uncensored"],
         "tags": ["en"],
@@ -536,6 +552,7 @@
         "huge_dataset": true
     },
     "slim-orca": {
+        "dataset_id": "swift/SlimOrca",
         "hf_dataset_id": "Open-Orca/SlimOrca",
         "conversations": {
             "user_role": "human",
@@ -566,6 +583,7 @@
         "huge_dataset": true
     },
     "no-robots": {
+        "dataset_id": "swift/no_robots",
         "hf_dataset_id": "HuggingFaceH4/no_robots",
         "conversations": {
             "user_role": "user",
@@ -578,6 +596,7 @@
         "tags": ["multi-task", "quality", "human-annotated"]
     },
     "open-hermes": {
+        "dataset_id": "swift/OpenHermes-2.5",
         "hf_dataset_id": "teknium/OpenHermes-2.5",
         "conversations": {
             "user_role": "human",
@@ -591,6 +610,7 @@
         "tags": ["cot", "en", "quality"]
     },
     "open-hermes-zh": {
+        "dataset_id": "swift/OpenHermes-2.5-zh",
         "hf_dataset_id": "wenbopan/OpenHermes-2.5-zh",
         "conversations": {
             "user_role": "human",
@@ -603,6 +623,7 @@
         "tags": ["cot", "agent", "zh", "quality"]
     },
     "github-code": {
+        "dataset_id": "swift/github-code",
         "hf_dataset_id": "codeparrot/github-code",
         "columns": {
             "code": "response"

@@ -209,19 +209,18 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             response = conversations[-1][self.value_key]
             system = sys
             history = h
+            kwargs = {'system': system, 'history': history}
+            kwargs.update({
+                'query': query,
+                'response': response,
+            })
+            self.media_replacer(kwargs, self.parse_medias(d))
+            return kwargs
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
                 return self.empty_row
-        kwargs = {'system': system, 'history': history}
-        kwargs.update({
-            'query': query,
-            'response': response,
-        })
-
-        self.media_replacer(kwargs, self.parse_medias(d))
-        return kwargs
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
         query: List[str] = []

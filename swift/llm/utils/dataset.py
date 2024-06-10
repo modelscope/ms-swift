@@ -469,7 +469,7 @@ def preprocess_llava_data(dataset):
 
 register_dataset(
     DatasetName.llava_data_instruct,
-    None,
+    'swift/llava-data',
     ['llava_instruct'],
     preprocess_llava_data,
     get_dataset_from_repo,
@@ -1095,7 +1095,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.midefics,
-    None, [],
+    'swift/MideficsDataset', [],
     ListPreprocessor(conversations_key='conversations', query_key='question',
                      response_key='answer', inner_key='data', media_type='image'),
     get_dataset_from_repo,
@@ -1168,7 +1168,7 @@ def preprocess_ocr_vqa(dataset):
 
 register_dataset(
     DatasetName.ocr_vqa,
-    None, [],
+    'swift/OCR-VQA', [],
     preprocess_func=preprocess_ocr_vqa,
     get_function=get_dataset_from_repo,
     split=["train", "validation"],
@@ -1191,7 +1191,7 @@ def preprocess_science_qa(dataset):
 
 register_dataset(
     DatasetName.science_qa,
-    None, [],
+    'swift/ScienceQA', [],
     preprocess_func=preprocess_science_qa,
     get_function=get_dataset_from_repo,
     split=["train", "validation"],
@@ -1229,7 +1229,7 @@ def preprocess_lima(dataset):
 
 register_dataset(
     DatasetName.lima,
-    None, [],
+    'swift/lima', [],
     preprocess_func=preprocess_lima,
     get_function=get_dataset_from_repo,
     split=["train", "validation"],
@@ -1957,6 +1957,8 @@ def get_dataset(
 
         if not is_local:
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
+            if not dataset_id_or_path:
+                use_hf = True
             if use_hf:
                 dataset_id_or_path = dataset_info['hf_dataset_id']
                 dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id_or_path)
