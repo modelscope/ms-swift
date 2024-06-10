@@ -36,22 +36,14 @@ pip install auto_gptq -U
 pip install bitsandbytes -U
 
 # 使用hqq量化：
-# 需要transformers版本>4.40，从源码安装
-pip install git+https://github.com/huggingface/transformers
 pip install hqq
-# 如果要兼容训练，需要从源码安装peft
-pip install git+https://github.com/huggingface/peft.git
 
 # 使用eetq量化：
-# 需要transformers版本>4.40，从源码安装
-pip install git+https://github.com/huggingface/transformers
 # 参考https://github.com/NetEase-FuXi/EETQ
 git clone https://github.com/NetEase-FuXi/EETQ.git
 cd EETQ/
 git submodule update --init --recursive
 pip install .
-# 如果要兼容训练，需要从源码安装peft
-pip install git+https://github.com/huggingface/peft.git
 
 # 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
