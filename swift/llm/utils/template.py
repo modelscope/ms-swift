@@ -31,6 +31,7 @@ class TemplateType:
     # chat
     default = 'default'
     qwen = 'qwen'
+    qwenvl = 'qwenvl'
     qwen_audio = 'qwen-audio'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
@@ -364,7 +365,12 @@ class Template:
                               **tokenizer_kwargs)['input_ids']
     
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
-        raise NotImplemented()
+        if media_type == 'image':
+            return '<image>'
+        if media_type == 'video':
+            return '<video>'
+        if media_type == 'audio':
+            return '<audio>'
     
     def replace_object(self, index, example):
         objects = example['objects']
@@ -683,6 +689,7 @@ class QwenVLTemplate(QwenTemplate):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
+register_template(TemplateType.qwenvl, QwenVLTemplate())
 register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
@@ -817,8 +824,11 @@ class YiVLTemplate(Template):
 class GLM4VTemplate(Template):
 
     def __init__(self):
-        return super().__init__('[gMASK]<sop>', ['<|user|>\n', [-100], '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'],
+        super().__init__('[gMASK]<sop>', ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'],
                                 None, ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        return [-100]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from .utils import history_to_messages
@@ -1211,6 +1221,9 @@ class LLavaTemplate(Template):
     def __init__(self):
         super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'], None, ['</s>'])
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        return [-200]
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
@@ -1258,8 +1271,11 @@ register_template(
 
 
 class LLavaLlamaTemplate(Template):
-    llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n<image>\n' \
+    llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n' \
                                 '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        return self.tokenizer.encode('<image>\n', add_special_tokens=False)
 
     def __init__(self):
         Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
@@ -1385,9 +1401,6 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
         ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
                           ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
-        return [-200]
-
 
 register_template(
     TemplateType.llama_llava_next,
@@ -1404,9 +1417,6 @@ class LLavaQwenTemplate(LLavaTemplate):
         Template.__init__(self, [], ['<|im_start|>user\n', '{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
                           ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
-        return [-200]
 
 
 register_template(
@@ -1474,6 +1484,12 @@ class DeepseekVLTemplate(Template):
         return super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
                                 ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        if media_type == 'image':
+            return '<image_placeholder>'
+        else:
+            raise NotImplemented
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         history = example.pop('history', None)
@@ -1481,7 +1497,6 @@ class DeepseekVLTemplate(Template):
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history,
                                                                             '<image_placeholder>')
-
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1643,6 +1658,9 @@ class MiniCPMVTemplate(Template):
         self.is_v2_5 = kwargs.pop('is_v2_5', False)
         return super().__init__(*args, **kwargs)
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        return [-1]
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example['images']
         assert len(images_path) == 1
@@ -1717,7 +1735,7 @@ class MiniCPMVTemplate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', [-1], '{{QUERY}}<AI>'], [], ['</s>']),
+    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', '{{QUERY}}<AI>'], [], ['</s>']),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
@@ -1727,7 +1745,7 @@ register_template(
 register_template(
     TemplateType.minicpm_v_v2_5,
     MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n', [-1], '{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>user<|end_header_id|>\n\n', '{{QUERY}}<|eot_id|>'
         '<|start_header_id|>assistant<|end_header_id|>\n\n'
     ], ['<|eot_id|>'], ['<|eot_id|>'],
                      is_v2_5=True),
@@ -1783,7 +1801,10 @@ register_template(
 class mPlugOwl2Template(Template):
 
     def __init__(self):
-        return super().__init__(['{{SYSTEM}}'], ['USER: ', [-200], '{{QUERY}}ASSISTANT:'], ['</s>'], [['eos_token_id']])
+        super().__init__(['{{SYSTEM}}'], ['USER: ', '{{QUERY}}ASSISTANT:'], ['</s>'], [['eos_token_id']])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        return [-200]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from mplug_owl2.mm_utils import process_images
