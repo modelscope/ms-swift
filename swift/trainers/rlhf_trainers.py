@@ -32,7 +32,7 @@ class RLHFTrainerFactory:
             trainer_kwargs['max_prompt_length'] = args.max_prompt_length
 
         if args.rlhf_type == 'simpo':
-            trainer_kwargs['gamma'] = args.gamma
+            trainer_kwargs['gamma'] = args.simpo_gamma
 
         return trainer_kwargs
 
