@@ -308,12 +308,11 @@ export parameters inherit from infer parameters, with the following added parame
 
 ## eval parameters
 
-The eval parameters inherit from the infer parameters, and additionally include the following parameters:
+The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by evalscope.)
 
 - `--eval_dataset`: The official dataset for evaluation, with a default value of `['ceval', 'gsm8k', 'arc']`. Possible values include: 'arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa'. If only custom datasets need to be evaluated, this parameter can be set to `no`.
 - `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset.
 - `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation.
-- `--max_new_tokens`: Default value is `512`. This parameter is already defined in the 'infer' parameters, so the default value is overridden here.
 - `--name`: Used to differentiate the result storage path for evaluating the same configuration, with the current time as the default.
 - `--eval_url`: The standard model invocation interface for OpenAI, for example, `http://127.0.0.1:8000/v1`. This needs to be set when evaluating in a deployed manner, usually not needed. Default is `None`.
   ```shell

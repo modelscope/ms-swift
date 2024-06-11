@@ -1271,7 +1271,6 @@ class EvalArguments(InferArguments):
         metadata={'help': f"dataset choices: {['arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa']}"})
     eval_few_shot: Optional[int] = None
     eval_limit: Optional[int] = None
-    max_new_tokens: int = 512  # covering 2048
 
     name: str = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
     eval_url: Optional[str] = None
