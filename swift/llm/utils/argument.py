@@ -1369,8 +1369,8 @@ class RLHFArguments(SftArguments):
         # without reference model
         self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
         if self.rlhf_type == 'simpo':
-            self.loss_type = 'simpo'  # compatibility with trl
-
+            self.loss_type = 'simpo'  # compatibility with trl > 0.9.5
+            self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
         self.set_default_beta()
         self.set_default_config()
 
