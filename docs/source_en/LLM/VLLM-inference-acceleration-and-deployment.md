@@ -336,7 +336,7 @@ response: Hangzhou has many delicious foods, such as West Lake Vinegar Fish, Don
 """
 ```
 
-Using openai:
+Using OpenAI (synchronous):
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -506,7 +506,7 @@ Sichuan -> Chengdu
 """
 ```
 
-Using openai:
+Using OpenAI (synchronous):
 ```python
 from openai import OpenAI
 client = OpenAI(

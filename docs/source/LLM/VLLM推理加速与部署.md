@@ -339,7 +339,7 @@ response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁�
 """
 ```
 
-使用openai:
+使用openai（同步）:
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -510,7 +510,7 @@ response:  成都
 ```
 
 
-使用openai:
+使用openai（同步）:
 ```python
 from openai import OpenAI
 client = OpenAI(
