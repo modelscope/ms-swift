@@ -285,11 +285,6 @@
         "hf_dataset_id": "HuggingFaceH4/CodeAlpaca_20K",
         "tags": ["code", "en"]
     },
-    "alpaca_cot": {
-        "dataset_id": "AI-ModelScope/Alpaca-CoT",
-        "hf_dataset_id": "QingyiSi/Alpaca-CoT",
-        "tags": ["cot", "en", "quality"]
-    },
     "zhihu-rlhf": {
         "dataset_id": "AI-ModelScope/zhihu_rlhf_3k",
         "columns": {

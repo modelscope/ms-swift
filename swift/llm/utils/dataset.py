@@ -113,7 +113,6 @@ class DatasetName:
     ocr_vqa = 'ocr-vqa'
     grit = 'grit'
     llava_instruct_mix = 'llava-instruct-mix'
-    lima = 'lima'
     science_qa = 'science-qa'
     guanaco = 'guanaco'
     mind2web = 'mind2web'
@@ -956,6 +955,7 @@ register_dataset(
     _preprocess_m3it,
     get_dataset_from_repo,
     split=['train'],
+    huge_dataset=True,
     tags=['chat', 'multi-modal', 'vision'])
 
 register_dataset(
@@ -964,6 +964,7 @@ register_dataset(
     _preprocess_sharegpt4v,
     get_dataset_from_repo,
     split=['train'],
+    huge_dataset=True,
     tags=['chat', 'multi-modal', 'vision'])
 
 
@@ -1029,32 +1030,36 @@ def preprocess_guanaco(dataset):
         output = row['output']
         history = []
         if instruction:
-            parts = split_str_parts_by(instruction, ['User:', 'Assistant:'])
+            parts = split_str_parts_by(instruction, ['User:', 'User：', 'Assistant：', 'Assistant:', 'Asssistent:', 'Assistent:', 'Assistenz:'])
             for idx, part in enumerate(parts):
                 if idx % 2 == 0:
-                    assert part['key'] == 'User:'
+                    if not 'user' in part['key'].lower():
+                        return {'query': '', 'history': [], 'response': ''}
                     history.append([part['content'], None])
                 else:
-                    assert part['key'] == 'Assistant:'
+                    if not 'assist' in part['key'].lower() and not 'asssist' in part['key'].lower():
+                        return {'query': '', 'history': [], 'response': ''}
                     history[-1][-1] = part['content']
         if input.startswith('User:'):
             input = input[len('User:'):].strip()
+        if any([not h[0] or not h[1] for h in history]):
+            return {'query': '', 'history': [], 'response': ''}
         return {
             'history': history,
             'query': input,
             'response': output,
         }
 
-    return dataset.map(preprocess_row)
+    return dataset.map(preprocess_row).filter(lambda row: row['query'] and row['response'])
 
 
 register_dataset(
     DatasetName.guanaco,
-    "AI-ModelScope/GuanacoDataset", ['default', 'subset'],
+    "AI-ModelScope/GuanacoDataset", ['default'],
     preprocess_guanaco,
     get_dataset_from_repo,
     hf_dataset_id='JosephusCheung/GuanacoDataset',
-    tags=['chat', 'en'])
+    tags=['chat', 'zh'])
 
 
 def preprocess_dolly_15k(dataset):
@@ -1096,7 +1101,7 @@ register_dataset(
 register_dataset(
     DatasetName.midefics,
     'swift/MideficsDataset', [],
-    ListPreprocessor(conversations_key='conversations', query_key='question',
+    ListPreprocessor(conversations_key='conversation', query_key='question',
                      response_key='answer', inner_key='data', media_type='image'),
     get_dataset_from_repo,
     hf_dataset_id='WinterSchool/MideficsDataset',
@@ -1199,42 +1204,41 @@ register_dataset(
     tags=['multi-modal', "science", "vqa", "quality"])
 
 
-def preprocess_lima(dataset):
+# def preprocess_lima(dataset):
+#     def preprocess_row(row):
+#         conversations = row['conversations']
+#         history = []
+#         for idx, rnd in enumerate(conversations):
+#             if idx % 2 == 0:
+#                 history.append([rnd, ''])
+#             else:
+#                 history[-1][-1] = rnd
 
-    def preprocess_row(row):
-        conversations = row['conversations']
-        history = []
-        for idx, rnd in enumerate(conversations):
-            if idx % 2 == 0:
-                history.append([rnd, None])
-            else:
-                history[-1][-1] = rnd
+#         if not history [-1][-1]:
+#             return {
+#                 "history": [],
+#                 "query": '',
+#                 "response": '',
+#             }
 
-        if history [-1][-1] is None:
-            return {
-                "history": None,
-                "query": '',
-                "response": '',
-            }
+#         query, response = history.pop(-1)
+#         return {
+#             "history": history,
+#             "query": query,
+#             "response": response,
+#         }
 
-        query, response = history.pop(-1)
-        return {
-            "history": history,
-            "query": query,
-            "response": response,
-        }
-
-    return dataset.map(preprocess_row).filter(lambda row: row.get('query'))
+#     return dataset.map(preprocess_row).filter(lambda row: row.get('query'))
 
 
-register_dataset(
-    DatasetName.lima,
-    'swift/lima', [],
-    preprocess_func=preprocess_lima,
-    get_function=get_dataset_from_repo,
-    split=["train", "validation"],
-    hf_dataset_id="GAIR/lima",
-    tags=['en'])
+# register_dataset(
+#     DatasetName.lima,
+#     'swift/lima', ['plain_text'],
+#     preprocess_func=preprocess_lima,
+#     get_function=get_dataset_from_repo,
+#     split=["train"],
+#     hf_dataset_id="GAIR/lima",
+#     tags=['en'])
 
 
 def preprocess_grit(dataset):
@@ -1295,6 +1299,7 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=["train"],
     hf_dataset_id="zzliang/GRIT",
+    huge_dataset=True,
     tags=['multi-modal', 'en', 'caption-grounding', 'quality'])
 
 
@@ -1319,6 +1324,7 @@ register_dataset(
     preprocess_gqa,
     get_function=get_dataset_from_repo,
     hf_dataset_id="lmms-lab/GQA",
+    huge_dataset=True,
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
