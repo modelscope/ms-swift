@@ -363,12 +363,13 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']
         for rlhf_type in rlhf_types:
+            dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
             output = rlhf_main(
                 RLHFArguments(
                     rlhf_type=rlhf_type,
                     model_type=ModelType.qwen_1_8b_chat,
                     sft_type='full',
-                    dataset='hh-rlhf-cn-harmless-base-cn',
+                    dataset=dataset_name,
                     train_dataset_sample=100,
                     eval_steps=5))
             best_model_checkpoint = output['best_model_checkpoint']

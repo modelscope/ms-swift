@@ -23,7 +23,7 @@ class RLHFTrainerFactory:
         trainer_kwargs['check_model'] = args.check_model_is_latest
         trainer_kwargs['test_oom_error'] = args.test_oom_error
 
-        if args.rlhf_type in ['dpo', 'simpo']:
+        if args.rlhf_type in ['dpo']:
             trainer_kwargs['beta'] = args.beta
             trainer_kwargs['label_smoothing'] = args.label_smoothing
             trainer_kwargs['loss_type'] = args.loss_type
@@ -44,7 +44,7 @@ class RLHFTrainerFactory:
             from packaging import version
             if version.parse(trl.__version__) <= version.parse('0.9.4'):
                 module_path = 'swift.trainers.simpo_trainer'
-                trainer_class = 'SimPOTrainer'
+                class_name = 'SimPOTrainer'
         module = importlib.import_module(module_path)
         trainer_class = getattr(module, class_name)
         return trainer_class
