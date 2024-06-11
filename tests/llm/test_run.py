@@ -21,8 +21,8 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, DPOArguments, InferArguments, ModelType, SftArguments, dpo_main, infer_main,
-                       merge_lora_main, sft_main)
+from swift.llm import (DatasetName, InferArguments, ModelType, RLHFArguments, SftArguments, infer_main, merge_lora_main,
+                       rlhf_main, sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -356,21 +356,24 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
-    def test_dpo(self):
+    def test_rlhf(self):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
         torch.cuda.empty_cache()
-        output = dpo_main(
-            DPOArguments(
-                model_type=ModelType.qwen_1_8b_chat,
-                sft_type='full',
-                dataset='hh-rlhf-cn-harmless-base-cn',
-                train_dataset_sample=100,
-                eval_steps=5))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']
+        for rlhf_type in rlhf_types:
+            output = rlhf_main(
+                RLHFArguments(
+                    rlhf_type=rlhf_type,
+                    model_type=ModelType.qwen_1_8b_chat,
+                    sft_type='full',
+                    dataset='hh-rlhf-cn-harmless-base-cn',
+                    train_dataset_sample=100,
+                    eval_steps=5))
+            best_model_checkpoint = output['best_model_checkpoint']
+            torch.cuda.empty_cache()
+            infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_pai_compat(self):
         if not __name__ == '__main__':

@@ -124,7 +124,7 @@ class DatasetName:
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
 
-    # human alignment
+    # rlhf
     hh_rlhf = 'hh-rlhf'
     hh_rlhf_cn = 'hh-rlhf-cn'
     stack_exchange_paired = 'stack-exchange-paired'

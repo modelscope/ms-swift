@@ -11,7 +11,7 @@ Options:
     --rlhf_type kto    : Kahneman-Tversky Optimization (KTO)
     --rlhf_type cpo    : Contrastive Preference Optimization (CPO)
     --rlhf_type simpo  : Simple Preference Optimization (SimPO)
-    --rlhf_type orpo   : Optimal Reward Preference Optimization (ORPO)
+    --rlhf_type orpo   : Odds Ratio Preference Optimization (ORPO)
 """
 
 if __name__ == '__main__':

@@ -17,9 +17,8 @@ logger = get_logger()
 
 class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
 
-    def __init__(self, *args, template: Template, sft_beta=0., test_oom_error=False, **kwargs):
+    def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.template = template
-        self.sft_beta = sft_beta
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
         val_ds_info = self.stat_dataset(self.eval_dataset)
