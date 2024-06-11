@@ -107,24 +107,19 @@ Context = Union[str, List[int]]
 class StopWordsCriteria(StoppingCriteria):
     # The returned sentence includes stop words.
     def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: StopWords, **tokenizer_kwargs) -> None:
-        self.tokenizer = tokenizer
-        self.stop_words = stop_words
-        self.tokenizer_kwargs = tokenizer_kwargs
+        self.stop_words: List[List[int]] = []
+        for stop_word in stop_words:
+            if isinstance(stop_word, str):
+                stop_word = tokenizer.encode(stop_word, add_special_tokens=False, **tokenizer_kwargs)
+            self.stop_words.append(stop_word)
         self.start_idx = -1
 
     def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
         if self.start_idx == -1:
             self.start_idx = len(input_ids[0]) - 1
-        tokenizer = self.tokenizer
-        stop_words = self.stop_words
-        text = tokenizer.decode(input_ids[0, self.start_idx:], **self.tokenizer_kwargs)
-        for stop_word in stop_words:
-            if isinstance(stop_word, str):
-                if stop_word in text:
-                    return True
-            else:  # list
-                if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
-                    return True
+        for stop_word in self.stop_words:
+            if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
+                return True
         return False
 
 
