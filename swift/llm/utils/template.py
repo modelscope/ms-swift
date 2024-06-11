@@ -154,7 +154,7 @@ class Template:
                  default_system: Optional[str] = None,
                  prefix_has_system: Optional[Prompt] = None,
                  auto_add_bos: bool = False,
-                 tools_prompt: str = 'default',
+                 tools_prompt: str = 'react_en',
                  tool_prompt: Optional[Prompt] = None) -> None:
         """
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine

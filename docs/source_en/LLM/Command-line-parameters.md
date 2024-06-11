@@ -41,7 +41,7 @@
 - `--train_dataset_sample`: The number of samples for the training dataset, default is `-1`, which means using the complete training dataset for training. This parameter is deprecated, please use `--dataset {dataset_name}#{dataset_sample}` instead.
 - `--val_dataset_sample`: Used to sample the validation set, with a default value of `None`, which automatically selects a suitable number of data samples for validation. If you specify `-1`, the complete validation set is used for validation. This parameter is deprecated and the number of samples in the validation set is controlled by `--dataset_test_ratio` or `--val_dataset {dataset_name}#{dataset_sample}`.
 - `--system`: System used in dialogue template, default is `None`, i.e. use the model's default system. If set to '', no system is used.
-- `--tools_prompt`: Select the corresponding tools system prompt for the tools field transformation. The options are ['default', 'toolbench'], which correspond to the ReAct format and the toolbench format, respectively. For more information, you can refer to the [Agent Deployment Best Practices](Agent-deployment-best-practices.md).
+- `--tools_prompt`: Select the corresponding tools system prompt for the tools field transformation. The options are ['react_en', 'react_zh', 'toolbench'], which correspond to the English version of ReAct format, Chinese version of ReAct format and the toolbench format, respectively. The default is the English version of the ReAct format. For more information, you can refer to the [Agent Deployment Best Practices](Agent-deployment-best-practices.md).
 - `--max_length`: Maximum token length, default is `2048`. Avoids OOM issues caused by individual overly long samples. When `--truncation_strategy delete` is specified, samples exceeding max_length will be deleted. When `--truncation_strategy truncation_left` is specified, the leftmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, no limit.
 - `--truncation_strategy`: Default is `'delete'` which removes sentences exceeding max_length from dataset. `'truncation_left'` will truncate excess text from the left, which may truncate special tokens and affect performance, not recommended.
 - `--check_dataset_strategy`: Default is `'none'`, i.e. no checking. If training an LLM model, `'warning'` is recommended as data check strategy. If your training target is sentence classification etc., setting to `'none'` is recommended.
@@ -249,7 +249,7 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft.sh command line arguments`.
 - `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
 - `--system`: Default is `None`. See `sft.sh command line arguments` for parameter details.
-- `--tool_prompt`: Default is `default`. See `sft.sh command line arguments` for parameter details.
+- `--tools_prompt`: Default is `react_en`. See `sft.sh command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
