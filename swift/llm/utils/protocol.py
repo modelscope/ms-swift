@@ -39,7 +39,6 @@ class XRequestConfig:
     # None: use deploy_args
     temperature: Optional[float] = None
     top_p: Optional[float] = None
-    repetition_penalty: Optional[float] = None
 
     n: int = 1
     seed: Optional[int] = None
@@ -53,7 +52,9 @@ class XRequestConfig:
 
     # additional
     num_beams: int = 1
-    top_k: Optional[int] = None  # None: use deploy_args
+    # None: use deploy_args
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
 
 
 @dataclass

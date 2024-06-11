@@ -440,8 +440,18 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 ### Evaluation
 
+Original model:
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
+# We recommend using vLLM for acceleration (arc evaluated in half a minute)
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
+```
+
+LoRA fine-tuned:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir xxx/checkpoint-xxx \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --merge_lora true \
 ```
 
 ### Quantization

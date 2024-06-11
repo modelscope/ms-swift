@@ -267,7 +267,7 @@ curl http://localhost:8000/v1/chat/completions \
 }'
 ```
 
-使用swift:
+使用swift的同步客户端接口:
 ```python
 from swift.llm import get_model_list_client, XRequestConfig, inference_client
 
@@ -301,7 +301,45 @@ response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁�
 """
 ```
 
-使用openai:
+使用swift的异步客户端接口:
+```python
+import asyncio
+from swift.llm import get_model_list_client, XRequestConfig, inference_client_async
+
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+
+query = '浙江的省会在哪里?'
+request_config = XRequestConfig(seed=42)
+resp = asyncio.run(inference_client_async(model_type, query, request_config=request_config))
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+async def _stream():
+    global query
+    history = [(query, response)]
+    query = '这有什么好吃的?'
+    request_config = XRequestConfig(stream=True, seed=42)
+    stream_resp = await inference_client_async(model_type, query, history, request_config=request_config)
+    print(f'query: {query}')
+    print('response: ', end='')
+    async for chunk in stream_resp:
+        print(chunk.choices[0].delta.content, end='', flush=True)
+    print()
+
+asyncio.run(_stream())
+"""Out[0]
+model_type: qwen-7b-chat
+query: 浙江的省会在哪里?
+response: 浙江省的省会是杭州市。
+query: 这有什么好吃的?
+response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁、叫化童子鸡等。此外，杭州还有许多特色小吃，如西湖藕粉、杭州小笼包、杭州油条等。
+"""
+```
+
+使用openai（同步）:
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -373,7 +411,7 @@ curl http://localhost:8000/v1/completions \
 }'
 ```
 
-使用swift:
+使用swift的同步客户端接口:
 ```python
 from swift.llm import get_model_list_client, XRequestConfig, inference_client
 
@@ -420,7 +458,59 @@ response:  成都
 """
 ```
 
-使用openai:
+使用swift的异步客户端接口:
+```python
+import asyncio
+from swift.llm import get_model_list_client, XRequestConfig, inference_client_async
+
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+
+query = '浙江 -> 杭州\n安徽 -> 合肥\n四川 ->'
+request_config = XRequestConfig(max_tokens=32, temperature=0.1, seed=42)
+
+resp = asyncio.run(inference_client_async(model_type, query, request_config=request_config))
+response = resp.choices[0].text
+print(f'query: {query}')
+print(f'response: {response}')
+
+async def _stream():
+    request_config.stream = True
+    stream_resp = await inference_client_async(model_type, query, request_config=request_config)
+    print(f'query: {query}')
+    print('response: ', end='')
+    async for chunk in stream_resp:
+        print(chunk.choices[0].text, end='', flush=True)
+    print()
+
+asyncio.run(_stream())
+"""Out[0]
+model_type: qwen-7b
+query: 浙江 -> 杭州
+安徽 -> 合肥
+四川 ->
+response:  成都
+广东 -> 广州
+江苏 -> 南京
+浙江 -> 杭州
+安徽 -> 合肥
+四川 -> 成都
+
+query: 浙江 -> 杭州
+安徽 -> 合肥
+四川 ->
+response:  成都
+广东 -> 广州
+江苏 -> 南京
+浙江 -> 杭州
+安徽 -> 合肥
+四川 -> 成都
+"""
+```
+
+
+使用openai（同步）:
 ```python
 from openai import OpenAI
 client = OpenAI(
