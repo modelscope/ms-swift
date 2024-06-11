@@ -39,6 +39,7 @@ Swift DOCUMENTATION
    LLM/SimPO算法最佳实践.md
    LLM/HuggingFace生态兼容.md
    LLM/Benchmark.md
+   LLM/Agent部署最佳实践.md
 
 .. toctree::
    :maxdepth: 2

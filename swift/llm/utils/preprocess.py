@@ -46,14 +46,18 @@ class AlpacaPreprocessor:
         response = []
         system = None
         history = None
+        tools = None
         for i, d in enumerate(tqdm(dataset)):
             inst, inp = d['instruction'], d.get('input', None)
             h, output = d.pop('history', None), d['output']
             sys = d.pop('system', None)
+            tool = d.pop('tools', None)
             if history is None and h is not None:
                 history = [None for _ in range(i - 1)]
             if system is None and sys is not None:
                 system = [None for _ in range(i - 1)]
+            if tools is None and tool is not None:
+                tools = [None for _ in range(i - 1)]
             if output is None:
                 continue
             if inp is None or len(inp) == 0:
@@ -68,11 +72,15 @@ class AlpacaPreprocessor:
                 history.append(h)
             if system is not None:
                 system.append(sys)
+            if tools is not None:
+                tools.append(tool)
         d_dict = {'query': query, 'response': response}
         if history is not None:
             d_dict['history'] = history
         if system is not None:
             d_dict['system'] = system
+        if tools is not None:
+            d_dict['tools'] = tools
         dataset = HfDataset.from_dict(d_dict)
         return dataset
 
@@ -108,12 +116,18 @@ class ConversationsPreprocessor:
         query: List[str] = []
         response: List[str] = []
         system: List[Optional[str]] = []
+        tools: List[List[Dict[str, Any]]] = []
         has_system = False
         history: List[History] = []
         has_history = False
+        has_tools = False
 
         for d in tqdm(dataset):
             try:
+                tool = d.get('tools', [])
+                if len(tool) > 0:
+                    has_tools = True
+                tools.append(tool)
                 conversations = d[self.conversations_key]
                 conversations = self.repair_conversations(conversations)
                 if conversations is None:
@@ -151,6 +165,8 @@ class ConversationsPreprocessor:
         })
         if has_history:
             kwargs['history'] = history
+        if has_tools:
+            kwargs['tools'] = tools
         dataset = HfDataset.from_dict(kwargs)
         return dataset
 
