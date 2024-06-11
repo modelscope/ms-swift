@@ -789,6 +789,7 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
 class YiVLTemplate(Template):
 
     def replace_tag(self, media_type, index, example):
+        assert media_type == 'image'
         return [-200]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -801,7 +802,7 @@ class YiVLTemplate(Template):
         if not hasattr(model, 'vision_tower'):
             model = model.model
         image_processor = model.vision_tower.image_processor
-        images_path = example['images']
+        images_path = example.get('images', [])
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -827,7 +828,12 @@ class GLM4VTemplate(Template):
         super().__init__('[gMASK]<sop>', ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'],
                                 None, ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
 
+    def check_example(self, example):
+        images = example.get('images')
+        assert not isinstance(images, (list, tuple)) or len(images) <= 1
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        assert media_type == 'image'
         return [-100]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -835,8 +841,7 @@ class GLM4VTemplate(Template):
 
         example = example.copy()
         images_path = example.pop('images', [])
-        assert len(images_path) == 1
-        image = _read_from_path(images_path[0])
+        image = _read_from_path(images_path[0]) if images_path else None
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1005,14 +1010,14 @@ class InternLMXComposer2(Template):
         if history is None:
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '</s>')
-
+        inputs, _ = super().encode(example)
         images = []
         dtype = self.model.dtype
+        images_path.extend(example.get('images', []))
         for image_path in images_path:
             image = _read_from_path(image_path)
             image = self.model.vis_processor(image)
             images.append(image.to(dtype))
-        inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
@@ -1102,7 +1107,12 @@ class InternvlTemplate(Template):
         super().__init__(['<s>'], ['<|im_start|>user\n', '{{QUERY}}<|im_end|><|im_start|>assistant\n'],
                          ['<|im_end|>'], ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
 
+    def check_example(self, example):
+        images = example.get('images')
+        assert not isinstance(images, (list, tuple)) or len(images) <= 1
+
     def replace_tag(self, media_type, index, example):
+        assert media_type == 'image'
         return [-100]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1111,10 +1121,9 @@ class InternvlTemplate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
-        pixel_values = None
+        labels = inputs['labels']
         if example.get('images') is not None:
             from .vision_utils import load_image
-            labels = inputs['labels']
             if len(idx_list) >= 2:
                 input_ids = _remove_idx(input_ids, idx_list[1:])
                 if labels is not None:
@@ -1140,9 +1149,9 @@ class InternvlTemplate(Template):
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
             inputs['image_flags'] = torch.ones(image_bs)
         else:
-            input_ids = _remove_idx(input_ids, idx_list)
+            inputs['input_ids'] = _remove_idx(input_ids, idx_list)
             if labels is not None:
-                labels = _remove_idx(labels, idx_list)
+                inputs['labels'] = _remove_idx(labels, idx_list)
 
         inputs.pop('loss_scale', None)
         return inputs, {}
@@ -1150,8 +1159,12 @@ class InternvlTemplate(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
-        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
-        res['image_flags'] = torch.concat([b['image_flags'] for b in batch])
+        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
+        image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
+        if pixel_values:
+            res['pixel_values'] = torch.concat(pixel_values)
+        if image_flags:
+            res['image_flags'] = torch.concat(pixel_values)
         return res
 
     @staticmethod
@@ -1222,13 +1235,14 @@ class LLavaTemplate(Template):
         super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'], None, ['</s>'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        assert media_type == 'image'
         return [-200]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        images_path = example['images']
+        images_path = example.get('images', [])
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1239,15 +1253,18 @@ class LLavaTemplate(Template):
         if not hasattr(model, 'vision_tower'):
             model = model.model
         image_processor = model.vision_tower.image_processor
-        images_tensor = process_images(images, image_processor, self.model.config)
-        inputs['images'] = images_tensor.to(model.dtype)
-        inputs['image_sizes'] = image_sizes
+        if images:
+            images_tensor = process_images(images, image_processor, self.model.config)
+            inputs['images'] = images_tensor.to(model.dtype)
+            inputs['image_sizes'] = image_sizes
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        res['images'] = torch.concat([b['images'] for b in batch])
-        res['image_sizes'] = sum([b['image_sizes'] for b in batch], start=[])
+        images = [b['images'] for b in batch if 'images' in b]
+        if images:
+            res['images'] = torch.concat(images)
+            res['image_sizes'] = sum([b['image_sizes'] for b in batch if 'image_sizes' in b], start=[])
         return res
 
     @staticmethod
@@ -1284,15 +1301,18 @@ class LLavaLlamaTemplate(Template):
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        image_path = example['images']
-        raw_image = _read_from_path(image_path[0])
-        pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
-        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        image_path = example.get('images', [])
+        if image_path:
+            raw_image = _read_from_path(image_path[0])
+            pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
+        if pixel_values:
+            res['pixel_values'] = torch.concat(pixel_values)
         return res
 
 
@@ -1309,6 +1329,10 @@ class PaliGemmaTemplate(Template):
     def __init__(self):
         Template.__init__(self, ['<bos>'], ['{{QUERY}}\n'], None, ['<eos>'])
 
+    def check_example(self, example):
+        images = example.get('images')
+        assert not isinstance(images, (list, tuple)) or len(images) <= 1
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         image_token = self.tokenizer.encode('<image>', add_special_tokens=False)
@@ -1316,7 +1340,7 @@ class PaliGemmaTemplate(Template):
         image_token = image_token[0]
         if len(inputs) == 0:
             return inputs, {}
-        image_path = example['images']
+        image_path = example.get('images', [])
         processor = self.tokenizer.processor
         inputs['input_ids'] = [image_token] * processor.image_seq_length + inputs['input_ids']
         if inputs['labels'] is not None:
@@ -1326,14 +1350,17 @@ class PaliGemmaTemplate(Template):
             inputs['token_type_ids'] = [0] * (processor.image_seq_length + n) + [1] * n2
         else:
             inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
-        raw_image = _read_from_path(image_path[0])
-        model_inputs = processor(text=example['query'], images=raw_image, return_tensors='pt')
-        inputs['pixel_values'] = model_inputs['pixel_values']
+        if image_path:
+            raw_image = _read_from_path(image_path[0])
+            model_inputs = processor(text=example['query'], images=raw_image, return_tensors='pt')
+            inputs['pixel_values'] = model_inputs['pixel_values']
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
+        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
+        if pixel_values:
+            res['pixel_values'] = torch.concat(pixel_values)
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
         token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
         res['token_type_ids'] = token_type_ids
@@ -1351,15 +1378,15 @@ class Phi3VisionTemplate(Template):
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
-        if media_type == 'image':
-            image = example['image_info'][index]
-            if 'num_img_tokens' in image:
-                num_img_tokens = image['num_img_tokens']
-            else:
-                assert 'num_crops' in image, 'num_crops must be provided in images if num_img_tokens is not provided'
-                num_crops = image['num_crops']
-                num_img_tokens = [_num_crops * example['num_img_tokens'] for _num_crops in num_crops]
-            return [-index-1] * num_img_tokens[0]
+        assert media_type == 'image'
+        image = example['image_info'][index]
+        if 'num_img_tokens' in image:
+            num_img_tokens = image['num_img_tokens']
+        else:
+            assert 'num_crops' in image, 'num_crops must be provided in images if num_img_tokens is not provided'
+            num_crops = image['num_crops']
+            num_img_tokens = [_num_crops * example['num_img_tokens'] for _num_crops in num_crops]
+        return [-index-1] * num_img_tokens[0]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         image_path = example.get('images')
@@ -1380,9 +1407,10 @@ class Phi3VisionTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        if batch[0].get('pixel_values') is not None:
-            res['pixel_values'] = torch.concat([b['pixel_values'] for b in batch])
-            res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch])
+        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
+        if pixel_values:
+            res['pixel_values'] = torch.concat(pixel_values)
+            res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch if 'image_sizes' in b])
         return res
 
 
@@ -1485,19 +1513,19 @@ class DeepseekVLTemplate(Template):
                                 ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
-        if media_type == 'image':
-            return '<image_placeholder>'
-        else:
-            raise NotImplemented
+        assert media_type == 'image'
+        return '<image_placeholder>'
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         history = example.pop('history', None)
         if history is None:
             history = []
+
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history,
                                                                             '<image_placeholder>')
         inputs, _ = super().encode(example)
+        images_path.extend(example.get('images', []))
         if len(inputs) == 0:
             return inputs, {}
         images = []
@@ -1582,17 +1610,23 @@ register_template(TemplateType.orion,
 
 class CogTemplate(Template):
 
+    def check_example(self, example):
+        images = example.get('images')
+        assert not isinstance(images, (list, tuple)) or len(images) <= 1
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        return ''
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        images_path = example['images']
-        assert len(images_path) == 1
-        image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
+        images_path = example['images']
+        image = _read_from_path(images_path[0])
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
-            self.tokenizer, query=example['query'], history=example.get('history'), images=[image])
+            self.tokenizer, query=example['query'], history=example.get('history'), images=[image] if image else [])
         image_token_len = inputs2['token_type_ids'].sum()
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -1659,11 +1693,18 @@ class MiniCPMVTemplate(Template):
         return super().__init__(*args, **kwargs)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        assert media_type == 'image'
         return [-1]
+
+    def check_example(self, example):
+        images = example.get('images')
+        if isinstance(images, (list, tuple)):
+            assert len(images) == 1
+        else:
+            assert images
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images_path = example['images']
-        assert len(images_path) == 1
         image = _read_from_path(images_path[0])
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
@@ -1804,12 +1845,13 @@ class mPlugOwl2Template(Template):
         super().__init__(['{{SYSTEM}}'], ['USER: ', '{{QUERY}}ASSISTANT:'], ['</s>'], [['eos_token_id']])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
+        assert media_type == 'image'
         return [-200]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from mplug_owl2.mm_utils import process_images
         processor = self.tokenizer.processor
-        images_path = example['images']
+        images_path = example.get('images', [])
         images = []
         for image_path in images_path:
             image = _read_from_path(image_path)
@@ -1822,13 +1864,18 @@ class mPlugOwl2Template(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        images = process_images(images, processor)
-        images = images.to(self.model.dtype)
-        return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
+        if images:
+            images = process_images(images, processor)
+            images = images.to(self.model.dtype)
+            return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
+        else:
+            return {'input_ids': input_ids, 'labels': labels}, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        res['images'] = torch.concat([b['images'] for b in batch])
+        images = [b['images'] for b in batch if 'images' in b]
+        if images:
+            res['images'] = torch.concat(images)
         return res
 
 
