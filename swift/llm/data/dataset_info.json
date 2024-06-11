@@ -362,7 +362,7 @@
                     "ruozhiba", "segmentfault", "wiki", "wikihow", "xhs", "zhihu"],
         "tags": ["general", "🔥"]
     },
-    "orca_pairs": {
+    "orca_dpo_pairs": {
         "dataset_id": "swift/orca_dpo_pairs",
         "hf_dataset_id": "Intel/orca_dpo_pairs",
         "columns": {
@@ -603,19 +603,6 @@
         },
         "huge_dataset": true,
         "tags": ["cot", "en", "quality"]
-    },
-    "open-hermes-zh": {
-        "dataset_id": "swift/OpenHermes-2.5-zh",
-        "hf_dataset_id": "wenbopan/OpenHermes-2.5-zh",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
-        "tags": ["cot", "agent", "zh", "quality"]
     },
     "github-code": {
         "dataset_id": "swift/github-code",

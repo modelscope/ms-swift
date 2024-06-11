@@ -114,6 +114,8 @@ class DatasetName:
     science_qa = 'science-qa'
     guanaco = 'guanaco'
     mind2web = 'mind2web'
+    text_caps = 'text-caps'
+    lnqa = 'lnqa'
 
     #sharegpt4o
     sharegpt_4o_image = 'sharegpt-4o-image'
@@ -454,19 +456,38 @@ register_dataset(
 
 
 def preprocess_llava_data(dataset):
-    local_dir = MediaCache.download('coco')
 
-    def preprocess_row(row):
-        images = []
-        if row['images']:
-            images = [os.path.join(local_dir, p['path'] if not p['path'].startswith('coco/') else p['path'][len('coco/'):]) for p in row['images']]
-            if any([not os.path.exists(image) for image in images]):
-                return {'conversation': [], 'images': []}
-        elif not row['images']:
-            return {'conversation': [], 'images': []}
-        return {'images': images}
+    all_folders = {}
+    for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
+        all_folders[media_type] = MediaCache.download(media_type)
+    dataset._image_dir = all_folders
 
-    dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['conversation'])
+    def preprocess_image(example):
+        if not example['images']:
+            return {}
+        images = [p['path'] for p in example['images']]
+        new_images = []
+        for image in images:
+            if 'coco/' in image:
+                image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+            elif 'gqa/' in image:
+                image = os.path.join(dataset._image_dir['gqa'], image.replace('gqa/', ''))
+            elif 'ocr_vqa/' in image:
+                image = os.path.join(dataset._image_dir['ocr_vqa'], image)
+            elif 'textvqa/' in image:
+                image = os.path.join(dataset._image_dir['textvqa'], image.replace('textvqa/', ''))
+            elif 'VG_100K/' in image:
+                image = os.path.join(dataset._image_dir['VG_100K'], image.replace('vg/', ''))
+            elif 'VG_100K_2/' in image:
+                image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('vg/', ''))
+            new_images.append(image)
+        if all(os.path.exists(image)for image in new_images):
+            example['images'] = new_images
+        else:
+            example['images'] = []
+        return example
+
+    dataset = dataset.map(preprocess_image, load_from_cache_file=False).filter(lambda row: row['images'])
     return ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
                               from_key='role', value_key='content', media_type='image',
                               media_key='images')(dataset)
@@ -972,6 +993,44 @@ register_dataset(
     split=['train'],
     huge_dataset=True,
     tags=['chat', 'multi-modal', 'vision'])
+
+
+def preprocess_text_caps(dataset):
+    def preprocess(row):
+        try:
+            image = row['image']
+            response = np.random.choice(row['reference_strs'])
+            return {
+                'response': response,
+                'image': image
+            }
+        except Exception as e:
+            return {
+                'response': '',
+                'image': None
+            }
+
+    return dataset.map(preprocess).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
+
+
+register_dataset(
+    DatasetName.text_caps,
+    'swift/TextCaps', [],
+    preprocess_func=preprocess_text_caps,
+    get_function=get_dataset_from_repo,
+    split=["train", "val"],
+    hf_dataset_id="HuggingFaceM4/TextCaps",
+    tags=['multi-modal', 'en', 'caption', 'quality'])
+
+
+register_dataset(
+    DatasetName.lnqa,
+    'swift/lnqa', [],
+    preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
+    get_function=get_dataset_from_repo,
+    split=["train", "validation"],
+    hf_dataset_id="vikhyatk/lnqa",
+    tags=['multi-modal', 'en', 'ocr-vqa', 'quality'])
 
 
 def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
