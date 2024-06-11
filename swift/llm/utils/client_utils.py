@@ -160,6 +160,8 @@ def inference_client(
 
     if is_chat_request is None:
         is_chat_request = _is_chat
+    assert is_chat_request is not None, (
+        'Please set the `is_chat_request` parameter to indicate whether the model is a chat model.')
     data = {k: v for k, v in request_config.__dict__.items() if not k.startswith('__')}
     if is_chat_request:
         messages = history_to_messages(history, query, system)

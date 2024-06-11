@@ -1116,11 +1116,14 @@ def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['non
     return dataset
 
 
-def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
+def _safe_split(s: str, sep: str, use_0: bool, split_mode: Literal['left', 'right'] = 'left') -> Tuple[str, str]:
     # use_0: When the length of the part is 1, is it considered as part0 or part1.
     if s is None or len(s) == 0:
         return None, None
-    part = s.split(sep)
+    if split_mode == 'left':
+        part = s.split(sep, 1)
+    else:
+        part = s.rsplit(sep, 1)
     if len(part) == 1:
         if use_0:
             part = part[0], None
@@ -1138,8 +1141,15 @@ def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
         use_hf = strtobool(os.environ.get('USE_HF', 'False'))
     elif isinstance(use_hf, str):
         use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
-    part1, dataset_sample = _safe_split(other, '#', True)
-    dataset_name, subsets = _safe_split(part1, ':', True)
+    if os.path.isfile(other):
+        part1, dataset_sample = other, None
+    else:
+        part1, dataset_sample = _safe_split(other, '#', True, 'right')
+    if os.path.isfile(part1):
+        dataset_name, subsets = part1, None
+    else:
+        dataset_name, subsets = _safe_split(part1, ':', True)
+
     if subsets is not None:
         subset_list = subsets.split('/')
         subset_list = [subset.strip() for subset in subset_list]
@@ -1175,7 +1185,7 @@ def _preprocess_self_cognition_dataset(
     if len(model_author) == 1 or model_author[1] is None:
         model_author = (model_author[0], model_author[0])
     res_d_list = []
-    for dataset in dataset_list:
+    for dataset in dataset_list:  # train_dataset, val_dataset
         if dataset is None:
             res_d_list.append(dataset)
             continue
@@ -1205,36 +1215,39 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
                 container[v[k_name]] = []
             container[v[k_name]].append(k)
 
-    dataset_list = []
     res_dataset = []
+    dataset_list = []
+    # Add dataset_id or dataset_path to dataset_list, and add dataset_name to res_dataset.
     for d in dataset_name_list:
         use_hf, d_name = parse_dataset_name(d)[:2]
-        if '/' in d_name:
-            dataset_list.append((d, use_hf, d_name))
-        else:
+        if d_name in DATASET_MAPPING:
             res_dataset.append(d)
+        else:
+            dataset_list.append((d, use_hf, d_name))
 
     extra_dataset = []
-    for d, use_hf, d_name in dataset_list:
+    for d, use_hf, d_id_or_path in dataset_list:
         dataset_mapping = hf_dataset_mapping if use_hf else ms_dataset_mapping
-        if d_name in dataset_mapping:
-            for d_name2 in dataset_mapping[d_name]:
-                res_dataset.append(d.replace(d_name, d_name2))
+        if d_id_or_path in dataset_mapping:
+            # Add the dataset_name corresponding to the dataset_id to res_dataset.
+            for d_name in dataset_mapping[d_id_or_path]:
+                res_dataset.append(d.replace(d_id_or_path, d_name))
         else:
-            extra_dataset.append((d, use_hf, d_name))
+            # This dataset needs to be registered.
+            extra_dataset.append((d, use_hf, d_id_or_path))
 
-    for i, (d, use_hf, d_name) in enumerate(extra_dataset):
+    for i, (d, use_hf, d_id_or_path) in enumerate(extra_dataset):
         d_info = {}
-        d_name2 = f'_{i}'
-        if os.path.isfile(d_name):
-            d_info['dataset_path'] = d_name
+        d_name = f'_{i}'
+        if os.path.isfile(d_id_or_path):
+            d_info['dataset_path'] = d_id_or_path
         else:
             if use_hf:
-                d_info['hf_dataset_id'] = d_name
+                d_info['hf_dataset_id'] = d_id_or_path
             else:
-                d_info['dataset_id'] = d_name
-        register_dataset_info(d_name2, d_info)
-        res_dataset.append(d.replace(d_name, d_name2))
+                d_info['dataset_id'] = d_id_or_path
+        register_dataset_info(d_name, d_info)
+        res_dataset.append(d.replace(d_id_or_path, d_name))
     return res_dataset
 
 
@@ -1253,6 +1266,7 @@ def get_dataset(
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
 
+    # dataset_id_or_path -> dataset_name
     dataset_name_list = _dataset_id_to_name(dataset_name_list)
     for dataset_name in dataset_name_list:
         use_hf, dataset_name, subsets, dataset_sample = parse_dataset_name(dataset_name)

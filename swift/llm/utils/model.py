@@ -107,6 +107,31 @@ class ModelType:
     qwen1half_110b_chat_awq = 'qwen1half-110b-chat-awq'
     codeqwen1half_7b_chat_awq = 'codeqwen1half-7b-chat-awq'
 
+    # qwen2
+    qwen2_0_5b = 'qwen2-0_5b'
+    qwen2_0_5b_instruct = 'qwen2-0_5b-instruct'
+    qwen2_0_5b_instruct_int4 = 'qwen2-0_5b-instruct-int4'
+    qwen2_0_5b_instruct_int8 = 'qwen2-0_5b-instruct-int8'
+    qwen2_0_5b_instruct_awq = 'qwen2-0_5b-instruct-awq'
+    qwen2_1_5b = 'qwen2-1_5b'
+    qwen2_1_5b_instruct = 'qwen2-1_5b-instruct'
+    qwen2_1_5b_instruct_int4 = 'qwen2-1_5b-instruct-int4'
+    qwen2_1_5b_instruct_int8 = 'qwen2-1_5b-instruct-int8'
+    qwen2_1_5b_instruct_awq = 'qwen2-1_5b-instruct-awq'
+    qwen2_7b = 'qwen2-7b'
+    qwen2_7b_instruct = 'qwen2-7b-instruct'
+    qwen2_7b_instruct_int4 = 'qwen2-7b-instruct-int4'
+    qwen2_7b_instruct_int8 = 'qwen2-7b-instruct-int8'
+    qwen2_7b_instruct_awq = 'qwen2-7b-instruct-awq'
+    qwen2_72b = 'qwen2-72b'
+    qwen2_72b_instruct = 'qwen2-72b-instruct'
+    qwen2_72b_instruct_int4 = 'qwen2-72b-instruct-int4'
+    qwen2_72b_instruct_int8 = 'qwen2-72b-instruct-int8'
+    qwen2_72b_instruct_awq = 'qwen2-72b-instruct-awq'
+    qwen2_57b_a14b = 'qwen2-57b-a14b'
+    qwen2_57b_a14b_instruct = 'qwen2-57b-a14b-instruct'
+    qwen2_57b_a14b_instruct_int4 = 'qwen2-57b-a14b-instruct-int4'
+
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -187,8 +212,10 @@ class ModelType:
     yi_1_5_6b_chat = 'yi-1_5-6b-chat'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
+    yi_1_5_9b_chat_16k = 'yi-1_5-9b-chat-16k'
     yi_1_5_34b = 'yi-1_5-34b'
     yi_1_5_34b_chat = 'yi-1_5-34b-chat'
+    yi_1_5_34b_chat_16k = 'yi-1_5-34b-chat-16k'
     yi_1_5_6b_chat_awq_int4 = 'yi-1_5-6b-chat-awq-int4'
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
@@ -316,6 +343,7 @@ class ModelType:
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
     yuan2_51b_instruct = 'yuan2-51b-instruct'
     yuan2_102b_instruct = 'yuan2-102b-instruct'
+    yuan2_m32 = 'yuan2-m32'
     # xverse
     xverse_7b = 'xverse-7b'
     xverse_7b_chat = 'xverse-7b-chat'
@@ -885,6 +913,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     placeholder_tokens=['<|reserved_special_token_0|>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
 @register_model(
     ModelType.cogvlm2_19b_chat,
@@ -893,6 +922,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     placeholder_tokens=['<|reserved_special_token_0|>'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
 def get_model_tokenizer_cogvlm2(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
@@ -1458,6 +1488,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.init_kwargs['image_size'] = 1120
     if model is not None:
         from torch.nn import CrossEntropyLoss
         __old_forward = CrossEntropyLoss.forward
@@ -1482,6 +1513,52 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.qwen2_57b_a14b,
+    'qwen/Qwen2-57B-A14B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    requires=['transformers>=4.40'],
+    hf_model_id='Qwen/Qwen2-57B-A14B')
+@register_model(
+    ModelType.qwen2_0_5b,
+    'qwen/Qwen2-0.5B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-0.5B')
+@register_model(
+    ModelType.qwen2_1_5b,
+    'qwen/Qwen2-1.5B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-1.5B')
+@register_model(
+    ModelType.qwen2_7b,
+    'qwen/Qwen2-7B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-7B')
+@register_model(
+    ModelType.qwen2_72b,
+    'qwen/Qwen2-72B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-72B')
 @register_model(
     ModelType.minicpm_2b_sft_chat,
     'OpenBMB/MiniCPM-2B-sft-fp32',
@@ -2069,6 +2146,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
+    ModelType.yi_1_5_9b_chat_16k,
+    '01ai/Yi-1.5-9B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
+@register_model(
     ModelType.yi_1_5_34b,
     '01ai/Yi-1.5-34B',
     LoRATM.llama,
@@ -2084,6 +2169,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-34B-Chat')
+@register_model(
+    ModelType.yi_1_5_34b_chat_16k,
+    '01ai/Yi-1.5-34B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
 @register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
@@ -2256,6 +2349,196 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
 
+@register_model(
+    ModelType.qwen2_57b_a14b_instruct_int4,
+    'qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    requires=['auto_gptq>=0.5', 'transformers>=4.40'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    hf_model_id='Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_57b_a14b_instruct,
+    'qwen/Qwen2-57B-A14B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    requires=['transformers>=4.40'],
+    hf_model_id='Qwen/Qwen2-57B-A14B-Instruct')
+@register_model(
+    ModelType.qwen2_0_5b_instruct_int4,
+    'qwen/Qwen2-0.5B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-0.5B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_0_5b_instruct_int8,
+    'qwen/Qwen2-0.5B-Instruct-GPTQ-Int8',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-0.5B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_1_5b_instruct_int4,
+    'qwen/Qwen2-1.5B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_1_5b_instruct_int8,
+    'qwen/Qwen2-1.5B-Instruct-GPTQ-Int8',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-1_5B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_7b_instruct_int4,
+    'qwen/Qwen2-7B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-7B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_7b_instruct_int8,
+    'qwen/Qwen2-7B-Instruct-GPTQ-Int8',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-7B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_72b_instruct_int4,
+    'qwen/Qwen2-72B-Instruct-GPTQ-Int4',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-72B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_72b_instruct_int8,
+    'qwen/Qwen2-72B-Instruct-GPTQ-Int8',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-72B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_0_5b_instruct_awq,
+    'qwen/Qwen2-0.5B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-0.5B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_1_5b_instruct_awq,
+    'qwen/Qwen2-1.5B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-1.5B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_7b_instruct_awq,
+    'qwen/Qwen2-7B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-7B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_72b_instruct_awq,
+    'qwen/Qwen2-72B-Instruct-AWQ',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    requires=['transformers>=4.37', 'autoawq'],
+    hf_model_id='Qwen/Qwen2-72B-Instruct-AWQ')
+@register_model(
+    ModelType.qwen2_0_5b_instruct,
+    'qwen/Qwen2-0.5B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-0.5B-Instruct')
+@register_model(
+    ModelType.qwen2_1_5b_instruct,
+    'qwen/Qwen2-1.5B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-1.5B-Instruct')
+@register_model(
+    ModelType.qwen2_7b_instruct,
+    'qwen/Qwen2-7B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-7B-Instruct')
+@register_model(
+    ModelType.qwen2_72b_instruct,
+    'qwen/Qwen2-72B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-72B-Instruct')
 @register_model(
     ModelType.qwen1half_0_5b_chat_awq,
     'qwen/Qwen1.5-0.5B-Chat-AWQ',
@@ -4051,6 +4334,14 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     TemplateType.yuan,
     support_flash_attn=True,
     hf_model_id='IEITYuan/Yuan2-2B-Janus-hf')
+@register_model(
+    ModelType.yuan2_m32,
+    'YuanLLM/Yuan2-M32-hf',
+    LoRATM.llama,
+    TemplateType.yuan,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    hf_model_id='IEITYuan/Yuan2-M32-hf')
 def get_model_tokenizer_yuan(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
