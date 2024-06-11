@@ -1379,7 +1379,7 @@ class RLHFArguments(SftArguments):
             if self.rlhf_type in ['dpo', 'orpo', 'kto', 'cpo']:
                 self.beta = 0.1
             elif self.rlhf_type == 'simpo':
-                self.beta = 2.
+                self.beta = 2.0
 
     def set_default_config(self):
         from importlib import import_module
