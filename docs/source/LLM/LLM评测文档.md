@@ -82,6 +82,7 @@ CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
 
 # 使用API进行评测
+# 如果是非swift部署, 则需要额外传入`--eval_is_chat_model true --model_type qwen2-7b-instruct`
 swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ceval mmlu arc gsm8k
 
 # LoRA微调后的模型同理

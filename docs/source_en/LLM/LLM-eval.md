@@ -81,6 +81,7 @@ You can refer to [here](./Command-line-parameters.md#eval-parameters) for the li
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
 
 # Evaluate using the API
+# If it is not a Swift deployment, you need to additionally pass in `--eval_is_chat_model true --model_type qwen2-7b-instruct`.
 swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ceval mmlu arc gsm8k
 
 # The same applies to the model after LoRA fine-tuning.
