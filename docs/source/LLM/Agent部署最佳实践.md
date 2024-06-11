@@ -128,20 +128,22 @@ ReAct-EN
 ```
 "Answer the following questions as best you can. You have access to the following tools:
 
-    get_current_weather: Call this tool to interact with the get_current_weather API.     What is the get_current_weather API useful for? Get the current weather in a given location     Parameters: {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']} Format the arguments as a JSON object.
+get_current_weather: Call this tool to interact with the get_current_weather API. What is the get_current_weather API useful for? Get the current weather in a given location Parameters: {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']} Format the arguments as a JSON object.
 
-    Use the following format:
+Use the following format:
 
-    Question: the input question you must answer
-    Thought: you should always think about what to do
-    Action: the action to take, should be one of [get_current_weather]
-    Action Input: the input to the action
-    Observation: the result of the action
-    ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-    Thought: I now know the final answer
-    Final Answer: the final answer to the original input question
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [get_current_weather]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
 
-    Begin!"
+Begin!
+"
+
 ```
 
 ReAct-ZH

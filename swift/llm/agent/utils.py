@@ -6,17 +6,12 @@ from swift.utils.utils import split_str_parts_by
 
 logger = get_logger()
 
-TOOL_DESC = """{tool_name}: Call this tool to interact with the {tool_name} API. \
-What is the {tool_name} API useful for? {tool_desc} \
-Parameters: {paras} Format the arguments as a JSON object."""
-
 REACT_PROMPT = """Answer the following questions as best you can. You have access to the following tools:
 
-{tool_descs}
+{tool_list}
 
 Use the following format:
 
-Question: the input question you must answer
 Thought: you should always think about what to do
 Action: the action to take, should be one of [{tool_names}]
 Action Input: the input to the action
@@ -28,24 +23,25 @@ Final Answer: the final answer to the original input question
 Begin!
 """
 
-REACT_ZH_PROMPT = """
-# 工具
+REACT_ZH_PROMPT = """请尽你所能回答以下问题。你拥有如下工具：
 
-## 你拥有如下工具：
+{tool_list}
 
-{api_list}
-
-## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
+当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
 
 工具调用
+Thought: 思考你应该做什么
 Action: 工具的名称，必须是[{tool_names}]之一
 Action Input: 工具的输入
-Observation: <result>工具返回的结果</result>
-Answer: 根据Observation总结本次工具调用返回的结果
+Observation: 工具返回的结果
+... (Thought/Action/Action Input/Observation的过程可以重复零次或多次)
+Thought: 我现在知道最终答案了
+Final Answer: 对原始输入问题的最终答案
 
+开始！
 """
 
-TOOLBENCH_PROMPT = '''You are AutoGPT, you can use many tools(functions) to do the following task.
+TOOLBENCH_PROMPT = '''You can use many tools(functions) to do the following task.
 First I will give you the task description, and your task start.
 At each step, you need to give your thought to analyze the status now and what to do next, \
 with a function call to actually excute your step. Your output should follow this format:
@@ -69,7 +65,7 @@ to show to the user,If you can't handle the task, \
 or you find that function calls always fail(the function is not valid now), \
 use function Finish->give_up_and_restart.
 2.Do not use origin tool names, use only subfunctions' names.
-Specifically, you have access to the following APIs: {api_list}'''
+Specifically, you have access to the following APIs: {tool_list}'''
 
 
 def calculate_loss_scale(response: str, use_loss_scale=False) -> Tuple[List[str], List[float]]:
@@ -164,12 +160,8 @@ def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: st
         try:
             if 'function' in info:
                 info = info['function']
-            if prompt_format == 'react_en':
-                tool_descs.append(
-                    TOOL_DESC.format(tool_name=info['name'], tool_desc=info['description'], paras=info['parameters']))
-                tool_names.append(info['name'])
-            else:
-                tool_descs.append(str(info))  # info: dict
+            tool_names.append(info['name'])
+            tool_descs.append(str(info))  # info: dict
         except KeyError:
             print('invalid tools format, please check'
                   'https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md')
@@ -177,7 +169,7 @@ def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: st
     tool_descs = '\n\n'.join(tool_descs)
     tool_names = ','.join(tool_names)
     if prompt_format == 'react_en':
-        return REACT_PROMPT.format(tool_descs=tool_descs, tool_names=tool_names)
+        return REACT_PROMPT.format(tool_list=tool_descs, tool_names=tool_names)
     elif prompt_format == 'react_zh':
-        return REACT_ZH_PROMPT.format(api_list=tool_descs, tool_names=tool_names)
-    return TOOLBENCH_PROMPT.format(api_list=tool_descs)
+        return REACT_ZH_PROMPT.format(tool_list=tool_descs, tool_names=tool_names)
+    return TOOLBENCH_PROMPT.format(tool_list=tool_descs)
