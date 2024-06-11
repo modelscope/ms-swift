@@ -71,7 +71,7 @@ class EvalModel(CustomModel):
         infer_cfg = kwargs['infer_cfg'].copy()
         infer_cfg.pop('limit', None)
         infer_cfg.pop('max_length', None)
-        assert 'max_new_tokens' in infer_cfg, f'infer_cfg: {infer_cfg}'
+        assert infer_cfg.get('max_new_tokens') is not None, f'infer_cfg: {infer_cfg}'
         do_sample = infer_cfg.pop('do_sample', None)
 
         if self.args.eval_url is not None:
