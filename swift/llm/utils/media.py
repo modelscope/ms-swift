@@ -13,42 +13,42 @@ class MediaTagReplacer:
     task_prompts = {
         'ref_grounding': {
             'en': [
-                ('<object>', '<box>'),
-                ('The positions of <object> is', '<box>'),
-                ('Find the positions of <object>', '<box>'),
-                ('Where is <object>', '<box>'),
-                ('Find <object>', '<box>'),
-                ('Show me <object>', '<box>'),
-                ('Provide the bounding box coordinate of <object>', '<box>')
+                ('<ref-object>', '<bbox>'),
+                ('The positions of <ref-object> is', '<bbox>'),
+                ('Find the positions of <ref-object>', '<bbox>'),
+                ('Where is <ref-object>', '<bbox>'),
+                ('Find <ref-object>', '<bbox>'),
+                ('Show me <ref-object>', '<bbox>'),
+                ('Provide the bounding box coordinate of <ref-object>', '<bbox>')
             ],
             'zh': [
-                ('<object>', '<box>'),
-                ('<object>的位置在图片中', '<box>'),
-                ('<object>在图片中', '<box>'),
-                ('<object>在', '<box>'),
-                ('找到<object>的位置', '<box>'),
-                ('<object>在哪里', '<box>'),
-                ('提供<object>的坐标位置', '<box>')
+                ('<ref-object>', '<bbox>'),
+                ('<ref-object>的位置在图片中', '<bbox>'),
+                ('<ref-object>在图片中', '<bbox>'),
+                ('<ref-object>在', '<bbox>'),
+                ('找到<ref-object>的位置', '<bbox>'),
+                ('<ref-object>在哪里', '<bbox>'),
+                ('提供<ref-object>的坐标位置', '<bbox>')
             ]
         },
         'grounding_caption': {
             'en': [
-                ('<box>', '<object>'),
-                ('The object at position <box>', '<object>'),
-                ('This <box> is', '<object>'),
-                ('What is the thing at <box>', '<object>'),
-                ('Describe <box>', '<object>'),
-                ('<box> is', '<object>'),
-                ('The bounding box coordinate <box> contains', '<object>'),
+                ('<bbox>', '<ref-object>'),
+                ('The object at position <bbox>', '<ref-object>'),
+                ('This <bbox> is', '<ref-object>'),
+                ('What is the thing at <bbox>', '<ref-object>'),
+                ('Describe <bbox>', '<ref-object>'),
+                ('<bbox> is', '<ref-object>'),
+                ('The bounding box coordinate <bbox> contains', '<ref-object>'),
             ],
             'zh': [
-                ('<box>', '<object>'),
-                ('<box>是什么', '<object>'),
-                ('<box>的位置包含', '<object>'),
-                ('描述<box>', '<object>'),
-                ('<box>中是', '<object>'),
-                ('坐标<box>描述了什么', '<object>'),
-                ('描述<box>中的事物', '<object>'),
+                ('<bbox>', '<ref-object>'),
+                ('<bbox>是什么', '<ref-object>'),
+                ('<bbox>的位置包含', '<ref-object>'),
+                ('描述<bbox>', '<ref-object>'),
+                ('<bbox>中是', '<ref-object>'),
+                ('坐标<bbox>描述了什么', '<ref-object>'),
+                ('描述<bbox>中的事物', '<ref-object>'),
             ]
         },
     }

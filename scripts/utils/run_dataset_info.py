@@ -35,7 +35,8 @@ def write_dataset_info() -> None:
         text_list = []
 
     ignore_dataset = {text.split('|', 2)[1].lstrip('🔥 '): text for text in text_list}
-    dataset_name_list = DatasetName.get_dataset_name_list()
+    dataset_name_list = list(DATASET_MAPPING.keys())
+    dataset_name_list.sort()
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],

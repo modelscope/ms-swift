@@ -306,7 +306,7 @@
             "value_key": "content",
             "error_strategy": "delete"
         },
-        "split": ["train_sft", "train_gen"],
+        "split": ["train"],
         "tags": ["chat", "en", "quality"]
     },
     "lmsys-chat-1M": {
@@ -363,7 +363,7 @@
         "tags": ["general", "🔥"]
     },
     "orca_pairs": {
-        "dataset_id": "Intel/orca_dpo_pairs",
+        "dataset_id": "swift/orca_dpo_pairs",
         "hf_dataset_id": "Intel/orca_dpo_pairs",
         "columns": {
             "question": "query",
@@ -636,8 +636,8 @@
         "dataset_id": "AI-ModelScope/MathInstruct",
         "hf_dataset_id": "TIGER-Lab/MathInstruct",
         "columns": {
-          "prompt": "instruction",
-          "response": "output"
+          "instruction": "query",
+          "output": "response"
         },
         "tags": ["math", "cot", "en", "quality"]
     },

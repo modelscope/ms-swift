@@ -151,7 +151,7 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
-    special_tokens = ['<image>', '<video>', '<audio>', '<box>', '<object>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
 
     def __init__(self,
                  prefix: Prompt,
@@ -396,11 +396,11 @@ class Template:
             content = self.replace_tag('audio', example.get('audio_index', 0), example)
             example['audio_index'] = example.get('audio_index', 0) + 1
             return content
-        if prompt == '<object>':
+        if prompt == '<ref-object>':
             content = self.replace_object(example.get('object_index', 0), example)
             example['object_index'] = example.get('object_index', 0) + 1
             return content
-        if prompt == '<box>':
+        if prompt == '<bbox>':
             content = self.replace_box(example.get('box_index', 0), example)
             example['box_index'] = example.get('box_index', 0) + 1
             return content
@@ -685,7 +685,7 @@ class QwenVLTemplate(QwenTemplate):
     def replace_box(self, index, example):
         objects = example['objects']
         object = objects[index]
-        return f'<box>({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})</box>'
+        return f'<bbox>({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})</box>'
 
 
 register_template(TemplateType.qwen, QwenTemplate())

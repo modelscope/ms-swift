@@ -105,23 +105,29 @@ class DatasetName:
     shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
 
     mantis_instruct = 'mantis-instruct'
-    llava_data_instruct = 'llava-data-instruct'
     midefics = 'midefics'
     gqa = 'gqa'
     a_okvqa = 'a-okvqa'
     okvqa = 'okvqa'
     ocr_vqa = 'ocr-vqa'
     grit = 'grit'
-    llava_instruct_mix = 'llava-instruct-mix'
     science_qa = 'science-qa'
     guanaco = 'guanaco'
     mind2web = 'mind2web'
-    sharegpt_4o_image = 'sharegpt-4o-image'
 
+    #sharegpt4o
+    sharegpt_4o_image = 'sharegpt-4o-image'
+    #m3it
     m3it = 'm3it'
-    # additional images
+    # sharegpt4v
     sharegpt4v = 'sharegpt4v'
+
+    # llava series
+    llava_pretrain = 'llava-pretrain'
     llava_instruct_150k = 'llava-instruct-150k'
+    llava_data_instruct = 'llava-data-instruct'
+    llava_instruct_mix = 'llava-instruct-mix'
+
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -1010,6 +1016,34 @@ register_dataset(
     tags=['chat', 'multi-modal', 'vision'])
 
 
+def _preprocess_llava_pretrain(dataset):
+    media_dir = MediaCache.download('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip', 'llava_pretrain')
+
+    def preprocess(row):
+        if row['image']:
+            file_path = os.path.join(media_dir, row['image'])
+            if os.path.exists(file_path):
+                return {'image': file_path}
+            else:
+                return {'image': ''}
+        else:
+            return {'image': ''}
+    
+    dataset = dataset.map(preprocess).filter(lambda row: row['image'])
+    return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
+                                     media_type='image', error_strategy='delete')(dataset)
+
+register_dataset(
+    DatasetName.llava_pretrain,
+    'AI-ModelScope/LLaVA-Pretrain',
+    None,
+    _preprocess_llava_pretrain,
+    get_dataset_from_repo,
+    split=['train'],
+    hf_dataset_id='liuhaotian/LLaVA-Pretrain',
+    tags=['vqa', 'multi-modal', 'quality'])
+
+
 def process_shareai_dpo(dataset):
     def reorganize_row(row):
         return {
@@ -1253,7 +1287,7 @@ def preprocess_grit(dataset):
         last_end = 0
         for start, end in start_ends:
             result.append(response[int(last_end):int(start)])
-            result.append('<object><box>')
+            result.append('<ref-object><bbox>')
             last_end = end
         result.append(response[int(last_end):])
         return ''.join(result)
