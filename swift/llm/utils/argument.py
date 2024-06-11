@@ -24,6 +24,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
+from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
@@ -1270,6 +1271,7 @@ class EvalArguments(InferArguments):
         metadata={'help': f"dataset choices: {['arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa']}"})
     eval_few_shot: Optional[int] = None
     eval_limit: Optional[int] = None
+    max_new_tokens: int = 512  # covering 2048
 
     name: str = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
     eval_url: Optional[str] = None
@@ -1284,6 +1286,12 @@ class EvalArguments(InferArguments):
             self.eval_dataset = [self.eval_dataset]
         if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
             args.eval_dataset = []
+        if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
+            model = get_model_list_client(url=self.eval_url).data[0]
+            if self.eval_is_chat_model is None:
+                self.eval_is_chat_model = model.is_chat
+            if self.model_type is None is None:
+                self.model_type = model.id
 
     def select_dtype(self):
         if self.eval_url is None:

@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from swift.utils import get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
-from .utils import EvalArguments, inference
+from .utils import EvalArguments, XRequestConfig, inference, inference_client_async
 
 logger = get_logger()
 
@@ -34,35 +34,15 @@ class EvalModel(CustomModel):
         self.generation_info = {'time': 0, 'tokens': 0}
 
     @staticmethod
-    async def fetch(session, url: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        async with session.post(url, json=data) as response:
-            response_text = await response.json()
-            return response_text
-
-    @classmethod
-    async def _call_openai(cls,
-                           model_type: str,
-                           query: str,
-                           eval_url: str,
-                           *,
-                           is_chat_model: bool,
-                           generation_config,
-                           idx: Optional[int] = None) -> Tuple[str, Optional[int]]:
-        data = generation_config
-        data['model'] = model_type
-        async with aiohttp.ClientSession() as session:
-            if is_chat_model:
-                messages = [{'role': 'user', 'content': query}]
-                data['messages'] = messages
-                url = f'{eval_url}/chat/completions'
-                resp = await cls.fetch(session, url, data)
-                response = resp['choices'][0]['message']['content']
-            else:
-                url = f'{eval_url}/completions'
-                data['prompt'] = query
-                resp = await cls.fetch(session, url, data)
-                response = resp['choices'][0]['text']
-
+    async def _call_openai(model_type: str, query: str, eval_url: str, *, is_chat_model: bool,
+                           request_config: XRequestConfig, idx: int) -> Tuple[str, Optional[int]]:
+        # idx: maintain the order
+        resp = await inference_client_async(
+            model_type, query, is_chat_request=is_chat_model, request_config=request_config, url=eval_url)
+        if is_chat_model:
+            response = resp.choices[0].message.content
+        else:
+            response = resp.choices[0].text
         return response, idx
 
     async def call_openai_batched(self, prompts: List[str]) -> List[str]:
@@ -72,6 +52,7 @@ class EvalModel(CustomModel):
         if max_new_tokens is not None:
             generation_config['max_tokens'] = max_new_tokens
         generation_config.pop('do_sample')
+        request_config = XRequestConfig(**generation_config)
 
         use_tqdm = True if len(prompts) >= 20 else False
         prog_bar = tqdm(total=len(prompts), dynamic_ncols=True, disable=not use_tqdm)
@@ -83,7 +64,7 @@ class EvalModel(CustomModel):
                     prompt,
                     self.args.eval_url,
                     is_chat_model=self.args.eval_is_chat_model,
-                    generation_config=generation_config,
+                    request_config=request_config,
                     idx=i))
         response_list = [None] * len(prompts)
         for coro in asyncio.as_completed(tasks):

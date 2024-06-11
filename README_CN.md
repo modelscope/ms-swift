@@ -436,8 +436,18 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 ### 评测
 
+原始模型:
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
+# 推荐使用vLLM加速 (半分钟评测完arc):
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
+```
+
+LoRA微调后:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir xxx/checkpoint-xxx \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --merge_lora true \
 ```
 
 ### 量化
