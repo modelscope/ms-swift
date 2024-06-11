@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+from copy import copy
 from datetime import datetime
 from functools import partial
 from typing import Type
@@ -21,6 +22,7 @@ from swift.ui.llm_infer.runtime import Runtime
 
 
 class LLMInfer(BaseUI):
+
     group = 'llm_infer'
 
     sub_ui = [Model, Runtime]
@@ -99,6 +101,7 @@ class LLMInfer(BaseUI):
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(InferArguments)
+    default_dict = BaseUI.get_default_value_from_dataclass(InferArguments)
     arguments = BaseUI.get_argument_names(InferArguments)
 
     @classmethod
@@ -111,6 +114,7 @@ class LLMInfer(BaseUI):
                 default_device = '0'
             with gr.Blocks():
                 model_and_template = gr.State([])
+                history = gr.State([])
                 Model.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 gr.Dropdown(
@@ -120,7 +124,9 @@ class LLMInfer(BaseUI):
                     value=default_device,
                     scale=8)
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
-                prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
+                with gr.Row():
+                    prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
+                    image = gr.Image(type='filepath')
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
@@ -131,7 +137,7 @@ class LLMInfer(BaseUI):
                         cls.generate_chat,
                         inputs=[
                             model_and_template,
-                            cls.element('template_type'), prompt, chatbot,
+                            cls.element('template_type'), prompt, image, history,
                             cls.element('system'),
                             cls.element('max_new_tokens'),
                             cls.element('temperature'),
@@ -140,10 +146,10 @@ class LLMInfer(BaseUI):
                             cls.element('top_p'),
                             cls.element('repetition_penalty')
                         ],
-                        outputs=[prompt, chatbot],
+                        outputs=[prompt, chatbot, image, history],
                         queue=True)
 
-                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
+                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, history])
 
                     cls.element('load_checkpoint').click(
                         cls.reset_memory, [], [model_and_template]) \
@@ -152,10 +158,10 @@ class LLMInfer(BaseUI):
                             value for value in cls.elements().values()
                             if not isinstance(value, (Tab, Accordion))
                         ], [model_and_template]).then(cls.change_interactive, [],
-                                                      [prompt]).then(  # noqa
+                                                      [prompt, image]).then(  # noqa
                         cls.clear_session,
                         inputs=[],
-                        outputs=[prompt, chatbot],
+                        outputs=[prompt, chatbot, image, history],
                         queue=True).then(cls.reset_load_button, [], [cls.element('load_checkpoint')])
                 else:
                     cls.element('load_checkpoint').click(
@@ -167,7 +173,7 @@ class LLMInfer(BaseUI):
                         cls.send_message,
                         inputs=[
                             cls.element('running_tasks'), model_and_template,
-                            cls.element('template_type'), prompt, chatbot,
+                            cls.element('template_type'), prompt, image, history,
                             cls.element('system'),
                             cls.element('max_new_tokens'),
                             cls.element('temperature'),
@@ -175,10 +181,10 @@ class LLMInfer(BaseUI):
                             cls.element('top_p'),
                             cls.element('repetition_penalty')
                         ],
-                        outputs=[prompt, chatbot],
+                        outputs=[prompt, chatbot, image, history],
                         queue=True)
 
-                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot])
+                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, history])
 
                     base_tab.element('running_tasks').change(
                         partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
@@ -340,18 +346,39 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def clear_session(cls):
-        return '', None
+        return '', [], None, []
 
     @classmethod
     def change_interactive(cls):
-        return gr.update(interactive=True)
+        return gr.update(interactive=True), gr.update(interactive=True)
 
     @classmethod
-    def send_message(cls, running_task, model_and_template, template_type, prompt: str, history, system, max_new_tokens,
-                     temperature, top_k, top_p, repetition_penalty):
+    def _replace_tag_with_media(cls, history):
+        total_history = []
+        for h in history:
+            for m in h[2]:
+                total_history.append([(m, ), None])
+            if h[0] and h[0].strip():
+                total_history.append(h[:2])
+        return total_history
+
+    @classmethod
+    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history, system,
+                     max_new_tokens, temperature, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None
+            return '', None, None, []
+
+        if not history or history[-1][1]:
+            history.append([None, None, []])
+        if image:
+            if not history[-1][2] or history[-1][2][-1] != image:
+                history[-1][2].append(image)
+
+        if not prompt:
+            yield '', cls._replace_tag_with_media(history), None, history
+            return
+
         _, args = Runtime.parse_info_from_cmdline(running_task)
         model_type, template, sft_type = model_and_template
         old_history, history = history or [], []
@@ -360,37 +387,53 @@ class LLMInfer(BaseUI):
         request_config.stream = True
         request_config.stop = ['Observation:']
         stream_resp_with_history = ''
+        medias = [m for h in old_history for m in h[2]]
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
-                model_type, prompt, old_history, system=system, port=args['port'], request_config=request_config)
+                model_type,
+                prompt,
+                images=medias,
+                history=[h[:2] for h in old_history if h[0]],
+                system=system,
+                port=args['port'],
+                request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
-                qr_pair = [prompt, stream_resp_with_history]
-                total_history = old_history + [qr_pair]
-                yield '', total_history
+                old_history[-1][0] = prompt
+                old_history[-1][1] = stream_resp_with_history
+                yield '', cls._replace_tag_with_media(old_history), None, old_history
         else:
             request_config.max_tokens = max_new_tokens
-            stream_resp = inference_client(model_type, prompt, port=args['port'], request_config=request_config)
+            stream_resp = inference_client(
+                model_type, prompt, images=old_history[-1][2], port=args['port'], request_config=request_config)
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].text
-                qr_pair = [prompt, stream_resp_with_history]
-                total_history = old_history + [qr_pair]
-                yield '', total_history
+                old_history[-1][0] = prompt
+                old_history[-1][1] = stream_resp_with_history
+                yield '', cls._replace_tag_with_media(old_history), None, old_history
 
     @classmethod
-    def generate_chat(cls, model_and_template, template_type, prompt: str, history, system, max_new_tokens, temperature,
-                      do_sample, top_k, top_p, repetition_penalty):
+    def generate_chat(cls, model_and_template, template_type, prompt: str, image, history, system, max_new_tokens,
+                      temperature, do_sample, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
-            return '', None
+            return '', None, None, []
+
+        if not history or history[-1][1]:
+            history.append([None, None, []])
+        if image:
+            if not history[-1][2] or history[-1][2][-1] != image:
+                history[-1][2].append(image)
+
+        if not prompt:
+            yield '', cls._replace_tag_with_media(history), None, history
+            return
+
         model, template = model_and_template
+
         if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
             model.cuda()
-        if not template_type.endswith('generation'):
-            old_history, history = limit_history_length(template, prompt, history, int(max_new_tokens))
-        else:
-            old_history = []
-            history = []
+        old_history, history = history or [], []
 
         generation_config = GenerationConfig(
             temperature=temperature,
@@ -399,16 +442,19 @@ class LLMInfer(BaseUI):
             do_sample=do_sample,
             max_new_tokens=int(max_new_tokens),
             repetition_penalty=repetition_penalty)
+        medias = [m for h in old_history for m in h[2]]
         gen = inference_stream(
             model,
             template,
             prompt,
-            history,
+            images=medias,
+            history=[h[:2] for h in old_history],
             system=system,
             generation_config=generation_config,
             stop_words=['Observation:'])
         for _, history in gen:
-            total_history = old_history + history
-            yield '', total_history
+            old_history[-1][0] = history[-1][0]
+            old_history[-1][1] = history[-1][1]
+            yield '', cls._replace_tag_with_media(old_history), None, old_history
         if os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio':
             model.cpu()
