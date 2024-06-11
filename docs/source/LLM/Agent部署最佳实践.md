@@ -191,9 +191,7 @@ Specifically, you have access to the following APIs: {\'name\': \'get_current_we
 ## 部署
 以下以vLLM部署，非流式调用，ReAct prompt为例.
 
-部署Agent需要模型本身具有一定的instruct-following能力或者在Agent数据集中进行过训练
-
-如果模型无法完成下述部署任务，推荐使用性能更好的模型，或者参考[Agent微调实践](./Agent微调最佳实践.md)
+部署Agent时，需要型本身必须具备较强的指令遵循能力，或者已在Agent数据集上进行了训练。如果现有模型未能根据tools字段进行工具选择和参数设置，建议采用更高性能的模型，或者参照[Agent微调实践](./Agent微调最佳实践.md)训练模型
 
 部署模型，这里我们选择`llama3-8b-instruct`模型作为示范
 ```shell
