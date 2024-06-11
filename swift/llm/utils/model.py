@@ -212,8 +212,10 @@ class ModelType:
     yi_1_5_6b_chat = 'yi-1_5-6b-chat'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
+    yi_1_5_9b_chat_16k = 'yi-1_5-9b-chat-16k'
     yi_1_5_34b = 'yi-1_5-34b'
     yi_1_5_34b_chat = 'yi-1_5-34b-chat'
+    yi_1_5_34b_chat_16k = 'yi-1_5-34b-chat-16k'
     yi_1_5_6b_chat_awq_int4 = 'yi-1_5-6b-chat-awq-int4'
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
@@ -341,6 +343,7 @@ class ModelType:
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
     yuan2_51b_instruct = 'yuan2-51b-instruct'
     yuan2_102b_instruct = 'yuan2-102b-instruct'
+    yuan2_m32 = 'yuan2-m32'
     # xverse
     xverse_7b = 'xverse-7b'
     xverse_7b_chat = 'xverse-7b-chat'
@@ -2143,6 +2146,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
+    ModelType.yi_1_5_9b_chat_16k,
+    '01ai/Yi-1.5-9B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
+@register_model(
     ModelType.yi_1_5_34b,
     '01ai/Yi-1.5-34B',
     LoRATM.llama,
@@ -2158,6 +2169,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-34B-Chat')
+@register_model(
+    ModelType.yi_1_5_34b_chat_16k,
+    '01ai/Yi-1.5-34B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
 @register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
@@ -4315,6 +4334,14 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     TemplateType.yuan,
     support_flash_attn=True,
     hf_model_id='IEITYuan/Yuan2-2B-Janus-hf')
+@register_model(
+    ModelType.yuan2_m32,
+    'YuanLLM/Yuan2-M32-hf',
+    LoRATM.llama,
+    TemplateType.yuan,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    hf_model_id='IEITYuan/Yuan2-M32-hf')
 def get_model_tokenizer_yuan(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
