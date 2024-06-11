@@ -59,29 +59,33 @@ pip install -e '.[eval]'
 
 ## 评测
 
-评测的命令非常简单，只需要使用如下命令即可：
+评测支持使用vLLM加速. 这里展示对原始模型和LoRA微调后的qwen2-7b-instruct进行评测.
 
 ```shell
-# 使用arc评测，每个子数据集限制评测10条，推理backend使用pt
-swift eval \
-    --model_type "qwen-7b-chat" \
-    --eval_dataset arc \
-    --eval_limit 10 \
-    --infer_backend pt
+# 原始模型 (单卡A100大约需要半小时)
+CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
+
+# LoRA微调后
+CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint-xxx \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --merge_lora true \
 ```
 
 评测的参数列表可以参考[这里](./命令行参数.md#eval参数)。
 
-评测结果展示如下：
 
-```text
-2024-04-10 17:18:45,861 - llmuses - INFO - *** Report table ***
-+---------+-----------+
-| Model   | arc       |
-+=========+===========+
-|         | 0.8 (acc) |
-+---------+-----------+
-Final report:{'report': [{'name': 'arc', 'metric': 'WeightedAverageAccuracy', 'score': 0.8, 'category': [{'name': 'DEFAULT', 'score': 0.8, 'subset': [{'name': 'ARC-Challenge', 'score': 0.8}]}], 'total_num': 10}], 'generation_info': {'time': 80.44219398498535, 'tokens': 743}}
+### 使用部署的方式评测
+
+```shell
+# 使用OpenAI API方式启动部署
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
+
+# 使用API进行评测
+# 如果是非swift部署, 则需要额外传入`--eval_is_chat_model true --model_type qwen2-7b-instruct`
+swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ceval mmlu arc gsm8k
+
+# LoRA微调后的模型同理
 ```
 
 ## 自定义评测集
