@@ -27,6 +27,8 @@ from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME
                                   WEIGHTS_NAME, IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
+from transformers.utils import is_torch_npu_available
+
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
@@ -548,7 +550,8 @@ class SwiftMixin:
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-            logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
+            if not is_torch_npu_available():
+                logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time
