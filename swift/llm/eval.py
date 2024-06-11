@@ -51,7 +51,7 @@ class EvalModel(CustomModel):
         max_new_tokens = generation_config.pop('max_new_tokens', None)
         if max_new_tokens is not None:
             generation_config['max_tokens'] = max_new_tokens
-        generation_config.pop('do_sample')
+        generation_config.pop('do_sample', None)
         request_config = XRequestConfig(**generation_config)
 
         use_tqdm = True if len(prompts) >= 20 else False
