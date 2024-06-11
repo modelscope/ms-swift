@@ -19,6 +19,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
 
     def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.template = template
+        kwargs.pop('gamma', None)
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
         val_ds_info = self.stat_dataset(self.eval_dataset)

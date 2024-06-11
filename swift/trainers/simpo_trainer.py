@@ -24,7 +24,7 @@ class SimPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                        'You can use the new SimPO implementation by installing trl from the source:'
                        'pip install git+https://github.com/huggingface/trl.git')
         self.template = template
-        self.gamma = kwargs.pop('gamma')
+        self.gamma = kwargs.pop('gamma', 1.0)
         kwargs['args'].loss_type = 'sigmoid'
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
