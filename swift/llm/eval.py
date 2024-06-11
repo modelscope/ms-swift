@@ -4,7 +4,6 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-import aiohttp
 import json
 from llmuses.models.custom import CustomModel
 from tqdm import tqdm
@@ -18,7 +17,7 @@ logger = get_logger()
 
 class EvalModel(CustomModel):
 
-    def __init__(self, args: EvalArguments, model_name, config={}, **kwargs):
+    def __init__(self, args: EvalArguments, model_name: str, config={}, **kwargs) -> None:
         if args.eval_url is None:
             if args.merge_lora:
                 merge_lora(args, device_map=args.merge_device_map)
@@ -126,7 +125,7 @@ class EvalModel(CustomModel):
         return res_d
 
 
-def run_eval_single_model(args: EvalArguments):
+def run_eval_single_model(args: EvalArguments) -> Dict[str, Any]:
     from llmuses.run import run_task
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
@@ -176,10 +175,10 @@ def run_eval_single_model(args: EvalArguments):
     return final_report
 
 
-def llm_eval(args: EvalArguments) -> None:
+def llm_eval(args: EvalArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
-    run_eval_single_model(args)
+    return run_eval_single_model(args)
 
 
 eval_main = get_main(EvalArguments, llm_eval)
