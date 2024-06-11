@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import json
 from llmuses.models.custom import CustomModel
+from modelscope import GenerationConfig
 from tqdm import tqdm
 
 from swift.utils import get_logger, get_main, seed_everything
-from modelscope import GenerationConfig
 from .infer import merge_lora, prepare_model_template
 from .utils import EvalArguments, XRequestConfig, inference, inference_client_async
 
@@ -79,7 +79,7 @@ class EvalModel(CustomModel):
             max_new_tokens = infer_cfg.pop('max_new_tokens', None)
             if max_new_tokens is not None:
                 infer_cfg['max_tokens'] = max_new_tokens
-            
+
             request_config = XRequestConfig(**infer_cfg)
             response_list = asyncio.run(self.call_openai_batched(prompts, request_config))
 
@@ -88,7 +88,7 @@ class EvalModel(CustomModel):
             if do_sample is False:
                 infer_cfg['temperature'] = 0
             generation_config = VllmGenerationConfig(**infer_cfg)
-            
+
             request_list = [{'query': prompt} for prompt in prompts]
             use_tqdm = True if len(request_list) >= 20 else False
             resp_list = inference_vllm(
