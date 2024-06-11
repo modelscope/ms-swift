@@ -662,6 +662,27 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
+    def load_from_checkpoint(self) -> None:
+        # resume_from_checkpoint
+        sft_args_path = os.path.join(self.resume_from_checkpoint, 'sft_args.json')
+        if not os.path.exists(sft_args_path):
+            logger.info(f'{sft_args_path} not found')
+            return
+        with open(sft_args_path, 'r', encoding='utf-8') as f:
+            sft_args = json.load(f)
+        imported_keys = [
+            'model_type', 'model_revision', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+            'bnb_4bit_use_double_quant', 'model_id_or_path'
+        ]
+
+        for key in imported_keys:
+            value = getattr(self, key)
+            if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
+                continue
+            if key in {'model_type', 'model_revision', 'model_id_or_path'} and value is not None:
+                continue
+            setattr(self, key, sft_args.get(key))
+
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
             return
@@ -736,6 +757,8 @@ class SftArguments(ArgumentsBase):
         self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
+        if self.resume_from_checkpoint is not None:
+            self.load_from_checkpoint()
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
