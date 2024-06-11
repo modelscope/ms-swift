@@ -32,9 +32,10 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
     """
 
     query: Optional[str] = batch.get('prompt', None)
-    history: Optional[History] = batch.get('history', [])
+    history: Optional[History] = batch.get('history', None)
     system: Optional[str] = batch.get('system', None)
-
+    if history is None:
+        history = []
     if system is None:
         if template.use_default_system:
             system = template.default_system

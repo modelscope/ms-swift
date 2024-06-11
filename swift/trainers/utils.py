@@ -10,7 +10,7 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
                                         SchedulerType)
 
-from swift.llm.utils.template import Context, Template
+from swift.llm.utils.template import Context, History, Template
 from swift.utils import get_logger
 
 try:
@@ -60,7 +60,9 @@ def is_instance_of_ms_model(model: Module) -> bool:
 def concat_template(feature: Dict, template: Template):
     query: Optional[str] = feature.get('query', None)
     system: Optional[str] = feature.get('system', None)
-    history: List = feature.get('history', [])
+    history: Optional[History] = feature.get('history', None)
+    if history is None:
+        history = []
     if system is None:
         if template.use_default_system:
             system = template.default_system
