@@ -126,48 +126,44 @@ ToolBench tools 格式
 
 ReAct-EN
 ```
-"Answer the following questions as best you can. You have access to the following tools:
+Answer the following questions as best you can. You have access to the following tools:
 
-get_current_weather: Call this tool to interact with the get_current_weather API. What is the get_current_weather API useful for? Get the current weather in a given location Parameters: {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']} Format the arguments as a JSON object.
+{'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']}}
 
 Use the following format:
 
-Question: the input question you must answer
 Thought: you should always think about what to do
 Action: the action to take, should be one of [get_current_weather]
 Action Input: the input to the action
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 
 Begin!
-"
-
 ```
 
 ReAct-ZH
 ```
-# 工具
+尽你所能回答以下问题。你拥有如下工具：
 
-## 你拥有如下工具：
+{'name': 'get_current_weather', 'description': 'Get the current weather in a given location', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']}}
 
-{api_list}
+以下格式回答：
 
-## 当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
-
-工具调用
-Action: 工具的名称，必须是[{tool_names}]之一
+Thought: 思考你应该做什么
+Action: 工具的名称，必须是[get_current_weather]之一
 Action Input: 工具的输入
-Observation: <result>工具返回的结果</result>
-Answer: 根据Observation总结本次工具调用返回的结果
+Observation: 工具返回的结果
+... (Thought/Action/Action Input/Observation的过程可以重复零次或多次)
+Final Answer: 对输入问题的最终答案
 
+开始！
 ```
 ToolBench
 ```
-"You are AutoGPT, you can use many tools(functions) to do the following task.
+You can use many tools(functions) to do the following task.
 First I will give you the task description, and your task start.
-At each step, you need to give your thought to analyze the status now and what to do next,     with a function call to actually excute your step. Your output should follow this format:
+At each step, you need to give your thought to analyze the status now and what to do next, with a function call to actually excute your step. Your output should follow this format:
 Thought:
 Action:
 Action Input:
@@ -176,24 +172,28 @@ After the call, you will get the call result, and you are now in a new state.
 Then you will analyze your status now, then decide what to do next...
 After many (Thought-call) pairs, you finally perform the task, then you can give your finial answer.
 Remember:
-1.the state change is irreversible, you can't go back to one of the former state, if you want to restart the task,     say "I give up and restart".
+1.the state change is irreversible, you can\'t go back to one of the former state, if you want to restart the task, say "I give up and restart".
 2.All the thought is short, at most in 5 sentence.
-3.You can do more then one trys, so if your plan is to continusly try some conditions,     you can do one of the conditions per try.
-Let's Begin!
+3.You can do more then one trys, so if your plan is to continusly try some conditions, you can do one of the conditions per try.
+Let\'s Begin!
 Task description: You should use functions to help handle the real time user querys. Remember:
-1.ALWAYS call "Finish" function at the end of the task. And the final answer should contain enough information     to show to the user,If you can't handle the task,     or you find that function calls always fail(the function is not valid now),     use function Finish->give_up_and_restart.
-2.Do not use origin tool names, use only subfunctions' names.
-Specifically, you have access to the following APIs: get_current_weather: Call this tool to interact with the get_current_weather API.     What is the get_current_weather API useful for? Get the current weather in a given location     Parameters: {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The city and state, e.g. San Francisco, CA'}, 'unit': {'type': 'string', 'enum': ['celsius', 'fahrenheit']}}, 'required': ['location']} Format the arguments as a JSON object."
+1.ALWAYS call "Finish" function at the end of the task. And the final answer should contain enough information to show to the user,If you can\'t handle the task, or you find that function calls always fail(the function is not valid now), use function Finish->give_up_and_restart.
+2.Do not use origin tool names, use only subfunctions\' names.
+Specifically, you have access to the following APIs: {\'name\': \'get_current_weather\', \'description\': \'Get the current weather in a given location\', \'parameters\': {\'type\': \'object\', \'properties\': {\'location\': {\'type\': \'string\', \'description\': \'The city and state, e.g. San Francisco, CA\'}, \'unit\': {\'type\': \'string\', \'enum\': [\'celsius\', \'fahrenheit\']}}, \'required\': [\'location\']}}
 ```
 
-默认使用ReAct格式，你也可以在参数中指定`--tools_prompt toolbench` 来选择toolbench格式
+默认使用ReAct-EN格式，你也可以在参数中指定`--tools_prompt`为 `react_zh`或`toolbench` 来选择中文ReAct或ToolBench格式
 
 如果你有更好用的tools system prompt，欢迎告知或贡献给我们。
 
 
 
 ## 部署
-以下以vLLM部署，非流式调用，ReAct prompt为例
+以下以vLLM部署，非流式调用，ReAct prompt为例.
+
+部署Agent需要模型本身具有一定的instruct-following能力或者在Agent数据集中进行过训练
+
+如果模型无法完成下述部署任务，推荐使用性能更好的模型，或者参考[Agent微调实践](./Agent微调最佳实践.md)
 
 部署模型，这里我们选择`llama3-8b-instruct`模型作为示范
 ```shell

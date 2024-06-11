@@ -17,26 +17,23 @@ Action: the action to take, should be one of [{tool_names}]
 Action Input: the input to the action
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can be repeated zero or more times)
-Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 
 Begin!
 """
 
-REACT_ZH_PROMPT = """请尽你所能回答以下问题。你拥有如下工具：
+REACT_ZH_PROMPT = """尽你所能回答以下问题。你拥有如下工具：
 
 {tool_list}
 
-当你需要调用工具时，请在你的回复中穿插如下的工具调用命令，可以根据需求调用零次或多次：
+使用以下格式回答：
 
-工具调用
 Thought: 思考你应该做什么
 Action: 工具的名称，必须是[{tool_names}]之一
 Action Input: 工具的输入
 Observation: 工具返回的结果
 ... (Thought/Action/Action Input/Observation的过程可以重复零次或多次)
-Thought: 我现在知道最终答案了
-Final Answer: 对原始输入问题的最终答案
+Final Answer: 对输入问题的最终答案
 
 开始！
 """
