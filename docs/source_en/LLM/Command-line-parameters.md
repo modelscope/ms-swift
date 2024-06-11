@@ -308,7 +308,7 @@ export parameters inherit from infer parameters, with the following added parame
 
 ## eval parameters
 
-The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by evalscope.)
+The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by [evalscope](https://github.com/modelscope/eval-scope).)
 
 - `--eval_dataset`: The official dataset for evaluation, with a default value of `['ceval', 'gsm8k', 'arc']`. Possible values include: 'arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa'. If only custom datasets need to be evaluated, this parameter can be set to `no`.
 - `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset.
