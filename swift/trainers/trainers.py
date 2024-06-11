@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import inspect
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -11,13 +10,11 @@ from torch.nn import CrossEntropyLoss
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
-from transformers.integrations.deepspeed import deepspeed_load_checkpoint
 from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
-from transformers.utils import is_peft_available, is_sagemaker_mp_enabled
+from transformers.utils import is_peft_available
 
 from swift.torchacc_utils import ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader, ta_trim_graph
-from swift.tuners import SwiftModel
 from swift.utils import use_torchacc
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
@@ -48,35 +45,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(self.sequence_parallel_size)
-
-    def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
-        self.resume_from_checkpoint = resume_from_checkpoint
-        res = super().train(None, *args, **kwargs)  # resume_from_checkpoint=None
-        self.resume_from_checkpoint = None
-        self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
-        return res
-
-    def _inner_training_loop(self,
-                             batch_size=None,
-                             args=None,
-                             resume_from_checkpoint=None,
-                             trial=None,
-                             ignore_keys_for_eval=None):
-        resume_from_checkpoint = self.resume_from_checkpoint
-        if resume_from_checkpoint is not None:
-            if self.is_deepspeed_enabled:
-                parameters = inspect.signature(deepspeed_load_checkpoint).parameters
-                kwargs = {}
-                if 'load_module_strict' in parameters:
-                    kwargs['load_module_strict'] = not isinstance(self.model, (PeftModel, SwiftModel))
-                deepspeed_load_checkpoint(self.model_wrapped, resume_from_checkpoint, **kwargs)
-            elif is_sagemaker_mp_enabled() or self.is_fsdp_enabled:
-                self._load_from_checkpoint(resume_from_checkpoint, self.model_wrapped)
-
-            # Check if saved optimizer or scheduler states exist
-            self._load_optimizer_and_scheduler(resume_from_checkpoint)
-        super()._inner_training_loop(
-            batch_size=batch_size, args=args, trial=trial, ignore_keys_for_eval=ignore_keys_for_eval)
 
     def prediction_step(
         self,

@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import importlib
+import inspect
 import os
 import re
 import shutil
@@ -21,13 +22,14 @@ from peft import PeftModel
 from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
+from transformers.integrations.deepspeed import deepspeed_load_checkpoint
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
                                   PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
                                   WEIGHTS_NAME, IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
-from transformers.utils import is_torch_npu_available
+from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
@@ -323,6 +325,18 @@ class SwiftMixin:
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         if not (use_torchacc() and self.sft_args.fsdp_num > 1):
+            checkpoint = self.resume_from_checkpoint
+            if checkpoint is not None:
+                if self.is_deepspeed_enabled:
+                    parameters = inspect.signature(deepspeed_load_checkpoint).parameters
+                    kwargs = {}
+                    if 'load_module_strict' in parameters:
+                        kwargs['load_module_strict'] = not isinstance(self.model, (PeftModel, SwiftModel))
+                    deepspeed_load_checkpoint(self.model_wrapped, checkpoint, **kwargs)
+                elif is_sagemaker_mp_enabled() or self.is_fsdp_enabled:
+                    self._load_from_checkpoint(checkpoint, self.model_wrapped)
+
+            # Check if saved optimizer or scheduler states exist
             return super()._load_optimizer_and_scheduler(checkpoint)
 
         if checkpoint is None or self.args.save_only_model:
@@ -492,6 +506,15 @@ class SwiftMixin:
             for i in range(best_model_index, len(checkpoints_sorted) - 2):
                 checkpoints_sorted[i], checkpoints_sorted[i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
         return checkpoints_sorted
+
+    def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
+        if not is_sagemaker_mp_enabled() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
+            self._load_from_checkpoint(resume_from_checkpoint)
+        self.resume_from_checkpoint = resume_from_checkpoint
+        res = super().train(None, *args, **kwargs)  # resume_from_checkpoint=None
+        self.resume_from_checkpoint = None
+        self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
+        return res
 
     def _load_best_model(self):
         # Compatible with transformers>=4.35 (deepspeed)
