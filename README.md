@@ -47,6 +47,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 2024.06.11: Support for tool-calling agent deployment that conform to the OpenAI interface.You can refer to [Agent deployment best practice](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md)
 - 🔥2024.06.07: Support **Qwen2** series LLM, including Base and Instruct models of 0.5B, 1.5B, 7B, and 72B, as well as corresponding quantized versions gptq-int4, gptq-int8, and awq-int4. The best practice for self-cognition fine-tuning, inference and deployment of Qwen2-72B-Instruct using dual-card 80GiB A100 can be found [here](https://github.com/modelscope/swift/issues/1092).
 - 🔥2024.06.05: Support for **glm4** series LLM and glm4v-9b-chat MLLM. You can refer to [glm4v best practice](docs/source_en/Multi-Modal/glm4v-best-practice.md).
 - 🔥2024.06.01: Supoprts **SimPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/SimPO.md) to start training!
@@ -643,7 +644,8 @@ make docs
 
 | Best Practices Name                                                |
 | ------------------------------------------------------------ |
-| [Agent Fine-Tuning Best Practice](docs/source_en/LLM/Agent-best-practice.md) |
+| [Agent Fine-Tuning Best Practice](docs/source_en/LLM/Agent-fine-tuning-best-practice.md) |
+| [Agent Deployment Best Practice](docs/source_en/LLM/Agent-deployment-best-practice.md) |
 | [Self-Cognition Fine-Tuning Best Practice](docs/source_en/LLM/Self-cognition-best-practice.md) |
 |  [Qwen1.5 Best Practice](docs/source_en/LLM/Qwen1.5-best-practice.md) |
 |  [Multi-Modal Model Training Best Practice](docs/source_en/Multi-Modal/index.md) |
