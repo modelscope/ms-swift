@@ -17,10 +17,10 @@
 
 1. [Self Cognition Best Practice](Self-cognition-best-practice.md)
 2. [Agent Training and Inference Best Practice](Agent-fine-tuning-best-practice.md)
-3. [Qwen1.5 Best Practice](Qwen1.5-best-practice.md)
-4. [NPU Best Practice](NPU-best-practice.md)
-5. [Grok-1 Training and Inference Best Practice](Grok-1-best-practice.md)
-6. [Agent deployment best practice](Agent-deployment-best-practice.md)
+3. [Agent deployment best practice](Agent-deployment-best-practice.md)
+4. [Qwen1.5 Best Practice](Qwen1.5-best-practice.md)
+5. [NPU Best Practice](NPU-best-practice.md)
+6. [Grok-1 Training and Inference Best Practice](Grok-1-best-practice.md)
 
 
 ### 🐔References！

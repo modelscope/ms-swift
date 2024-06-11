@@ -32,6 +32,7 @@ Swift DOCUMENTATION
    LLM/自定义与拓展.md
    LLM/自我认知微调最佳实践.md
    LLM/Agent微调最佳实践.md
+   LLM/Agent部署最佳实践.md
    LLM/Qwen1.5全流程最佳实践.md
    LLM/NPU推理与微调最佳实践.md
    LLM/Grok训练和推理.md
@@ -39,7 +40,6 @@ Swift DOCUMENTATION
    LLM/SimPO算法最佳实践.md
    LLM/HuggingFace生态兼容.md
    LLM/Benchmark.md
-   LLM/Agent部署最佳实践.md
 
 .. toctree::
    :maxdepth: 2
