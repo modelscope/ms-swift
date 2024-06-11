@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn import Module
-from transformers.utils import is_torch_npu_available
+from transformers.utils import is_torch_npu_available, strtobool
 
 from .logger import get_logger, is_master
 
@@ -75,11 +75,11 @@ def is_local_master():
 
 
 def use_torchacc() -> bool:
-    return os.getenv('USE_TORCHACC', '0') == '1'
+    return strtobool(os.getenv('USE_TORCHACC', '0'))
 
 
 def torchacc_trim_graph():
-    return os.getenv('TORCHACC_TRIM_GRAPH', '0') == '1'
+    return strtobool(os.getenv('TORCHACC_TRIM_GRAPH', '0'))
 
 
 def is_dist():
@@ -151,6 +151,8 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     assert dist.is_initialized()
     rank, local_rank, _, _ = get_dist_setting()
     device = f'npu:{local_rank}' if is_torch_npu_available() else f'cuda:{local_rank}'
+    if use_torchacc():
+        device = 'xla'
     assert rank >= 0
     if rank == 0:
         assert string is not None
@@ -159,6 +161,8 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     else:
         tensor = torch.zeros(buffer_size, dtype=torch.int64, device=device)
     dist.broadcast(tensor, 0)
+    if use_torchacc():
+        tensor = tensor.to('cpu')
     first_zero = (tensor == 0).nonzero()[0].item()
     res = tensor.tolist()[:first_zero]
     return ''.join([chr(x) for x in res])

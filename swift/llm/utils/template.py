@@ -1030,6 +1030,7 @@ class InternvlTemplate(Template):
             inputs['image_flags'] = torch.ones(image_bs)
         else:
             input_ids = _remove_idx(input_ids, idx_list)
+            labels = inputs['labels']
             if labels is not None:
                 labels = _remove_idx(labels, idx_list)
 

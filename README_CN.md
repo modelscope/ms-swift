@@ -49,6 +49,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 
 ## 🎉 新闻
 - 2024.06.11: 支持符合OpenAI接口的工具调用Agent部署, 可以查看[Agent部署最佳实践](docs/source/LLM/Agent部署最佳实践.md).
+- 🔥2024.06.07: 支持**Qwen2**系列LLM, 包括0.5B、1.5B、7B、72B的Base和Instruct模型, 以及对应的gptq-int4、gptq-int8、awq-int4量化版本. 使用双卡80GiB A100对Qwen2-72B-Instruct进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
 - 🔥2024.06.05: 支持glm4系列大模型和glm4v-9b-chat多模态大模型, 可以查看[glm4v最佳实践](docs/source/Multi-Modal/glm4v最佳实践.md).
 - 🔥2024.06.01: 支持**SimPO**训练，使用`swift simpo`来开始训练，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/SimPO算法最佳实践.md)
 - 🔥2024.06.01: 支持多模态大模型部署, 可以查看[多模态部署文档](docs/source/Multi-Modal/MLLM部署文档.md).
@@ -436,8 +437,18 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 ### 评测
 
+原始模型:
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
+# 推荐使用vLLM加速 (半分钟评测完arc):
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
+```
+
+LoRA微调后:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir xxx/checkpoint-xxx \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --merge_lora true \
 ```
 
 ### 量化
@@ -483,7 +494,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | 模型类型                                            | 模型介绍                                                     | 语言       | 模型大小                  | 模型类型                                      |
 | --------------------------------------------------- | ------------------------------------------------------------ |----------| ------------------------- |-------------------------------------------|
-| Qwen<br>Qwen1.5                              | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-110B<br>包含量化版本     | base模型<br>chat模型<br>MoE模型<br>代码模型             |                          |
+| Qwen<br>Qwen1.5<br>Qwen2                              | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-110B<br>包含量化版本     | base模型<br>chat模型<br>MoE模型<br>代码模型             |                          |
 | ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4             | [智谱ChatGLM系列模型](https://github.com/THUDM/)             | 中文<br>英文 | 6B-9B                        | base模型<br>chat模型<br>代码模型<br>长文本模型             |
 | Baichuan<br>Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文<br>英文 | 7B-13B<br>包含量化版本         | base模型<br>chat模型                          |
 | Yuan2                                               | [浪潮源系列模型](https://github.com/IEIT-Yuan)               | 中文<br>英文 | 2B-102B                   | instruct模型                                |

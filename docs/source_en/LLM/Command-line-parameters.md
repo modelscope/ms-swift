@@ -6,6 +6,7 @@
 - [dpo Parameters](#dpo-parameters)
 - [merge-lora infer Parameters](#merge-lora-infer-parameters)
 - [export Parameters](#export-parameters)
+- [eval Parameters](#eval-parameters)
 - [app-ui Parameters](#app-ui-parameters)
 - [deploy Parameters](#deploy-parameters)
 
@@ -91,7 +92,7 @@
 - `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `None`, i.e. if `sft_type` is 'lora' and not using deepspeed (`deepspeed` is `None`), set to False, otherwise set to True (e.g. using full fine-tuning or deepspeed).
 - `--save_total_limit`: Number of checkpoints to save, default is `2`, i.e. save best and last checkpoint. If set to -1, save all checkpoints.
 - `--logging_steps`: Print training information (e.g. loss, learning_rate, etc.) every this many steps, default is `5`.
-- `--dataloader_num_workers`: Default is `1`.
+- `--dataloader_num_workers`: Default value is `None`. If running on a Windows machine, set it to `0`; otherwise, set it to `1`.
 - `--push_to_hub`: Whether to sync push trained checkpoint to ModelScope Hub, default is `False`.
 - `--hub_model_id`: Model_id to push to on ModelScope Hub, default is `None`, i.e. set to `f'{model_type}-{sft_type}'`. You can set this to model_id or repo_name. We will infer user_name based on hub_token. If the remote repository to push to does not exist, a new repository will be created, otherwise the previous repository will be reused. This parameter only takes effect when `push_to_hub` is set to True.
 - `--hub_token`: SDK token needed for pushing. Can be obtained from [https://modelscope.cn/my/myaccesstoken](https://modelscope.cn/my/myaccesstoken), default is `None`, i.e. obtained from environment variable `MODELSCOPE_API_TOKEN`. This parameter only takes effect when `push_to_hub` is set to True.
@@ -105,7 +106,7 @@
 - `--ignore_args_error`: Whether to ignore Error thrown by command line parameter errors, default is `False`. Set to True if need to copy code to notebook to run.
 - `--check_model_is_latest`: Check if model is latest, default is `True`. Set this to `False` if you need to train offline.
 - `--logging_dir`: Default is `None`. I.e. set to `f'{self.output_dir}/runs'`, representing path to store tensorboard files.
-- `--report_to`: Default is `['tensorboard']`.
+- `--report_to`: Default is `['tensorboard']`. You can set `--report_to all` to report to all installed integrations.
 - `--acc_strategy`: Default is `'token'`, options include: 'token', 'sentence'.
 - `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
 - `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'epoch', no'.
@@ -309,28 +310,21 @@ export parameters inherit from infer parameters, with the following added parame
 
 ## eval parameters
 
-The eval parameters inherit from the infer parameters, and additionally include the following parameters:
+The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by [evalscope](https://github.com/modelscope/eval-scope).)
 
-- `--name`: Default is `None`. The name of the evaluation, the final evaluation results will be stored in a folder named `{{model_type}-{name}}`.
-
-- `--eval_dataset`: The official dataset for evaluation, the default value is `['ceval', 'gsm8k', 'arc']`, and `mmlu` and `bbh` datasets are also supported. If you only need to evaluate a custom dataset, you can set this parameter to `no`.
-
-- `--eval_limit`: The number of samples for each sub-dataset of the evaluation set, default is `None` which means full evaluation.
-
-- `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
-
-- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set).
-
-- `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
-
-- `--eval_url`: The url of OpenAI standard model service. For example: `http://127.0.0.1:8000/v1`.
-
+- `--eval_dataset`: The official dataset for evaluation, with a default value of `['ceval', 'gsm8k', 'arc']`. Possible values include: 'arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa'. If only custom datasets need to be evaluated, this parameter can be set to `no`.
+- `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset.
+- `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation.
+- `--name`: Used to differentiate the result storage path for evaluating the same configuration, with the current time as the default.
+- `--eval_url`: The standard model invocation interface for OpenAI, for example, `http://127.0.0.1:8000/v1`. This needs to be set when evaluating in a deployed manner, usually not needed. Default is `None`.
   ```shell
   swift eval --eval_url http://127.0.0.1:8000/v1 --eval_is_chat_model true --model_type gpt4 --eval_token xxx
   ```
+- `--eval_token`: The token for the standard model invocation interface for OpenAI, with a default value of `'EMPTY'`, indicating no token.
+- `--eval_is_chat_model`: If `eval_url` is not empty, this value needs to be passed to determine if it is a "chat" model. False represents a "base" model. Default is `None`.
+- `--custom_eval_config`: Used for evaluating with custom datasets, and needs to be a locally existing file path. For details on file format, refer to [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set). Default is `None`.
+- `--eval_use_cache`: Whether to use already generated evaluation cache, so that previously evaluated results won't be rerun but only the evaluation results regenerated. Default is `False`.
 
-- `--eval_is_chat_model`: If `eval_url` is not None, `eval_is_chat_model` must be passed to tell the url calls a chat or a base model.
-- `--eval_token`: The token of the `eval_url`, default value `EMPTY` means token is not needed.
 
 ## app-ui Parameters
 

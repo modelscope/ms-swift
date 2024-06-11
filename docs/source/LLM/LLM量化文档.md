@@ -36,22 +36,17 @@ pip install auto_gptq -U
 pip install bitsandbytes -U
 
 # 使用hqq量化：
-# 需要transformers版本>4.40，从源码安装
-pip install git+https://github.com/huggingface/transformers
+# pip install transformers>=4.41
 pip install hqq
-# 如果要兼容训练，需要从源码安装peft
-pip install git+https://github.com/huggingface/peft.git
 
 # 使用eetq量化：
-# 需要transformers版本>4.40，从源码安装
-pip install git+https://github.com/huggingface/transformers
+# pip install transformers>=4.41
+
 # 参考https://github.com/NetEase-FuXi/EETQ
 git clone https://github.com/NetEase-FuXi/EETQ.git
 cd EETQ/
 git submodule update --init --recursive
 pip install .
-# 如果要兼容训练，需要从源码安装peft
-pip install git+https://github.com/huggingface/peft.git
 
 # 环境对齐 (通常不需要运行. 如果你运行错误, 可以跑下面的代码, 仓库使用最新环境测试)
 pip install -r requirements/framework.txt  -U
@@ -68,16 +63,16 @@ pip install -r requirements/llm.txt  -U
 # 如果出现量化的时候OOM, 可以适度降低`--quant_n_samples`(默认256)和`--quant_seqlen`(默认2048).
 # gptq-int4量化 (使用A100大约需要20分钟, 显存占用: 7GB)
 
-# awq: 使用`alpaca-zh alpaca-en sharegpt-gpt4-mini`作为量化数据集
+# awq: 使用`alpaca-zh alpaca-en sharegpt-gpt4:default`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method awq
+    --dataset alpaca-zh alpaca-en sharegpt-gpt4:default --quant_method awq
 
-# gptq: 使用`alpaca-zh alpaca-en sharegpt-gpt4-mini`作为量化数据集
+# gptq: 使用`alpaca-zh alpaca-en sharegpt-gpt4:default`作为量化数据集
 # gptq量化请先查看此issue: https://github.com/AutoGPTQ/AutoGPTQ/issues/439
 OMP_NUM_THREADS=14 CUDA_VISIBLE_DEVICES=0 swift export \
     --model_type qwen1half-7b-chat --quant_bits 4 \
-    --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method gptq
+    --dataset alpaca-zh alpaca-en sharegpt-gpt4:default --quant_method gptq
 
 # awq: 使用自定义量化数据集
 # gptq同理
@@ -216,11 +211,11 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 **Merge-LoRA & 量化**
 ```shell
-# 使用`alpaca-zh alpaca-en sharegpt-gpt4-mini`作为量化数据集
+# 使用`alpaca-zh alpaca-en sharegpt-gpt4:default`作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'output/qwen1half-4b-chat/vx-xxx/checkpoint-xxx' \
     --merge_lora true --quant_bits 4 \
-    --dataset alpaca-zh alpaca-en sharegpt-gpt4-mini --quant_method awq
+    --dataset alpaca-zh alpaca-en sharegpt-gpt4:default --quant_method awq
 
 # 使用微调时使用的数据集作为量化数据集
 CUDA_VISIBLE_DEVICES=0 swift export \

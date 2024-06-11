@@ -294,6 +294,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
             if output.finished:
                 prog_bar.update()
         yield resp_list
+    prog_bar.close()
 
 
 @torch.inference_mode()
@@ -372,7 +373,7 @@ def inference_vllm(llm_engine: LLMEngine,
             if output.finished:
                 outputs.append(output)
                 prog_bar.update()
-
+    prog_bar.close()
     for output in outputs:
         i = int(output.request_id)
         request = request_list[i]

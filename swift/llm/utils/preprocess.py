@@ -159,14 +159,14 @@ class ConversationsPreprocessor:
         kwargs = {}
         if has_system:
             kwargs['system'] = system
-        if has_history:
-            kwargs['history'] = history
-        if has_tools:
-            kwargs['tools'] = tools
         kwargs.update({
             'query': query,
             'response': response,
         })
+        if has_history:
+            kwargs['history'] = history
+        if has_tools:
+            kwargs['tools'] = tools
         dataset = HfDataset.from_dict(kwargs)
         return dataset
 

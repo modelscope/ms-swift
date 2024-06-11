@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 import inspect
 import math
 import os
+import platform
 import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Set, Tuple, Union
@@ -22,6 +24,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
+from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
@@ -80,6 +83,8 @@ class ArgumentsBase:
             logger.warning(f'use_flash_attn: {self.use_flash_attn}, ' f'but support_flash_attn: {support_flash_attn}')
 
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
+        if self.temperature == 0:
+            self.do_sample = False
         if self.do_sample is False:
             # fix warning
             self.temperature = 1.
@@ -267,6 +272,8 @@ class ArgumentsBase:
                 self.eval_batch_size = self.per_device_eval_batch_size
             if self.deepspeed_config_path is not None:
                 self.deepspeed = self.deepspeed_config_path
+            if self.eval_strategy is not None:
+                self.evaluation_strategy = self.eval_strategy
 
     def handle_custom_dataset_info(self):
         if self.custom_dataset_info is None:
@@ -396,7 +403,7 @@ class ArgumentsBase:
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
                 if self.model_type is None:
                     raise ValueError(f"model_id_or_path: '{model_id_or_path}' is not registered. "
-                                     'Please set `--model_type <model_type>` additionally.')
+                                     'Please set `--model_type <model_type> --model_id_or_path <model_id_or_path>`.')
                 assert self.model_cache_dir is None
 
         error_msg = f'The model_type you can choose: {list(MODEL_MAPPING.keys())}'
@@ -557,6 +564,7 @@ class SftArguments(ArgumentsBase):
     optim: str = 'adamw_torch'
     adam_beta1: float = 0.9
     adam_beta2: float = 0.999
+    adam_epsilon: float = 1e-8
     learning_rate: Optional[float] = None
     weight_decay: float = 0.1
     gradient_accumulation_steps: Optional[int] = None
@@ -570,7 +578,7 @@ class SftArguments(ArgumentsBase):
     save_only_model: Optional[bool] = None
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
-    dataloader_num_workers: int = 1
+    dataloader_num_workers: Optional[int] = None
     dataloader_pin_memory: bool = True
     dataloader_drop_last: bool = False
 
@@ -639,6 +647,7 @@ class SftArguments(ArgumentsBase):
     # compatibility hf
     per_device_train_batch_size: Optional[int] = None
     per_device_eval_batch_size: Optional[int] = None
+    eval_strategy: Literal['steps', 'epoch', 'no', None] = None
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
     train_dataset_mix_ratio: float = 0.
@@ -852,8 +861,13 @@ class SftArguments(ArgumentsBase):
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        if 'dataloader_num_workers' in template_info:
-            self.dataloader_num_workers = template_info['dataloader_num_workers']
+        if self.dataloader_num_workers is None:
+            if 'dataloader_num_workers' in template_info:
+                self.dataloader_num_workers = template_info['dataloader_num_workers']
+            elif platform.system() == 'Windows':
+                self.dataloader_num_workers = 0
+            else:
+                self.dataloader_num_workers = 1
             logger.info(f'Setting args.dataloader_num_workers: {self.dataloader_num_workers}')
         if 'dataloader_pin_memory' in template_info:
             self.dataloader_pin_memory = template_info['dataloader_pin_memory']
@@ -898,10 +912,13 @@ class SftArguments(ArgumentsBase):
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
         if 'include_num_input_tokens_seen' in parameters:
             kwargs['include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
+        if 'eval_strategy' in parameters:
+            kwargs['eval_strategy'] = self.evaluation_strategy
+        else:
+            kwargs['evaluation_strategy'] = self.evaluation_strategy
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
-            evaluation_strategy=self.evaluation_strategy,
             logging_dir=self.logging_dir,
             per_device_train_batch_size=self.batch_size,
             per_device_eval_batch_size=self.eval_batch_size,
@@ -929,6 +946,7 @@ class SftArguments(ArgumentsBase):
             optim=self.optim,
             adam_beta1=self.adam_beta1,
             adam_beta2=self.adam_beta2,
+            adam_epsilon=self.adam_epsilon,
             hub_model_id=self.hub_model_id,
             hub_private_repo=self.hub_private_repo,
             push_hub_strategy=self.push_hub_strategy,
@@ -939,7 +957,6 @@ class SftArguments(ArgumentsBase):
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
             predict_with_generate=self.predict_with_generate,
-            # generation_config=generation_config,
             local_rank=get_dist_setting()[1],
             save_only_model=self.save_only_model,
             train_sampler_random=self.train_sampler_random,
@@ -1183,7 +1200,7 @@ class InferArguments(ArgumentsBase):
             sft_args = json.load(f)
         imported_keys = [
             'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quantization_bit',
-            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
         ]
         if self.load_dataset_config:
             imported_keys += [
@@ -1251,23 +1268,31 @@ class DeployArguments(InferArguments):
 @dataclass
 class EvalArguments(InferArguments):
 
-    name: Optional[str] = None
-
-    eval_url: Optional[str] = None
-
-    eval_token: Optional[str] = 'EMPTY'
-
-    eval_is_chat_model: bool = None
-
-    eval_dataset: List[str] = field(default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
-
+    eval_dataset: List[str] = field(
+        default_factory=lambda: ['ceval', 'gsm8k', 'arc'],
+        metadata={'help': f"dataset choices: {['arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa']}"})
     eval_few_shot: Optional[int] = None
-
     eval_limit: Optional[int] = None
 
-    custom_eval_config: Optional[str] = None
+    name: str = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    eval_url: Optional[str] = None
+    eval_token: str = 'EMPTY'
+    eval_is_chat_model: Optional[bool] = None
+    custom_eval_config: Optional[str] = None  # path
+    eval_use_cache: bool = False
 
-    eval_use_cache: Optional[bool] = False
+    def __post_init__(self):
+        super().__post_init__()
+        if isinstance(self.eval_dataset, str):
+            self.eval_dataset = [self.eval_dataset]
+        if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
+            args.eval_dataset = []
+        if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
+            model = get_model_list_client(url=self.eval_url).data[0]
+            if self.eval_is_chat_model is None:
+                self.eval_is_chat_model = model.is_chat
+            if self.model_type is None is None:
+                self.model_type = model.id
 
     def select_dtype(self):
         if self.eval_url is None:

@@ -9,6 +9,8 @@ from typing import List, Optional, Tuple
 import safetensors
 import torch
 import torch.nn.functional as F
+import transformers
+from packaging import version
 from peft import PeftModel
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, trainer
@@ -71,7 +73,10 @@ def ta_train_dataloader(train_dataset, data_collator, sampler, args, batch_size)
     def acc_skip_first_batches(dataloader, num_batches=0):
         from accelerate.data_loader import SkipBatchSampler
         batch_sampler = SkipBatchSampler(dataloader._loader.batch_sampler, skip_batches=num_batches)
-        dataset = dataloader.dataset
+        try:
+            dataset = dataloader.dataset
+        except AttributeError:
+            dataset = dataloader._loader.dataset
         dataloader_params = {
             'collate_fn': data_collator,
             'num_workers': args.dataloader_num_workers,
@@ -207,6 +212,7 @@ def ta_save_optimizer_and_scheduler(optimizer, lr_scheduler, output_dir):
     xm.rendezvous('saving_optimizer_states')
     torch.save(optimizer.state_dict(), os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'))
     torch.save(lr_scheduler.state_dict(), os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'))
+    xm.rendezvous('saving_optimizer_states_done')
 
 
 def ta_load_optimizer_and_scheduler(optimizer, lr_scheduler, checkpoint, device):
@@ -221,8 +227,50 @@ def ta_load_optimizer_and_scheduler(optimizer, lr_scheduler, checkpoint, device)
     return optimizer, lr_scheduler
 
 
-def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
+def save_ta_ddp_checkpoint(self_model, tokenizer, args, output_dir: Optional[str] = None):
+    output_dir = output_dir if output_dir is not None else args.output_dir
     import torch_xla.core.xla_model as xm
+
+    model = self_model
+
+    if xm.is_master_ordinal():
+        os.makedirs(output_dir, exist_ok=True)
+        torch.save(args, os.path.join(output_dir, 'training_args.bin'))
+
+        xm.mark_step()
+        # Save a trained model and configuration using `save_pretrained()`.
+        # They can then be reloaded using `from_pretrained()`
+        supported_classes = (PreTrainedModel, PeftModel)
+        if not isinstance(model, supported_classes):
+            if isinstance(unwrap_model(model), supported_classes):
+                unwrap_model(model).save_pretrained(
+                    output_dir,
+                    is_main_process=args.should_save,
+                    state_dict=xm._maybe_convert_to_cpu(model.state_dict()),
+                    save_function=xm.save,
+                    safe_serialization=args.save_safetensors,
+                )
+            else:
+                logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
+                state_dict = xm._maybe_convert_to_cpu(model.state_dict())
+                if args.save_safetensors:
+                    safetensors.torch.save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
+                else:
+                    torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
+        else:
+            model.save_pretrained(
+                output_dir,
+                is_main_process=args.should_save,
+                save_function=xm.save,
+                safe_serialization=args.save_safetensors,
+                state_dict=xm._maybe_convert_to_cpu(model.state_dict()))
+        if tokenizer is not None and args.should_save:
+            tokenizer.save_pretrained(output_dir)
+
+
+def save_ta_fsdp_checkpoint(self_model, tokenizer, args, output_dir):
+    import torch_xla.core.xla_model as xm
+    xm.mark_step()
 
     if xm.is_master_ordinal(local=False):
         os.makedirs(output_dir, exist_ok=True)
@@ -237,18 +285,26 @@ def save_ta_checkpoint(self_model, tokenizer, args, output_dir):
     xm.rendezvous('saving_checkpoint')
     out_dir = os.path.join(output_dir, f'{xm.get_ordinal()}')
     if not isinstance(model, supported_classes):
-        state_dict = model.state_dict()
-        _unwrap_model = unwrap_model(model)
-        if isinstance(_unwrap_model, supported_classes):
-            _unwrap_model.save_pretrained(out_dir, safe_serialization=save_safetensors)
+        if isinstance(unwrap_model(model), supported_classes):
+            unwrap_model(model).save_pretrained(
+                out_dir,
+                state_dict=xm._maybe_convert_to_cpu(model.state_dict()),
+                save_function=xm.save,
+                safe_serialization=args.save_safetensors,
+            )
         else:
             logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
+            state_dict = xm._maybe_convert_to_cpu(model.state_dict())
             if save_safetensors:
                 safetensors.torch.save_file(state_dict, os.path.join(out_dir, 'model.safetensors'))
             else:
                 torch.save(state_dict, os.path.join(out_dir, 'pytorch_model.bin'))
     else:
-        model.save_pretrained(out_dir, safe_serialization=save_safetensors)
+        model.save_pretrained(
+            out_dir,
+            save_function=xm.save,
+            safe_serialization=args.save_safetensors,
+            state_dict=xm._maybe_convert_to_cpu(model.state_dict()))
     # save shard_metadata for consolidation.
     shard_meta = self_model._get_underlay_model().get_shard_metadata()
     xm.save(shard_meta, os.path.join(out_dir, 'shard_meta.pth'))
@@ -264,6 +320,7 @@ def ta_trim_graph():
         ta.mark_step()
 
 
+# Model patch
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., :x.shape[-1] // 2]
@@ -271,7 +328,7 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
     Args:
@@ -292,8 +349,12 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     Returns:
         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
     """
-    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
-    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    if position_ids is not None:
+        cos = cos[position_ids].unsqueeze(unsqueeze_dim)
+        sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+    else:
+        cos = cos.unsqueeze(unsqueeze_dim)
+        sin = sin.unsqueeze(unsqueeze_dim)
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -318,15 +379,25 @@ def patch_acc_model(model, args):
 
 def patch_llama_model(model):
 
-    def llama_attn_forward(
+    def update_causal_mask(
         self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        attention_mask: torch.Tensor,
+        input_tensor: torch.Tensor,
+        cache_position: torch.Tensor,
+        past_seen_tokens: int,
+    ):
+        # attention_mask is not supported in TorchAcc.
+        return None
+
+    def llama_attn_forward(self,
+                           hidden_states: torch.Tensor,
+                           attention_mask: Optional[torch.Tensor] = None,
+                           position_ids: Optional[torch.Tensor] = None,
+                           past_key_value: Optional[Tuple[torch.Tensor]] = None,
+                           output_attentions: bool = False,
+                           use_cache: bool = False,
+                           cache_position: Optional[torch.LongTensor] = None,
+                           **kwargs) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         from torchacc.ops import flash_attn_varlen_xla
         import einops
 
@@ -341,8 +412,13 @@ def patch_llama_model(model):
         kv_seq_len = key_states.shape[-2]
         assert past_key_value is None, 'past_key_value is not supported'
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        if version.parse(transformers.__version__) >= version.parse('4.36'):
+            cos, sin = self.rotary_emb(value_states, position_ids)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        else:
+            cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
         assert not output_attentions, 'output_attentions is not supported'
 
         if past_key_value is not None:
@@ -366,6 +442,9 @@ def patch_llama_model(model):
 
     for layer in model.model.layers:
         layer.self_attn.forward = types.MethodType(llama_attn_forward, layer.self_attn)
+
+    if version.parse(transformers.__version__) >= version.parse('4.40'):
+        model.model._update_causal_mask = types.MethodType(update_causal_mask, model.model)
 
     return model
 
@@ -391,7 +470,13 @@ def patah_chatglm_model(model):
         x_out2 = x_out2.flatten(3)
         return torch.cat((x_out2, x_pass), dim=-1)
 
-    def chatglm_attn_forward(self, hidden_states, attention_mask, rotary_pos_emb, kv_cache=None, use_cache=True):
+    def chatglm_attn_forward(self,
+                             hidden_states,
+                             attention_mask,
+                             rotary_pos_emb,
+                             kv_cache=None,
+                             use_cache=True,
+                             **kwargs):
         # hidden_states: [sq, b, h]
 
         # =================================================
@@ -468,7 +553,8 @@ def patah_chatglm_model(model):
         qkv = qkv.transpose(1, 3)
         qkv = einops.rearrange(qkv, 'b s ... -> (b s) ...')
         cu_q_lens = torch.arange(0, (bsz + 1) * q_len, step=q_len, dtype=torch.int32, device=qkv.device)
-        context_layer = flash_attn_varlen_qkvpacked_xla(qkv, cu_q_lens, q_len, 0.0, None, True, False)
+        context_layer = flash_attn_varlen_qkvpacked_xla(
+            qkv, cu_q_lens, q_len, dropout_p=0.0, softmax_scale=None, causal=True)
         context_layer = einops.rearrange(context_layer, '(b s) ... -> b s ...', b=bsz)
         context_layer = context_layer.permute(1, 0, 2, 3)
         new_context_layer_shape = context_layer.size()[:-2] + (self.core_attention.hidden_size_per_partition, )
@@ -496,14 +582,13 @@ def patah_chatglm_model(model):
 
 def patch_baichuan_model(model):
 
-    def baichuan_attn_forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    def baichuan_attn_forward(self,
+                              hidden_states: torch.Tensor,
+                              attention_mask: Optional[torch.Tensor] = None,
+                              past_key_value: Optional[Tuple[torch.Tensor]] = None,
+                              output_attentions: bool = False,
+                              use_cache: bool = False,
+                              **kwargs) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
 
         import einops
 
@@ -624,18 +709,17 @@ def patch_qwen2_model(model):
 
         return attn_output, attn_weights, past_key_value
 
-    def qwen2_forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ):
+    def qwen2_forward(self,
+                      input_ids: torch.LongTensor = None,
+                      attention_mask: Optional[torch.Tensor] = None,
+                      position_ids: Optional[torch.LongTensor] = None,
+                      past_key_values: Optional[List[torch.FloatTensor]] = None,
+                      inputs_embeds: Optional[torch.FloatTensor] = None,
+                      use_cache: Optional[bool] = None,
+                      output_attentions: Optional[bool] = None,
+                      output_hidden_states: Optional[bool] = None,
+                      return_dict: Optional[bool] = None,
+                      **kwargs):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states)
