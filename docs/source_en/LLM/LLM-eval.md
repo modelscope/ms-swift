@@ -59,29 +59,32 @@ pip install -e '.[eval]'
 
 ## Evaluation
 
-The command for evaluation is very simple. You only need to use the following command:
+Evaluation supports the use of vLLM for acceleration. Here we demonstrate the evaluation of the original model and the LoRA fine-tuned qwen2-7b-instruct.
 
 ```shell
-# Use the arc evaluation set, limit the evaluation to 10 samples for each subset, and use pt as the inference backend
-swift eval \
-    --model_type "qwen-7b-chat" \
-    --eval_dataset arc \
-    --eval_limit 10 \
-    --infer_backend pt
+# Original model (approximately half an hour on a single A100)
+CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
+
+# After LoRA fine-tuning
+CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint-xxx \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --merge_lora true \
 ```
 
 You can refer to [here](./Command-line-parameters.md#eval-parameters) for the list of evaluation parameters.
 
-The evaluation result will be displayed as follows:
+### Evaluation using the deployed method
 
-```text
-2024-04-10 17:18:45,861 - llmuses - INFO - *** Report table ***
-+---------+-----------+
-| Model   | arc       |
-+=========+===========+
-|         | 0.8 (acc) |
-+---------+-----------+
-Final report:{'report': [{'name': 'arc', 'metric': 'WeightedAverageAccuracy', 'score': 0.8, 'category': [{'name': 'DEFAULT', 'score': 0.8, 'subset': [{'name': 'ARC-Challenge', 'score': 0.8}]}], 'total_num': 10}], 'generation_info': {'time': 80.44219398498535, 'tokens': 743}}
+```shell
+# Start deployment using the OpenAI API method
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
+
+# Evaluate using the API
+swift eval --eval_url http://127.0.0.1:8000/v1 --eval_is_chat_model true \
+    --model_type qwen2-7b-instruct --eval_dataset ceval mmlu arc gsm8k
+
+# The same applies to the model after LoRA fine-tuning.
 ```
 
 ## Custom Evaluation Set

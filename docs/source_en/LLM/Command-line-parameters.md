@@ -6,6 +6,7 @@
 - [dpo Parameters](#dpo-parameters)
 - [merge-lora infer Parameters](#merge-lora-infer-parameters)
 - [export Parameters](#export-parameters)
+- [eval Parameters](#eval-parameters)
 - [app-ui Parameters](#app-ui-parameters)
 - [deploy Parameters](#deploy-parameters)
 
@@ -309,26 +310,20 @@ export parameters inherit from infer parameters, with the following added parame
 
 The eval parameters inherit from the infer parameters, and additionally include the following parameters:
 
-- `--name`: Default is `None`. The name of the evaluation, the final evaluation results will be stored in a folder named `{{model_type}-{name}}`.
-
-- `--eval_dataset`: The official dataset for evaluation, the default value is `['ceval', 'gsm8k', 'arc']`, and `mmlu` and `bbh` datasets are also supported. If you only need to evaluate a custom dataset, you can set this parameter to `no`.
-
-- `--eval_limit`: The number of samples for each sub-dataset of the evaluation set, default is `None` which means full evaluation.
-
-- `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
-
-- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set).
-
-- `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
-
-- `--eval_url`: The url of OpenAI standard model service. For example: `http://127.0.0.1:8000/v1`.
-
+- `--eval_dataset`: The official dataset for evaluation, with a default value of `['ceval', 'gsm8k', 'arc']`. Possible values include: 'arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa'. If only custom datasets need to be evaluated, this parameter can be set to `no`.
+- `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset.
+- `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation.
+- `--max_new_tokens`: Default value is `512`. This parameter is already defined in the 'infer' parameters, so the default value is overridden here.
+- `--name`: Used to differentiate the result storage path for evaluating the same configuration, with the current time as the default.
+- `--eval_url`: The standard model invocation interface for OpenAI, for example, `http://127.0.0.1:8000/v1`. This needs to be set when evaluating in a deployed manner, usually not needed. Default is `None`.
   ```shell
   swift eval --eval_url http://127.0.0.1:8000/v1 --eval_is_chat_model true --model_type gpt4 --eval_token xxx
   ```
+- `--eval_token`: The token for the standard model invocation interface for OpenAI, with a default value of `'EMPTY'`, indicating no token.
+- `--eval_is_chat_model`: If `eval_url` is not empty, this value needs to be passed to determine if it is a "chat" model. False represents a "base" model. Default is `None`.
+- `--custom_eval_config`: Used for evaluating with custom datasets, and needs to be a locally existing file path. For details on file format, refer to [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set). Default is `None`.
+- `--eval_use_cache`: Whether to use already generated evaluation cache, so that previously evaluated results won't be rerun but only the evaluation results regenerated. Default is `False`.
 
-- `--eval_is_chat_model`: If `eval_url` is not None, `eval_is_chat_model` must be passed to tell the url calls a chat or a base model.
-- `--eval_token`: The token of the `eval_url`, default value `EMPTY` means token is not needed.
 
 ## app-ui Parameters
 
