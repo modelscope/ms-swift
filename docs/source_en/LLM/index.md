@@ -1,19 +1,5 @@
 ## LLM Documentation
 
-### ⭐️LLM Best Practices!
-
-1. [Self Cognition Best Practice](Self-cognition-best-practice.md)
-2. [Agent Training and Inference Best Practice](Agent-best-practice.md)
-3. [Qwen1.5 Best Practice](Qwen1.5-best-practice.md)
-4. [NPU Best Practice](NPU-best-practice.md)
-5. [Grok-1 Training and Inference Best Practice](Grok-1-best-practice.md)
-
-
-### 🍀Multi-Modal Best Practices!
-
-Please check: [Multi-Modal Best Practices](../Multi-Modal/index.md)
-
-
 ### 📚Tutorials!
 
 1. [LLM Inference](LLM-inference.md)
@@ -25,6 +11,17 @@ Please check: [Multi-Modal Best Practices](../Multi-Modal/index.md)
 7. [VLLM Inference and Deployment](VLLM-inference-acceleration-and-deployment.md)
 8. [LLM Experimental](LLM-exp.md)
 9. [ORPO Training](ORPO.md)
+10. [SimPO Training](SimPO.md)
+
+### ⭐️Best Practices!
+
+1. [Self Cognition Best Practice](Self-cognition-best-practice.md)
+2. [Agent Training and Inference Best Practice](Agent-fine-tuning-best-practice.md)
+3. [Agent deployment best practice](Agent-deployment-best-practice.md)
+4. [Qwen1.5 Best Practice](Qwen1.5-best-practice.md)
+5. [NPU Best Practice](NPU-best-practice.md)
+6. [Grok-1 Training and Inference Best Practice](Grok-1-best-practice.md)
+
 
 ### 🐔References！
 1. [Customization for models and datasets](Customization.md)
@@ -32,3 +29,7 @@ Please check: [Multi-Modal Best Practices](../Multi-Modal/index.md)
 3. [Supported models and datasets](Supported-models-datasets.md)
 4. [Benchmark](Benchmark.md)
 5. [Compatible with the HuggingFace ecosystem](Compat-HF.md)
+
+### 🍀Multi-Modal Best Practices!
+
+Please check: [Multi-Modal Best Practices](../Multi-Modal/index.md)

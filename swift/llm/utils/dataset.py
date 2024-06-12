@@ -20,7 +20,8 @@ from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor)
+                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
+                         preprocess_sharegpt)
 from .template import History
 from .utils import download_dataset
 
@@ -213,21 +214,26 @@ def register_local_dataset(
 
 
 def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
+    preprocess_func = None
+    if 'columns' in d_info:
+        preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
+        d_info.pop('columns')
+        d_info['preprocess_func'] = preprocess_func
+    elif 'conversations' in d_info:
+        preprocess_func = ConversationsPreprocessor(**d_info['conversations'])
+        d_info.pop('conversations')
+        d_info['preprocess_func'] = preprocess_func
+
     if 'dataset_path' in d_info:
         base_dir = kwargs.pop('base_dir', None)
         register_local_dataset(dataset_name, d_info.pop('dataset_path', None), base_dir, **d_info)
         return
 
     assert 'dataset_id' in d_info or 'hf_dataset_id' in d_info
-    preprocess_func = None
-    if 'columns' in d_info:
-        preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
-        d_info.pop('columns')
-    elif 'conversations' in d_info:
-        preprocess_func = ConversationsPreprocessor(**d_info['conversations'])
-        d_info.pop('conversations')
+
     dataset_id = d_info.pop('dataset_id', None)
     subsets = d_info.pop('subsets', None)
+    preprocess_func = d_info.pop('preprocess_func', None)
     register_dataset(dataset_name, dataset_id, subsets, preprocess_func, get_dataset_from_repo, **d_info, exist_ok=True)
 
 
@@ -809,30 +815,10 @@ register_dataset(
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
 
-
-def _preprocess_sharegpt(dataset: HfDataset) -> HfDataset:
-    query = []
-    response = []
-    history: List[History] = []
-    for d in tqdm(dataset):
-        if isinstance(d['conversation'], str):
-            try:
-                conversation = ast.literal_eval(d['conversation'])
-            except SyntaxError:
-                continue
-        query.append(conversation[-1]['human'])
-        response.append(conversation[-1]['assistant'])
-        h = []
-        for c in conversation[:-1]:
-            h.append([c['human'], c['assistant']])
-        history.append(h)
-    return HfDataset.from_dict({'query': query, 'response': response, 'history': history})
-
-
 register_dataset(
     DatasetName.sharegpt,
     'huangjintao/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
-    _preprocess_sharegpt,
+    preprocess_sharegpt,
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round'])
 
@@ -1109,11 +1095,14 @@ def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['non
     return dataset
 
 
-def _safe_split(s: str, sep: str, use_0: bool) -> Tuple[str, str]:
+def _safe_split(s: str, sep: str, use_0: bool, split_mode: Literal['left', 'right'] = 'left') -> Tuple[str, str]:
     # use_0: When the length of the part is 1, is it considered as part0 or part1.
     if s is None or len(s) == 0:
         return None, None
-    part = s.split(sep)
+    if split_mode == 'left':
+        part = s.split(sep, 1)
+    else:
+        part = s.rsplit(sep, 1)
     if len(part) == 1:
         if use_0:
             part = part[0], None
@@ -1131,8 +1120,15 @@ def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
         use_hf = strtobool(os.environ.get('USE_HF', 'False'))
     elif isinstance(use_hf, str):
         use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
-    part1, dataset_sample = _safe_split(other, '#', True)
-    dataset_name, subsets = _safe_split(part1, ':', True)
+    if os.path.isfile(other):
+        part1, dataset_sample = other, None
+    else:
+        part1, dataset_sample = _safe_split(other, '#', True, 'right')
+    if os.path.isfile(part1):
+        dataset_name, subsets = part1, None
+    else:
+        dataset_name, subsets = _safe_split(part1, ':', True)
+
     if subsets is not None:
         subset_list = subsets.split('/')
         subset_list = [subset.strip() for subset in subset_list]
@@ -1168,7 +1164,7 @@ def _preprocess_self_cognition_dataset(
     if len(model_author) == 1 or model_author[1] is None:
         model_author = (model_author[0], model_author[0])
     res_d_list = []
-    for dataset in dataset_list:
+    for dataset in dataset_list:  # train_dataset, val_dataset
         if dataset is None:
             res_d_list.append(dataset)
             continue
@@ -1198,36 +1194,39 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
                 container[v[k_name]] = []
             container[v[k_name]].append(k)
 
-    dataset_list = []
     res_dataset = []
+    dataset_list = []
+    # Add dataset_id or dataset_path to dataset_list, and add dataset_name to res_dataset.
     for d in dataset_name_list:
         use_hf, d_name = parse_dataset_name(d)[:2]
-        if '/' in d_name:
-            dataset_list.append((d, use_hf, d_name))
-        else:
+        if d_name in DATASET_MAPPING:
             res_dataset.append(d)
+        else:
+            dataset_list.append((d, use_hf, d_name))
 
     extra_dataset = []
-    for d, use_hf, d_name in dataset_list:
+    for d, use_hf, d_id_or_path in dataset_list:
         dataset_mapping = hf_dataset_mapping if use_hf else ms_dataset_mapping
-        if d_name in dataset_mapping:
-            for d_name2 in dataset_mapping[d_name]:
-                res_dataset.append(d.replace(d_name, d_name2))
+        if d_id_or_path in dataset_mapping:
+            # Add the dataset_name corresponding to the dataset_id to res_dataset.
+            for d_name in dataset_mapping[d_id_or_path]:
+                res_dataset.append(d.replace(d_id_or_path, d_name))
         else:
-            extra_dataset.append((d, use_hf, d_name))
+            # This dataset needs to be registered.
+            extra_dataset.append((d, use_hf, d_id_or_path))
 
-    for i, (d, use_hf, d_name) in enumerate(extra_dataset):
+    for i, (d, use_hf, d_id_or_path) in enumerate(extra_dataset):
         d_info = {}
-        d_name2 = f'_{i}'
-        if os.path.isfile(d_name):
-            d_info['dataset_path'] = d_name
+        d_name = f'_{i}'
+        if os.path.isfile(d_id_or_path):
+            d_info['dataset_path'] = d_id_or_path
         else:
             if use_hf:
-                d_info['hf_dataset_id'] = d_name
+                d_info['hf_dataset_id'] = d_id_or_path
             else:
-                d_info['dataset_id'] = d_name
-        register_dataset_info(d_name2, d_info)
-        res_dataset.append(d.replace(d_name, d_name2))
+                d_info['dataset_id'] = d_id_or_path
+        register_dataset_info(d_name, d_info)
+        res_dataset.append(d.replace(d_id_or_path, d_name))
     return res_dataset
 
 
@@ -1246,6 +1245,7 @@ def get_dataset(
     train_dataset_list: List[HfDataset] = []
     val_dataset_list: List[HfDataset] = []
 
+    # dataset_id_or_path -> dataset_name
     dataset_name_list = _dataset_id_to_name(dataset_name_list)
     for dataset_name in dataset_name_list:
         use_hf, dataset_name, subsets, dataset_sample = parse_dataset_name(dataset_name)

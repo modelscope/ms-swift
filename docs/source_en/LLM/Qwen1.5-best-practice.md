@@ -2,6 +2,9 @@
 
 This introduces how to perform inference, self-cognition fine-tuning, quantization, and deployment on **Qwen1.5-7B-Chat** and **Qwen1.5-72B-Chat**, corresponding to **low-resource and high-resource** environments respectively.
 
+The best practice for self-cognition fine-tuning, inference and deployment of Qwen2-72B-Instruct using dual-card 80GiB A100 can be found [here](https://github.com/modelscope/swift/issues/1092).
+
+
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
 - [Qwen1.5-7B-Chat](#qwen15-7b-chat)
@@ -188,8 +191,7 @@ sft_args = SftArguments(
              f'{DatasetName.self_cognition}#500'],
     logging_steps=5,
     max_length=2048,
-    learning_rate=5e-5,
-    warmup_ratio=0.4,
+    learning_rate=1e-4,
     output_dir='output',
     lora_target_modules=['ALL'],
     model_name=['小黄', 'Xiao Huang'],
@@ -212,8 +214,7 @@ swift sft \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --learning_rate 1e-4 \
     --output_dir output \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
@@ -231,8 +232,7 @@ swift sft \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 2048 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --learning_rate 1e-4 \
     --output_dir output \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
@@ -415,7 +415,9 @@ for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
 
     print(f'query: {query}')
     print('response: ', end='')
+    response = ''
     for chunk in stream_resp:
+        response += chunk.choices[0].delta.content
         print(chunk.choices[0].delta.content, end='', flush=True)
     print()
     messages.append({'role': 'assistant', 'content': response})
@@ -483,8 +485,7 @@ swift sft \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --logging_steps 5 \
     --max_length 4096 \
-    --learning_rate 5e-5 \
-    --warmup_ratio 0.4 \
+    --learning_rate 1e-4 \
     --output_dir output \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
@@ -575,7 +576,9 @@ for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
 
     print(f'query: {query}')
     print('response: ', end='')
+    response = ''
     for chunk in stream_resp:
+        response += chunk.choices[0].delta.content
         print(chunk.choices[0].delta.content, end='', flush=True)
     print()
     messages.append({'role': 'assistant', 'content': response})

@@ -186,7 +186,7 @@ class ConstantLengthDataset(IterableDataset):
     def get_packed_dataset(template: 'Template',
                            dataset,
                            seq_length=1024,
-                           num_of_sequences=1024,
+                           num_of_sequences=2048,
                            chars_per_token=3.6,
                            append_concat_token=True,
                            add_special_tokens=True,
@@ -197,20 +197,25 @@ class ConstantLengthDataset(IterableDataset):
         if lazy_tokenize:
             return constant_length_iterator
 
-        def data_generator(constant_length_iterator):
-            yield from constant_length_iterator
-
-        try:
-            packed_dataset = HfDataset.from_generator(
-                data_generator, gen_kwargs={'constant_length_iterator': constant_length_iterator})
-        except (DatasetGenerationError, SchemaInferenceError) as exc:
-            raise ValueError(
-                'Error occurred while packing the dataset. '
-                'Make sure that your dataset has enough samples to at least yield one packed sequence.') from exc
-        return packed_dataset
+        dataset_list = []
+        for item in constant_length_iterator:
+            dataset_list.append(item)
+        return HfDataset.from_list(dataset_list)
 
     def __len__(self):
         return len(self.dataset)
+
+    def calculate_matched_group(self, sequences: Dict[str, List[int]]):
+        # https://arxiv.org/pdf/2404.10830
+        import binpacking
+        binpacked = binpacking.to_constant_volume(sequences, self.seq_length, weight_pos=1)
+        packed_sequence = []
+        for sequence in binpacked:
+            packed = {}
+            for key in sequence[0][0].keys():
+                packed[key] = np.concatenate([s[0][key] for s in sequence])
+            packed_sequence.append(packed)
+        return packed_sequence
 
     def __iter__(self):
         iterator = iter(self.dataset)
@@ -229,18 +234,14 @@ class ConstantLengthDataset(IterableDataset):
                     more_examples = False
                     break
 
-            packed_sequences = {}
+            sequences = []
             for example in buffer:
                 input, _ = self.template.encode(example)
-                for key in input.keys():
-                    if key not in packed_sequences:
-                        packed_sequences[key] = []
-                    packed_sequences[key].extend(input[key])
+                sequences.append((input, len(input['input_ids'])))
 
-            lens = len(packed_sequences[list(packed_sequences.keys())[0]])
-            for i in range(0, lens, self.seq_length):
-                example = {key: value[i:i + self.seq_length] for key, value in packed_sequences.items()}
-                yield example
+            packed_sequences = self.calculate_matched_group(sequences)
+            for sequence in packed_sequences:
+                yield sequence
 
 
 class LazyLLMDataset(Dataset):
@@ -347,8 +348,8 @@ def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[in
     def _is_special(token: int) -> bool:
         if token < 0:
             return True
-        if tokenizer.eos_token_id != tokenizer.pad_token_id:
-            return token == tokenizer.pad_token_id
+        if hasattr(tokenizer, 'placeholder_tokens'):
+            return token in tokenizer.placeholder_tokens_id
         return False
 
     if isinstance(input_ids, torch.Tensor):
@@ -503,8 +504,7 @@ class TokenListIteratorStreamer(BaseStreamer):
         if value.ndim > 1:
             value = value[0]
         value = value.tolist()
-        for v in value:
-            self.token_queue.put(v)
+        self.token_queue.put(value)
 
     def end(self) -> None:
         self.token_queue.put(self.stop_signal)
@@ -512,7 +512,7 @@ class TokenListIteratorStreamer(BaseStreamer):
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> List[int]:
         value = self.token_queue.get(timeout=self.timeout)
         if value == self.stop_signal:
             raise StopIteration()
@@ -526,6 +526,7 @@ def inference_stream(model: PreTrainedModel,
                      query: str,
                      history: Optional[History] = None,
                      system: Optional[str] = None,
+                     images: Optional[List[str]] = None,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
@@ -541,6 +542,8 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+    if images is None:
+        images = []
 
     # agent support
     is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
@@ -553,12 +556,17 @@ def inference_stream(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'images': kwargs.pop('images', None)  # for vl. str.
+        'images': images,  # for vl. str.
+        'tools': kwargs.pop('tools', None)
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
-    if len(inputs) == 0:
-        raise ValueError('input_ids exceeds `max_length`. Please increase the value of `max_length`.')
+
+    truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
+    if len(inputs) == 0 and truncation_strategy == 'delete':
+        # input_ids exceeds `max_length`. Please increase the value of `max_length`.
+        return '', history
+
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
@@ -632,8 +640,8 @@ def inference_stream(model: PreTrainedModel,
     is_finished = False
     while not is_finished:
         try:
-            token = next(streamer)
-            raw_generate_ids.append(token)
+            token_list = next(streamer)
+            raw_generate_ids += token_list
         except StopIteration:
             is_finished = True
         generate_ids = template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
@@ -658,6 +666,7 @@ def inference(model: PreTrainedModel,
               query: str,
               history: Optional[History] = None,
               system: Optional[str] = None,
+              images: Optional[List[str]] = None,
               *,
               generation_config: Optional[GenerationConfig] = None,
               stop_words: Optional[StopWords] = None,
@@ -677,6 +686,8 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+    if images is None:
+        images = []
 
     is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
     if is_observation:
@@ -687,13 +698,15 @@ def inference(model: PreTrainedModel,
         'query': query,
         'history': history,
         'system': system,
-        'images': kwargs.pop('images', None)  # for vl. str.
+        'images': images,  # for vl. str.
+        'tools': kwargs.pop('tools', None)
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
 
-    truncation_strategy = kwargs.pop('truncation_strategy', None)
+    truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
     if len(inputs) == 0 and truncation_strategy == 'delete':
+        # input_ids exceeds `max_length`. Please increase the value of `max_length`.
         return '', history
 
     inputs.pop('labels', None)
@@ -816,16 +829,53 @@ def messages_to_history(messages: Messages) -> Dict[str, Any]:
         system = messages[0]['content']
         messages = messages[1::]
     history = []
+    history_roles = []
     for q, r in zip(messages[::2], messages[1::2]):
         history.append([q['content'], r['content']])
+        history_roles.append([q['role'], r['role']])
     query = None
+    query_role = None
     if len(messages) % 2 == 1:
         query = messages[-1]['content']
+        query_role = messages[-1]['role']
     return {
         'history': history,
+        'history_roles': history_roles,
         'query': query,
+        'query_role': query_role,
         'system': system,
     }
+
+
+def messages_join_observation(messages: Messages):
+    """
+        Joins observations from 'tool' message into the 'assistant' response.
+
+        Example:
+        ---------
+        Original messages:
+        messages = [
+            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
+            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
+                  [{"location": "Hangzhou"}]\nObservations:'},
+            {'role': 'tool', 'content': 'It is 26 degrees Celsius and sunny in Hangzhou today.'}
+        ]
+
+        Transformed messages:
+        messages = [
+            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
+            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
+                  [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.'}
+        ]
+        """
+
+    if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'] and messages[-2][
+            'content'].endswith('Observation:'):
+        assert messages[-1]['role'] == 'tool'
+        observations = messages[-1]['content']
+        messages.pop(-1)
+        messages[-1]['content'] += observations
+    return
 
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:

@@ -1,4 +1,4 @@
-# InternVL Best Practices
+# InternVL Best Practice
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -21,19 +21,22 @@ Inference for [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScop
 
 Inference with [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary) and [internvl-chat-v1.5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary).
 
-The tutorial below takes `internvl-chat-v1.5` as an example, and you can change to `--model_type internvl-chat-v1_5-int8` to select the INT8 version of the model.
+The tutorial below takes `internvl-chat-v1.5` as an example, and you can change to `--model_type internvl-chat-v1_5-int8` to select the INT8 version of the model. Alternatively, select the Mini-Internvl model by choosing either `mini-internvl-chat-2b-v1_5` or `mini-internvl-chat-4b-v1_5`.
 
 **Note**
 - If you want to use a local model file, add the argument --model_id_or_path /path/to/model.
 - If your GPU does not support flash attention, use the argument --use_flash_attn false. And for int8 models, it is necessary to specify `dtype --bf16` during inference, otherwise the output may be garbled.
+- The model's configuration specifies a relatively small max_length of 2048, which can be modified by setting `--max_length`.
+- Memory consumption can be reduced by using the parameter `--gradient_checkpointing true`.
+- The InternVL series of models only support training on datasets that include images.
 
 ```shell
 # Experimental environment: A100
 # 55GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --dtype bf16
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl-chat-v1_5 --dtype bf16 --max_length 4096
 
 # 2*30GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf16
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf16 --max_length 4096
 ```
 
 Output: (supports passing in local path or URL)
@@ -178,6 +181,7 @@ LoRA fine-tuning:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type internvl-chat-v1_5 \
     --dataset coco-en-2-mini \
+    --max_length 4096
 
 # device_map
 # Experimental environment: 2*A100...
@@ -185,6 +189,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-en-2-mini \
+    --max_length 4096
 
 # ddp + deepspeed-zero2
 # Experimental environment: 2*A100...
@@ -193,6 +198,7 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type  internvl-chat-v1_5 \
     --dataset coco-en-2-mini \
+    --max_length 4096 \
     --deepspeed default-zero2
 ```
 
@@ -205,6 +211,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --model_type internvl-chat-v1_5 \
     --dataset coco-en-2-mini \
     --sft_type full \
+    --max_length 4096
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl formats. Here is an example of a custom dataset:
@@ -223,7 +230,8 @@ Direct inference:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx \
-    --load_dataset_config true
+    --load_dataset_config true \
+    --max_length 4096
 ```
 
 **merge-lora** and inference:
@@ -234,10 +242,12 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
-    --load_dataset_config true
+    --load_dataset_config true \
+    --max_length 4096
 
 # device map
 CUDA_VISIBLE_DEVICES=0,1 swift infer \
     --ckpt_dir "output/internvl-chat-v1_5/vx-xxx/checkpoint-xxx-merged" \
-    --load_dataset_config true
+    --load_dataset_config true \
+    --max_length 4096
 ```

@@ -8,15 +8,13 @@
 
 We support three methods for **customizing datasets**.
 
-1. \[Recommended\] using command line arguments: It is more convenient to support custom datasets, and it supports four dataset formats (using `SmartPreprocessor`) as well as the `dataset_id` and `dataset_path`.
-2. Adding datasets to `dataset_info.json` is more flexible than the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--dataset_info_path xxx.json` (for users who prefer pip install over git clone to expand datasets).
-3. Registering datasets: More flexible than the first two methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
+1. \[Recommended] Use the command line argument directly to specify `--dataset xxx.json yyy.jsonl zzz.csv`, which is more convenient for supporting custom datasets. It supports five data formats (using `SmartPreprocessor`, supported dataset formats are listed below) and supports `dataset_id` and `dataset_path`. No need to modify the `dataset_info.json` file.
+2. Adding datasets to `dataset_info.json` is more flexible but cumbersome compared to the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--custom_dataset_info xxx.json` (for users who prefer pip install over git clone to expand datasets).
+3. Registering datasets: More flexible but cumbersome compared to the first and second methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
 
-### 📌 \[Recommended\] using Command Line Arguments
+### 📌 \[Recommended\] Using Command Line Arguments Directly
 
 Supports directly passing in custom `dataset_id` (compatible with MS and HF) and `dataset_path`, as well as simultaneously passing in multiple custom datasets and their respective sample sizes. The script will automatically preprocess and concatenate the datasets. If a `dataset_id` is passed in, it will default to using the 'default' subset in the dataset_id and set the split to 'train'. If the dataset_id has already been registered, it will use the subsets, split, and preprocessing functions that were passed in during registration. If a `dataset_path` is passed in, it can be specified as a relative path or an absolute path, where the relative path is relative to the current running directory.
-
-
 
 
 ```bash
@@ -92,6 +90,14 @@ Multi-Round Dialogue
 ```
 
 **Format 4:**
+
+```jsonl
+{"system": "00000", "conversation": [{"human": "11111", "assistant": "22222"}]}
+{"conversation": [{"human": "aaaaa", "assistant": "bbbbb"}]}
+{"conversation": [{"human": "AAAAA", "assistant": "BBBBB"}, {"human": "CCCCC", "assistant": "DDDDD"}, {"human": "EEEEE", "assistant": "FFFFF"}]}
+```
+
+**Format 5:**
 
 ```csv
 system,instruction,input,output
@@ -237,13 +243,13 @@ class CustomTemplateType:
 
 
 @register_model(CustomModelType.tigerbot_7b,
-                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama2,
+                'TigerResearch/tigerbot-7b-base-v3', LoRATM.llama,
                 TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b,
-                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama2,
+                'TigerResearch/tigerbot-13b-base-v2', LoRATM.llama,
                 TemplateType.default_generation)
 @register_model(CustomModelType.tigerbot_13b_chat,
-                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
+                'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama,
                 CustomTemplateType.tigerbot)
 def get_tigerbot_model_tokenizer(model_dir: str,
                                  torch_dtype: Dtype,

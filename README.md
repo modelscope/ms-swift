@@ -47,6 +47,13 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 2024.06.11: Support for tool-calling agent deployment that conform to the OpenAI interface.You can refer to [Agent deployment best practice](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md)
+- 🔥2024.06.07: Support **Qwen2** series LLM, including Base and Instruct models of 0.5B, 1.5B, 7B, and 72B, as well as corresponding quantized versions gptq-int4, gptq-int8, and awq-int4. The best practice for self-cognition fine-tuning, inference and deployment of Qwen2-72B-Instruct using dual-card 80GiB A100 can be found [here](https://github.com/modelscope/swift/issues/1092).
+- 🔥2024.06.05: Support for **glm4** series LLM and glm4v-9b-chat MLLM. You can refer to [glm4v best practice](docs/source_en/Multi-Modal/glm4v-best-practice.md).
+- 🔥2024.06.01: Supoprts **SimPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/SimPO.md) to start training!
+- 🔥2024.06.01: Support for deploying large multimodal models, please refer to the [Multimodal Deployment Documentation](docs/source_en/Multi-Modal/mutlimodal-deployment.md) for more information.
+- 2024.05.31: Supports Mini-Internvl model, Use model_type `mini-internvl-chat-2b-v1_5` and `mini-internvl-chat-4b-v1_5`to train.
+- 2024.05.24: Supports Phi3-vision model, Use model_type `phi3-vision-128k-instruct` to train.
 - 2024.05.22: Supports DeepSeek-V2-Lite series models, model_type are `deepseek-v2-lite` and `deepseek-v2-lite-chat`
 - 2024.05.22: Supports TeleChat-12B-v2 model with quantized version, model_type are `telechat-12b-v2` and `telechat-12b-v2-gptq-int4`
 - 🔥2024.05.21: Inference and fine-tuning support for MiniCPM-Llama3-V-2_5 are now available. For more details, please refer to [minicpm-v-2.5 Best Practice](docs/source/Multi-Modal/minicpm-v-2.5最佳实践.md).
@@ -62,14 +69,14 @@ SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spa
 - 2024.04.29: Supports inference and fine-tuning of InternVL-Chat-V1.5 model. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 🔥2024.04.26: Support **LISA** and **unsloth** training! Specify `--lisa_activated_layers=2` to use LISA(to reduce the memory cost to 30 percent!), specify `--tuner_backend unsloth` to use unsloth to train a huge model(full or lora) with lesser memory(30 percent or lesser) and faster speed(5x)!
 - 🔥2024.04.26: Support the fine-tuning and inference of Qwen1.5-110B and Qwen1.5-110B-Chat model, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_110b_chat/lora_ddp_ds/sft.sh) to start training!
+<details><summary>More</summary>
+
 - 2024.04.24: Support for inference and fine-tuning of Phi3 series models. Including: [phi3-4b-4k-instruct](examples/pytorch/llm/scripts/phi3_4b_4k_instruct/lora), phi3-4b-128k-instruct.
 - 2024.04.22: Support for inference, fine-tuning, and deployment of **chinese-llama-alpaca-2** series models. This includes：chinese-llama-2-1.3b, chinese-llama-2-7b, chinese-llama-2-13b, chinese-alpaca-2-1.3b, chinese-alpaca-2-7b and chinese-alpaca-2-13b along with their corresponding 16k and 64k long text versions.
 - 2024.04.22: Support for inference and fine-tuning of Llama3 GPTQ-Int4, GPTQ-Int8, and AWQ series models. Support for inference and fine-tuning of chatglm3-6b-128k, Openbuddy-Llama3.
 - 2024.04.20: Support for inference, fine-tuning, and deployment of **Atom** series models. This includes: Atom-7B and Atom-7B-Chat. use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/atom_7b_chat/lora/sft.sh) to train.
 - 2024.04.19: Support for single-card, DDP, ZeRO2, and ZeRO3 training and inference with NPU, please refer to [NPU Inference and Fine-tuning Best Practice](docs/source_en/LLM/NPU-best-practice.md).
 - 2024.04.19: Support for inference, fine-tuning, and deployment of **Llama3** series models. This includes: Llama-3-8B, Llama-3-8B-Instruct, Llama-3-70B, and Llama-3-70B-Instruct. use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/llama3_8b_instruct/lora/sft.sh) to train.
-<details><summary>More</summary>
-
 - 2024.04.18: Supported models: wizardlm2-7b-awq, wizardlm2-8x22b, yi-6b-chat-awq, yi-6b-chat-int8, yi-34b-chat-awq, yi-34b-chat-int8. Supported `--deepspeed zero3-offload` and provided default zero3-offload configuration file for zero3+cpu offload usage.
 - 2024.04.18: Supported compatibility with HuggingFace ecosystem using the environment variable `USE_HF`, switching to use models and datasets from HF. Please refer to the [HuggingFace ecosystem compatibility documentation](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/Compat-HF.md).
 - 2024.04.17: Support the evaluation for OpenAI standard interfaces. Check the [parameter documentation](docs/source_en/LLM/Command-line-parameters.md#eval-parameters) for details.
@@ -232,7 +239,7 @@ You can refer to the following scripts to customize your own training script.
 |------------------|-------------------------------------------------------------------------------|
 | Pretraining      | Text Generation                                                               |
 | Fine-tuning      | Single-turn/Multi-turn<br>Agent Training/Self-cognition<br>Multi-modal Vision/Multi-modal Speech|
-| Human Alignment  | DPO<br>ORPO                                                                   |
+| Human Alignment  | DPO<br>ORPO<br>SimPO                                                          |
 | Text-to-Image    | DreamBooth, etc.                                                              |
 | Text-to-Video    | -                                                                             |
 
@@ -434,11 +441,21 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 ### Evaluation
 
+Original model:
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat --eval_dataset mmlu ceval
+# We recommend using vLLM for acceleration (arc evaluated in half a minute)
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
 ```
 
-### Export
+LoRA fine-tuned:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir xxx/checkpoint-xxx \
+    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --merge_lora true \
+```
+
+### Quantization
 
 Original model:
 ```shell
@@ -455,6 +472,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 ```
 
 ### Deployment
+The client uses the OpenAI API for invocation, for details refer to the [LLM deployment documentation](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md).
 
 Original model:
 ```shell
@@ -480,8 +498,8 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 | Model Type                                     | Model Introduction                                                     | Language           | Model Size                             | Model Type                                 |
 |------------------------------------------------|------------------------------------------------------------------------|--------------------|----------------------------------------|------------------------------------------- |
-| Qwen<br>Qwen1.5                                   | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-110B<br>including quantized versions | base model<br>chat model<br>MoE model<br>code model                      |
-| ChatGLM2<br>ChatGLM3<br>Codegeex2                    | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B                                     | base model<br>chat model<br>code model<br>long text model  |
+| Qwen<br>Qwen1.5<br>Qwen2                            | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-110B<br>including quantized versions | base model<br>chat model<br>MoE model<br>code model                      |
+| ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4           | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B-9B                                     | base model<br>chat model<br>code model<br>long text model  |
 | Baichuan/Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>including quantized versions             | base model<br>chat model                       |
 | Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese<br>English    | 2B-102B                                | instruct model                                 |
 | XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese<br>English    | 7B-65B                                 | base model<br>chat model<br>long text model<br>MoE model                |
@@ -521,18 +539,20 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 | Model Type         | Model Introduction                                                           | Language           | Model Size                         | Model Type         |
 |------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
-| Qwen-VL            | [Tongyi Qwen vision model](https://github.com/QwenLM)                        | Chinese<br>English    | 7B<br>including quantized versions | base model<br>chat model |
-| Qwen-Audio         | [Tongyi Qwen speech model](https://github.com/QwenLM)                        | Chinese<br>English    | 7B                                 | base model<br>chat model |
-| YI-VL              | [01AI's YI series vision models](https://github.com/01-ai)                   | Chinese<br>English    | 6B-34B                             | chat model         |
+| Qwen-VL            | [Tongyi Qwen vision model](https://github.com/QwenLM)                        | Chinese<br>English | 7B<br>including quantized versions | base model<br>chat model |
+| Qwen-Audio         | [Tongyi Qwen speech model](https://github.com/QwenLM)                        | Chinese<br>English | 7B                                 | base model<br>chat model |
+| YI-VL              | [01AI's YI series vision models](https://github.com/01-ai)                   | Chinese<br>English | 6B-34B                             | chat model         |
 | XComposer2         | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese<br>English | 7B                                 | chat model         |
-| DeepSeek-VL        | [DeepSeek series vision models](https://github.com/deepseek-ai)              | Chinese<br>English    | 1.3B-7B                            | chat model         |
+| DeepSeek-VL        | [DeepSeek series vision models](https://github.com/deepseek-ai)              | Chinese<br>English | 1.3B-7B                            | chat model         |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5  | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM) | Chinese<br>English | 3B-9B            | chat model          |
-| CogVLM<br>CogVLM2<br>CogAgent | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | Chinese<br>English    | 17B-19B                            | chat model         |
-| Llava              | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English | 7B-34B                             | chat model |
+| CogVLM<br>CogVLM2<br>CogAgent<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | Chinese<br>English | 9B-19B                            | chat model         |
+| Llava              | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English            | 7B-34B                             | chat model |
 | Llava-Next              | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                  | Chinese<br>English | 8B-110B                             | chat model |
-| mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English | 11B                                | chat model |
-| InternVL           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 25.5B<br>including quantized version                              | chat model |
-| Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English | 8B                                 | chat model |
+| mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English            | 11B                                | chat model |
+| InternVL           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 2B-25.5B<br>including quantized version                              | chat model |
+| Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English            | 8B                                 | chat model |
+| Phi3-Vision                                      | Microsoft                        | English            | 4B              | chat model |
+| PaliGemma                                  | Google              | English | 3B              | chat model |
 
 #### Diffusion Models
 
@@ -609,8 +629,6 @@ make docs
 | [LLM Evaluation](docs/source_en/LLM/LLM-eval.md)     |
 | [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
 | [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
-| [DPO Human Alignment Training](docs/source_en/LLM/DPO.md)   |
-| [ORPO Human Alignment Training](docs/source_en/LLM/ORPO.md)   |
 | [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
 
 ### Reference Documentation
@@ -626,11 +644,15 @@ make docs
 
 | Best Practices Name                                                |
 | ------------------------------------------------------------ |
-| [Agent Fine-Tuning Best Practice](docs/source_en/LLM/Agent-best-practice.md) |
+| [Agent Fine-Tuning Best Practice](docs/source_en/LLM/Agent-fine-tuning-best-practice.md) |
+| [Agent Deployment Best Practice](docs/source_en/LLM/Agent-deployment-best-practice.md) |
 | [Self-Cognition Fine-Tuning Best Practice](docs/source_en/LLM/Self-cognition-best-practice.md) |
 |  [Qwen1.5 Best Practice](docs/source_en/LLM/Qwen1.5-best-practice.md) |
 |  [Multi-Modal Model Training Best Practice](docs/source_en/Multi-Modal/index.md) |
 |  [NPU Best Practice](docs/source_en/LLM/NPU-best-practice.md) |
+| [DPO Human Alignment Training](docs/source_en/LLM/DPO.md)   |
+| [ORPO Human Alignment Training](docs/source_en/LLM/ORPO.md)   |
+| [SimPO Human Alignment Training](docs/source_en/LLM/SimPO.md)   |
 
 
 ### Deep Learning Tutorials

@@ -21,7 +21,7 @@ from swift.utils import (check_json_format, compute_acc_metrics, compute_nlg_met
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
+from .utils import (MODEL_MAPPING, TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
                     get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
                     sort_by_max_length, stat_dataset)
 
@@ -54,7 +54,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(
             cwd, args.device_map_config_path)
         with open(config_path, 'r') as json_file:
-            model_kwargs['device_map'] = json.load(json_file)
+            model_kwargs = {'device_map': json.load(json_file)}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
@@ -101,6 +101,17 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
+    if args.quant_method == 'awq':
+        kwargs['is_awq'] = True
+    elif args.quant_method == 'aqlm':
+        kwargs['is_aqlm'] = True
+    elif args.quant_method == 'gptq':
+        kwargs['is_gptq'] = True
+
+    if args.rope_scaling:
+        kwargs['rope_scaling'] = args.rope_scaling
+        kwargs['max_length'] = args.max_length
+
     model, tokenizer = get_model_tokenizer(
         args.model_type,
         args.torch_dtype,
@@ -192,6 +203,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             cwd, args.loss_scale_config_path)
         with open(config_path, 'r') as json_file:
             template_kwargs['loss_scale_map'] = json.load(json_file)
+    template_kwargs['tools_prompt'] = args.tools_prompt
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
     template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
@@ -248,14 +260,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(template.data_collator, padding_to=padding_to)
 
-    trian_batch_size = args.batch_size
+    train_batch_size = args.batch_size
     eval_batch_size = args.eval_batch_size
     if use_torchacc():
-        trian_batch_size *= world_size
+        train_batch_size *= world_size
         eval_batch_size *= world_size
-    training_args.per_device_train_batch_size = trian_batch_size
-    training_args.per_device_eval_batch_size = eval_batch_size
-    training_args.group_by_length = use_torchacc()
+        training_args.per_device_train_batch_size = train_batch_size
+        training_args.per_device_eval_batch_size = eval_batch_size
+        training_args.group_by_length = use_torchacc()
 
     # Trainer
     logger.info(f'training_args: {training_args}')

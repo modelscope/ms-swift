@@ -4,6 +4,8 @@ import gradio as gr
 from packaging import version
 
 from swift.ui.base import all_langs
+from swift.ui.llm_eval.llm_eval import LLMEval
+from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_infer.llm_infer import LLMInfer
 from swift.ui.llm_train.llm_train import LLMTrain
 
@@ -17,10 +19,10 @@ locale_dict = {
     'sub_title': {
         'zh':
         '请查看 <a href=\"https://github.com/modelscope/swift/tree/main/docs/source\" target=\"_blank\">'
-        'SWIFT 文档</a>来查看更多功能',
+        'SWIFT 文档</a>来查看更多功能，使用SWIFT_UI_LANG=en环境变量来切换英文界面',
         'en':
         'Please check <a href=\"https://github.com/modelscope/swift/tree/main/docs/source_en\" target=\"_blank\">'
-        'SWIFT Documentation</a> for more usages',
+        'SWIFT Documentation</a> for more usages, Use SWIFT_UI_LANG=zh variable to switch to Chinese UI',
     },
     'star_beggar': {
         'zh':
@@ -41,6 +43,8 @@ else:
 def run_ui():
     LLMTrain.set_lang(lang)
     LLMInfer.set_lang(lang)
+    LLMExport.set_lang(lang)
+    LLMEval.set_lang(lang)
     with gr.Blocks(title='SWIFT WebUI') as app:
         gr.HTML(f"<h1><center>{locale_dict['title'][lang]}</center></h1>")
         gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
@@ -53,13 +57,17 @@ def run_ui():
             if is_shared_ui:
                 LLMInfer.build_ui(LLMInfer)
                 LLMTrain.build_ui(LLMTrain)
+                LLMExport.build_ui(LLMExport)
+                LLMEval.build_ui(LLMEval)
             else:
                 LLMTrain.build_ui(LLMTrain)
                 LLMInfer.build_ui(LLMInfer)
+                LLMExport.build_ui(LLMExport)
+                LLMEval.build_ui(LLMEval)
 
     port = os.environ.get('WEBUI_PORT', None)
     concurrent = {}
-    if version.parse(gr.__version__) < version.parse('4.0.0'):
+    if version.parse(gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
         concurrent = {'concurrency_count': 5}
     app.queue(**concurrent).launch(
         server_name=os.environ.get('WEBUI_SERVER', None),

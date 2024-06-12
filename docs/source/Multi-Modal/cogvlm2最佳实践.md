@@ -32,7 +32,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm2-19b-chat
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< 描述这种图片
+<<< 描述这张图片
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 这是一张特写照片，展示了一只灰色和白色相间的猫。这只猫的眼睛是灰色的，鼻子是粉色的，嘴巴微微张开。它的毛发看起来柔软而蓬松，背景模糊，突出了猫的面部特征。
 --------------------------------------------------
@@ -114,14 +114,14 @@ seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
 query = '距离各城市多远？'
-response, _ = inference(model, template, query, images=images)
+response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 
 # 流式
 query = '距离最远的城市是哪？'
 images = images
-gen = inference_stream(model, template, query, images=images)
+gen = inference_stream(model, template, query, history, images=images)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for response, _ in gen:
@@ -134,7 +134,7 @@ print()
 query: 距离各城市多远？
 response: 距离马踏Mata有14km，距离阳江Yangjiang有62km，距离广州Guangzhou有293km。
 query: 距离最远的城市是哪？
-response: 距离最远的城市是广州Guangzhou。
+response: 距离最远的城市是广州Guangzhou，有293km。
 """
 ```
 

@@ -1,7 +1,8 @@
 # ORPO算法最佳实践
 [ORPO](https://arxiv.org/abs/2403.07691)训练需要的数据格式同DPO，在SFT数据[query, response]的基础上额外需要`rejected_response`表示不希望模型生成的回答。
 
-ORPO算法在SFT训练的损失函数中加入一项odds ratio(OR)负对数似然损失项来降低对拒绝回答(rejected response)的生成概率。
+ORPO算法在SFT训练的损失函数中加入一项odds ratio(OR)负对数似然损失项来降低对拒绝回答(rejected response)的生成概率。相比DPO，不需要参考模型，所需的训练显存更少。
+
 其中超参`beta`表示OR损失项的系数，beta越大表示对`rejected_response`的惩罚越大，默认为0.1
 
 本期最佳实践将使用ORPO算法训练[llama3-8b-instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct/summary)模型，使其能够用中文回答。

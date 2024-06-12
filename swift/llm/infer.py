@@ -28,9 +28,12 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     ckpt_dir: Optional[str],
                     target_dir: str,
                     *,
-                    save_safetensors: bool = True) -> None:
+                    save_safetensors: bool = True,
+                    **kwargs) -> None:
     if model is not None:
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
+    if hasattr(tokenizer, 'processor'):
+        tokenizer.processor.save_pretrained(target_dir)
     tokenizer.save_pretrained(target_dir)
     model_type = getattr(tokenizer, 'model_type')
     fname_list = ['generation_config.json', 'preprocessor_config.json']
@@ -72,6 +75,9 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             with open(old_sft_args_path, 'r', encoding='utf-8') as f:
                 res = json.load(f)
             res['sft_type'] = 'full'
+            dtype = kwargs.get('dtype')
+            if dtype is not None:
+                res['dtype'] = dtype
             with open(new_sft_args_path, 'w', encoding='utf-8') as f:
                 json.dump(res, f, ensure_ascii=False, indent=2)
 
@@ -107,7 +113,8 @@ def merge_lora(args: InferArguments,
             model.model_dir,
             args.ckpt_dir,
             merged_lora_path,
-            save_safetensors=args.save_safetensors)
+            save_safetensors=args.save_safetensors,
+            dtype=args.dtype)
         logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
     logger.info("Setting args.sft_type: 'full'")
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
@@ -161,6 +168,9 @@ def prepare_model_template(args: InferArguments,
         kwargs['automodel_class'] = automodel_class
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
+    if args.rope_scaling:
+        kwargs['rope_scaling'] = args.rope_scaling
+        kwargs['max_length'] = args.max_length
     model, tokenizer = get_model_tokenizer(
         args.model_type,
         args.torch_dtype,
@@ -194,7 +204,7 @@ def prepare_model_template(args: InferArguments,
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        if isinstance(args, DeployArguments):
+        if isinstance(args, DeployArguments) and args.lora_request_list is not None:
             for lora_request in args.lora_request_list:
                 model = Swift.from_pretrained(
                     model, lora_request.lora_local_path, lora_request.lora_name, inference_mode=True)
@@ -206,9 +216,14 @@ def prepare_model_template(args: InferArguments,
         show_layers(model)
         logger.info(model)
     logger.info(get_model_info(model))
-
     template: Template = get_template(
-        args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=model,
+        tools_prompt=args.tools_prompt)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     return model, template
@@ -381,6 +396,9 @@ def llm_infer(args: InferArguments) -> None:
                 'response': response,
                 'history': history,
             }
+            images = infer_kwargs.get('images')
+            if images is not None:
+                obj['images'] = images
             history = new_history
             if jsonl_path is not None:
                 append_to_jsonl(jsonl_path, obj)
@@ -436,6 +454,8 @@ def llm_infer(args: InferArguments) -> None:
                 request['system'] = system
                 if images is not None:
                     request['images'] = images
+                if args.truncation_strategy:
+                    request['truncation_strategy'] = args.truncation_strategy
                 request_list.append(request)
             resp_list = inference_vllm(llm_engine, template, request_list, use_tqdm=True)
             result = []
@@ -450,6 +470,9 @@ def llm_infer(args: InferArguments) -> None:
                     'label': request.pop('label', None),
                     'history': request['history'],
                 }
+                images = request.get('images')
+                if images is not None:
+                    obj['images'] = images
                 if jsonl_path is not None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)
@@ -461,6 +484,7 @@ def llm_infer(args: InferArguments) -> None:
                 history = data.get('history')
                 system = data.get('system')
                 images = data.get('images')
+                tools = data.get('tools')
                 if args.verbose and system is not None:
                     print(f'[SYSTEM]{system}')
                 if history is None:
@@ -471,6 +495,8 @@ def llm_infer(args: InferArguments) -> None:
                 kwargs['system'] = system
                 if images is not None:
                     kwargs['images'] = images
+                if tools is not None:
+                    kwargs['tools'] = tools
                 if args.truncation_strategy:
                     kwargs['truncation_strategy'] = args.truncation_strategy
                 if args.infer_backend == 'vllm':
@@ -489,8 +515,6 @@ def llm_infer(args: InferArguments) -> None:
                     response, _ = inference(
                         model, template, stream=args.stream and args.verbose, verbose=args.verbose, **kwargs)
                 label = data.pop('response', None)
-                if 'truncation_strategy' in kwargs:
-                    kwargs.pop('truncation_strategy')
                 obj = {
                     'system': kwargs['system'],
                     'query': kwargs['query'],
@@ -498,6 +522,8 @@ def llm_infer(args: InferArguments) -> None:
                     'label': label,
                     'history': kwargs['history'],
                 }
+                if images is not None:
+                    obj['images'] = images
                 if jsonl_path is not None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)

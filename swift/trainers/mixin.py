@@ -22,17 +22,17 @@ from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import ADAPTER_CONFIG_NAME  # noqa
-from transformers.trainer import (ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME, PREFIX_CHECKPOINT_DIR,
-                                  SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME, WEIGHTS_NAME,
-                                  IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
+from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
+                                  PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
+                                  WEIGHTS_NAME, IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
+from transformers.utils import is_torch_npu_available
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import (save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
-                                  ta_trim_graph)
+from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_load_optimizer_and_scheduler,
+                                  ta_save_optimizer_and_scheduler, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc
 from swift.utils.constants import Invoke
@@ -316,13 +316,13 @@ class SwiftMixin:
         return
 
     def _save_optimizer_and_scheduler(self, output_dir):
-        if not use_torchacc():
+        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
             return super()._save_optimizer_and_scheduler(output_dir)
 
         ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
 
     def _load_optimizer_and_scheduler(self, checkpoint):
-        if not use_torchacc():
+        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
             return super()._load_optimizer_and_scheduler(checkpoint)
 
         if checkpoint is None or self.args.save_only_model:
@@ -336,8 +336,10 @@ class SwiftMixin:
             return super()._save_tpu(output_dir)
 
         output_dir = output_dir if output_dir is not None else self.args.output_dir
-        logger.info(f'Saving model checkpoint to {output_dir}')
-        save_ta_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        if self.sft_args.fsdp_num > 1:
+            save_ta_fsdp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        else:
+            save_ta_ddp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -383,6 +385,8 @@ class SwiftMixin:
         sft_args = getattr(self, 'sft_args', None)
         # tokenizer
         if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
+            if hasattr(self.tokenizer, 'processor'):
+                self.tokenizer.processor.save_pretrained(output_dir)
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
@@ -454,8 +458,9 @@ class SwiftMixin:
             model = self.model
         if use_torchacc():
             # Loading checkpoint of TorchAcc has been done in tuner.py when
-            # sft_type if 'full'.
-            model = model._get_underlay_model().module.module
+            # sft_type is 'full'.
+            if self.sft_args.fsdp_num > 1:
+                model = model._get_underlay_model().module.module
             if isinstance(model, PreTrainedModel):
                 return
         elif not isinstance(model, SwiftModel):
@@ -544,7 +549,8 @@ class SwiftMixin:
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-            logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
+            if not is_torch_npu_available():
+                logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time

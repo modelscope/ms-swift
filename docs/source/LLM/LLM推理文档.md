@@ -183,26 +183,47 @@ model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': '
 
 template = get_template(template_type, tokenizer)
 seed_everything(42)
+
 query = '浙江的省会在哪里？'
 gen = inference_stream(model, template, query)
 print(f'query: {query}')
 for response, history in gen:
-    print(f'response: {response}')
+    pass
+print(f'response: {response}')
+
+# 方式1
 query = '这有什么好吃的？'
-gen = inference_stream(model, template, query, history)
+old_history = history
+gen = inference_stream(model, template, query, old_history)
 print(f'query: {query}')
 for response, history in gen:
     print(f'response: {response}')
 print(f'history: {history}')
 
+# 方式2
+query = '这有什么好吃的？'
+gen = inference_stream(model, template, query, old_history)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for response, history in gen:
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print(f'\nhistory: {history}')
+
 """Out[0]
 query: 浙江的省会在哪里？
-...
 response: 浙江省的省会是杭州。
 query: 这有什么好吃的？
+response: 杭
+response: 杭州
+response: 杭州市有
 ...
-response: 杭州市有很多著名的美食，例如西湖醋鱼、龙井虾仁、糖醋排骨、毛血旺等。此外，还有杭州特色的点心，如桂花糕、荷花酥、艾窝窝等。
-history: [('浙江的省会在哪里？', '浙江省的省会是杭州。'), ('这有什么好吃的？', '杭州市有很多著名的美食，例如西湖醋鱼、龙井虾仁、糖醋排骨、毛血旺等。此外，还有杭州特色的点心，如桂花糕、荷花酥、艾窝窝等。')]
+response: 杭州市有很多著名的美食，例如西湖醋鱼、龙井虾仁、糖醋排骨、毛血旺等。此外，还有杭州特色的点心，如桂花酥饼、抹茶糕点等。
+history: [['浙江的省会在哪里？', '浙江省的省会是杭州。'], ['这有什么好吃的？', '杭州市有很多著名的美食，例如西湖醋鱼、龙井虾仁、糖醋排骨、毛血旺等。此外，还有杭州特色的点心，如桂花酥饼、抹茶糕点等。']]
+query: 这有什么好吃的？
+response: 杭州有许多美食，比如西湖醋鱼、龙井虾仁、酱鸭等。此外，还有许多小吃，如烧麦、春卷、油条等，都是浙江特色美食。
+history: [['浙江的省会在哪里？', '浙江省的省会是杭州。'], ['这有什么好吃的？', '杭州有许多美食，比如西湖醋鱼、龙井虾仁、酱鸭等。此外，还有许多小吃，如烧麦、春卷、油条等，都是浙江特色美食。']]
 """
 ```
 
