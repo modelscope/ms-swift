@@ -73,6 +73,7 @@ class DatasetName:
     damo_agent_zh_mini = 'damo-agent-zh-mini'
     agent_instruct_all_en = 'agent-instruct-all-en'
     msagent_pro = 'msagent-pro'
+    toolbench = 'toolbench'
 
     # coding
     code_alpaca_en = 'code-alpaca-en'
@@ -1003,6 +1004,40 @@ register_dataset(
     _preprocess_msagent_multirole_dataset,
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
+
+
+def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
+
+    def reorganize_row(row):
+        convs = row['conversations']
+        sys = convs[0]['value']
+        history = []
+        history_roles = []
+        for conv in convs[1:-2]:
+            history.append(conv['value'])
+            history_roles.append(conv['from'])
+
+        return {
+            'tools': row['tools'],
+            'system': sys,
+            'history': history,
+            'history_roles': history_roles,
+            'query': convs[-2]['value'],
+            'query_role': convs[-2]['from'],
+            'response': convs[-1]['value']
+        }
+
+    return dataset.map(reorganize_row)
+
+
+register_dataset(
+    DatasetName.toolbench,
+    'swift/ToolBench',
+    None,
+    _preprocess_msagent_multirole_dataset,
+    get_dataset_from_repo,
+    remove_useless_columns=False,
+    tags=['chat', 'agent', 'multi-round'])
 
 
 def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
