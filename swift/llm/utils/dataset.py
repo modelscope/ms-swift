@@ -72,7 +72,7 @@ class DatasetName:
     damo_agent_zh = 'damo-agent-zh'
     damo_agent_zh_mini = 'damo-agent-zh-mini'
     agent_instruct_all_en = 'agent-instruct-all-en'
-    ms_agent_pro = 'ms-agent-pro'
+    msagent_pro = 'msagent-pro'
 
     # coding
     code_alpaca_en = 'code-alpaca-en'
