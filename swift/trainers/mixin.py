@@ -264,10 +264,9 @@ class SwiftMixin:
         self._resume_from_checkpoint = None
         self._resume_only_model = False
         # performance
-        self.perf: Dict[str, Any] = {
-            'memory': {},
-            'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
-        }
+        self.perf: Dict[str, Any] = {'memory': {}}
+        if hasattr(self.model, 'get_trainable_parameters'):
+            self.perf['model'] = self.model.get_trainable_parameters()
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:

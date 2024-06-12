@@ -665,7 +665,7 @@ class SftArguments(ArgumentsBase):
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
     def load_from_checkpoint(self) -> None:
-        # resume_from_checkpoint
+        # resume_from_checkpoint: reading the model architecture
         sft_args_path = os.path.join(self.resume_from_checkpoint, 'sft_args.json')
         if not os.path.exists(sft_args_path):
             logger.info(f'{sft_args_path} not found')

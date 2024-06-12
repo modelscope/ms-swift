@@ -323,7 +323,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         'model_info': model_info,
         'dataset_info': dataset_info,
     }
-    if key in ['gen_time', 'gen_len']:
+    for key in ['gen_time', 'gen_len']:
         if trainer.perf[key] != 0:
             run_info[key] = trainer.perf[key]
     if is_local_master():
