@@ -460,7 +460,7 @@ class SftArguments(ArgumentsBase):
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
-    loss_scale_config_path: Optional[str] = 'DEFAULT'
+    loss_scale_config_path: str = 'DEFAULT'
     system: Optional[str] = None
     tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
     max_length: int = 2048  # -1: no limit
