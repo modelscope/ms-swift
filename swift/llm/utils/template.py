@@ -417,7 +417,7 @@ class Template:
                 self._concat_context_list(
                     context_list,
                     res_context_list,
-                    compute_loss_idx,
+                    loss_scale_list,
                     query=q,
                     response=r,
                     round0=i,
