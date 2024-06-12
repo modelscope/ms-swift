@@ -221,11 +221,11 @@ class Template:
         self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
         self.query_loss_scale_map = None
         if self.response_loss_scale_map is not None:
+            if 'query' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['query'], dict):
+                self.query_loss_scale_map = self.response_loss_scale_map['query']
             if 'response' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['response'],
                                                                          dict):
                 self.response_loss_scale_map = self.response_loss_scale_map['response']
-            if 'query' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['query'], dict):
-                self.query_loss_scale_map = self.response_loss_scale_map['query']
 
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
 
@@ -414,7 +414,9 @@ class Template:
             if self.query_loss_scale_map is not None:
                 for key in self.query_loss_scale_map.keys():
                     if key in q:
-                        loss_scale_value = self.query_loss_scale_map[key]
+                        if isinstance(self.query_loss_scale_map[key], (float, int)):
+                            self.query_loss_scale_map[key] = [self.query_loss_scale_map[key]]
+                        loss_scale_value = self.query_loss_scale_map[key][0]
                         break
             if q or r:
                 self._concat_context_list(
