@@ -102,7 +102,10 @@ def merge_lora(args: InferArguments,
                     'skipping the saving process. '
                     'you can pass `replace_if_exists=True` to overwrite it.')
     else:
-        model, template = prepare_model_template(args, device_map=args.merge_device_map, verbose=False)
+        if device_map is None:
+            device_map = args.merge_device_map
+        logger.info(f'merge_device_map: {device_map}')
+        model, template = prepare_model_template(args, device_map=device_map, verbose=False)
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
