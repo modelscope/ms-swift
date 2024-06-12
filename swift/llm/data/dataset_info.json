@@ -178,14 +178,6 @@
         },
         "tags": ["poison-management", "zh"]
     },
-    "wmt-translation": {
-        "dataset_id": "iic/WMT-Chinese-to-English-Machine-Translation-Training-Corpus",
-        "columns": {
-            "source": "query",
-            "reference": "response"
-        },
-        "tags": ["translation", "zh"]
-    },
     "rwkv-pretrain-web": {
         "dataset_id": "mapjack/openwebtext_dataset",
         "columns": {
@@ -296,7 +288,7 @@
         "hf_dataset_id": "liyucheng/zhihu_rlhf_3k"
     },
     "ultrachat-200k": {
-        "dataset_id": "AI-ModelScope/ultrachat_200k",
+        "dataset_id": "swift/ultrachat_200k",
         "hf_dataset_id": "HuggingFaceH4/ultrachat_200k",
         "conversations": {
             "user_role": "user",
@@ -306,7 +298,7 @@
             "value_key": "content",
             "error_strategy": "delete"
         },
-        "split": ["train"],
+        "split": ["train_sft"],
         "tags": ["chat", "en", "quality"]
     },
     "lmsys-chat-1M": {

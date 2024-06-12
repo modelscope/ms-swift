@@ -1020,6 +1020,7 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=["train", "val"],
     hf_dataset_id="HuggingFaceM4/TextCaps",
+    huge_dataset=True,
     tags=['multi-modal', 'en', 'caption', 'quality'])
 
 
@@ -1030,6 +1031,7 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=["train", "validation"],
     hf_dataset_id="vikhyatk/lnqa",
+    huge_dataset=True,
     tags=['multi-modal', 'en', 'ocr-vqa', 'quality'])
 
 
@@ -1095,11 +1097,12 @@ def _preprocess_llava_pretrain(dataset):
 register_dataset(
     DatasetName.llava_pretrain,
     'AI-ModelScope/LLaVA-Pretrain',
-    None,
+    ['blip_laion_cc_sbu_558k'],
     _preprocess_llava_pretrain,
     get_dataset_from_repo,
     split=['train'],
     hf_dataset_id='liuhaotian/LLaVA-Pretrain',
+    huge_dataset=True,
     tags=['vqa', 'multi-modal', 'quality'])
 
 
