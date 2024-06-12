@@ -532,7 +532,7 @@ def llm_infer(args: InferArguments) -> None:
                     print(f'[LABELS]{label}')
                     if images is not None:
                         print(f'[IMAGES]{images}')
-                    print('-' * 50)
+                    print('-' * 50, flush=True)
     if jsonl_path is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     if not args.eval_human and args.show_dataset_sample == 10:  # is default
