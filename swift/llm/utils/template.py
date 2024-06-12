@@ -117,7 +117,9 @@ class StopWordsCriteria(StoppingCriteria):
             self.start_idx = len(input_ids[0]) - 1
         tokenizer = self.tokenizer
         stop_words = self.stop_words
-        text = tokenizer.decode(input_ids[0, self.start_idx:], **self.tokenizer_kwargs)
+        # [-20:]: Assuming the end tokens do not exceed 20 tokens,
+        #   to avoid input_ids being too long and affecting efficiency.
+        text = tokenizer.decode(input_ids[0, self.start_idx:][-20:], **self.tokenizer_kwargs)
         for stop_word in stop_words:
             if isinstance(stop_word, str):
                 if stop_word in text:
@@ -160,6 +162,10 @@ class Template:
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
             whether to add it based on `tokenizer.encode('')`.
         """
+        # check
+        for x in [prefix, prompt, chat_sep, suffix, prefix_has_system]:
+            assert x is None or isinstance(x, list)
+
         if default_system == '':
             default_system = None
         if _has_system(prefix):
@@ -718,11 +724,22 @@ class YiVLTemplate(Template):
         return res
 
 
-class GLM4VTemplate(Template):
+class GLMTemplate(Template):
+
+    def _init_template(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs) -> None:
+        res = super()._init_template(tokenizer, *args, **kwargs)
+        token_list = tokenizer.encode('')
+        self.prefix.insert(0, token_list)
+        if self.prefix_has_system is not None:
+            self.prefix_has_system.insert(0, token_list)
+        return res
+
+
+class GLM4VTemplate(GLMTemplate):
 
     def __init__(self):
-        return super().__init__('[gMASK]<sop>', ['<|user|>\n', [-100], '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'],
-                                None, ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+        return super().__init__([], ['<|user|>\n', [-100], '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
+                                ['<|system|>\n{{SYSTEM}}'])
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from .utils import history_to_messages
@@ -767,19 +784,17 @@ register_template(
     lazy_tokenize=True)
 
 register_template(TemplateType.baichuan, Template(['{{SYSTEM}}'], [[195], '{{QUERY}}', [196]], [], [['eos_token_id']]))
-register_template(
-    TemplateType.chatglm2,
-    Template([[64790, 64792], '{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'], [['eos_token_id']]))
 
 register_template(
-    TemplateType.chatglm_generation,
-    Template(['[gMASK]<sop>'], ['{{QUERY}}'], None, [['eos_token_id']]),
-    is_generation=True)
+    TemplateType.chatglm2,
+    GLMTemplate(['{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'], [['eos_token_id']]))
+
+register_template(
+    TemplateType.chatglm_generation, GLMTemplate([], ['{{QUERY}}'], None, [['eos_token_id']]), is_generation=True)
 
 register_template(
     TemplateType.chatglm3,
-    Template(['[gMASK]<sop>'], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None,
-             ['[gMASK]<sop><|system|>\n{{SYSTEM}}']))
+    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None, ['<|system|>\n{{SYSTEM}}']))
 
 register_template(
     TemplateType.deepseek,
@@ -1693,7 +1708,7 @@ _default_phi3_system = ('You are a helpful digital assistant. '
 register_template(
     TemplateType.phi3,
     Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'], _default_phi3_system,
-             '<s><|system|>\n{{SYSTEM}}<|end|>\n'))
+             ['<s><|system|>\n{{SYSTEM}}<|end|>\n']))
 
 register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))

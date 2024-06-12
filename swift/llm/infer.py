@@ -102,7 +102,10 @@ def merge_lora(args: InferArguments,
                     'skipping the saving process. '
                     'you can pass `replace_if_exists=True` to overwrite it.')
     else:
-        model, template = prepare_model_template(args, device_map=args.merge_device_map, verbose=False)
+        if device_map is None:
+            device_map = args.merge_device_map
+        logger.info(f'merge_device_map: {device_map}')
+        model, template = prepare_model_template(args, device_map=device_map, verbose=False)
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
@@ -532,7 +535,7 @@ def llm_infer(args: InferArguments) -> None:
                     print(f'[LABELS]{label}')
                     if images is not None:
                         print(f'[IMAGES]{images}')
-                    print('-' * 50)
+                    print('-' * 50, flush=True)
     if jsonl_path is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     if not args.eval_human and args.show_dataset_sample == 10:  # is default
