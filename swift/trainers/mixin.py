@@ -1,14 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
-import importlib
-import inspect
 import os
 import re
 import shutil
 import time
 from pathlib import Path
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -22,7 +20,6 @@ from peft import PeftModel
 from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
-from transformers.integrations.deepspeed import deepspeed_load_checkpoint
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
                                   PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
@@ -266,6 +263,11 @@ class SwiftMixin:
         self.start_time = time.time()
         self._resume_from_checkpoint = None
         self._resume_only_model = False
+        # performance
+        self.perf: Dict[str, Any] = {
+            'memory': {},
+            'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
+        }
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:
@@ -329,15 +331,9 @@ class SwiftMixin:
         if not (use_torchacc() and self.sft_args.fsdp_num > 1):
             if self._resume_only_model:
                 checkpoint = self._resume_from_checkpoint
-                if checkpoint is not None:
-                    if self.is_deepspeed_enabled:
-                        parameters = inspect.signature(deepspeed_load_checkpoint).parameters
-                        kwargs = {}
-                        if 'load_module_strict' in parameters:
-                            kwargs['load_module_strict'] = not isinstance(self.model, (PeftModel, SwiftModel))
-                        deepspeed_load_checkpoint(self.model_wrapped, checkpoint, **kwargs)
-                    elif is_sagemaker_mp_enabled() or self.is_fsdp_enabled:
-                        self._load_from_checkpoint(checkpoint, self.model_wrapped)
+                if checkpoint is not None and (is_sagemaker_mp_enabled() or self.is_fsdp_enabled):
+                    self._load_from_checkpoint(checkpoint, self.model_wrapped)
+                return
             else:
                 # Check if saved optimizer or scheduler states exist
                 return super()._load_optimizer_and_scheduler(checkpoint)
@@ -421,11 +417,12 @@ class SwiftMixin:
 
     def _save_checkpoint(self, model, trial, metrics=None):
         self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
-        logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         if version.parse(transformers.__version__) >= version.parse('4.36') or not self.args.save_only_model:
-            return super()._save_checkpoint(model, trial, metrics)
+            result = super()._save_checkpoint(model, trial, metrics)
         else:
-            return self._save_only_model(model, trial, metrics)
+            result = self._save_only_model(model, trial, metrics)
+        logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
+        return result
 
     def _save_only_model(self, model, trial, metrics=None):
         # Save model checkpoint
@@ -517,12 +514,12 @@ class SwiftMixin:
             # Control the behavior of "resume_from_checkpoint" by swift.
             self._resume_from_checkpoint = resume_from_checkpoint
             resume_from_checkpoint = None
-        if (self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_deepspeed_enabled
-                and not self.is_fsdp_enabled):
+        if (self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled):
             self._load_from_checkpoint(self._resume_from_checkpoint)
         res = super().train(resume_from_checkpoint, *args, **kwargs)
         self._resume_from_checkpoint = None
-        self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
+        if self.max_memory != 0:
+            self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
         return res
 
     def _load_best_model(self):

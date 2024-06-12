@@ -16,9 +16,9 @@ from transformers.utils import is_torch_npu_available
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
-from swift.utils import (check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting, get_logger,
-                         get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
-                         preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
+from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
+                         get_logger, get_main, get_model_info, is_ddp_plus_mp, is_dist, is_local_master, is_master,
+                         plot_images, preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (MODEL_MAPPING, TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
@@ -314,8 +314,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             trainer.push_to_hub()
     run_info = {
         'memory': trainer.perf['memory'],
-        'gen_time': trainer.perf['gen_time'],
-        'gen_len': trainer.perf['gen_len'],
         'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
@@ -325,9 +323,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         'model_info': model_info,
         'dataset_info': dataset_info,
     }
-    jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
-    with open(jsonl_path, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(run_info) + '\n')
+    if key in ['gen_time', 'gen_len']:
+        if trainer.perf[key] != 0:
+            run_info[key] = trainer.perf[key]
+    if is_local_master():
+        jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
+        append_to_jsonl(jsonl_path, run_info)
     return run_info
 
 
