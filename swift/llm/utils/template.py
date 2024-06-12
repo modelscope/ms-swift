@@ -209,7 +209,14 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
-        self.loss_scale_map = kwargs.get('loss_scale_map', None)
+        self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
+        self.query_loss_scale_map = None
+        if self.response_loss_scale_map is not None:
+            if 'response' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['response'], dict):
+                self.response_loss_scale_map = self.response_loss_scale_map['response']
+            if 'query' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['query'], dict):
+                self.query_loss_scale_map = self.response_loss_scale_map['query']
+
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'prefix_has_system']:
@@ -226,7 +233,6 @@ class Template:
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         system: Optional[str] = example.get('system', None)
-        loss_scale_value: Optional[str] = example.get('loss_scale', None)
         if history is None:
             history = []
         if len(history) > 0:
@@ -246,8 +252,7 @@ class Template:
             history,
             system,
             self.truncation_strategy,
-            auto_add_bos=self.auto_add_bos,
-            loss_scale_value=loss_scale_value)
+            auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -272,7 +277,7 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale, self.loss_scale_map,
+                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale, self.response_loss_scale_map,
                                                                      loss_scale_value)
                     res_context_list.extend(content_part)
                     compute_loss_idx.extend(weight_part)
@@ -342,8 +347,7 @@ class Template:
                 history: History,
                 system: Optional[str],
                 truncation_strategy: str,
-                auto_add_bos: bool = False,
-                loss_scale_value: Optional[Union[str, float, int]] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+                auto_add_bos: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
@@ -360,7 +364,7 @@ class Template:
         else:
             prefix = self.prefix_has_system
         self._concat_context_list(
-            prefix, res_context_list, compute_loss_idx, system=system, loss_scale_value=loss_scale_value)
+            prefix, res_context_list, compute_loss_idx, system=system)
         history.append([query, response])
         for i, (q, r) in enumerate(history):
             context_list = self.prompt.copy()
@@ -371,6 +375,9 @@ class Template:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
+            loss_scale_value = None
+            if self.query_loss_scale_map is not None and q in self.query_loss_scale_map:
+                loss_scale_value = self.query_loss_scale_map.get(q, None)
             if q or r:
                 self._concat_context_list(
                     context_list,
