@@ -162,8 +162,8 @@
         },
         "tags": ["chat", "agent", "multi-round", "🔥"]
     },
-    "ms-agent-pro": {
-        "dataset_id": "iic/ms_agent_pro",
+    "msagent-pro": {
+        "dataset_id": "iic/MSAgent-Pro",
         "conversations": {
             "error_strategy": "delete"
         },
