@@ -264,6 +264,8 @@ class SwiftMixin:
             self.can_return_loss = can_return_loss(model)
         self.max_memory = 0.0
         self.start_time = time.time()
+        self._resume_from_checkpoint = None
+        self._resume_only_model = False
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:
@@ -325,19 +327,20 @@ class SwiftMixin:
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         if not (use_torchacc() and self.sft_args.fsdp_num > 1):
-            checkpoint = self.resume_from_checkpoint
-            if checkpoint is not None:
-                if self.is_deepspeed_enabled:
-                    parameters = inspect.signature(deepspeed_load_checkpoint).parameters
-                    kwargs = {}
-                    if 'load_module_strict' in parameters:
-                        kwargs['load_module_strict'] = not isinstance(self.model, (PeftModel, SwiftModel))
-                    deepspeed_load_checkpoint(self.model_wrapped, checkpoint, **kwargs)
-                elif is_sagemaker_mp_enabled() or self.is_fsdp_enabled:
-                    self._load_from_checkpoint(checkpoint, self.model_wrapped)
-
-            # Check if saved optimizer or scheduler states exist
-            return super()._load_optimizer_and_scheduler(checkpoint)
+            if self._resume_only_model:
+                checkpoint = self._resume_from_checkpoint
+                if checkpoint is not None:
+                    if self.is_deepspeed_enabled:
+                        parameters = inspect.signature(deepspeed_load_checkpoint).parameters
+                        kwargs = {}
+                        if 'load_module_strict' in parameters:
+                            kwargs['load_module_strict'] = not isinstance(self.model, (PeftModel, SwiftModel))
+                        deepspeed_load_checkpoint(self.model_wrapped, checkpoint, **kwargs)
+                    elif is_sagemaker_mp_enabled() or self.is_fsdp_enabled:
+                        self._load_from_checkpoint(checkpoint, self.model_wrapped)
+            else:
+                # Check if saved optimizer or scheduler states exist
+                return super()._load_optimizer_and_scheduler(checkpoint)
 
         if checkpoint is None or self.args.save_only_model:
             return
@@ -508,11 +511,17 @@ class SwiftMixin:
         return checkpoints_sorted
 
     def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
-        if not is_sagemaker_mp_enabled() and not self.is_deepspeed_enabled and not self.is_fsdp_enabled:
-            self._load_from_checkpoint(resume_from_checkpoint)
-        self.resume_from_checkpoint = resume_from_checkpoint
-        res = super().train(None, *args, **kwargs)  # resume_from_checkpoint=None
-        self.resume_from_checkpoint = None
+        sft_args = getattr(self, 'sft_args', None)
+        self._resume_only_model = getattr(sft_args, 'resume_only_model', False)
+        if self._resume_only_model:
+            # Control the behavior of "resume_from_checkpoint" by swift.
+            self._resume_from_checkpoint = resume_from_checkpoint
+            resume_from_checkpoint = None
+        if (self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_deepspeed_enabled
+                and not self.is_fsdp_enabled):
+            self._load_from_checkpoint(self._resume_from_checkpoint)
+        res = super().train(resume_from_checkpoint, *args, **kwargs)
+        self._resume_from_checkpoint = None
         self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
         return res
 
