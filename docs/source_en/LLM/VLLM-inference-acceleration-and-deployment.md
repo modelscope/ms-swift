@@ -624,14 +624,6 @@ swift sft \
     --model_author ModelScope \
 ```
 
-Convert LoRA from swift format to peft format:
-
-```shell
-CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/llama2-7b-chat/vx-xxx/checkpoint-xxx \
-    --to_peft_format true
-```
-
 
 ### Accelerating VLLM Inference
 
