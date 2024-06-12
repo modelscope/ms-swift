@@ -411,8 +411,11 @@ class Template:
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
             loss_scale_value = None
-            if self.query_loss_scale_map is not None and q in self.query_loss_scale_map:
-                loss_scale_value = self.query_loss_scale_map.get(q, None)
+            if self.query_loss_scale_map is not None:
+                for key in self.query_loss_scale_map.keys():
+                    if key in q:
+                        loss_scale_value = self.query_loss_scale_map[key]
+                        break
             if q or r:
                 self._concat_context_list(
                     context_list,
