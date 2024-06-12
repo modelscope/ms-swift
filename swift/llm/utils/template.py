@@ -117,7 +117,7 @@ class StopWordsCriteria(StoppingCriteria):
             self.start_idx = len(input_ids[0]) - 1
         tokenizer = self.tokenizer
         stop_words = self.stop_words
-        # [-20:]: Assuming the end tokens do not exceed 20 tokens, 
+        # [-20:]: Assuming the end tokens do not exceed 20 tokens,
         #   to avoid input_ids being too long and affecting efficiency.
         text = tokenizer.decode(input_ids[0, self.start_idx:][-20:], **self.tokenizer_kwargs)
         for stop_word in stop_words:
