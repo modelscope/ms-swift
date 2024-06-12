@@ -212,7 +212,8 @@ class Template:
         self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
         self.query_loss_scale_map = None
         if self.response_loss_scale_map is not None:
-            if 'response' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['response'], dict):
+            if 'response' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['response'],
+                                                                         dict):
                 self.response_loss_scale_map = self.response_loss_scale_map['response']
             if 'query' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['query'], dict):
                 self.query_loss_scale_map = self.response_loss_scale_map['query']
@@ -247,12 +248,7 @@ class Template:
         if query is None:
             query = ''
         inputs, tokenizer_kwargs = self._encode(
-            query,
-            response,
-            history,
-            system,
-            self.truncation_strategy,
-            auto_add_bos=self.auto_add_bos)
+            query, response, history, system, self.truncation_strategy, auto_add_bos=self.auto_add_bos)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -277,8 +273,8 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale, self.response_loss_scale_map,
-                                                                     loss_scale_value)
+                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale,
+                                                                     self.response_loss_scale_map, loss_scale_value)
                     res_context_list.extend(content_part)
                     compute_loss_idx.extend(weight_part)
                     continue
@@ -363,8 +359,7 @@ class Template:
             prefix = self.prefix
         else:
             prefix = self.prefix_has_system
-        self._concat_context_list(
-            prefix, res_context_list, compute_loss_idx, system=system)
+        self._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
         history.append([query, response])
         for i, (q, r) in enumerate(history):
             context_list = self.prompt.copy()

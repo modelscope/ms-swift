@@ -113,7 +113,6 @@ class ConversationsPreprocessor:
                     continue
                 lo = 0
                 sys = None
-                ls = None
                 h: History = []
                 assert len(conversations) >= 2
                 if conversations[0][self.from_key] == self.system_role:
