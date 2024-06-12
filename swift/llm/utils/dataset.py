@@ -1006,19 +1006,18 @@ register_dataset(
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
 
 
-def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
+def _preprocess_toolbench(dataset: HfDataset) -> HfDataset:
 
     def reorganize_row(row):
         convs = row['conversations']
         sys = convs[0]['value']
         history = []
         history_roles = []
-        for conv in convs[1:-2]:
-            history.append(conv['value'])
-            history_roles.append(conv['from'])
+        for idx in range(1, len(convs) - 2, 2):
+            history.append((convs[idx]['value'], convs[idx + 1]['value']))
+            history_roles.append((convs[idx]['from'], convs[idx + 1]['from']))
 
         return {
-            'tools': row['tools'],
             'system': sys,
             'history': history,
             'history_roles': history_roles,
@@ -1034,7 +1033,7 @@ register_dataset(
     DatasetName.toolbench,
     'swift/ToolBench',
     None,
-    _preprocess_msagent_multirole_dataset,
+    _preprocess_toolbench,
     get_dataset_from_repo,
     remove_useless_columns=False,
     tags=['chat', 'agent', 'multi-round'])
