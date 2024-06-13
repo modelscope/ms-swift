@@ -251,6 +251,73 @@ result
 {"model":"llama3-8b-instruct","choices":[[{"index":0,"message":{"role":"assistant","content":"Question: What's the weather like in Boston today?\n\nThought: I need to get the current weather in Boston to answer this question.\n\nAction: get_current_weather\n\nAction Input: {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\nObservation:","tool_calls":{"id":"toolcall-f534d907ae254f2ab96e06c25179ddf9","function":{"arguments":" {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\n","name":"get_current_weather"},"type":"function"}},"finish_reason":"stop"}]],"usage":{"prompt_tokens":262,"completion_tokens":54,"total_tokens":316},"id":"chatcmpl-8630e8d675c941c0aca958a37633a3c9","object":"chat.completion","created":1717590756}
 ```
 
+You can also test with OpenAI SDK, for example
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+query = "What's the weather like in Boston today?"
+messages = [{
+    'role': 'user',
+    'content': query
+}]
+tools =  [
+      {
+        "name": "url_for_newapi",
+        "description": "This is the subfunction for tool \"newapi\", you can use this tool.The description of this function is: \"url_for_newapi\"",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "",
+              "example_value": "https://www.instagram.com/reels/CtB6vWMMHFD/"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "optional": [
+            "url"
+          ]
+        }
+      },
+]
+resp = client.chat.completions.create(
+    model='llama3-8b-instruct',
+    tools = tools,
+    messages=messages,
+    seed=42)
+tool_calls = resp.choices[0].message.tool_calls
+print(f'query: {query}')
+print(f'tool_calls: {tool_calls}')
+
+# stream
+stream_resp = client.chat.completions.create(
+    model='llama3-8b-instruct',
+    messages=messages,
+    tools=tools,
+    stream=True,
+    seed=42)
+
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+
+"""
+query: What's the weather like in Boston today?
+tool_calls: {'id': 'toolcall-e4c637435e754cf9b2034c3e6861a4ad', 'function': {'arguments': ' {"url": "https://api.weatherapi.com/v1/current.json?key=YOUR_API_KEY&q=Boston"}', 'name': 'url_for_newapi'}, 'type': 'function'}
+query: What's the weather like in Boston today?
+response: Thought: I need to find the weather information for Boston today. I can use the 'newapi' tool to get the weather forecast.
+Action: url_for_newapi
+Action Input: {"url": "https://api.weatherapi.com/v1/current.json?key=YOUR_API_KEY&q=Boston"}
+"""
+```
+
 In the tool_calls of the returned results, you can obtain the information about the called function and its parameters.
 
 Assuming the returned result is `The weather in Boston today is 32°F (0°C), with clear skies`, we will fill this result into the role as tool and pass it into the message field.
