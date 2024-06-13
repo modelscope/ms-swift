@@ -819,6 +819,8 @@ class YiVLTemplate(Template):
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
+        has_images = [(b==-200).sum() for b in res['input_ids']]
+        assert all([h > 0 for h in has_images]) or not any([h > 0 for h in has_images]), 'YIVL does not support mix-batch nlp dataset and multi-modal dataset'
         return res
 
 
@@ -840,28 +842,29 @@ class GLM4VTemplate(Template):
         from .utils import history_to_messages
 
         example = example.copy()
+        inputs, _ = super().encode(example)
         images_path = example.pop('images', [])
         image = _read_from_path(images_path[0]) if images_path else None
-        inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -100)
-        if len(idx_list) >= 2:
-            input_ids = _remove_idx(input_ids, idx_list[1:])
+        if idx_list:
+            if len(idx_list) >= 2:
+                input_ids = _remove_idx(input_ids, idx_list[1:])
+                if labels is not None:
+                    labels = _remove_idx(labels, idx_list[1:])
+            idx = idx_list[0]
+            placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
+            placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
+            input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                labels = _remove_idx(labels, idx_list[1:])
-        idx = idx_list[0]
-        placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
-        placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
-        input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
-        if labels is not None:
-            labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
-        messages = history_to_messages(example.get('history', []), example['query'], example.get('system', None))
-        messages[0]['image'] = image
-        inputs2 = self.tokenizer.apply_chat_template(messages, return_dict=True)
-        inputs['images'] = inputs2['images']
+                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
+            messages = history_to_messages(example.get('history', []), example['query'], example.get('system', None))
+            messages[0]['image'] = image
+            inputs2 = self.tokenizer.apply_chat_template(messages, return_dict=True)
+            inputs['images'] = inputs2['images']
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         return inputs, {}
@@ -1109,7 +1112,7 @@ class InternvlTemplate(Template):
 
     def check_example(self, example):
         images = example.get('images')
-        assert not isinstance(images, (list, tuple)) or len(images) <= 1
+        assert images and (not isinstance(images, (list, tuple)) or len(images) <= 1)
 
     def replace_tag(self, media_type, index, example):
         assert media_type == 'image'
@@ -1122,7 +1125,7 @@ class InternvlTemplate(Template):
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs['labels']
-        if example.get('images') is not None:
+        if example.get('images'):
             from .vision_utils import load_image
             if len(idx_list) >= 2:
                 input_ids = _remove_idx(input_ids, idx_list[1:])
@@ -1164,7 +1167,7 @@ class InternvlTemplate(Template):
         if pixel_values:
             res['pixel_values'] = torch.concat(pixel_values)
         if image_flags:
-            res['image_flags'] = torch.concat(pixel_values)
+            res['image_flags'] = torch.concat(image_flags)
         return res
 
     @staticmethod
@@ -1232,7 +1235,8 @@ register_template(
 class LLavaTemplate(Template):
 
     def __init__(self):
-        super().__init__(['<s>[INST] '], [[-200], '\n{{QUERY}} [/INST]'], None, ['</s>'])
+        # This template follows: https://github.com/haotian-liu/LLaVA/blob/main/llava/conversation.py#L350
+        super().__init__(['[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'], system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         assert media_type == 'image'
@@ -1255,7 +1259,9 @@ class LLavaTemplate(Template):
         image_processor = model.vision_tower.image_processor
         if images:
             images_tensor = process_images(images, image_processor, self.model.config)
-            inputs['images'] = images_tensor.to(model.dtype)
+            inputs['images'] = images_tensor.to(model.dtype).squeeze(0)
+            if images_tensor.shape[1] == 4:
+                print()
             inputs['image_sizes'] = image_sizes
         return inputs, {}
 
@@ -1263,8 +1269,10 @@ class LLavaTemplate(Template):
         res = super().data_collator(batch, padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
-            res['images'] = torch.concat(images)
+            res['images'] = images
             res['image_sizes'] = sum([b['image_sizes'] for b in batch if 'image_sizes' in b], start=[])
+        has_images = [(b==-200).sum() for b in res['input_ids']]
+        assert all([h > 0 for h in has_images]) or not any([h > 0 for h in has_images]), 'Llava does not support mix-batch nlp dataset and multi-modal dataset'
         return res
 
     @staticmethod
@@ -1332,22 +1340,24 @@ class PaliGemmaTemplate(Template):
     def check_example(self, example):
         images = example.get('images')
         assert not isinstance(images, (list, tuple)) or len(images) <= 1
+    
+    def replace_tag(self, media_type, index, example):
+        assert media_type == 'image'
+        image_token = self.tokenizer.encode('<image>', add_special_tokens=False)
+        assert len(image_token) == 1
+        processor = self.tokenizer.processor
+        return image_token * processor.image_seq_length
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
-        image_token = self.tokenizer.encode('<image>', add_special_tokens=False)
-        assert len(image_token) == 1
-        image_token = image_token[0]
         if len(inputs) == 0:
             return inputs, {}
         image_path = example.get('images', [])
         processor = self.tokenizer.processor
-        inputs['input_ids'] = [image_token] * processor.image_seq_length + inputs['input_ids']
         if inputs['labels'] is not None:
             n = upper_bound(0, len(inputs['labels']), lambda idx: inputs['labels'][idx] == -100)
             n2 = len(inputs['labels']) - n
-            inputs['labels'] = [-100] * processor.image_seq_length + inputs['labels']
-            inputs['token_type_ids'] = [0] * (processor.image_seq_length + n) + [1] * n2
+            inputs['token_type_ids'] = [0] * n + [1] * n2
         else:
             inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
         if image_path:
@@ -1391,17 +1401,19 @@ class Phi3VisionTemplate(Template):
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         image_path = example.get('images')
         if image_path:
+            if not isinstance(image_path, (list, tuple)):
+                image_path = [image_path]
             raw_images = [_read_from_path(path) for path in image_path]
             image_infos = [
-                self.model.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images
+                self.tokenizer.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images
             ]
             pixel_values = torch.concat([image_info['pixel_values'] for image_info in image_infos], dim=0)
             image_sizes = torch.concat([image_info['image_sizes'] for image_info in image_infos], dim=0)
             example['image_info'] = image_infos
-            example['num_img_tokens'] = self.model.processor.image_processor.num_img_tokens
+            example['num_img_tokens'] = self.tokenizer.processor.image_processor.num_img_tokens
         inputs, _ = super().encode(example)
         if image_path:
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['pixel_values'] = pixel_values
             inputs['image_sizes'] = image_sizes
         return inputs, {}
 
@@ -1704,9 +1716,9 @@ class MiniCPMVTemplate(Template):
             assert images
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
         images_path = example['images']
         image = _read_from_path(images_path[0])
-        inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
