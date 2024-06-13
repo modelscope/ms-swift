@@ -26,21 +26,22 @@ except ImportError:
 logger = get_logger()
 
 
-def get_vllm_engine(model_type: str,
-                    torch_dtype: Optional[Dtype] = None,
-                    *,
-                    model_id_or_path: Optional[str] = None,
-                    revision: Optional[str] = None,
-                    gpu_memory_utilization: float = 0.9,
-                    tensor_parallel_size: int = 1,
-                    max_model_len: Optional[int] = None,
-                    disable_custom_all_reduce: bool = True,  # Default values different from vllm
-                    engine_kwargs: Optional[Dict[str, Any]] = None,
-                    use_async: bool = False,
-                    enable_lora: bool = False,
-                    max_loras: int = 1,
-                    max_lora_rank: int = 16,
-                    **kwargs) -> LLMEngine:
+def get_vllm_engine(
+        model_type: str,
+        torch_dtype: Optional[Dtype] = None,
+        *,
+        model_id_or_path: Optional[str] = None,
+        revision: Optional[str] = None,
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        disable_custom_all_reduce: bool = True,  # Default values different from vllm
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+        use_async: bool = False,
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        **kwargs) -> LLMEngine:
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
         model_type,
