@@ -419,6 +419,8 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
+    # codestral
+    codestral_22b = 'codestral-22b'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -2271,6 +2273,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-7B-v0.1')
+@register_model(
+    ModelType.codestral_22b,
+    'huangjintao/Codestral-22B-v0.1',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.34'],
+    ignore_file_pattern=['consolidated.safetensors'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Codestral-22B-v0.1')
 @register_model(
     ModelType.mistral_7b_v2,
     'AI-ModelScope/Mistral-7B-v0.2-hf',
