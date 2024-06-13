@@ -739,7 +739,9 @@ class SftArguments(ArgumentsBase):
             elif self.loss_scale_config_path == 'alpha-umi':  # https://arxiv.org/pdf/2401.07324
                 self.loss_scale_config_path = os.path.abspath(
                     os.path.join(__file__, '..', '..', 'agent', 'alpha_umi_loss_scale_config.json'))
-
+            elif self.loss_scale_config_path == 'agent-flan':  # https://arxiv.org/abs/2403.12881
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'agentflan.json'))
         self.handle_path()
         self._handle_dataset_sample()
         self._register_self_cognition()
