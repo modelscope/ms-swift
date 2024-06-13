@@ -225,8 +225,6 @@ class ModelType:
     yi_vl_34b_chat = 'yi-vl-34b-chat'
     # llava-llama
     llava_llama3_8b_v1_1 = 'llava-llama-3-8b-v1_1'
-    # llava-qwen2
-    llava_qwen2 = 'llava-qwen2'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -949,35 +947,6 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='xtuner/llava-llama-3-8b-v1_1-transformers')
-def get_model_tokenizer_llava_llama(model_dir: str,
-                                    torch_dtype: Dtype,
-                                    model_kwargs: Dict[str, Any],
-                                    load_model: bool = True,
-                                    **kwargs):
-    from transformers import LlavaForConditionalGeneration, LlavaConfig, AutoProcessor
-
-    model_config = LlavaConfig.from_pretrained(model_dir)
-    processor = AutoProcessor.from_pretrained(model_dir)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        automodel_class=LlavaForConditionalGeneration,
-        **kwargs)
-    tokenizer.processor = processor
-    return model, tokenizer
-
-
-@register_model(
-    ModelType.llava_qwen2,
-    '/mnt/workspace/yzhao/llava-qwen2',
-    LoRATM.llama,
-    TemplateType.llava_qwen2_instruct,
-    support_flash_attn=True,
-    requires=['transformers>=4.36'],
-    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_llava_llama(model_dir: str,
                                     torch_dtype: Dtype,
                                     model_kwargs: Dict[str, Any],

@@ -7,7 +7,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
 
-from .media import MediaTagReplacer
+from .media import MediaTag
 from .template import History
 
 PreprocessFunc = Callable[[HfDataset], HfDataset]
@@ -35,14 +35,7 @@ class MediaMixin:
         self.media_key = media_key
         self.media_tag = media_tag
         self.media_type = media_type
-        self.media_replacer = MediaTagReplacer(media_type, media_tag)
-
-    @property
-    def empty_row(self):
-        return {
-            'query': '',
-            'response': '',
-        }
+        self.media_replacer = MediaTag(media_type, media_tag)
 
     @property
     def media_name(self):
@@ -99,7 +92,10 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         h, output = d.pop('history', None), d['output']
         sys = d.pop('system', None)
         if output is None:
-            return self.empty_row
+            return {
+                'query': '',
+                'response': '',
+            }
         if inp is None or len(inp) == 0:
             q = inst
         elif self.concat_inst_inp is not None:
@@ -172,7 +168,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                  from_key: str = 'from',
                  value_key: str = 'value',
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
-                                                Optional[Dict[str, str]]] = _default_repair_conversations,
+                 Optional[Dict[str, str]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
                  **kwargs):
         self.user_role = user_role
@@ -190,7 +186,10 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             conversations = d[self.conversations_key]
             conversations = self.repair_conversations(conversations)
             if conversations is None:
-                return self.empty_row
+                return {
+                    'query': '',
+                    'response': '',
+                }
             lo = 0
             sys = None
             h: History = []
@@ -220,7 +219,10 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
-                return self.empty_row
+                return {
+                    'query': '',
+                    'response': '',
+                }
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
         query: List[str] = []
@@ -276,7 +278,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                  conversations_key: str = 'conversations',
                  inner_key: str = None,
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
-                                                Optional[Dict[str, str]]] = _default_repair_conversations,
+                 Optional[Dict[str, str]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
                  **kwargs):
         self.query_key = query_key
@@ -308,7 +310,10 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
-                return self.empty_row
+                return {
+                    'query': '',
+                    'response': '',
+                }
         return d_dict
 
     def __call__(self, dataset: HfDataset):
@@ -391,7 +396,7 @@ class SmartPreprocessor:
             'chatml': {
                 'required': ['messages'],
                 'preprocessor':
-                ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
+                    ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
             },
             'sharegpt': {
                 'required': ['conversation'],

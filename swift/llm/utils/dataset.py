@@ -22,7 +22,7 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
-from .media import MediaTagReplacer, MediaCache
+from .media import MediaTag, MediaCache
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
                          ListPreprocessor, parse_medias, preprocess_sharegpt)
@@ -139,11 +139,7 @@ class DatasetName:
     # for awq
     pileval = 'pileval'
 
-    mmlu_pro = 'mmlu-pro'
-
-    rlaif_v = 'rlaif-v'
     mantis_instruct = 'mantis-instruct'
-    llava_data_pretrain = 'llava-data-pretrain'
     llava_data_instruct = 'llava-data-instruct'
     midefics = 'midefics'
     gqa = 'gqa'
@@ -154,21 +150,17 @@ class DatasetName:
     grit = 'grit'
     llava_instruct_mix = 'llava-instruct-mix'
     lnqa = 'lnqa'
-    lima = 'lima'
     science_qa = 'science-qa'
     guanaco = 'guanaco'
     mind2web = 'mind2web'
     sharegpt_4o_image = 'sharegpt-4o-image'
-    sharegpt_4o_video = 'sharegpt-4o-video'
 
     m3it = 'm3it'
     # additional images
     sharegpt4v = 'sharegpt4v'
 
-
     llava_instruct_150k = 'llava-instruct-150k'
     llava_pretrain = 'llava-pretrain'
-
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:

@@ -8,7 +8,7 @@ import numpy as np
 from swift.hub.utils.utils import get_cache_dir
 
 
-class MediaTagReplacer:
+class MediaTag:
 
     task_prompts = {
         'ref_grounding': {
@@ -123,18 +123,18 @@ class MediaCache:
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
 
     media_type_urls = {
-        'llava': 'data/llava/llava_pretrain/images',
-        'coco': 'data/coco',
-        'sam': 'data/sam/images',
-        'gqa': 'data/gqa',
-        'ocr_vqa': '.',
-        'textvqa': 'textvqa',
-        'VG_100K': 'vg',
-        'VG_100K_2': 'vg',
-        'share_textvqa': '.',
-        'web-celebrity': '.',
-        'web-landmark': '.',
-        'wikiart': '.'
+        'llava',
+        'coco',
+        'sam',
+        'gqa',
+        'ocr_vqa',
+        'textvqa',
+        'VG_100K',
+        'VG_100K_2',
+        'share_textvqa',
+        'web-celebrity',
+        'web-landmark',
+        'wikiart'
     }
 
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
