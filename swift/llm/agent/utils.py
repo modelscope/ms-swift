@@ -68,8 +68,8 @@ Specifically, you have access to the following APIs: {tool_list}'''
 def calculate_loss_scale(query: str,
                          response: str,
                          use_loss_scale=False,
-                         response_loss_scale_map: Optional[dict[str:list]] = None,
-                         query_loss_scale_map: Optional[dict[str:list]] = None) -> Tuple[List[str], List[float]]:
+                         response_loss_scale_map: Optional[dict[str, list]] = None,
+                         query_loss_scale_map: Optional[dict[str, list]] = None) -> Tuple[List[str], List[float]]:
     """Calculate the loss scale by splitting the agent response.
 
     This algorithm comes from paper: https://arxiv.org/pdf/2309.00986.pdf
@@ -150,16 +150,16 @@ def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[st
 
 def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]):
     import re
+    compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
     for i in range(len(text_list) - 1, -1, -1):
-        if text_list[i].get('key') == '':
-            res_text = text_list.pop(i)['content']
-            insert_pos = i
+        item = text_list[i]
+        if item.get('key') == '':
+            res_text = item['content']
             last_idx = 0
-
             segments = []
-            for pattern, scale in regex_delimiters.items():
-                pattern = eval(pattern)
-                matches = list(re.finditer(pattern, res_text, re.DOTALL))
+
+            for pattern, scale in compiled_patterns:
+                matches = list(re.finditer(pattern, res_text))
                 for match in matches:
                     if match.start() > last_idx:
                         segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
@@ -167,10 +167,10 @@ def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float
                     last_idx = match.end()
 
             if last_idx < len(res_text):
-                segments.append({'key': '', 'content': res_text[last_idx:]})
+                segments.insert(0, {'key': '', 'content': res_text[last_idx:]})
 
-            for segment in reversed(segments):
-                text_list.insert(insert_pos, segment)
+            if segments:
+                text_list[i:i + 1] = segments
 
 
 def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'react_en') -> Optional[str]:
