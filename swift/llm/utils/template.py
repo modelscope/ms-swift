@@ -104,32 +104,28 @@ class TemplateType:
 
 
 class StopWordsCriteria(StoppingCriteria):
-    """An extra class for stop words criteria of generation
-
-    Args:
-        tokenizer: The tokenizer instance.
-        stop_words: A list of stop words, whose types are str and List[int]
-    """
-
+    # The returned sentence includes stop words.
     def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
         self.tokenizer_kwargs = tokenizer_kwargs
         self.start_idx = -1
-        assert isinstance(self.stop_words, list)
-        stop_words = []
-        for stop_word in self.stop_words:
-            if isinstance(stop_word, str):
-                stop_words.append(self.tokenizer.encode(stop_word, add_special_tokens=False))
-        self.stop_words = stop_words
 
-    def __call__(self, input_ids: Tensor, scores: Tensor, **kwargs) -> bool:
+    def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
         if self.start_idx == -1:
             self.start_idx = len(input_ids[0]) - 1
+        tokenizer = self.tokenizer
         stop_words = self.stop_words
+        # [-20:]: Assuming the end tokens do not exceed 20 tokens,
+        #   to avoid input_ids being too long and affecting efficiency.
+        text = tokenizer.decode(input_ids[0, self.start_idx:][-20:], **self.tokenizer_kwargs)
         for stop_word in stop_words:
-            if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
-                return True
+            if isinstance(stop_word, str):
+                if stop_word in text:
+                    return True
+            else:  # list
+                if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
+                    return True
         return False
 
 
