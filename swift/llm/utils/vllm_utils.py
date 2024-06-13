@@ -26,20 +26,22 @@ except ImportError:
 logger = get_logger()
 
 
-def get_vllm_engine(model_type: str,
-                    torch_dtype: Optional[Dtype] = None,
-                    *,
-                    model_id_or_path: Optional[str] = None,
-                    revision: Optional[str] = None,
-                    gpu_memory_utilization: float = 0.9,
-                    tensor_parallel_size: int = 1,
-                    max_model_len: Optional[int] = None,
-                    engine_kwargs: Optional[Dict[str, Any]] = None,
-                    use_async: bool = False,
-                    enable_lora: bool = False,
-                    max_loras: int = 1,
-                    max_lora_rank: int = 16,
-                    **kwargs) -> LLMEngine:
+def get_vllm_engine(
+        model_type: str,
+        torch_dtype: Optional[Dtype] = None,
+        *,
+        model_id_or_path: Optional[str] = None,
+        revision: Optional[str] = None,
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        disable_custom_all_reduce: bool = True,  # Default values different from vllm
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+        use_async: bool = False,
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        **kwargs) -> LLMEngine:
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
         model_type,
@@ -71,6 +73,9 @@ def get_vllm_engine(model_type: str,
         engine_kwargs['max_lora_rank'] = max_lora_rank
     else:
         assert not enable_lora, ('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
+
+    if 'disable_custom_all_reduce' in parameters:
+        engine_kwargs['disable_custom_all_reduce'] = disable_custom_all_reduce
 
     engine_args = engine_args_cls(
         model=model_dir,
@@ -409,6 +414,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         gpu_memory_utilization=args.gpu_memory_utilization,
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
+        disable_custom_all_reduce=args.disable_custom_all_reduce,
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,

@@ -1103,6 +1103,7 @@ class InferArguments(ArgumentsBase):
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
+    disable_custom_all_reduce: bool = True  # Default values different from vllm
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
