@@ -458,7 +458,7 @@ def preprocess_mantis_instruct(dataset):
     ]
     all_local_dirs = {}
     for subset in all_subset:
-        url = 'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'  # noqa
+        url = f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'  # noqa
         local_dir = MediaCache.download(url, f'mantis_{subset}')
         all_local_dirs[subset] = local_dir
 
@@ -467,11 +467,14 @@ def preprocess_mantis_instruct(dataset):
         if source in all_local_dirs:
             local_dir = all_local_dirs[source]
             images = [os.path.join(local_dir, p['path']) for p in row['images']]
-            return {'images': images}
+            if all([os.path.exists(d) for d in images]):
+                return {'images': images}
+            else:
+                return {'images': []}
         else:
             return {'images': []}
 
-    dataset = dataset.map(preprocess_row).filter(lambda row: row['images'])
+    dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['images'])
     return ConversationsPreprocessor(
         user_role='user',
         assistant_role='assistant',
@@ -480,8 +483,7 @@ def preprocess_mantis_instruct(dataset):
         value_key='content',
         media_type='image',
         media_key='images',
-        error_strategy='delete')(
-            dataset)
+        error_strategy='delete')(dataset)
 
 
 register_dataset(
@@ -683,7 +685,7 @@ def long_alpaca_preprocessor(dataset: HfDataset):
         return response
 
     dataset = AlpacaPreprocessor()(dataset)
-    return dataset.map(map_row)
+    return dataset.map(map_row, load_from_cache_file=False)
 
 
 register_dataset(
@@ -710,7 +712,7 @@ def _preprocess_ruozhiba(dataset: HfDataset):
             title = match.group(1)
         return {'response': title}
 
-    return dataset.map(map_row).filter(lambda row: row['response'])
+    return dataset.map(map_row, load_from_cache_file=False).filter(lambda row: row['response'])
 
 
 register_dataset(
@@ -891,7 +893,7 @@ def process_hh_rlhf(dataset):
             'history': history,
         }
 
-    return dataset.map(reorganize_row).filter(lambda row: row['query'] is not None)
+    return dataset.map(reorganize_row, load_from_cache_file=False).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(
@@ -1024,7 +1026,7 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -1068,7 +1070,7 @@ def preprocess_text_caps(dataset):
         except Exception:
             return {'response': '', 'image': None}
 
-    return dataset.map(preprocess).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
+    return dataset.map(preprocess, load_from_cache_file=False).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
 
 
 register_dataset(
@@ -1118,7 +1120,7 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -1149,7 +1151,7 @@ def _preprocess_llava_pretrain(dataset):
         else:
             return {'image': ''}
 
-    dataset = dataset.map(preprocess).filter(lambda row: row['image'])
+    dataset = dataset.map(preprocess, load_from_cache_file=False).filter(lambda row: row['image'])
     return ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')(
             dataset)
@@ -1175,7 +1177,7 @@ def process_shareai_dpo(dataset):
             'rejected_response': row['answer_en'],
         }
 
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row, load_from_cache_file=False)
 
 
 def preprocess_guanaco(dataset):
@@ -1208,7 +1210,7 @@ def preprocess_guanaco(dataset):
             'response': output,
         }
 
-    return dataset.map(preprocess_row).filter(lambda row: row['query'] and row['response'])
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['query'] and row['response'])
 
 
 register_dataset(
@@ -1237,7 +1239,7 @@ def preprocess_dolly_15k(dataset):
             'response': response,
         }
 
-    return dataset.map(preprocess_row)
+    return dataset.map(preprocess_row, load_from_cache_file=False)
 
 
 register_dataset(
@@ -1281,7 +1283,7 @@ def preprocess_okvqa(dataset):
             'query': query,
         }
 
-    return dataset.map(preprocess)
+    return dataset.map(preprocess, load_from_cache_file=False)
 
 
 register_dataset(
@@ -1306,7 +1308,7 @@ def preprocess_a_okvqa(dataset):
             'query': query,
         }
 
-    return dataset.map(preprocess)
+    return dataset.map(preprocess, load_from_cache_file=False)
 
 
 register_dataset(
@@ -1332,7 +1334,7 @@ def preprocess_ocr_vqa(dataset):
             'query': query,
         }
 
-    return dataset.map(preprocess)
+    return dataset.map(preprocess, load_from_cache_file=False)
 
 
 register_dataset(
@@ -1408,7 +1410,7 @@ def preprocess_grit(dataset):
 
         return {'images': images, 'response': response, 'objects': json.dumps(objects or [])}
 
-    return dataset.map(preprocess_row).filter(lambda row: row['objects'])
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['objects'])
 
 
 register_dataset(
@@ -1435,7 +1437,7 @@ def preprocess_gqa(dataset):
         else:
             return {'query': '', 'response': '', 'images': ''}
 
-    return dataset.map(preprocess_row).filter(lambda row: row['query'])
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -1467,7 +1469,7 @@ def preprocess_llava_mix_sft(dataset):
 
         return {'messages': rounds}
 
-    dataset = dataset.map(preprocess_row).map(
+    dataset = dataset.map(preprocess_row, load_from_cache_file=False).map(
         ConversationsPreprocessor(
             user_role='user',
             assistant_role='assistant',
@@ -1532,7 +1534,7 @@ def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
             'rejected_response': rejected_response,
         }
 
-    return dataset.map(preprocess).filter(lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
+    return dataset.map(preprocess, load_from_cache_file=False).filter(lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
 
 
 register_dataset(
@@ -1558,7 +1560,7 @@ def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
             'response': response,
         }
 
-    return dataset.map(preprocess)
+    return dataset.map(preprocess, load_from_cache_file=False)
 
 
 register_dataset(

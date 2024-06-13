@@ -45,6 +45,19 @@ class MediaMixin:
 
     def parse_medias(self, d):
         return parse_medias(d, self.media_key)
+    
+    @property
+    def empty_row(self):
+        empty_row = {
+            'query': '',
+            'response': '',
+            'tools': None,
+            'system': None,
+            'history': [],
+        }
+        if self.media_type and not isinstance(self.media_key, str):
+            empty_row[self.media_name] = None
+        return empty_row
 
 
 class RowPreprocessMixin:
@@ -91,10 +104,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         sys = d.pop('system', None)
         tool = d.pop('tools', None)
         if output is None:
-            return {
-                'query': '',
-                'response': '',
-            }
+            return self.empty_row
         if inp is None or len(inp) == 0:
             q = inst
         elif self.concat_inst_inp is not None:
@@ -109,54 +119,15 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             'tools': tool,
         }
         self.media_replacer(row, self.parse_medias(d))
+        if self.media_type:
+            if not isinstance(self.media_key, str):
+                row[self.media_name] = medias
         return row
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
-        query: List[str] = []
-        response = []
-        system = None
-        history = None
-        medias = None
-        tools = None
-        for i, d in enumerate(tqdm(dataset)):
-            d = self.preprocess(d)
-            q = d['query']
-            r = d['response']
-            if not q and not r:
-                continue
-            h = d.get('history')
-            sys = d.get('system')
-            med = d.get(self.media_name)
-            tool = d.get('tools', None)
-            if history is None and h is not None:
-                history = [None for _ in range(i - 1)]
-            if system is None and sys is not None:
-                system = [None for _ in range(i - 1)]
-            if tools is None and tool is not None:
-                tools = [None for _ in range(i - 1)]
-            if medias is None and med is not None:
-                medias = [None for _ in range(i - 1)]
-            query.append(q)
-            response.append(r)
-            if history is not None:
-                history.append(h)
-            if system is not None:
-                system.append(sys)
-            if medias is not None:
-                medias.append(med)
-            if tools is not None:
-                tools.append(tool)
-
-        d_dict = {'query': query, 'response': response}
-        if history is not None:
-            d_dict['history'] = history
-        if system is not None:
-            d_dict['system'] = system
-        if medias is not None:
-            d_dict[self.media_name] = medias
-        if tools is not None:
-            d_dict['tools'] = tools
-        dataset = HfDataset.from_dict(d_dict)
+        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('query'))
+        if isinstance(self.media_key, str) and self.media_key != self.media_name:
+            dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
 
 
@@ -194,10 +165,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             conversations = d[self.conversations_key]
             conversations = self.repair_conversations(conversations)
             if conversations is None:
-                return {
-                    'query': '',
-                    'response': '',
-                }
+                return self.empty_row
             lo = 0
             sys = None
             h: History = []
@@ -224,70 +192,21 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 'tools': tool,
             })
             self.media_replacer(kwargs, self.parse_medias(d))
+            if self.media_type:
+                if not isinstance(self.media_key, str):
+                    row[self.media_name] = medias
             return kwargs
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
-                return {
-                    'query': '',
-                    'response': '',
-                }
+                return self.empty_row
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
-        query: List[str] = []
-        response: List[str] = []
-        system: List[Optional[str]] = []
-        tools: List[List[Dict[str, Any]]] = []
-        has_system = False
-        history: List[History] = []
-        has_history = False
-        medias: List = []
-        has_medias = False
-        has_tools = False
-
-        for d in tqdm(dataset):
-            d = self.preprocess(d)
-            q = d['query']
-            r = d['response']
-            if not q and not r:
-                continue
-            h = d.get('history')
-            sys = d.get('system')
-            tool = d.get('tools')
-            med = d.get(self.media_name)
-            if h:
-                has_history = True
-            if sys:
-                has_system = True
-            if med:
-                has_medias = True
-            if tool:
-                has_tools = True
-            query.append(q)
-            response.append(r)
-            system.append(sys)
-            history.append(h)
-            medias.append(med)
-
-        kwargs = {}
-        if has_system:
-            kwargs['system'] = system
-        if has_medias:
-            kwargs[self.media_name] = medias
-        kwargs.update({
-            'query': query,
-            'response': response,
-        })
-        if has_history:
-            kwargs['history'] = history
-        if has_tools:
-            kwargs['tools'] = tools
-        if has_tools:
-            kwargs['tools'] = tools
-        dataset = HfDataset.from_dict(kwargs)
+        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('query'))
+        if isinstance(self.media_key, str) and self.media_key != self.media_name:
+            dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
-
 
 class ListPreprocessor(MediaMixin, RowPreprocessMixin):
 
@@ -325,18 +244,21 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 'response': response,
             }
             self.media_replacer(d_dict, self.parse_medias(d))
+            if self.media_type:
+                if not isinstance(self.media_key, str):
+                    row[self.media_name] = medias
         except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
-                return {
-                    'query': '',
-                    'response': '',
-                }
+                return self.empty_row
         return d_dict
 
     def __call__(self, dataset: HfDataset):
-        return dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('query'))
+        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('query'))
+        if isinstance(self.media_key, str) and self.media_key != self.media_name:
+            dataset = dataset.rename_columns({self.media_key: self.media_name})
+        return dataset
 
 
 class ComposePreprocessor:

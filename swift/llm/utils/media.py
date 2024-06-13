@@ -104,7 +104,6 @@ class MediaTag:
         d['query'] = query
         if 'response' in d:
             d['response'] = response
-        d[self.media_keys[self.media_type]] = medias
 
 
 class MediaCache:
