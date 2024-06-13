@@ -301,6 +301,7 @@ The table below introcudes all models supported by SWIFT:
 |mengzi3-13b-base|[langboat/Mengzi3-13B-Base](https://modelscope.cn/models/langboat/Mengzi3-13B-Base/summary)|q_proj, k_proj, v_proj|mengzi|&#x2714;|&#x2714;||-|[Langboat/Mengzi3-13B-Base](https://huggingface.co/Langboat/Mengzi3-13B-Base)|
 |c4ai-command-r-v01|[AI-ModelScope/c4ai-command-r-v01](https://modelscope.cn/models/AI-ModelScope/c4ai-command-r-v01/summary)|q_proj, k_proj, v_proj|c4ai|&#x2714;|&#x2718;|transformers>=4.39.1|-|[CohereForAI/c4ai-command-r-v01](https://huggingface.co/CohereForAI/c4ai-command-r-v01)|
 |c4ai-command-r-plus|[AI-ModelScope/c4ai-command-r-plus](https://modelscope.cn/models/AI-ModelScope/c4ai-command-r-plus/summary)|q_proj, k_proj, v_proj|c4ai|&#x2714;|&#x2718;|transformers>4.39|-|[CohereForAI/c4ai-command-r-plus](https://huggingface.co/CohereForAI/c4ai-command-r-plus)|
+|codestral-22b|[huangjintao/Codestral-22B-v0.1](https://modelscope.cn/models/huangjintao/Codestral-22B-v0.1/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.34|-|[mistralai/Codestral-22B-v0.1](https://huggingface.co/mistralai/Codestral-22B-v0.1)|
 
 
 ### MLLM
