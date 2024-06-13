@@ -40,7 +40,6 @@ def write_dataset_info() -> None:
     json_keys = list(all_keys - set(py_keys))
     json_keys.sort()
     dataset_name_list = py_keys + json_keys
-    dataset_name_list.sort()
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],
