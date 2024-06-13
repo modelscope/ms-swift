@@ -118,7 +118,7 @@ class StopWordsCriteria(StoppingCriteria):
         assert isinstance(self.stop_words, list)
         stop_words = []
         for stop_word in self.stop_words:
-            if isinstance(self.stop_words, str):
+            if isinstance(stop_word, str):
                 stop_words.append(self.tokenizer.encode(stop_word, add_special_tokens=False))
         self.stop_words = stop_words
 
@@ -689,7 +689,7 @@ class QwenVLTemplate(QwenTemplate):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.qwenvl, QwenVLTemplate())
+register_template(TemplateType.qwenvl, QwenVLTemplate(), infer_media_type='round')
 register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
@@ -1396,7 +1396,7 @@ class Phi3VisionTemplate(Template):
             assert 'num_crops' in image, 'num_crops must be provided in images if num_img_tokens is not provided'
             num_crops = image['num_crops']
             num_img_tokens = [_num_crops * example['num_img_tokens'] for _num_crops in num_crops]
-        return [-index-1] * num_img_tokens[0]
+        return [-index-1] * num_img_tokens[0] + [1]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         image_path = example.get('images')
@@ -1426,7 +1426,7 @@ class Phi3VisionTemplate(Template):
         return res
 
 
-register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
+register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True, infer_media_type='round')
 
 
 class LlamaLlavaNextTemplate(LLavaTemplate):
@@ -1605,6 +1605,7 @@ register_template(
     use_model=True,
     lazy_tokenize=True,
     dataloader_num_workers=0,
+    infer_media_type='round',
     dataloader_pin_memory=False)  # only 'cpu' can pin_memory
 
 register_template(
