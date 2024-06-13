@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from swift.utils import get_logger
 from swift.utils.utils import split_str_parts_by
@@ -65,10 +65,11 @@ use function Finish->give_up_and_restart.
 Specifically, you have access to the following APIs: {tool_list}'''
 
 
-def calculate_loss_scale(response: str,
+def calculate_loss_scale(query: str,
+                         response: str,
                          use_loss_scale=False,
-                         loss_scale_map: dict[str:list] = None,
-                         loss_scale_value: Optional[Union[str, float, int]] = None) -> Tuple[List[str], List[float]]:
+                         response_loss_scale_map: Optional[dict[str:list]] = None,
+                         query_loss_scale_map: Optional[dict[str:list]] = None) -> Tuple[List[str], List[float]]:
     """Calculate the loss scale by splitting the agent response.
 
     This algorithm comes from paper: https://arxiv.org/pdf/2309.00986.pdf
@@ -94,9 +95,19 @@ def calculate_loss_scale(response: str,
         A tuple of agent response parts and their weights.
     """
     if use_loss_scale:
-        if loss_scale_value:
-            return [response], [float(loss_scale_value)]
-        agent_parts = split_str_parts_by(response, loss_scale_map)
+        # query loss scale map
+        if query_loss_scale_map is not None:
+            for key in query_loss_scale_map.keys():
+                if key in query:
+                    if isinstance(query_loss_scale_map[key], (float, int)):
+                        query_loss_scale_map[key] = [query_loss_scale_map[key]]
+                    loss_scale_value = query_loss_scale_map[key][0]
+                    return [response], [float(loss_scale_value)]
+        delimiters = list(k for k in response_loss_scale_map.keys() if len(response_loss_scale_map[k]) == 2)
+        agent_parts = split_str_parts_by(response, delimiters)
+        regex_delimiters = {k: v for k, v in response_loss_scale_map.items() if len(v) == 1}
+        if len(regex_delimiters):
+            agent_parts = split_parts_by_regex(agent_parts, regex_delimiters)
         weights = []
         agent_content = []
         for c in agent_parts:
@@ -104,9 +115,9 @@ def calculate_loss_scale(response: str,
                 weights += [c['key']]
                 agent_content.append(c['content'])
             else:
-                if c['key'] in loss_scale_map:
-                    weights += [loss_scale_map[c['key']][0]]
-                    weights += [loss_scale_map[c['key']][1]]
+                if c['key'] in response_loss_scale_map:
+                    weights += [response_loss_scale_map[c['key']][0]]
+                    weights += [response_loss_scale_map[c['key']][1]]
                     agent_content.append(c['key'])
                     agent_content.append(c['content'])
                 else:
@@ -135,6 +146,31 @@ def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[st
     if action_input:
         action_input.strip().replace('\n', '')
     return action, action_input
+
+
+def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]):
+    import re
+    for i in range(len(text_list) - 1, -1, -1):
+        if text_list[i].get('key') == '':
+            res_text = text_list.pop(i)['content']
+            insert_pos = i
+            last_idx = 0
+
+            segments = []
+            for pattern, scale in regex_delimiters.items():
+                pattern = eval(pattern)
+                matches = list(re.finditer(pattern, res_text, re.DOTALL))
+                for match in matches:
+                    if match.start() > last_idx:
+                        segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
+                    segments.append({'key': scale[0], 'content': match.group(0)})
+                    last_idx = match.end()
+
+            if last_idx < len(res_text):
+                segments.append({'key': '', 'content': res_text[last_idx:]})
+
+            for segment in reversed(segments):
+                text_list.insert(insert_pos, segment)
 
 
 def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'react_en') -> Optional[str]:

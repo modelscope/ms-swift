@@ -280,16 +280,14 @@ class Template:
         return inputs, tokenizer_kwargs
 
     def _concat_context_list(
-        self,
-        context_list: List[Context],
-        res_context_list: List[Context],  # inplace
-        loss_scale_list: List[float],  # inplace
-        system: Optional[str] = None,
-        query: Optional[str] = None,
-        response: Optional[str] = None,
-        round0: Optional[int] = None,
-        loss_scale_value: Optional[Union[str, float, int]] = None,
-    ) -> None:
+            self,
+            context_list: List[Context],
+            res_context_list: List[Context],  # inplace
+            loss_scale_list: List[float],  # inplace
+            system: Optional[str] = None,
+            query: Optional[str] = None,
+            response: Optional[str] = None,
+            round0: Optional[int] = None) -> None:
         # concat context list and replace placeholder
         round1 = None
         if round0 is not None:
@@ -299,8 +297,9 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale,
-                                                                     self.response_loss_scale_map, loss_scale_value)
+                    content_part, weight_part = calculate_loss_scale(query, response, self.use_loss_scale,
+                                                                     self.response_loss_scale_map,
+                                                                     self.query_loss_scale_map)
                     res_context_list.extend(content_part)
                     loss_scale_list.extend(weight_part)
                     continue
@@ -410,23 +409,9 @@ class Template:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 context_list += self.suffix
-            loss_scale_value = None
-            if self.query_loss_scale_map is not None:
-                for key in self.query_loss_scale_map.keys():
-                    if key in q:
-                        if isinstance(self.query_loss_scale_map[key], (float, int)):
-                            self.query_loss_scale_map[key] = [self.query_loss_scale_map[key]]
-                        loss_scale_value = self.query_loss_scale_map[key][0]
-                        break
             if q or r:
                 self._concat_context_list(
-                    context_list,
-                    res_context_list,
-                    loss_scale_list,
-                    query=q,
-                    response=r,
-                    round0=i,
-                    loss_scale_value=loss_scale_value)
+                    context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 

@@ -187,16 +187,16 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     return resp
 
 
-def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
+def split_str_parts_by(text: str, delimiters: List[str]):
     """Split the text field into parts.
 
     Args:
         text: A text to be split.
-        loss_scale_map: A map containing delimiters and patterns with corresponding weights.
+        delimiters: The delimiters.
+
     Returns:
         The split text in list of dicts.
     """
-    delimiters = list(k for k in loss_scale_map.keys() if len(loss_scale_map[k]) == 2)
     all_start_chars = [d[0] for d in delimiters]
     all_length = [len(d) for d in delimiters]
 
@@ -229,26 +229,4 @@ def split_str_parts_by(text: str, loss_scale_map: Dict[str, List[float]]):
         text_list[-1]['content'] = last_words
     else:
         text_list.append({'key': '', 'content': last_words})
-    regex_delimiters = {k: v for k, v in loss_scale_map.items() if len(v) == 1}
-    for i in range(len(text_list) - 1, -1, -1):
-        if text_list[i].get('key') == '':
-            res_text = text_list.pop(i)['content']
-            insert_pos = i
-            last_idx = 0
-
-            segments = []
-            for pattern, scale in regex_delimiters.items():
-                pattern = eval(pattern)
-                matches = list(re.finditer(pattern, res_text, re.DOTALL))
-                for match in matches:
-                    if match.start() > last_idx:
-                        segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
-                    segments.append({'key': scale[0], 'content': match.group(0)})
-                    last_idx = match.end()
-
-            if last_idx < len(res_text):
-                segments.append({'key': '', 'content': res_text[last_idx:]})
-
-            for segment in reversed(segments):
-                text_list.insert(insert_pos, segment)
     return text_list
