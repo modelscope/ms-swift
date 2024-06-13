@@ -35,7 +35,11 @@ def write_dataset_info() -> None:
         text_list = []
 
     ignore_dataset = {text.split('|', 2)[1].lstrip('🔥 '): text for text in text_list}
-    dataset_name_list = list(DATASET_MAPPING.keys())
+    all_keys = set(DATASET_MAPPING.keys())
+    py_keys = DatasetName.get_dataset_name_list()
+    json_keys = list(all_keys - set(py_keys))
+    json_keys.sort()
+    dataset_name_list = py_keys + json_keys
     dataset_name_list.sort()
     mapping = {}
     _iter = zip(
@@ -109,11 +113,10 @@ def write_dataset_info() -> None:
 
             res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|"
                                     f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
-            print(res_text_list[-1], flush=True)
         except Exception as e:
             import traceback
-            print('here is the error:')
             print(traceback.format_exc())
+            break
 
     for idx in range(len(fpaths)):
         text = '\n'.join(res_text_list)
