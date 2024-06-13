@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from .argument import (AppUIArguments, DeployArguments, DPOArguments, EvalArguments, ExportArguments, InferArguments,
                        ORPOArguments, RomeArguments, SftArguments, SimPOArguments, is_adapter, swift_to_peft_format)
-from .client_utils import convert_to_base64, decode_base64, get_model_list_client, inference_client
+from .client_utils import (convert_to_base64, decode_base64, get_model_list_client, inference_client,
+                           inference_client_async)
 from .dataset import (DATASET_MAPPING, DatasetName, GetDatasetFunction, HfDataset, get_dataset, get_dataset_from_repo,
                       load_dataset_from_local, load_ms_dataset, register_dataset, register_dataset_info,
                       register_local_dataset, sample_dataset)
@@ -11,16 +12,18 @@ from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM, ModelType,
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, SwiftPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
-from .protocol import (ChatCompletionRequest, ChatCompletionResponse, ChatCompletionResponseChoice,
-                       ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, CompletionRequest,
-                       CompletionResponse, CompletionResponseChoice, CompletionResponseStreamChoice,
-                       CompletionStreamResponse, DeltaMessage, Model, ModelList, UsageInfo, XRequestConfig, random_uuid)
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
+                       ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
+                       ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
+                       CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, Function, Model,
+                       ModelList, UsageInfo, XRequestConfig, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWords, Template, TemplateType,
                        get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
                     find_ln, get_max_model_len, get_time_info, history_to_messages, inference, inference_stream,
-                    is_vllm_available, limit_history_length, messages_to_history, print_example, safe_tokenizer_decode,
-                    set_generation_config, sort_by_max_length, stat_dataset, to_device)
+                    is_vllm_available, limit_history_length, messages_join_observation, messages_to_history,
+                    print_example, safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset,
+                    to_device)
 
 try:
     if is_vllm_available():

@@ -31,7 +31,8 @@ Swift DOCUMENTATION
    LLM/Supported-models-datasets.md
    LLM/Customization.md
    LLM/Self-cognition-best-practice.md
-   LLM/Agent-best-practice.md
+   LLM/Agent-fine-tuning-best-practice.md
+   LLM/Agent-deployment-best-practice.md
    LLM/Qwen1.5-best-practice.md
    LLM/Grok-1-best-practice.md
    LLM/ORPO.md

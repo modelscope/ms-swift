@@ -393,6 +393,7 @@ class TestTrainer(unittest.TestCase):
                 save_total_limit=2,
                 metric_for_best_model='loss',
                 greater_is_better=False,
+                report_to=['tensorboard'],
                 gradient_accumulation_steps=1,
                 logging_steps=5,
                 eval_steps=10,

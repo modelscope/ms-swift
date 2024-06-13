@@ -6,6 +6,7 @@
 - [dpo Parameters](#dpo-parameters)
 - [merge-lora infer Parameters](#merge-lora-infer-parameters)
 - [export Parameters](#export-parameters)
+- [eval Parameters](#eval-parameters)
 - [app-ui Parameters](#app-ui-parameters)
 - [deploy Parameters](#deploy-parameters)
 
@@ -28,7 +29,8 @@
 - `--add_output_dir_suffix`: Default is `True`, indicating that a suffix of `model_type` and fine-tuning version number will be appended to the `output_dir` directory. Set to `False` to avoid this behavior.
 - `--ddp_backend`: Backend support for distributed training, default is `None`. Options include: 'nccl', 'gloo', 'mpi', 'ccl'.
 - `--seed`: Global seed, default is `42`. Used to reproduce training results.
-- `--resume_from_checkpoint`: For resuming training from checkpoint, default is `None`. You can set this to the path of a checkpoint, e.g. `'output/qwen-7b-chat/vx-xxx/checkpoint-xxx'`, to resume training.
+- `--resume_from_checkpoint`: Used for resuming training from a checkpoint, default is `None`. You can set it to the path of the checkpoint, for example: `'output/qwen-7b-chat/vx-xxx/checkpoint-xxx'`, to resume training from that point. Supports adjusting `--resume_only_model` to only read the model file during checkpoint continuation.
+- `--resume_only_model`: Default is `False`, which means strict checkpoint continuation, this will read the weights of the model, optimizer, lr_scheduler, and the random seeds stored on each device, and continue training from the last paused steps. If set to `True`, it will only read the weights of the model.
 - `--dtype`: torch_dtype when loading base model, default is `'AUTO'`, i.e. intelligently select dtype: if machine does not support bf16, use fp16; if `MODEL_MAPPING` specifies torch_dtype for corresponding model, use its dtype; otherwise use bf16. Options include: 'bf16', 'fp16', 'fp32'.
 - `--dataset`: Used to select the training dataset, default is `[]`. You can see the list of available datasets [here](Supported-models-datasets.md#Datasets). If you need to train with multiple datasets, you can use ',' or ' ' to separate them, for example: `--dataset alpaca-en,alpaca-zh` or `--dataset alpaca-en alpaca-zh`. It supports Modelscope Hub/HuggingFace Hub/local paths, subset selection, and dataset sampling. The specified format for each dataset is as follows: `[HF or MS::]{dataset_name} or {dataset_id} or {dataset_path}[:subset1/subset2/...][#dataset_sample]`. The simplest case requires specifying only dataset_name, dataset_id, or dataset_path. Customizing datasets can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset)
   - Supports MS and HF hub, as well as dataset_sample. For example, 'MS::alpaca-zh#2000', 'HF::jd-sentiment-zh#2000' (the default hub used is controlled by the `USE_UF` environment variable, default is MS).
@@ -41,6 +43,7 @@
 - `--train_dataset_sample`: The number of samples for the training dataset, default is `-1`, which means using the complete training dataset for training. This parameter is deprecated, please use `--dataset {dataset_name}#{dataset_sample}` instead.
 - `--val_dataset_sample`: Used to sample the validation set, with a default value of `None`, which automatically selects a suitable number of data samples for validation. If you specify `-1`, the complete validation set is used for validation. This parameter is deprecated and the number of samples in the validation set is controlled by `--dataset_test_ratio` or `--val_dataset {dataset_name}#{dataset_sample}`.
 - `--system`: System used in dialogue template, default is `None`, i.e. use the model's default system. If set to '', no system is used.
+- `--tools_prompt`: Select the corresponding tools system prompt for the tools field transformation. The options are ['react_en', 'react_zh', 'toolbench'], which correspond to the English version of ReAct format, Chinese version of ReAct format and the toolbench format, respectively. The default is the English version of the ReAct format. For more information, you can refer to the [Agent Deployment Best Practices](Agent-deployment-best-practices.md).
 - `--max_length`: Maximum token length, default is `2048`. Avoids OOM issues caused by individual overly long samples. When `--truncation_strategy delete` is specified, samples exceeding max_length will be deleted. When `--truncation_strategy truncation_left` is specified, the leftmost tokens will be truncated: `input_ids[-max_length:]`. If set to -1, no limit.
 - `--truncation_strategy`: Default is `'delete'` which removes sentences exceeding max_length from dataset. `'truncation_left'` will truncate excess text from the left, which may truncate special tokens and affect performance, not recommended.
 - `--check_dataset_strategy`: Default is `'none'`, i.e. no checking. If training an LLM model, `'warning'` is recommended as data check strategy. If your training target is sentence classification etc., setting to `'none'` is recommended.
@@ -248,6 +251,7 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft.sh command line arguments`.
 - `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
 - `--system`: Default is `None`. See `sft.sh command line arguments` for parameter details.
+- `--tools_prompt`: Default is `react_en`. See `sft.sh command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
 - `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
 - `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
@@ -290,7 +294,7 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 ## export Parameters
 
 export parameters inherit from infer parameters, with the following added parameters:
-
+- `--to_peft_format`: Default is `False`. Convert the swift format of LoRA (`--tuner_backend swift`) to peft format.
 - `--merge_lora`: Default is `False`. This parameter is already defined in InferArguments, not a new parameter. Whether to merge lora weights into base model and save full weights. Weights will be saved in the same level directory as `ckpt_dir`, e.g. `'/path/to/your/vx-xxx/checkpoint-xxx-merged'` directory.
 - `--quant_bits`: Number of bits for quantization. Default is `0`, i.e. no quantization. If you set `--quant_method awq`, you can set this to `4` for 4bits quantization. If you set `--quant_method gptq`, you can set this to `2`,`3`,`4`,`8` for corresponding bits quantization. If quantizing original model, weights will be saved in `f'{args.model_type}-{args.quant_method}-int{args.quant_bits}'` directory. If quantizing fine-tuned model, weights will be saved in the same level directory as `ckpt_dir`, e.g. `f'/path/to/your/vx-xxx/checkpoint-xxx-{args.quant_method}-int{args.quant_bits}'` directory.
 - `--quant_method`: Quantization method, default is `'awq'`. Options are 'awq', 'gptq'.
@@ -307,28 +311,21 @@ export parameters inherit from infer parameters, with the following added parame
 
 ## eval parameters
 
-The eval parameters inherit from the infer parameters, and additionally include the following parameters:
+The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by [evalscope](https://github.com/modelscope/eval-scope).)
 
-- `--name`: Default is `None`. The name of the evaluation, the final evaluation results will be stored in a folder named `{{model_type}-{name}}`.
-
-- `--eval_dataset`: The official dataset for evaluation, the default value is `['ceval', 'gsm8k', 'arc']`, and `mmlu` and `bbh` datasets are also supported. If you only need to evaluate a custom dataset, you can set this parameter to `no`.
-
-- `--eval_limit`: The number of samples for each sub-dataset of the evaluation set, default is `None` which means full evaluation.
-
-- `--eval_few_shot`: The number of few-shot instances for each sub-dataset of the evaluation set, default is `None` which means using the default configuration of the dataset.
-
-- `--custom_eval_config`: Use a custom dataset for evaluation, this should be a local file path, the file format is described in [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set).
-
-- `--eval_use_cache`: Whether to use the evaluation cache, if True, the eval process will only refresh the eval results. Default `False`.
-
-- `--eval_url`: The url of OpenAI standard model service. For example: `http://127.0.0.1:8000/v1`.
-
+- `--eval_dataset`: The official dataset for evaluation, with a default value of `['ceval', 'gsm8k', 'arc']`. Possible values include: 'arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa'. If only custom datasets need to be evaluated, this parameter can be set to `no`.
+- `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset.
+- `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation.
+- `--name`: Used to differentiate the result storage path for evaluating the same configuration, with the current time as the default.
+- `--eval_url`: The standard model invocation interface for OpenAI, for example, `http://127.0.0.1:8000/v1`. This needs to be set when evaluating in a deployed manner, usually not needed. Default is `None`.
   ```shell
   swift eval --eval_url http://127.0.0.1:8000/v1 --eval_is_chat_model true --model_type gpt4 --eval_token xxx
   ```
+- `--eval_token`: The token for the standard model invocation interface for OpenAI, with a default value of `'EMPTY'`, indicating no token.
+- `--eval_is_chat_model`: If `eval_url` is not empty, this value needs to be passed to determine if it is a "chat" model. False represents a "base" model. Default is `None`.
+- `--custom_eval_config`: Used for evaluating with custom datasets, and needs to be a locally existing file path. For details on file format, refer to [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set). Default is `None`.
+- `--eval_use_cache`: Whether to use already generated evaluation cache, so that previously evaluated results won't be rerun but only the evaluation results regenerated. Default is `False`.
 
-- `--eval_is_chat_model`: If `eval_url` is not None, `eval_is_chat_model` must be passed to tell the url calls a chat or a base model.
-- `--eval_token`: The token of the `eval_url`, default value `EMPTY` means token is not needed.
 
 ## app-ui Parameters
 

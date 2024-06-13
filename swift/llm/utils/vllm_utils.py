@@ -294,6 +294,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
             if output.finished:
                 prog_bar.update()
         yield resp_list
+    prog_bar.close()
 
 
 @torch.inference_mode()
@@ -372,7 +373,7 @@ def inference_vllm(llm_engine: LLMEngine,
             if output.finished:
                 outputs.append(output)
                 prog_bar.update()
-
+    prog_bar.close()
     for output in outputs:
         i = int(output.request_id)
         request = request_list[i]
@@ -433,8 +434,13 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         num_beams=args.num_beams)
     logger.info(f'generation_config: {generation_config}')
     llm_engine.generation_config = generation_config
-    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
-                                      args.truncation_strategy)
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        tools_prompt=args.tools_prompt)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     return llm_engine, template

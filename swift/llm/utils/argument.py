@@ -24,6 +24,7 @@ from swift.trainers import Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
+from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
@@ -82,6 +83,8 @@ class ArgumentsBase:
             logger.warning(f'use_flash_attn: {self.use_flash_attn}, ' f'but support_flash_attn: {support_flash_attn}')
 
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
+        if self.temperature == 0:
+            self.do_sample = False
         if self.do_sample is False:
             # fix warning
             self.temperature = 1.
@@ -445,6 +448,7 @@ class SftArguments(ArgumentsBase):
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
+    resume_only_model: bool = False
     ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
@@ -458,6 +462,7 @@ class SftArguments(ArgumentsBase):
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
     system: Optional[str] = None
+    tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
@@ -560,6 +565,7 @@ class SftArguments(ArgumentsBase):
     optim: str = 'adamw_torch'
     adam_beta1: float = 0.9
     adam_beta2: float = 0.999
+    adam_epsilon: float = 1e-8
     learning_rate: Optional[float] = None
     weight_decay: float = 0.1
     gradient_accumulation_steps: Optional[int] = None
@@ -658,6 +664,27 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
+    def load_from_checkpoint(self) -> None:
+        # resume_from_checkpoint: reading the model architecture
+        sft_args_path = os.path.join(self.resume_from_checkpoint, 'sft_args.json')
+        if not os.path.exists(sft_args_path):
+            logger.info(f'{sft_args_path} not found')
+            return
+        with open(sft_args_path, 'r', encoding='utf-8') as f:
+            sft_args = json.load(f)
+        imported_keys = [
+            'model_type', 'model_revision', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+            'bnb_4bit_use_double_quant', 'model_id_or_path'
+        ]
+
+        for key in imported_keys:
+            value = getattr(self, key)
+            if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
+                continue
+            if key in {'model_type', 'model_revision', 'model_id_or_path'} and value is not None:
+                continue
+            setattr(self, key, sft_args.get(key))
+
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
             return
@@ -732,6 +759,8 @@ class SftArguments(ArgumentsBase):
         self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
+        if self.resume_from_checkpoint is not None:
+            self.load_from_checkpoint()
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -941,6 +970,7 @@ class SftArguments(ArgumentsBase):
             optim=self.optim,
             adam_beta1=self.adam_beta1,
             adam_beta2=self.adam_beta2,
+            adam_epsilon=self.adam_epsilon,
             hub_model_id=self.hub_model_id,
             hub_private_repo=self.hub_private_repo,
             push_hub_strategy=self.push_hub_strategy,
@@ -1026,6 +1056,7 @@ class InferArguments(ArgumentsBase):
     show_dataset_sample: int = 10
     save_result: bool = True
     system: Optional[str] = None
+    tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
     max_length: int = -1  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
@@ -1261,23 +1292,31 @@ class DeployArguments(InferArguments):
 @dataclass
 class EvalArguments(InferArguments):
 
-    name: Optional[str] = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
-
-    eval_url: Optional[str] = None
-
-    eval_token: Optional[str] = 'EMPTY'
-
-    eval_is_chat_model: bool = None
-
-    eval_dataset: List[str] = field(default_factory=lambda: ['ceval', 'gsm8k', 'arc'])
-
+    eval_dataset: List[str] = field(
+        default_factory=lambda: ['ceval', 'gsm8k', 'arc'],
+        metadata={'help': f"dataset choices: {['arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa']}"})
     eval_few_shot: Optional[int] = None
-
     eval_limit: Optional[int] = None
 
-    custom_eval_config: Optional[str] = None
+    name: str = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    eval_url: Optional[str] = None
+    eval_token: str = 'EMPTY'
+    eval_is_chat_model: Optional[bool] = None
+    custom_eval_config: Optional[str] = None  # path
+    eval_use_cache: bool = False
 
-    eval_use_cache: Optional[bool] = False
+    def __post_init__(self):
+        super().__post_init__()
+        if isinstance(self.eval_dataset, str):
+            self.eval_dataset = [self.eval_dataset]
+        if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
+            args.eval_dataset = []
+        if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
+            model = get_model_list_client(url=self.eval_url).data[0]
+            if self.eval_is_chat_model is None:
+                self.eval_is_chat_model = model.is_chat
+            if self.model_type is None is None:
+                self.model_type = model.id
 
     def select_dtype(self):
         if self.eval_url is None:

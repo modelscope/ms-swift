@@ -89,6 +89,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         inst, inp = d['instruction'], d.get('input', None)
         h, output = d.pop('history', None), d['output']
         sys = d.pop('system', None)
+		tool = d.pop('tools', None)
         if output is None:
             return {
                 'query': '',
@@ -105,6 +106,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             'query': q,
             'system': sys,
             'response': output,
+			'tools': tool,
         }
         self.media_replacer(row, self.parse_medias(d))
         return row
@@ -115,6 +117,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         system = None
         history = None
         medias = None
+		tools = None
         for i, d in enumerate(tqdm(dataset)):
             d = self.preprocess(d)
             q = d['query']
@@ -124,10 +127,13 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             h = d.get('history')
             sys = d.get('system')
             med = d.get(self.media_name)
+			tool = d.get('tools', None)
             if history is None and h is not None:
                 history = [None for _ in range(i - 1)]
             if system is None and sys is not None:
                 system = [None for _ in range(i - 1)]
+            if tools is None and tool is not None:
+                tools = [None for _ in range(i - 1)]
             if medias is None and med is not None:
                 medias = [None for _ in range(i - 1)]
             query.append(q)
@@ -138,7 +144,9 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
                 system.append(sys)
             if medias is not None:
                 medias.append(med)
-
+            if tools is not None:
+                tools.append(tool)
+				
         d_dict = {'query': query, 'response': response}
         if history is not None:
             d_dict['history'] = history
@@ -146,6 +154,8 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             d_dict['system'] = system
         if medias is not None:
             d_dict[self.media_name] = medias
+        if tools is not None:
+            d_dict['tools'] = tools
         dataset = HfDataset.from_dict(d_dict)
         return dataset
 
@@ -206,10 +216,12 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             response = conversations[-1][self.value_key]
             system = sys
             history = h
+			tool = d.get('tools', [])
             kwargs = {'system': system, 'history': history}
             kwargs.update({
                 'query': query,
                 'response': response,
+				'tools': tool,
             })
             self.media_replacer(kwargs, self.parse_medias(d))
             return kwargs
@@ -226,11 +238,13 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         query: List[str] = []
         response: List[str] = []
         system: List[Optional[str]] = []
+        tools: List[List[Dict[str, Any]]] = []
         has_system = False
         history: List[History] = []
         has_history = False
         medias: List = []
         has_medias = False
+		has_tools = False
 
         for d in tqdm(dataset):
             d = self.preprocess(d)
@@ -240,6 +254,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 continue
             h = d.get('history')
             sys = d.get('system')
+			tool = d.get('tools')
             med = d.get(self.media_name)
             if h:
                 has_history = True
@@ -247,6 +262,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 has_system = True
             if med:
                 has_medias = True
+            if tool:
+                has_tools = True
             query.append(q)
             response.append(r)
             system.append(sys)
@@ -264,6 +281,10 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         })
         if has_history:
             kwargs['history'] = history
+        if has_tools:
+            kwargs['tools'] = tools
+        if has_tools:
+            kwargs['tools'] = tools
         dataset = HfDataset.from_dict(kwargs)
         return dataset
 
