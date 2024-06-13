@@ -724,7 +724,7 @@ class QwenVLTemplate(QwenTemplate):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.qwenvl, QwenVLTemplate(), infer_media_type='round')
+register_template(TemplateType.qwenvl, QwenVLTemplate())
 register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
