@@ -36,6 +36,7 @@ def get_vllm_engine(
         tensor_parallel_size: int = 1,
         max_model_len: Optional[int] = None,
         disable_custom_all_reduce: bool = True,  # Default values different from vllm
+        enforce_eager: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         use_async: bool = False,
         enable_lora: bool = False,
@@ -74,9 +75,6 @@ def get_vllm_engine(
     else:
         assert not enable_lora, ('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
 
-    if 'disable_custom_all_reduce' in parameters:
-        engine_kwargs['disable_custom_all_reduce'] = disable_custom_all_reduce
-
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
@@ -85,6 +83,8 @@ def get_vllm_engine(
         tensor_parallel_size=tensor_parallel_size,
         max_model_len=max_model_len,
         disable_log_stats=disable_log_stats,
+        disable_custom_all_reduce=disable_custom_all_reduce,
+        enforce_eager=enforce_eager,
         **engine_kwargs)
     try:
         from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
@@ -415,6 +415,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         tensor_parallel_size=args.tensor_parallel_size,
         max_model_len=args.max_model_len,
         disable_custom_all_reduce=args.disable_custom_all_reduce,
+        enforce_eager=args.enforce_eager,
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,

@@ -1114,6 +1114,7 @@ class InferArguments(ArgumentsBase):
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
+    enforce_eager: bool = False
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
@@ -1321,7 +1322,7 @@ class EvalArguments(InferArguments):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
         if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
-            args.eval_dataset = []
+            self.eval_dataset = []
         if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:
