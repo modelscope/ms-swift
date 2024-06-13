@@ -89,7 +89,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         inst, inp = d['instruction'], d.get('input', None)
         h, output = d.pop('history', None), d['output']
         sys = d.pop('system', None)
-		tool = d.pop('tools', None)
+        tool = d.pop('tools', None)
         if output is None:
             return {
                 'query': '',
@@ -106,7 +106,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             'query': q,
             'system': sys,
             'response': output,
-			'tools': tool,
+            'tools': tool,
         }
         self.media_replacer(row, self.parse_medias(d))
         return row
@@ -117,7 +117,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         system = None
         history = None
         medias = None
-		tools = None
+        tools = None
         for i, d in enumerate(tqdm(dataset)):
             d = self.preprocess(d)
             q = d['query']
@@ -127,7 +127,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             h = d.get('history')
             sys = d.get('system')
             med = d.get(self.media_name)
-			tool = d.get('tools', None)
+            tool = d.get('tools', None)
             if history is None and h is not None:
                 history = [None for _ in range(i - 1)]
             if system is None and sys is not None:
@@ -146,7 +146,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
                 medias.append(med)
             if tools is not None:
                 tools.append(tool)
-				
+
         d_dict = {'query': query, 'response': response}
         if history is not None:
             d_dict['history'] = history
@@ -216,12 +216,12 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             response = conversations[-1][self.value_key]
             system = sys
             history = h
-			tool = d.get('tools', [])
+            tool = d.get('tools', [])
             kwargs = {'system': system, 'history': history}
             kwargs.update({
                 'query': query,
                 'response': response,
-				'tools': tool,
+                'tools': tool,
             })
             self.media_replacer(kwargs, self.parse_medias(d))
             return kwargs
@@ -244,7 +244,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         has_history = False
         medias: List = []
         has_medias = False
-		has_tools = False
+        has_tools = False
 
         for d in tqdm(dataset):
             d = self.preprocess(d)
@@ -254,7 +254,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 continue
             h = d.get('history')
             sys = d.get('system')
-			tool = d.get('tools')
+            tool = d.get('tools')
             med = d.get(self.media_name)
             if h:
                 has_history = True

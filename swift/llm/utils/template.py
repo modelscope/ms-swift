@@ -276,7 +276,7 @@ class Template:
             # reload grounding from str
             example['objects'] = json.loads(example['objects'])
         query: Optional[str] = example.get('query', None)
-		query_role: Optional[str] = example.get('query_role', None)
+        query_role: Optional[str] = example.get('query_role', None)
         response: Optional[str] = example.get('response', None)
         history: Optional[History] = example.get('history', None)
         history_roles: Optional[History] = example.get('history_roles', None)
@@ -311,7 +311,7 @@ class Template:
             system,
             self.truncation_strategy,
             auto_add_bos=self.auto_add_bos,
-			example=example)
+            example=example)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -884,6 +884,7 @@ class GLM4VTemplate(GLMTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         assert media_type == 'image'
         return [-100]
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from .utils import history_to_messages
 
