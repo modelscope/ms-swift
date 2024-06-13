@@ -1,7 +1,8 @@
-from io import BytesIO
 import base64
 import binascii
 import os
+from io import BytesIO
+
 import requests
 import torch
 import torchvision.transforms as T

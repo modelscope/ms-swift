@@ -10,7 +10,7 @@ from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union, Set
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import accelerate
 import multiprocess

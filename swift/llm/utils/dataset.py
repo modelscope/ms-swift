@@ -8,9 +8,8 @@ from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-import json
-
 import datasets.utils.py_utils
+import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
@@ -22,10 +21,10 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
-from .media import MediaTag, MediaCache
+from .media import MediaCache, MediaTag
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
-                         ListPreprocessor, parse_medias, preprocess_sharegpt)
+                         ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
+                         TextGenerationPreprocessor, parse_medias, preprocess_sharegpt)
 from .template import History
 from .utils import download_dataset
 
@@ -33,7 +32,9 @@ from .utils import download_dataset
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images', 'objects', 'videos', 'audios'}:
+        if k in {
+                'query', 'response', 'rejected_response', 'system', 'history', 'images', 'objects', 'videos', 'audios'
+        }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -119,7 +120,6 @@ class DatasetName:
 
     # multi-modal
     # <img></img>
-    coco_en = 'coco-en'
     coco_en_mini = 'coco-en-mini'
     # images
     coco_en_2 = 'coco-en-2'
@@ -321,12 +321,12 @@ def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Option
 
 
 def _post_preprocess(
-        train_dataset: HfDataset,
-        dataset_sample: int,
-        random_state: Optional[RandomState] = None,
-        preprocess_func: Optional[PreprocessFunc] = None,
-        dataset_test_ratio: float = 0.,
-        remove_useless_columns: bool = True,
+    train_dataset: HfDataset,
+    dataset_sample: int,
+    random_state: Optional[RandomState] = None,
+    preprocess_func: Optional[PreprocessFunc] = None,
+    dataset_test_ratio: float = 0.,
+    remove_useless_columns: bool = True,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
     assert train_dataset is not None
     if dataset_sample == -1:
@@ -405,6 +405,7 @@ def preprocess_sharegpt_4o_images(dataset):
     url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
     local_dir = MediaCache.download(url, 'sharegpt_4o_images')
     prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
+
     def preprocess_row(row):
         image = row['image']
         if not image:
@@ -415,14 +416,14 @@ def preprocess_sharegpt_4o_images(dataset):
         return {'image': [image]}
 
     dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['conversations'])
-    return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
-                                     media_type='image', error_strategy='delete')(dataset)
+    return ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')(
+            dataset)
 
 
 register_dataset(
     DatasetName.sharegpt_4o_image,
-    'AI-ModelScope/ShareGPT-4o',
-    ['image_caption'],
+    'AI-ModelScope/ShareGPT-4o', ['image_caption'],
     preprocess_sharegpt_4o_images,
     get_dataset_from_repo,
     split=['images'],
@@ -449,12 +450,14 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
 
 
 def preprocess_mantis_instruct(dataset):
-    all_subset = ['birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption',
-     'docvqa', 'dreamsim', 'dvqa', 'iconqa', 'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa',
-     'nlvr2', 'spot-the-diff', 'star', 'visual_story_telling']
+    all_subset = [
+        'birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption', 'docvqa', 'dreamsim', 'dvqa', 'iconqa',
+        'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa', 'nlvr2', 'spot-the-diff', 'star',
+        'visual_story_telling'
+    ]
     all_local_dirs = {}
     for subset in all_subset:
-        url = 'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'
+        url = 'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'  # noqa
         local_dir = MediaCache.download(url, f'mantis_{subset}')
         all_local_dirs[subset] = local_dir
 
@@ -468,22 +471,30 @@ def preprocess_mantis_instruct(dataset):
             return {'images': []}
 
     dataset = dataset.map(preprocess_row).filter(lambda row: row['images'])
-    return ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
-                              from_key='role', value_key='content',
-                              media_type='image',
-                              media_key='images', error_strategy='delete')(dataset)
+    return ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        media_type='image',
+        media_key='images',
+        error_strategy='delete')(
+            dataset)
+
 
 register_dataset(
     DatasetName.mantis_instruct,
-    'swift/Mantis-Instruct',
-    ['birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption',
-     'docvqa', 'dreamsim', 'dvqa', 'iconqa', 'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa',
-     'nlvr2', 'spot-the-diff', 'star', 'visual_story_telling'],
+    'swift/Mantis-Instruct', [
+        'birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption', 'docvqa', 'dreamsim', 'dvqa', 'iconqa',
+        'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa', 'nlvr2', 'spot-the-diff', 'star',
+        'visual_story_telling'
+    ],
     preprocess_mantis_instruct,
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision', 'quality'],
-    hf_dataset_id="TIGER-Lab/Mantis-Instruct")
+    hf_dataset_id='TIGER-Lab/Mantis-Instruct')
 
 
 def preprocess_llava_data(dataset):
@@ -512,28 +523,32 @@ def preprocess_llava_data(dataset):
             elif 'VG_100K_2/' in image:
                 image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('vg/', ''))
             new_images.append(image)
-        if all(os.path.exists(image)for image in new_images):
+        if all(os.path.exists(image) for image in new_images):
             example['images'] = new_images
         else:
             example['images'] = []
         return example
 
     dataset = dataset.map(preprocess_image, load_from_cache_file=False).filter(lambda row: row['images'])
-    return ConversationsPreprocessor(user_role='user', assistant_role='assistant', conversations_key='conversation',
-                              from_key='role', value_key='content', media_type='image',
-                              media_key='images')(dataset)
+    return ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        media_type='image',
+        media_key='images')(
+            dataset)
 
 
 register_dataset(
     DatasetName.llava_data_instruct,
-    'swift/llava-data',
-    ['llava_instruct'],
+    'swift/llava-data', ['llava_instruct'],
     preprocess_llava_data,
     get_dataset_from_repo,
     split=['train'],
     tags=['sft', 'multi-modal', 'quality'],
-    hf_dataset_id="TIGER-Lab/llava-data")
-
+    hf_dataset_id='TIGER-Lab/llava-data')
 
 register_dataset(
     DatasetName.coco_en_mini,
@@ -649,6 +664,7 @@ def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
 
 
 def long_alpaca_preprocessor(dataset: HfDataset):
+
     def map_row(row):
         response = row['response']
         if response and response.startswith('Answer:'):
@@ -671,6 +687,7 @@ register_dataset(
 
 
 def _preprocess_ruozhiba(dataset: HfDataset):
+
     def map_row(row):
         title = row['title'] if row.get('title', None) is not None else row['content']
         abs = row['abs'] if 'abs' in row else None
@@ -824,6 +841,7 @@ register_dataset(
 
 
 def process_hh_rlhf(dataset):
+
     def reorganize_row(row):
         import re
         chosen = row['chosen'].strip()
@@ -876,6 +894,7 @@ register_dataset(
 
 
 def process_hh_rlhf_cn(dataset):
+
     def reorganize_row(row):
         history = []
         try:
@@ -978,13 +997,17 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
         elif 'llava/' in image:
             image = os.path.join(dataset._image_dir['llava'], image.replace('llava/llava_pretrain/images/', ''))
         elif 'wikiart/' in image:
-            image = os.path.join(dataset._image_dir['wikiart'], image.replace('wikiart/images/', 'data/wikiart/images/'))
+            image = os.path.join(dataset._image_dir['wikiart'], image.replace('wikiart/images/',
+                                                                              'data/wikiart/images/'))
         elif 'share_textvqa/' in image:
-            image = os.path.join(dataset._image_dir['share_textvqa'], image.replace('share_textvqa/images/', 'data/share_textvqa/images/'))
+            image = os.path.join(dataset._image_dir['share_textvqa'],
+                                 image.replace('share_textvqa/images/', 'data/share_textvqa/images/'))
         elif 'web-celebrity/' in image:
-            image = os.path.join(dataset._image_dir['web-celebrity'], image.replace('web-celebrity/images/', 'data/web-celebrity/images/'))
+            image = os.path.join(dataset._image_dir['web-celebrity'],
+                                 image.replace('web-celebrity/images/', 'data/web-celebrity/images/'))
         elif 'web-landmark/' in image:
-            image = os.path.join(dataset._image_dir['web-landmark'], image.replace('web-landmark/images/', 'data/web-landmark/images/'))
+            image = os.path.join(dataset._image_dir['web-landmark'],
+                                 image.replace('web-landmark/images/', 'data/web-landmark/images/'))
         if os.path.exists(image):
             example['images'] = image
         else:
@@ -993,9 +1016,8 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
 
     dataset = dataset.map(preprocess_image).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
-        user_role='human', assistant_role='gpt',  media_type='image', media_key='images', error_strategy='delete')
+        user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
-
 
 
 register_dataset(
@@ -1027,19 +1049,14 @@ register_dataset(
 
 
 def preprocess_text_caps(dataset):
+
     def preprocess(row):
         try:
             image = row['image']
             response = np.random.choice(row['reference_strs'])
-            return {
-                'response': response,
-                'image': image
-            }
-        except Exception as e:
-            return {
-                'response': '',
-                'image': None
-            }
+            return {'response': response, 'image': image}
+        except Exception:
+            return {'response': '', 'image': None}
 
     return dataset.map(preprocess).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
 
@@ -1049,19 +1066,18 @@ register_dataset(
     'swift/TextCaps', [],
     preprocess_func=preprocess_text_caps,
     get_function=get_dataset_from_repo,
-    split=["train", "val"],
-    hf_dataset_id="HuggingFaceM4/TextCaps",
+    split=['train', 'val'],
+    hf_dataset_id='HuggingFaceM4/TextCaps',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'caption', 'quality'])
-
 
 register_dataset(
     DatasetName.lnqa,
     'swift/lnqa', [],
     preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
     get_function=get_dataset_from_repo,
-    split=["train", "validation"],
-    hf_dataset_id="vikhyatk/lnqa",
+    split=['train', 'validation'],
+    hf_dataset_id='vikhyatk/lnqa',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'ocr-vqa', 'quality'])
 
@@ -1109,7 +1125,9 @@ register_dataset(
 
 
 def _preprocess_llava_pretrain(dataset):
-    media_dir = MediaCache.download('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip', 'llava_pretrain')
+    media_dir = MediaCache.download(
+        'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip',  # noqa
+        'llava_pretrain')
 
     def preprocess(row):
         if row['image']:
@@ -1120,15 +1138,16 @@ def _preprocess_llava_pretrain(dataset):
                 return {'image': ''}
         else:
             return {'image': ''}
-    
+
     dataset = dataset.map(preprocess).filter(lambda row: row['image'])
-    return ConversationsPreprocessor(user_role='human', assistant_role='gpt',
-                                     media_type='image', error_strategy='delete')(dataset)
+    return ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')(
+            dataset)
+
 
 register_dataset(
     DatasetName.llava_pretrain,
-    'AI-ModelScope/LLaVA-Pretrain',
-    ['blip_laion_cc_sbu_558k'],
+    'AI-ModelScope/LLaVA-Pretrain', ['blip_laion_cc_sbu_558k'],
     _preprocess_llava_pretrain,
     get_dataset_from_repo,
     split=['train'],
@@ -1138,6 +1157,7 @@ register_dataset(
 
 
 def process_shareai_dpo(dataset):
+
     def reorganize_row(row):
         return {
             'query': row['question'],
@@ -1157,14 +1177,15 @@ def preprocess_guanaco(dataset):
         output = row['output']
         history = []
         if instruction:
-            parts = split_str_parts_by(instruction, ['User:', 'User：', 'Assistant：', 'Assistant:', 'Asssistent:', 'Assistent:', 'Assistenz:'])
+            parts = split_str_parts_by(
+                instruction, ['User:', 'User：', 'Assistant：', 'Assistant:', 'Asssistent:', 'Assistent:', 'Assistenz:'])
             for idx, part in enumerate(parts):
                 if idx % 2 == 0:
-                    if not 'user' in part['key'].lower():
+                    if 'user' not in part['key'].lower():
                         return {'query': '', 'history': [], 'response': ''}
                     history.append([part['content'], None])
                 else:
-                    if not 'assist' in part['key'].lower() and not 'asssist' in part['key'].lower():
+                    if 'assist' not in part['key'].lower() and 'asssist' not in part['key'].lower():
                         return {'query': '', 'history': [], 'response': ''}
                     history[-1][-1] = part['content']
         if input.startswith('User:'):
@@ -1182,7 +1203,7 @@ def preprocess_guanaco(dataset):
 
 register_dataset(
     DatasetName.guanaco,
-    "AI-ModelScope/GuanacoDataset", ['default'],
+    'AI-ModelScope/GuanacoDataset', ['default'],
     preprocess_guanaco,
     get_dataset_from_repo,
     hf_dataset_id='JosephusCheung/GuanacoDataset',
@@ -1211,12 +1232,11 @@ def preprocess_dolly_15k(dataset):
 
 register_dataset(
     DatasetName.dolly_15k,
-    "AI-ModelScope/databricks-dolly-15k", ['default'],
+    'AI-ModelScope/databricks-dolly-15k', ['default'],
     preprocess_dolly_15k,
     get_dataset_from_repo,
-    hf_dataset_id="databricks/databricks-dolly-15k",
+    hf_dataset_id='databricks/databricks-dolly-15k',
     tags=['multi-task', 'en', 'quality'])
-
 
 register_dataset(
     DatasetName.shareai_llama3_dpo_zh_en_emoji,
@@ -1228,14 +1248,19 @@ register_dataset(
 register_dataset(
     DatasetName.midefics,
     'swift/MideficsDataset', [],
-    ListPreprocessor(conversations_key='conversation', query_key='question',
-                     response_key='answer', inner_key='data', media_type='image'),
+    ListPreprocessor(
+        conversations_key='conversation',
+        query_key='question',
+        response_key='answer',
+        inner_key='data',
+        media_type='image'),
     get_dataset_from_repo,
     hf_dataset_id='WinterSchool/MideficsDataset',
     tags=['medical', 'en', 'vqa'])
 
 
 def preprocess_okvqa(dataset):
+
     def preprocess(row):
         image = row['image']
         query = row['question']
@@ -1254,12 +1279,13 @@ register_dataset(
     'swift/OK-VQA_train', [],
     preprocess_func=preprocess_okvqa,
     get_function=get_dataset_from_repo,
-    split=["train"],
-    hf_dataset_id="Multimodal-Fatima/OK-VQA_train",
+    split=['train'],
+    hf_dataset_id='Multimodal-Fatima/OK-VQA_train',
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
 def preprocess_a_okvqa(dataset):
+
     def preprocess(row):
         image = row['image']
         query = row['question']
@@ -1278,12 +1304,13 @@ register_dataset(
     'swift/A-OKVQA', [],
     preprocess_func=preprocess_a_okvqa,
     get_function=get_dataset_from_repo,
-    split=["train", "validation"],
-    hf_dataset_id="HuggingFaceM4/A-OKVQA",
+    split=['train', 'validation'],
+    hf_dataset_id='HuggingFaceM4/A-OKVQA',
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
 def preprocess_ocr_vqa(dataset):
+
     def preprocess(row):
         image = row['image']
         idx = np.random.choice(range(len(row['questions'])))
@@ -1303,8 +1330,8 @@ register_dataset(
     'swift/OCR-VQA', [],
     preprocess_func=preprocess_ocr_vqa,
     get_function=get_dataset_from_repo,
-    split=["train", "validation"],
-    hf_dataset_id="howard-hou/OCR-VQA",
+    split=['train', 'validation'],
+    hf_dataset_id='howard-hou/OCR-VQA',
     tags=['multi-modal', 'en', 'ocr-vqa'])
 
 
@@ -1314,11 +1341,10 @@ def preprocess_science_qa(dataset):
         query = row['question']
         response = row['choices'][row['answer']]
         solution = row['solution']
-        return {
-            'query': query,
-            'response': f'{solution}\nSo the final answer is:{response}'
-        }
-    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['image']).rename_columns({'image': 'images'})
+        return {'query': query, 'response': f'{solution}\nSo the final answer is:{response}'}
+
+    return dataset.map(
+        preprocess_row, load_from_cache_file=False).filter(lambda row: row['image']).rename_columns({'image': 'images'})
 
 
 register_dataset(
@@ -1326,12 +1352,13 @@ register_dataset(
     'swift/ScienceQA', [],
     preprocess_func=preprocess_science_qa,
     get_function=get_dataset_from_repo,
-    split=["train", "validation"],
-    hf_dataset_id="derek-thomas/ScienceQA",
-    tags=['multi-modal', "science", "vqa", "quality"])
+    split=['train', 'validation'],
+    hf_dataset_id='derek-thomas/ScienceQA',
+    tags=['multi-modal', 'science', 'vqa', 'quality'])
 
 
 def preprocess_grit(dataset):
+
     def has_overlap(start_ends):
         for i in range(1, len(start_ends)):
             if start_ends[i][0] < start_ends[i - 1][1]:
@@ -1357,7 +1384,7 @@ def preprocess_grit(dataset):
         for ref_exp in ref_exps:
             start = ref_exp[0]
             end = ref_exp[1]
-            conf = ref_exp[6]
+            # conf = ref_exp[6] TODO filter low confidence rows?
             start_end_pairs.append(ref_exp[0:2])
 
             object_part = caption[int(start):int(end)]
@@ -1365,19 +1392,11 @@ def preprocess_grit(dataset):
 
         start_end_pairs.sort(key=lambda x: (x[0], x[1]))
         if has_overlap(start_end_pairs):
-            return {
-                'images': None,
-                'response': '',
-                'objects': None
-            }
+            return {'images': None, 'response': '', 'objects': None}
 
         response = replace_intervals_with_tags(caption, start_end_pairs)
 
-        return {
-            'images': images,
-            'response': response,
-            'objects': json.dumps(objects or [])
-        }
+        return {'images': images, 'response': response, 'objects': json.dumps(objects or [])}
 
     return dataset.map(preprocess_row).filter(lambda row: row['objects'])
 
@@ -1387,14 +1406,15 @@ register_dataset(
     'swift/GRIT', [],
     preprocess_func=preprocess_grit,
     get_function=get_dataset_from_repo,
-    split=["train"],
-    hf_dataset_id="zzliang/GRIT",
+    split=['train'],
+    hf_dataset_id='zzliang/GRIT',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'caption-grounding', 'quality'])
 
 
 def preprocess_gqa(dataset):
     local_cache = MediaCache.download('gqa')
+
     def preprocess_row(row):
         if os.path.join(local_cache, 'images', row['imageId'] + '.jpg'):
             return {
@@ -1410,10 +1430,10 @@ def preprocess_gqa(dataset):
 
 register_dataset(
     DatasetName.gqa,
-    None, ["train_all_instructions"],
+    None, ['train_all_instructions'],
     preprocess_gqa,
     get_function=get_dataset_from_repo,
-    hf_dataset_id="lmms-lab/GQA",
+    hf_dataset_id='lmms-lab/GQA',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
@@ -1437,15 +1457,16 @@ def preprocess_llava_mix_sft(dataset):
 
         return {'messages': rounds}
 
-    dataset = dataset.map(preprocess_row).map(ConversationsPreprocessor(
-        user_role='user',
-        assistant_role='assistant',
-        conversations_key='messages',
-        from_key='role',
-        value_key='content',
-        media_key='images',
-        media_type='image',
-    ).preprocess)
+    dataset = dataset.map(preprocess_row).map(
+        ConversationsPreprocessor(
+            user_role='user',
+            assistant_role='assistant',
+            conversations_key='messages',
+            from_key='role',
+            value_key='content',
+            media_key='images',
+            media_type='image',
+        ).preprocess)
     return dataset
 
 
@@ -1455,11 +1476,12 @@ register_dataset(
     preprocess_llava_mix_sft,
     get_function=get_dataset_from_repo,
     split=['test'],
-    hf_dataset_id="HuggingFaceH4/llava-instruct-mix-vsft",
+    hf_dataset_id='HuggingFaceH4/llava-instruct-mix-vsft',
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
 def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
+
     def preprocess(row):
         chosen_history = row['chosen']
         rejected_history = row['rejected']
@@ -1513,6 +1535,7 @@ register_dataset(
 
 
 def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
+
     def preprocess(row):
         sql_prompt = row['sql_prompt']
         sql_context = row['sql_context']
@@ -1535,7 +1558,6 @@ register_dataset(
     get_dataset_from_repo,
     hf_dataset_id='gretelai/synthetic_text_to_sql',
     tags=['nl2sql', 'en'])
-
 
 register_dataset(
     DatasetName.sharegpt,
@@ -1703,18 +1725,36 @@ def preprocess_mind2web(dataset):
         where = actions[0] if len(actions) > 1 else ''
         what = ''
         if ':' in action:
-            action, what = action[:action.find(':')], action[action.find(':')+1:]
+            action, what = action[:action.find(':')], action[action.find(':') + 1:]
         row['response'] = f'Action: {action.strip()}\nAction Input: {where.strip()}{"," + what.strip()}'
         return row
 
     conversations = []
-    tools = [
-        {'api': 'CLICK', 'desc': 'Choose and click an element in the web page', 'parameter': [{'element': 'string, the element in the web page to click'}]},
-        {'api': 'TYPE', 'desc': 'Input some text into a web element like <input> or <textbox>', 
-        'parameter': [{'element': 'string, the element in the web page to input to', 'content': 'string, what content to input into the textbox elment'}]},
-        {'api': 'SELECT', 'desc': 'Select an element from a combobox',
-        'parameter': [{'element': 'string, the combobox or dropdown in the web page on which the select happens', 'content': 'string, which choices to choose'}]}
-    ]
+    tools = [{
+        'api': 'CLICK',
+        'desc': 'Choose and click an element in the web page',
+        'parameter': [{
+            'element': 'string, the element in the web page to click'
+        }]
+    }, {
+        'api':
+        'TYPE',
+        'desc':
+        'Input some text into a web element like <input> or <textbox>',
+        'parameter': [{
+            'element': 'string, the element in the web page to input to',
+            'content': 'string, what content to input into the textbox elment'
+        }]
+    }, {
+        'api':
+        'SELECT',
+        'desc':
+        'Select an element from a combobox',
+        'parameter': [{
+            'element': 'string, the combobox or dropdown in the web page on which the select happens',
+            'content': 'string, which choices to choose'
+        }]
+    }]
     history = []
     images = []
     for row in tqdm(dataset):
@@ -1724,11 +1764,13 @@ def preprocess_mind2web(dataset):
         if target_action_index == '0':
             if history:
                 query, response = history.pop(-1)
-                conversations.append({'history': history,
-                                      'query': query,
-                                      'response': response,
-                                      'images': images,
-                                      'tools': tools})
+                conversations.append({
+                    'history': history,
+                    'query': query,
+                    'response': response,
+                    'images': images,
+                    'tools': tools
+                })
                 images = []
                 history = []
             query = query + '\n' + row['confirmed_task']
@@ -1737,10 +1779,7 @@ def preprocess_mind2web(dataset):
 
     if history:
         query, response = history.pop(-1)
-        conversations.append({'history': history,
-                              'query': query,
-                              'response': response,
-                              'images': images})
+        conversations.append({'history': history, 'query': query, 'response': response, 'images': images})
 
     return HfDataset.from_list(conversations)
 
@@ -1750,7 +1789,7 @@ register_dataset(
     'swift/Multimodal-Mind2Web', [],
     preprocess_mind2web,
     get_dataset_from_repo,
-    hf_dataset_id="osunlp/Multimodal-Mind2Web",
+    hf_dataset_id='osunlp/Multimodal-Mind2Web',
     tags=['agent', 'multi-modal'])
 
 
@@ -1830,7 +1869,7 @@ NoneType = type(None)
 
 
 def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['none', 'discard', 'error',
-'warning']) -> HfDataset:
+                                                                            'warning']) -> HfDataset:
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
@@ -1939,9 +1978,9 @@ def _dataset_name_exists(dataset_list: str, dataset_name: str) -> List[int]:
 
 
 def _preprocess_self_cognition_dataset(
-        dataset_list: Tuple[HfDataset, Optional[HfDataset]],
-        model_name: Tuple[str, Optional[str]],
-        model_author: Tuple[str, Optional[str]],
+    dataset_list: Tuple[HfDataset, Optional[HfDataset]],
+    model_name: Tuple[str, Optional[str]],
+    model_author: Tuple[str, Optional[str]],
 ) -> Tuple[HfDataset, HfDataset]:
     # model_name: Tuple[zh, en]
     assert model_name[0] is not None
@@ -2077,7 +2116,7 @@ def get_dataset(
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
             dataset = _preprocess_self_cognition_dataset(dataset, model_name, model_author)
-        
+
         def _reduce_column(row):
             res = {}
             if 'query' in row and isinstance(row['query'], (list, tuple)):
@@ -2091,7 +2130,7 @@ def get_dataset(
             train_d, val_d = dataset
         else:
             train_d, val_d = dataset, None
-        
+
         if train_d:
             train_d = train_d.map(_reduce_column)
         if val_d:

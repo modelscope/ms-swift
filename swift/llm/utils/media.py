@@ -1,7 +1,7 @@
 import os
 import shutil
 import time
-from typing import Literal, Union, List, Optional
+from typing import List, Literal, Optional, Union
 
 import numpy as np
 
@@ -12,24 +12,13 @@ class MediaTag:
 
     task_prompts = {
         'ref_grounding': {
-            'en': [
-                ('<ref-object>', '<bbox>'),
-                ('The positions of <ref-object> is', '<bbox>'),
-                ('Find the positions of <ref-object>', '<bbox>'),
-                ('Where is <ref-object>', '<bbox>'),
-                ('Find <ref-object>', '<bbox>'),
-                ('Show me <ref-object>', '<bbox>'),
-                ('Provide the bounding box coordinate of <ref-object>', '<bbox>')
-            ],
-            'zh': [
-                ('<ref-object>', '<bbox>'),
-                ('<ref-object>的位置在图片中', '<bbox>'),
-                ('<ref-object>在图片中', '<bbox>'),
-                ('<ref-object>在', '<bbox>'),
-                ('找到<ref-object>的位置', '<bbox>'),
-                ('<ref-object>在哪里', '<bbox>'),
-                ('提供<ref-object>的坐标位置', '<bbox>')
-            ]
+            'en': [('<ref-object>', '<bbox>'), ('The positions of <ref-object> is', '<bbox>'),
+                   ('Find the positions of <ref-object>', '<bbox>'), ('Where is <ref-object>', '<bbox>'),
+                   ('Find <ref-object>', '<bbox>'), ('Show me <ref-object>', '<bbox>'),
+                   ('Provide the bounding box coordinate of <ref-object>', '<bbox>')],
+            'zh': [('<ref-object>', '<bbox>'), ('<ref-object>的位置在图片中', '<bbox>'), ('<ref-object>在图片中', '<bbox>'),
+                   ('<ref-object>在', '<bbox>'), ('找到<ref-object>的位置', '<bbox>'), ('<ref-object>在哪里', '<bbox>'),
+                   ('提供<ref-object>的坐标位置', '<bbox>')]
         },
         'grounding_caption': {
             'en': [
@@ -68,8 +57,8 @@ class MediaTag:
     def __init__(self,
                  media_type: Optional[Literal['image', 'audio', 'video']],
                  media_tag=None,
-                 task_type: Literal['caption_with_grounding', 'ref_grounding',
-                 'grounding_caption', 'ocr', 'vqa'] = 'vqa'):
+                 task_type: Literal['caption_with_grounding', 'ref_grounding', 'grounding_caption', 'ocr',
+                                    'vqa'] = 'vqa'):
         self.media_type = media_type
         self.task_type = task_type
         self.media_tag = media_tag or '<unused_tag>'
@@ -85,7 +74,7 @@ class MediaTag:
         """
         if not self.media_type:
             return
-        
+
         media_cnt = len(medias) if isinstance(medias, (tuple, list)) else 1 if medias else 0
 
         history = d.get('history') or []
@@ -97,7 +86,7 @@ class MediaTag:
             lang = np.random.choice(['en', 'zh'], p=[0.8, 0.2])
             query, response = np.random.choice(self.task_prompts[self.task_type][lang])
         elif self.task_type == 'ocr':
-            raise NotImplemented
+            raise NotImplementedError
         else:
             pass
         standard_tag = self.standard_tags[self.media_type]
@@ -123,18 +112,8 @@ class MediaCache:
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
 
     media_type_urls = {
-        'llava',
-        'coco',
-        'sam',
-        'gqa',
-        'ocr_vqa',
-        'textvqa',
-        'VG_100K',
-        'VG_100K_2',
-        'share_textvqa',
-        'web-celebrity',
-        'web-landmark',
-        'wikiart'
+        'llava', 'coco', 'sam', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2', 'share_textvqa', 'web-celebrity',
+        'web-landmark', 'wikiart'
     }
 
     URL_PREFIX = 'https://www.modelscope.cn/api/v1/datasets/hjh0119/sharegpt4v-images/repo?Revision=master&FilePath='
@@ -161,13 +140,13 @@ class MediaCache:
         final_folder = os.path.join(MediaCache.cache_dir, media_name)
         if os.path.exists(final_folder):
             return final_folder
-        local_dirs = DownloadManager(download_config=DownloadConfig(cache_dir=MediaCache.cache_dir)
-                                     ).download_and_extract(media_type)
+        local_dirs = DownloadManager(download_config=DownloadConfig(
+            cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
         shutil.move(str(local_dirs), final_folder)
         return final_folder
-    
+
     @staticmethod
-    def safe_save(image, file_name, folder, format="JPEG"):
+    def safe_save(image, file_name, folder, format='JPEG'):
         folder = os.path.join(MediaCache.cache_dir, folder)
         os.makedirs(folder, exist_ok=True)
         file = os.path.join(folder, file_name)
@@ -175,5 +154,3 @@ class MediaCache:
             return file
         image.save(file, format=format)
         return file
-
-

@@ -73,8 +73,8 @@ def write_dataset_info() -> None:
                     stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:
                     train_dataset, val_dataset = get_dataset([dataset_name],
-                                                                model_name=['小黄', 'Xiao Huang'],
-                                                                model_author=['魔搭', 'ModelScope'])
+                                                             model_name=['小黄', 'Xiao Huang'],
+                                                             model_author=['魔搭', 'ModelScope'])
                     dataset_size = len(train_dataset)
                     assert val_dataset is None
 
@@ -112,8 +112,8 @@ def write_dataset_info() -> None:
                 hf_dataset_id_str = f'[{hf_dataset_id}]({hf_url})'
 
             res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|"
-                                    f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
-        except Exception as e:
+                                 f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
+        except Exception:
             import traceback
             print(traceback.format_exc())
             break

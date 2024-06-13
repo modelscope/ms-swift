@@ -50,7 +50,7 @@ class MediaMixin:
 class RowPreprocessMixin:
 
     def preprocess(self, d):
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class SwiftPreprocessor:
@@ -81,9 +81,7 @@ class SwiftPreprocessor:
 
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
-    def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None,
-                 **kwargs
-                 ):
+    def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
         self.concat_inst_inp = concat_inst_inp
         super().__init__(**kwargs)
 
@@ -168,7 +166,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                  from_key: str = 'from',
                  value_key: str = 'value',
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
-                 Optional[Dict[str, str]]] = _default_repair_conversations,
+                                                Optional[Dict[str, str]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
                  **kwargs):
         self.user_role = user_role
@@ -278,7 +276,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                  conversations_key: str = 'conversations',
                  inner_key: str = None,
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
-                 Optional[Dict[str, str]]] = _default_repair_conversations,
+                                                Optional[Dict[str, str]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
                  **kwargs):
         self.query_key = query_key
@@ -306,7 +304,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 'response': response,
             }
             self.media_replacer(d_dict, self.parse_medias(d))
-        except:
+        except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
@@ -396,7 +394,7 @@ class SmartPreprocessor:
             'chatml': {
                 'required': ['messages'],
                 'preprocessor':
-                    ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
+                ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
             },
             'sharegpt': {
                 'required': ['conversation'],

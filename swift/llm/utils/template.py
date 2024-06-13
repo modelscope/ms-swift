@@ -3,6 +3,7 @@ import re
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
 import json
 import requests
 import torch
@@ -109,6 +110,7 @@ class StopWordsCriteria(StoppingCriteria):
         tokenizer: The tokenizer instance.
         stop_words: A list of stop words, whose types are str and List[int]
     """
+
     def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
@@ -243,7 +245,8 @@ class Template:
         for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if media_key in example and media_tag not in ''.join([h[0] for h in history]) + query:
                 example[media_key] = [m for m in example[media_key] if m]
-                media_len = len(example[media_key]) if isinstance(example[media_key], (tuple, list)) else 1 if example[media_key] else 0
+                media_len = len(example[media_key]) if isinstance(example[media_key],
+                                                                  (tuple, list)) else 1 if example[media_key] else 0
                 if history:
                     history[0][0] = ''.join([media_tag] * media_len) + history[0][0]
                 else:
@@ -360,9 +363,9 @@ class Template:
         return res, loss_scale_res
 
     def _tokenize(self, context, **tokenizer_kwargs):
-        return self.tokenizer(context, return_attention_mask=False, add_special_tokens=False,
-                              **tokenizer_kwargs)['input_ids']
-    
+        return self.tokenizer(
+            context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         if media_type == 'image':
             return '<image>'
@@ -370,7 +373,7 @@ class Template:
             return '<video>'
         if media_type == 'audio':
             return '<audio>'
-    
+
     def replace_object(self, index, example):
         objects = example['objects']
         object = objects[index]
@@ -405,12 +408,8 @@ class Template:
             return content
         return prompt
 
-    def _encode_context_list(
-        self,
-        context_list: List[Context],
-        loss_scale_list: List[float],
-        **kwargs
-    ) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
+    def _encode_context_list(self, context_list: List[Context], loss_scale_list: List[float],
+                             **kwargs) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         input_ids: List[int] = []
         labels: List[int] = []
@@ -470,8 +469,8 @@ class Template:
                     context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
 
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
-        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list,
-                                                                                    loss_scale_list, **kwargs)
+        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list,
+                                                                                    **kwargs)
 
         if response is None:
             labels = None
@@ -816,16 +815,19 @@ class YiVLTemplate(Template):
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
-        has_images = [(b==-200).sum() for b in res['input_ids']]
-        assert all([h > 0 for h in has_images]) or not any([h > 0 for h in has_images]), 'YIVL does not support mix-batch nlp dataset and multi-modal dataset'
+        has_images = [(b == -200).sum() for b in res['input_ids']]
+        assert all([
+            h > 0 for h in has_images
+        ]) or not any([h > 0
+                       for h in has_images]), 'YIVL does not support mix-batch nlp dataset and multi-modal dataset'
         return res
 
 
 class GLM4VTemplate(Template):
 
     def __init__(self):
-        super().__init__('[gMASK]<sop>', ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'],
-                                None, ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
+        super().__init__('[gMASK]<sop>', ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
+                         ['[gMASK]<sop><|system|>\n{{SYSTEM}}'])
 
     def check_example(self, example):
         images = example.get('images')
@@ -1104,8 +1106,8 @@ class InternvlTemplate(Template):
     num_image_token = 256
 
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n', '{{QUERY}}<|im_end|><|im_start|>assistant\n'],
-                         ['<|im_end|>'], ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
+        super().__init__(['<s>'], ['<|im_start|>user\n', '{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
 
     def check_example(self, example):
         images = example.get('images')
@@ -1233,7 +1235,8 @@ class LLavaTemplate(Template):
 
     def __init__(self):
         # This template follows: https://github.com/haotian-liu/LLaVA/blob/main/llava/conversation.py#L350
-        super().__init__(['[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'], system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
+        super().__init__(['[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+                         system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         assert media_type == 'image'
@@ -1268,8 +1271,11 @@ class LLavaTemplate(Template):
         if images:
             res['images'] = images
             res['image_sizes'] = sum([b['image_sizes'] for b in batch if 'image_sizes' in b], start=[])
-        has_images = [(b==-200).sum() for b in res['input_ids']]
-        assert all([h > 0 for h in has_images]) or not any([h > 0 for h in has_images]), 'Llava does not support mix-batch nlp dataset and multi-modal dataset'
+        has_images = [(b == -200).sum() for b in res['input_ids']]
+        assert all([
+            h > 0 for h in has_images
+        ]) or not any([h > 0
+                       for h in has_images]), 'Llava does not support mix-batch nlp dataset and multi-modal dataset'
         return res
 
     @staticmethod
@@ -1337,7 +1343,7 @@ class PaliGemmaTemplate(Template):
     def check_example(self, example):
         images = example.get('images')
         assert not isinstance(images, (list, tuple)) or len(images) <= 1
-    
+
     def replace_tag(self, media_type, index, example):
         assert media_type == 'image'
         image_token = self.tokenizer.encode('<image>', add_special_tokens=False)
@@ -1393,7 +1399,7 @@ class Phi3VisionTemplate(Template):
             assert 'num_crops' in image, 'num_crops must be provided in images if num_img_tokens is not provided'
             num_crops = image['num_crops']
             num_img_tokens = [_num_crops * example['num_img_tokens'] for _num_crops in num_crops]
-        return [-index-1] * num_img_tokens[0] + [1]
+        return [-index - 1] * num_img_tokens[0] + [1]
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         image_path = example.get('images')
