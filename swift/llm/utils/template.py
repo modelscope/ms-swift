@@ -1615,7 +1615,6 @@ register_template(
     use_model=True,
     lazy_tokenize=True,
     dataloader_num_workers=0,
-    infer_media_type='round',
     dataloader_pin_memory=False)  # only 'cpu' can pin_memory
 
 register_template(
