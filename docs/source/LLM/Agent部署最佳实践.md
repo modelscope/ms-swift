@@ -287,7 +287,7 @@ tools =  [
       },
 ]
 resp = client.chat.completions.create(
-    model='qwen2-7b-instruct',
+    model='llama3-8b-instruct',
     tools = tools,
     messages=messages,
     seed=42)
@@ -297,7 +297,7 @@ print(f'tool_calls: {tool_calls}')
 
 # 流式
 stream_resp = client.chat.completions.create(
-    model='qwen2-7b-instruct',
+    model='llama3-8b-instruct',
     messages=messages,
     tools=tools,
     stream=True,
