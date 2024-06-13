@@ -301,20 +301,6 @@
         "split": ["train_sft"],
         "tags": ["chat", "en", "quality"]
     },
-    "lmsys-chat-1M": {
-        "dataset_id": "AI-ModelScope/lmsys-chat-1m",
-        "hf_dataset_id": "lmsys/lmsys-chat-1m",
-        "conversations": {
-            "user_role": "user",
-            "assistant_role": "assistant",
-            "conversations_key": "conversation",
-            "from_key": "role",
-            "value_key": "content",
-            "error_strategy": "delete"
-        },
-        "tags": ["chat", "en"],
-        "huge_dataset": true
-    },
     "evol-instruct-v2": {
         "dataset_id": "AI-ModelScope/WizardLM_evol_instruct_V2_196k",
         "hf_dataset_id": "WizardLM/WizardLM_evol_instruct_V2_196k",

@@ -68,6 +68,7 @@ class DatasetName:
     coig_cqia = 'coig-cqia'
     ruozhiba = 'ruozhiba'
     long_alpaca_12k = 'long-alpaca-12k'
+    lmsys_chat_1m = 'lmsys-chat-1M'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
@@ -1134,6 +1135,30 @@ register_dataset(
     get_dataset_from_repo,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision'])
+
+
+def preprocess_lmsys_chat(dataset):
+    def repair_conversations(s: Union[str, Any]) -> Any:
+        if isinstance(s, str):
+            s = s.replace('}\n {', '},{')
+            s = s.replace('}\n{', '},{')
+            s = s.replace('}{', '},{')
+            s = s.replace('}\n  {', '},{')
+            return ast.literal_eval(s)
+        return s
+    
+    return ConversationsPreprocessor(user_role='user', assistant_role='assistant',conversations_key='conversation',
+        from_key='role', value_key='content', error_strategy='delete', repair_conversations=repair_conversations)(dataset)
+
+
+register_dataset(
+    DatasetName.lmsys_chat_1m,
+    'AI-ModelScope/lmsys-chat-1m',
+    None,
+    preprocess_lmsys_chat,
+    get_dataset_from_repo,
+    hf_dataset_id='lmsys/lmsys-chat-1m',
+    tags=['chat', 'em'])
 
 
 def _preprocess_llava_pretrain(dataset):
