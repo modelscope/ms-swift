@@ -551,7 +551,6 @@ register_dataset(
     tags=['sft', 'multi-modal', 'quality'],
     hf_dataset_id='TIGER-Lab/llava-data')
 
-
 register_dataset(
     DatasetName.coco_en,
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
@@ -561,7 +560,6 @@ register_dataset(
     tags=['chat', 'multi-modal', 'vision'],
     is_main=False)
 
-    
 register_dataset(
     DatasetName.coco_en_mini,
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
