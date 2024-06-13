@@ -1331,43 +1331,6 @@ register_dataset(
     tags=['multi-modal', "science", "vqa", "quality"])
 
 
-# def preprocess_lima(dataset):
-#     def preprocess_row(row):
-#         conversations = row['conversations']
-#         history = []
-#         for idx, rnd in enumerate(conversations):
-#             if idx % 2 == 0:
-#                 history.append([rnd, ''])
-#             else:
-#                 history[-1][-1] = rnd
-
-#         if not history [-1][-1]:
-#             return {
-#                 "history": [],
-#                 "query": '',
-#                 "response": '',
-#             }
-
-#         query, response = history.pop(-1)
-#         return {
-#             "history": history,
-#             "query": query,
-#             "response": response,
-#         }
-
-#     return dataset.map(preprocess_row).filter(lambda row: row.get('query'))
-
-
-# register_dataset(
-#     DatasetName.lima,
-#     'swift/lima', ['plain_text'],
-#     preprocess_func=preprocess_lima,
-#     get_function=get_dataset_from_repo,
-#     split=["train"],
-#     hf_dataset_id="GAIR/lima",
-#     tags=['en'])
-
-
 def preprocess_grit(dataset):
     def has_overlap(start_ends):
         for i in range(1, len(start_ends)):
