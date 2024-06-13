@@ -165,7 +165,7 @@ class Template:
                  tools_prompt: str = 'react_en',
                  tool_prompt: Optional[Prompt] = None) -> None:
         # check
-        for x in [prefix, prompt, chat_sep, suffix, prefix_has_system]:
+        for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
 
         if default_system == '':
@@ -866,8 +866,8 @@ class GLMTemplate(Template):
         res = super()._init_template(tokenizer, *args, **kwargs)
         token_list = tokenizer.encode('')
         self.prefix.insert(0, token_list)
-        if self.prefix_has_system is not None:
-            self.prefix_has_system.insert(0, token_list)
+        if self.system_prefix is not None:
+            self.system_prefix.insert(0, token_list)
         return res
 
 

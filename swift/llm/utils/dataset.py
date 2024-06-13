@@ -120,6 +120,7 @@ class DatasetName:
 
     # multi-modal
     # <img></img>
+    coco_en = 'coco-en'
     coco_en_mini = 'coco-en-mini'
     # images
     coco_en_2 = 'coco-en-2'
@@ -550,6 +551,17 @@ register_dataset(
     tags=['sft', 'multi-modal', 'quality'],
     hf_dataset_id='TIGER-Lab/llava-data')
 
+
+register_dataset(
+    DatasetName.coco_en,
+    'modelscope/coco_2014_caption', ['coco_2014_caption'],
+    _preprocess_vision_dataset,
+    get_dataset_from_repo,
+    split=['train', 'validation'],
+    tags=['chat', 'multi-modal', 'vision'],
+    is_main=False)
+
+    
 register_dataset(
     DatasetName.coco_en_mini,
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
