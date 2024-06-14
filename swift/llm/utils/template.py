@@ -409,7 +409,7 @@ class Template:
         return f'({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})'
 
     def pre_tokenize(self, prompt, **kwargs):
-        example = kwargs['example']
+        example = kwargs.get('example')
         if prompt == '<image>':
             content = self.replace_tag('image', example.get('image_index', 0), example)
             example['image_index'] = example.get('image_index', 0) + 1
