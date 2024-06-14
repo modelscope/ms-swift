@@ -357,6 +357,8 @@ def llm_infer(args: InferArguments) -> None:
                 infer_kwargs = {}
 
             read_media_file(infer_kwargs, args.infer_media_type)
+            if infer_kwargs.get('images'):
+                query = '<image>' + query
             if args.truncation_strategy:
                 infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:

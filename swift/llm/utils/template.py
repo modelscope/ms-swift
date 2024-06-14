@@ -1282,7 +1282,7 @@ class LLavaTemplate(Template):
 
     def __init__(self):
         # This template follows: https://github.com/haotian-liu/LLaVA/blob/main/llava/conversation.py#L350
-        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], None, ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
