@@ -45,7 +45,7 @@ class MediaMixin:
 
     def parse_medias(self, d):
         return parse_medias(d, self.media_key)
-    
+
     @property
     def empty_row(self):
         empty_row = {
@@ -207,6 +207,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
+
 
 class ListPreprocessor(MediaMixin, RowPreprocessMixin):
 
