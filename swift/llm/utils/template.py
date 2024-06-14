@@ -17,8 +17,8 @@ from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, upper_bound, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
-History = List[Union[Tuple[Any, Any], List[Any]]]
-Prompt = List[Union[Any, List[Any]]]
+History = List[Union[Tuple[str, str], List[str]]]
+Prompt = List[Union[str, List[str]]]
 StopWords = Prompt
 Context = Union[str, List[int]]
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
@@ -372,13 +372,18 @@ class Template:
         from swift.utils.utils import split_str_parts_by
         res = []
         loss_scale_res = []
+        from swift.llm.utils.utils import fetch_one
         for context, loss_scale in zip(context_list, loss_scale_list):
             contexts = []
-            for d in split_str_parts_by(context, Template.special_tokens):
-                contexts.extend([d['key'], d['content']])
-            contexts = [c for c in contexts if c]
-            res.extend(contexts)
-            loss_scale_res.extend([loss_scale] * len(contexts))
+            if isinstance(fetch_one(context), str):
+                for d in split_str_parts_by(context, Template.special_tokens):
+                    contexts.extend([d['key'], d['content']])
+                contexts = [c for c in contexts if c]
+                res.extend(contexts)
+                loss_scale_res.extend([loss_scale] * len(contexts))
+            else:
+                res.append(context)
+                loss_scale_res.append(loss_scale)
         return res, loss_scale_res
 
     def _tokenize(self, context, **tokenizer_kwargs):
@@ -1277,12 +1282,12 @@ class LLavaTemplate(Template):
 
     def __init__(self):
         # This template follows: https://github.com/haotian-liu/LLaVA/blob/main/llava/conversation.py#L350
-        super().__init__(['[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         assert media_type == 'image'
-        return [-200]
+        return [-200] + self.tokenizer.encode('\n', add_special_tokens=False)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
@@ -1302,8 +1307,6 @@ class LLavaTemplate(Template):
         if images:
             images_tensor = process_images(images, image_processor, self.model.config)
             inputs['images'] = images_tensor.to(model.dtype).squeeze(0)
-            if images_tensor.shape[1] == 4:
-                print()
             inputs['image_sizes'] = image_sizes
         return inputs, {}
 
@@ -1471,7 +1474,7 @@ class Phi3VisionTemplate(Template):
         return res
 
 
-register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True, infer_media_type='round')
+register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
 
 
 class LlamaLlavaNextTemplate(LLavaTemplate):

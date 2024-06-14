@@ -68,7 +68,7 @@ class DatasetName:
     coig_cqia = 'coig-cqia'
     ruozhiba = 'ruozhiba'
     long_alpaca_12k = 'long-alpaca-12k'
-    lmsys_chat_1m = 'lmsys-chat-1M'
+    lmsys_chat_1m = 'lmsys-chat-1m'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
