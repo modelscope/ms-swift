@@ -1367,13 +1367,12 @@ class RLHFArguments(SftArguments):
     ref_model_id_or_path: Optional[str] = None
     ref_model_free: bool = False
     max_prompt_length: int = 1024
-    beta: Optional[int] = None
+    beta: Optional[float] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair',
-                       'simpo','bco'] = 'sigmoid'
+    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair', 'simpo',
+                       'bco'] = 'sigmoid'
     sft_beta: float = 0.1
     simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
-
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
@@ -1388,7 +1387,7 @@ class RLHFArguments(SftArguments):
         self.set_default_beta()
         self.set_default_config()
         self.check_loss_type()
-        
+
     def set_default_beta(self):
         if self.beta is None:
             if self.rlhf_type in ['dpo', 'orpo', 'kto', 'cpo']:
@@ -1424,14 +1423,14 @@ class RLHFArguments(SftArguments):
 
     def check_loss_type(self):
         supported_loss_types = {
-            'dpo': ["sigmoid", "hinge", "ipo", "kto_pair", "bco_pair", "sppo_hard", "nca_pair", "robust"],
-            'cpo': ["sigmoid", "hinge", "ipo", "kto_pair", "simpo"],
-            'kto': ["kto", "bco"]
+            'dpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust'],
+            'cpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'simpo'],
+            'kto': ['kto', 'bco']
         }
         if self.rlhf_type in supported_loss_types:
             assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
                 f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
-        
+
 
 @dataclass
 class RomeArguments(InferArguments):
