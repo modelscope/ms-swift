@@ -222,7 +222,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--ref_model_type`: Select the reference model, similar to the model_type parameter, by default consistent with the model being trained. No selection is necessary for `cpo` and `simpo` algorithms.
 - `--ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
 - `--max_prompt_length`: The maximum length of the prompt. This parameter is passed to the corresponding Trainer to ensure the prompt length does not exceed the set value. The default value is `1024`.
-- `--beta`: Coefficient for the KL regularization term. For `simpo` the default is 2.0, for other algorithms, the default is 0.1. The higher the value, the smaller the deviation from the reference model.
+- `--beta`: Coefficient for the KL regularization term. For `simpo` the default is 2.0, for other algorithms, the default is 0.1. For detail please check[document](./Human-Preference-Alignment-Training-Documentation.md)
 - `--label_smoothing`: Whether to use DPO smoothing, the default value is 0, normally set between 0 and 0.5.
 - `--loss_type`: Type of loss, default value is 'sigmoid'.
 - `--sft_beta`: Whether to include sft loss in DPO, default is 0.1, supporting the range $[0, 1)$ . The final loss is `(1-sft_beta)*KL_loss + sft_beta * sft_loss`.
