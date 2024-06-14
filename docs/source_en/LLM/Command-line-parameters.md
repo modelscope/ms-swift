@@ -289,7 +289,7 @@ dpo parameters inherit from sft parameters, with the following added parameters:
 - `--tensor_parallel_size`: Parameter for initializing vllm engine `EngineArgs`, default is `1`. This parameter only takes effect when using vllm.
 - `--max_model_len`: Override model's max_model__len, default is `None`. This parameter only takes effect when using vllm.
 - `--disable_custom_all_reduce`: Whether to disable the custom all-reduce kernel and fallback to NCCL. The default is `True`, which is different from the default value of vLLM.
-- `--enforce_eager`: vllm uses the PyTorch eager mode or builds the CUDA graph. Default is `False`.
+- `--enforce_eager`: vllm uses the PyTorch eager mode or builds the CUDA graph. Default is `False`. Setting to True can save memory, but it may affect efficiency.
 - `--vllm_enable_lora`: Default `False`. Whether to support vllm with lora.
 - `--vllm_max_lora_rank`: Default `16`.  Lora rank in VLLM.
 - `--lora_modules`: Default`[]`, the input format is `'{lora_name}={lora_path}'`, e.g. `--lora_modules lora_name1=lora_path1 lora_name2=lora_path2`. `ckpt_dir` will be added with `f'default-lora={args.ckpt_dir}'` by default.
