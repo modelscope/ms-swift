@@ -245,7 +245,7 @@ class Template:
 
     def add_default_tags(self, example):
         history: Optional[History] = example.get('history') or []
-        query: Optional[str] = example.get('query', '')
+        query: Optional[str] = example.get('query') or ''
         for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if media_key in example and media_tag not in ''.join([h[0] for h in history]) + query:
                 example[media_key] = [m for m in example[media_key] if m]
