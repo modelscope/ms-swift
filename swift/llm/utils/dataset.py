@@ -461,20 +461,20 @@ def preprocess_mantis_image(dataset, subset):
             return {'images': images}
         else:
             return {'images': []}
-    
+
     return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['images'])
 
 
 def get_mantis_dataset(dataset_id: str,
-                          subsets: Optional[List[str]],
-                          preprocess_func: PreprocessFunc,
-                          split: List[str],
-                          dataset_sample: int = -1,
-                          *,
-                          random_state: Optional[RandomState] = None,
-                          dataset_test_ratio: float = 0.,
-                          remove_useless_columns: bool = True,
-                          use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+                       subsets: Optional[List[str]],
+                       preprocess_func: PreprocessFunc,
+                       split: List[str],
+                       dataset_sample: int = -1,
+                       *,
+                       random_state: Optional[RandomState] = None,
+                       dataset_test_ratio: float = 0.,
+                       remove_useless_columns: bool = True,
+                       use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     if subsets is None:
         subsets = []
     assert len(split) > 0
@@ -1041,7 +1041,8 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset = dataset.map(preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(
+        preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -1085,7 +1086,9 @@ def preprocess_text_caps(dataset):
         except Exception:
             return {'response': '', 'image': None}
 
-    return dataset.map(preprocess, load_from_cache_file=False).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
+    return dataset.map(
+        preprocess,
+        load_from_cache_file=False).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
 
 
 register_dataset(
@@ -1135,7 +1138,8 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset = dataset.map(preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(
+        preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -1152,6 +1156,7 @@ register_dataset(
 
 
 def preprocess_lmsys_chat(dataset):
+
     def repair_conversations(s: Union[str, Any]) -> Any:
         if isinstance(s, str):
             s = s.replace('}\n {', '},{')
@@ -1160,9 +1165,16 @@ def preprocess_lmsys_chat(dataset):
             s = s.replace('}\n  {', '},{')
             return ast.literal_eval(s)
         return s
-    
-    return ConversationsPreprocessor(user_role='user', assistant_role='assistant',conversations_key='conversation',
-        from_key='role', value_key='content', error_strategy='delete', repair_conversations=repair_conversations)(dataset)
+
+    return ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        error_strategy='delete',
+        repair_conversations=repair_conversations)(
+            dataset)
 
 
 register_dataset(
@@ -1508,16 +1520,17 @@ def preprocess_llava_mix_sft(dataset):
 
         return {'messages': rounds}
 
-    dataset = dataset.map(preprocess_row, load_from_cache_file=False).map(
-        ConversationsPreprocessor(
-            user_role='user',
-            assistant_role='assistant',
-            conversations_key='messages',
-            from_key='role',
-            value_key='content',
-            media_key='images',
-            media_type='image',
-        ).preprocess)
+    dataset = dataset.map(
+        preprocess_row, load_from_cache_file=False).map(
+            ConversationsPreprocessor(
+                user_role='user',
+                assistant_role='assistant',
+                conversations_key='messages',
+                from_key='role',
+                value_key='content',
+                media_key='images',
+                media_type='image',
+            ).preprocess)
     return dataset
 
 
@@ -1573,7 +1586,9 @@ def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
             'rejected_response': rejected_response,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=False).filter(lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
+    return dataset.map(
+        preprocess,
+        load_from_cache_file=False).filter(lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
 
 
 register_dataset(
