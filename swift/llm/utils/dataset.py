@@ -451,40 +451,46 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
     return dataset
 
 
-def preprocess_mantis_instruct(dataset):
-    all_subset = [
-        'birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption', 'docvqa', 'dreamsim', 'dvqa', 'iconqa',
-        'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa', 'nlvr2', 'spot-the-diff', 'star',
-        'visual_story_telling'
-    ]
-    all_local_dirs = {}
-    for subset in all_subset:
-        url = f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'  # noqa
-        local_dir = MediaCache.download(url, f'mantis_{subset}')
-        all_local_dirs[subset] = local_dir
+def preprocess_mantis_image(dataset, subset):
+    url = f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'  # noqa
+    local_dir = MediaCache.download(url, f'mantis_{subset}')
 
     def preprocess_row(row):
-        source = row['source']
-        if source in all_local_dirs:
-            local_dir = all_local_dirs[source]
-            images = [os.path.join(local_dir, p['path']) for p in row['images']]
-            if all([os.path.exists(d) for d in images]):
-                return {'images': images}
-            else:
-                return {'images': []}
+        images = [os.path.join(local_dir, p['path']) for p in row['images']]
+        if all([os.path.exists(d) for d in images]):
+            return {'images': images}
         else:
             return {'images': []}
+    
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['images'])
 
-    dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['images'])
-    return ConversationsPreprocessor(
-        user_role='user',
-        assistant_role='assistant',
-        conversations_key='conversation',
-        from_key='role',
-        value_key='content',
-        media_type='image',
-        media_key='images',
-        error_strategy='delete')(dataset)
+
+def get_mantis_dataset(dataset_id: str,
+                          subsets: Optional[List[str]],
+                          preprocess_func: PreprocessFunc,
+                          split: List[str],
+                          dataset_sample: int = -1,
+                          *,
+                          random_state: Optional[RandomState] = None,
+                          dataset_test_ratio: float = 0.,
+                          remove_useless_columns: bool = True,
+                          use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+    if subsets is None:
+        subsets = []
+    assert len(split) > 0
+    if len(subsets) == 0:
+        subset_split_list = split
+    else:
+        subset_split_list = list(itertools.product(subsets, split))
+    all_datasets = []
+    for subset in subset_split_list:
+        dataset = load_ms_dataset(dataset_id, [subset], use_hf)
+        dataset = preprocess_mantis_image(dataset, subset=subset[0])
+        all_datasets.append(dataset)
+        break
+    dataset = concatenate_datasets(all_datasets)
+    return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
+                            remove_useless_columns)
 
 
 register_dataset(
@@ -494,8 +500,16 @@ register_dataset(
         'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa', 'nlvr2', 'spot-the-diff', 'star',
         'visual_story_telling'
     ],
-    preprocess_mantis_instruct,
-    get_dataset_from_repo,
+    ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        media_type='image',
+        media_key='images',
+        error_strategy='delete'),
+    get_mantis_dataset,
     split=['train'],
     tags=['chat', 'multi-modal', 'vision', 'quality'],
     hf_dataset_id='TIGER-Lab/Mantis-Instruct')
