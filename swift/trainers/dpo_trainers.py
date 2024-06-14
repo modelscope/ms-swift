@@ -47,14 +47,14 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if self.template.use_default_system:
                 system = self.template.default_system
         else:
-            assert self.template.prefix_has_system is not None, 'not support `system`'
+            assert self.template.system_prefix is not None, 'not support `system`'
         res_context_list: List[Context] = []
         compute_loss_idx: List[float] = []
         if system is None:
-            assert self.template.prefix != self.template.prefix_has_system, f'template.prefix: {self.template.prefix}'
+            assert self.template.prefix != self.template.system_prefix, f'template.prefix: {self.template.prefix}'
             prefix = self.template.prefix
         else:
-            prefix = self.template.prefix_has_system
+            prefix = self.template.system_prefix
         self.template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
         for i, (q, r) in enumerate(history):
             self.template._concat_context_list(
