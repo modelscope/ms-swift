@@ -44,8 +44,8 @@ class MediaTag:
 
     standard_tags = {
         'image': '<image>',
-        'audio': '<audio>',
-        'video': '<video>',
+        'audio': '<audio_label>',
+        'video': '<video_label>',
     }
 
     media_keys = {

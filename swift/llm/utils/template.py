@@ -148,7 +148,7 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
-    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video_label>', '<audio_label>', '<bbox>', '<ref-object>']
 
     def __init__(self,
                  prefix: Prompt,
@@ -246,7 +246,7 @@ class Template:
     def add_default_tags(self, example):
         history: Optional[History] = example.get('history') or []
         query: Optional[str] = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
+        for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
             if media_key in example and media_tag not in ''.join([h[0] for h in history]) + query:
                 example[media_key] = [m for m in example[media_key] if m]
                 media_len = len(example[media_key]) if isinstance(example[media_key],
@@ -394,9 +394,9 @@ class Template:
         if media_type == 'image':
             return '<image>'
         if media_type == 'video':
-            return '<video>'
+            return '<video_label>'
         if media_type == 'audio':
-            return '<audio>'
+            return '<audio_label>'
 
     def replace_object(self, index, example):
         objects = example['objects']
@@ -414,11 +414,11 @@ class Template:
             content = self.replace_tag('image', example.get('image_index', 0), example)
             example['image_index'] = example.get('image_index', 0) + 1
             return content
-        if prompt == '<video>':
+        if prompt == '<video_label>':
             content = self.replace_tag('video', example.get('video_index', 0), example)
             example['video_index'] = example.get('video_index', 0) + 1
             return content
-        if prompt == '<audio>':
+        if prompt == '<audio_label>':
             content = self.replace_tag('audio', example.get('audio_index', 0), example)
             example['audio_index'] = example.get('audio_index', 0) + 1
             return content
