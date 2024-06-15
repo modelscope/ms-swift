@@ -7,9 +7,8 @@ from tqdm.auto import tqdm
 from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback, TrainerCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
-from transformers.utils import append_to_jsonl
 
-from swift.utils import is_pai_training_job, use_torchacc
+from swift.utils import append_to_jsonl, is_pai_training_job, use_torchacc
 from .arguments import TrainingArguments
 
 
