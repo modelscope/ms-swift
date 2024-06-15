@@ -45,7 +45,7 @@ KTO can also be trained using the first data format, see the KTO section for dif
 Hyperparameters
 - `beta`：KL regularization coefficient, the higher the value, the greater the penalty for deviations from the reference model. Default is 0.1
 
-It is recommended to train with the preferred answer part of the preference dataset before starting DPO training to ensure data fits the distribution requirements of the DPO algorithm. 
+It is recommended to train with the preferred answer part of the preference dataset before starting DPO training to ensure data fits the distribution requirements of the DPO algorithm.
 
 We also mix sft loss in the DPO loss to stabilize training; you can adjust the sft loss coefficient by setting the hyperparameter `sft_beta`, the default is 0.1
 
@@ -194,7 +194,7 @@ swift rlhf \
 ## ORPO
 [paper arvix](https://arxiv.org/abs/2403.07691)
 Hyperparameters
-- lambda: Coefficient for the Odds Ratio loss 
+- lambda: Coefficient for the Odds Ratio loss
 
 **Note**: ORPO uses the parameter beta to input the hyperparameter lambda
 
