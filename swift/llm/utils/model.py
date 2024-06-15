@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import math
 import os
 import sys
 from contextlib import nullcontext
@@ -211,8 +212,10 @@ class ModelType:
     yi_1_5_6b_chat = 'yi-1_5-6b-chat'
     yi_1_5_9b = 'yi-1_5-9b'
     yi_1_5_9b_chat = 'yi-1_5-9b-chat'
+    yi_1_5_9b_chat_16k = 'yi-1_5-9b-chat-16k'
     yi_1_5_34b = 'yi-1_5-34b'
     yi_1_5_34b_chat = 'yi-1_5-34b-chat'
+    yi_1_5_34b_chat_16k = 'yi-1_5-34b-chat-16k'
     yi_1_5_6b_chat_awq_int4 = 'yi-1_5-6b-chat-awq-int4'
     yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
     yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
@@ -340,6 +343,7 @@ class ModelType:
     yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
     yuan2_51b_instruct = 'yuan2-51b-instruct'
     yuan2_102b_instruct = 'yuan2-102b-instruct'
+    yuan2_m32 = 'yuan2-m32'
     # xverse
     xverse_7b = 'xverse-7b'
     xverse_7b_chat = 'xverse-7b-chat'
@@ -415,6 +419,8 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
+    # codestral
+    codestral_22b = 'codestral-22b'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -873,6 +879,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
         tokenizer.placeholder_tokens = placeholder_tokens
         tokenizer.placeholder_tokens_id = [tokenizer.convert_tokens_to_ids(token) for token in placeholder_tokens]
     model = None
+
+    rope_scaling = kwargs.pop('rope_scaling', None)
+    max_position_embeddings = getattr(model_config, 'max_position_embeddings', None)
+    if rope_scaling and max_position_embeddings:
+        max_length = kwargs.get('max_length') or max_position_embeddings
+        rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
+        setattr(model_config, 'rope_scaling', {'type': rope_scaling, 'factor': rope_scaling_factor})
+
     if load_model:
         if kwargs.get('use_unsloth', False):
             assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
@@ -1476,6 +1490,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.init_kwargs['image_size'] = 1120
     if model is not None:
         from torch.nn import CrossEntropyLoss
         __old_forward = CrossEntropyLoss.forward
@@ -2133,6 +2148,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
+    ModelType.yi_1_5_9b_chat_16k,
+    '01ai/Yi-1.5-9B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
+@register_model(
     ModelType.yi_1_5_34b,
     '01ai/Yi-1.5-34B',
     LoRATM.llama,
@@ -2148,6 +2171,14 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-34B-Chat')
+@register_model(
+    ModelType.yi_1_5_34b_chat_16k,
+    '01ai/Yi-1.5-34B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
 @register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
@@ -2242,6 +2273,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-7B-v0.1')
+@register_model(
+    ModelType.codestral_22b,
+    'huangjintao/Codestral-22B-v0.1',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.34'],
+    ignore_file_pattern=['consolidated.safetensors'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Codestral-22B-v0.1')
 @register_model(
     ModelType.mistral_7b_v2,
     'AI-ModelScope/Mistral-7B-v0.2-hf',
@@ -4305,6 +4346,14 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     TemplateType.yuan,
     support_flash_attn=True,
     hf_model_id='IEITYuan/Yuan2-2B-Janus-hf')
+@register_model(
+    ModelType.yuan2_m32,
+    'YuanLLM/Yuan2-M32-hf',
+    LoRATM.llama,
+    TemplateType.yuan,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    hf_model_id='IEITYuan/Yuan2-M32-hf')
 def get_model_tokenizer_yuan(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
@@ -4815,22 +4864,23 @@ def get_model_tokenizer(model_type: str,
     if 'device_map' not in model_kwargs and not use_torchacc():
         model_kwargs['device_map'] = 'auto'
 
-    if model_info.get('torch_dtype') is not None:
-        model_torch_dtype = model_info['torch_dtype']
-        if torch_dtype is None:
-            torch_dtype = model_torch_dtype
-            logger.info(f'Setting torch_dtype: {torch_dtype}')
+    if load_model:
+        if model_info.get('torch_dtype') is not None:
+            model_torch_dtype = model_info['torch_dtype']
+            if torch_dtype is None:
+                torch_dtype = model_torch_dtype
+                logger.info(f'Setting torch_dtype: {torch_dtype}')
+            else:
+                assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
         else:
-            assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
-    else:
-        if torch_dtype is None:
-            torch_dtype = get_torch_dtype(model_dir)
-            logger.info(f'Setting torch_dtype: {torch_dtype}')
-            quantization_config = model_kwargs.get('quantization_config')
-            if (isinstance(quantization_config, BitsAndBytesConfig)
-                    and quantization_config.bnb_4bit_compute_dtype is None):
-                quantization_config.bnb_4bit_compute_dtype = torch_dtype
-                logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
+            if torch_dtype is None:
+                torch_dtype = get_torch_dtype(model_dir)
+                logger.info(f'Setting torch_dtype: {torch_dtype}')
+                quantization_config = model_kwargs.get('quantization_config')
+                if (isinstance(quantization_config, BitsAndBytesConfig)
+                        and quantization_config.bnb_4bit_compute_dtype is None):
+                    quantization_config.bnb_4bit_compute_dtype = torch_dtype
+                    logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
     kwargs['eos_token'] = model_info['eos_token']
     pad_token = model_info.get('pad_token')
     if pad_token is not None:

@@ -35,21 +35,16 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
         super().__init__(*args, **kwargs)
         # performance
-        self.perf: Dict[str, Any] = {
+        if not hasattr(self, 'perf'):
+            self.perf = {}
+        self.perf.update({
             'gen_time': 0.,
             'gen_len': 0,
-            'memory': {},
-            'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
-        }
+        })
         self._acc = torch.tensor(0.).to(self.args.device)
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(self.sequence_parallel_size)
-
-    def train(self, *args, **kwargs) -> torch.Tensor:
-        res = super().train(*args, **kwargs)
-        self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
-        return res
 
     def prediction_step(
         self,

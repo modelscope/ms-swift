@@ -264,7 +264,7 @@ curl http://localhost:8000/v1/chat/completions \
 }'
 ```
 
-Using swift:
+Synchronous client interface using swift:
 ```python
 from swift.llm import get_model_list_client, XRequestConfig, inference_client
 
@@ -298,7 +298,45 @@ response: Hangzhou has many delicious foods, such as West Lake Vinegar Fish, Don
 """
 ```
 
-Using openai:
+Asynchronous client interface using swift:
+```python
+import asyncio
+from swift.llm import get_model_list_client, XRequestConfig, inference_client_async
+
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+
+query = 'Where is the capital of Zhejiang?'
+request_config = XRequestConfig(seed=42)
+resp = asyncio.run(inference_client_async(model_type, query, request_config=request_config))
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+async def _stream():
+    global query
+    history = [(query, response)]
+    query = 'What delicious food is there?'
+    request_config = XRequestConfig(stream=True, seed=42)
+    stream_resp = await inference_client_async(model_type, query, history, request_config=request_config)
+    print(f'query: {query}')
+    print('response: ', end='')
+    async for chunk in stream_resp:
+        print(chunk.choices[0].delta.content, end='', flush=True)
+    print()
+
+asyncio.run(_stream())
+"""Out[0]
+model_type: qwen-7b-chat
+query: Where is the capital of Zhejiang?
+response: The capital of Zhejiang Province is Hangzhou.
+query: What delicious food is there?
+response: Hangzhou has many delicious foods, such as West Lake Vinegar Fish, Dongpo Pork, Longjing Shrimp, Beggar's Chicken, etc. In addition, Hangzhou also has many specialty snacks, such as West Lake Lotus Root Powder, Hangzhou Xiao Long Bao, Hangzhou You Tiao, etc.
+"""
+```
+
+Using OpenAI (synchronous):
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -370,7 +408,7 @@ curl http://localhost:8000/v1/completions \
 }'
 ```
 
-Using swift:
+Synchronous client interface using swift:
 ```python
 from swift.llm import get_model_list_client, XRequestConfig, inference_client
 
@@ -417,7 +455,58 @@ Sichuan -> Chengdu
 """
 ```
 
-Using openai:
+Asynchronous client interface using swift:
+```python
+import asyncio
+from swift.llm import get_model_list_client, XRequestConfig, inference_client_async
+
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+
+query = 'Zhejiang -> Hangzhou\nAnhui -> Hefei\nSichuan ->'
+request_config = XRequestConfig(max_tokens=32, temperature=0.1, seed=42)
+
+resp = asyncio.run(inference_client_async(model_type, query, request_config=request_config))
+response = resp.choices[0].text
+print(f'query: {query}')
+print(f'response: {response}')
+
+async def _stream():
+    request_config.stream = True
+    stream_resp = await inference_client_async(model_type, query, request_config=request_config)
+    print(f'query: {query}')
+    print('response: ', end='')
+    async for chunk in stream_resp:
+        print(chunk.choices[0].text, end='', flush=True)
+    print()
+
+asyncio.run(_stream())
+"""Out[0]
+model_type: qwen-7b
+query: Zhejiang -> Hangzhou
+Anhui -> Hefei
+Sichuan ->
+response:  Chengdu
+Guangdong -> Guangzhou
+Jiangsu -> Nanjing
+Zhejiang -> Hangzhou
+Anhui -> Hefei
+Sichuan -> Chengdu
+
+query: Zhejiang -> Hangzhou
+Anhui -> Hefei
+Sichuan ->
+response:  Chengdu
+Guangdong -> Guangzhou
+Jiangsu -> Nanjing
+Zhejiang -> Hangzhou
+Anhui -> Hefei
+Sichuan -> Chengdu
+"""
+```
+
+Using OpenAI (synchronous):
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -533,14 +622,6 @@ swift sft \
     --lora_target_modules ALL \
     --model_name 'Xiao Huang' \
     --model_author ModelScope \
-```
-
-Convert LoRA from swift format to peft format:
-
-```shell
-CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/llama2-7b-chat/vx-xxx/checkpoint-xxx \
-    --to_peft_format true
 ```
 
 

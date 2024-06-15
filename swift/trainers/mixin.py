@@ -1,13 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
-import importlib
 import os
 import re
 import shutil
 import time
 from pathlib import Path
 from types import MethodType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
@@ -27,11 +26,12 @@ from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME
                                   WEIGHTS_NAME, IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
+from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import (save_ta_checkpoint, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
-                                  ta_trim_graph)
+from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_load_optimizer_and_scheduler,
+                                  ta_save_optimizer_and_scheduler, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc
 from swift.utils.constants import Invoke
@@ -261,6 +261,12 @@ class SwiftMixin:
             self.can_return_loss = can_return_loss(model)
         self.max_memory = 0.0
         self.start_time = time.time()
+        self._resume_from_checkpoint = None
+        self._resume_only_model = False
+        # performance
+        self.perf: Dict[str, Any] = {'memory': {}}
+        if hasattr(self.model, 'get_trainable_parameters'):
+            self.perf['model'] = self.model.get_trainable_parameters()
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:
@@ -315,14 +321,21 @@ class SwiftMixin:
         return
 
     def _save_optimizer_and_scheduler(self, output_dir):
-        if not use_torchacc():
+        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
             return super()._save_optimizer_and_scheduler(output_dir)
 
         ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
 
     def _load_optimizer_and_scheduler(self, checkpoint):
-        if not use_torchacc():
-            return super()._load_optimizer_and_scheduler(checkpoint)
+        if not (use_torchacc() and self.sft_args.fsdp_num > 1):
+            if self._resume_only_model:
+                checkpoint = self._resume_from_checkpoint
+                if checkpoint is not None and (is_sagemaker_mp_enabled() or self.is_fsdp_enabled):
+                    self._load_from_checkpoint(checkpoint, self.model_wrapped)
+                return
+            else:
+                # Check if saved optimizer or scheduler states exist
+                return super()._load_optimizer_and_scheduler(checkpoint)
 
         if checkpoint is None or self.args.save_only_model:
             return
@@ -335,8 +348,10 @@ class SwiftMixin:
             return super()._save_tpu(output_dir)
 
         output_dir = output_dir if output_dir is not None else self.args.output_dir
-        logger.info(f'Saving model checkpoint to {output_dir}')
-        save_ta_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        if self.sft_args.fsdp_num > 1:
+            save_ta_fsdp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        else:
+            save_ta_ddp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
@@ -401,11 +416,12 @@ class SwiftMixin:
 
     def _save_checkpoint(self, model, trial, metrics=None):
         self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
-        logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
         if version.parse(transformers.__version__) >= version.parse('4.36') or not self.args.save_only_model:
-            return super()._save_checkpoint(model, trial, metrics)
+            result = super()._save_checkpoint(model, trial, metrics)
         else:
-            return self._save_only_model(model, trial, metrics)
+            result = self._save_only_model(model, trial, metrics)
+        logger.info(f'Saving model checkpoint to {self.state.last_model_checkpoint}')
+        return result
 
     def _save_only_model(self, model, trial, metrics=None):
         # Save model checkpoint
@@ -455,8 +471,9 @@ class SwiftMixin:
             model = self.model
         if use_torchacc():
             # Loading checkpoint of TorchAcc has been done in tuner.py when
-            # sft_type if 'full'.
-            model = model._get_underlay_model().module.module
+            # sft_type is 'full'.
+            if self.sft_args.fsdp_num > 1:
+                model = model._get_underlay_model().module.module
             if isinstance(model, PreTrainedModel):
                 return
         elif not isinstance(model, SwiftModel):
@@ -488,6 +505,21 @@ class SwiftMixin:
             for i in range(best_model_index, len(checkpoints_sorted) - 2):
                 checkpoints_sorted[i], checkpoints_sorted[i + 1] = checkpoints_sorted[i + 1], checkpoints_sorted[i]
         return checkpoints_sorted
+
+    def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
+        sft_args = getattr(self, 'sft_args', None)
+        self._resume_only_model = getattr(sft_args, 'resume_only_model', False)
+        if self._resume_only_model:
+            # Control the behavior of "resume_from_checkpoint" by swift.
+            self._resume_from_checkpoint = resume_from_checkpoint
+            resume_from_checkpoint = None
+        if (self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled):
+            self._load_from_checkpoint(self._resume_from_checkpoint)
+        res = super().train(resume_from_checkpoint, *args, **kwargs)
+        self._resume_from_checkpoint = None
+        if self.max_memory != 0:
+            self.perf['memory']['cuda'] = f'{self.max_memory:.2f}GiB'
+        return res
 
     def _load_best_model(self):
         # Compatible with transformers>=4.35 (deepspeed)
@@ -545,7 +577,8 @@ class SwiftMixin:
                 if grad_norm is not None:
                     logs['grad_norm'] = grad_norm
             logs['learning_rate'] = self._get_learning_rate()
-            logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
+            if not is_torch_npu_available():
+                logs['memory(GiB)'] = round(self.get_max_cuda_memory(), 2)
             import time
             time_now = time.time()
             elapse_time = time_now - self.start_time
