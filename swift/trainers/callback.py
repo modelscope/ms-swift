@@ -7,6 +7,7 @@ from tqdm.auto import tqdm
 from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback, TrainerCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
+from transformers.utils import append_to_jsonl
 
 from swift.utils import is_pai_training_job, use_torchacc
 from .arguments import TrainingArguments
@@ -55,8 +56,7 @@ class ProgressCallbackNew(ProgressCallback):
                 logs[k] = round(logs[k], 8)
         if not is_pai_training_job() and state.is_local_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
-            with open(jsonl_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(logs) + '\n')
+            append_to_jsonl(jsonl_path, logs)
         super().on_log(args, state, control, logs, **kwargs)
         if state.is_local_process_zero and self.training_bar is not None:
             self.training_bar.refresh()
@@ -85,8 +85,7 @@ class PrinterCallbackNew(TrainerCallback):
                 logs[k] = round(logs[k], 8)
         if not is_pai_training_job() and state.is_local_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
-            with open(jsonl_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(logs) + '\n')
+            append_to_jsonl(jsonl_path, logs)
 
         _ = logs.pop('total_flos', None)
         if state.is_local_process_zero:
