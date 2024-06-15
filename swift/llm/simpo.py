@@ -145,6 +145,7 @@ def llm_simpo(args: SimPOArguments) -> str:
 
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.eval_strategy = IntervalStrategy.NO
         training_args.do_eval = False
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')

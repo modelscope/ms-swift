@@ -67,8 +67,9 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
     def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         control = super().on_step_end(args, state, control, **kwargs)
         # save the last ckpt
+        evaluation_strategy = args.eval_strategy if hasattr(args, 'eval_strategy') else args.evaluation_strategy
         if state.global_step == state.max_steps:
-            if args.evaluation_strategy != IntervalStrategy.NO:
+            if evaluation_strategy != IntervalStrategy.NO:
                 control.should_evaluate = True
             if args.save_strategy != IntervalStrategy.NO:
                 control.should_save = True
