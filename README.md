@@ -386,7 +386,7 @@ NODE_RANK=0 \
 MASTER_ADDR=127.0.0.1 \
 NPROC_PER_NODE=8 \
 swift sft \
-    --model_id_or_path qwen1half-32b-chat \
+    --model_type qwen1half-32b-chat \
     --sft_type full \
     --dataset blossom-math-zh \
     --output_dir output \
@@ -399,7 +399,7 @@ NODE_RANK=1 \
 MASTER_ADDR=xxx.xxx.xxx.xxx \
 NPROC_PER_NODE=8 \
 swift sft \
-    --model_id_or_path qwen1half-32b-chat \
+    --model_type qwen1half-32b-chat \
     --sft_type full \
     --dataset blossom-math-zh \
     --output_dir output \
@@ -413,7 +413,7 @@ In DLC product, WORLD_SIZE is the node number, RANK is the node index, this is d
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 swift sft \
-    --model_id_or_path qwen1half-32b-chat \
+    --model_type qwen1half-32b-chat \
     --sft_type full \
     --dataset blossom-math-zh \
     --output_dir output \
