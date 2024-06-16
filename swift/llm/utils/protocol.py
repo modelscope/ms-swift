@@ -2,7 +2,7 @@
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 
 def random_uuid() -> str:
@@ -68,6 +68,8 @@ class CompletionRequestMixin:
 class ChatCompletionRequestMixin:
     model: str
     messages: List[Dict[str, str]]
+    tools: Optional[List[Dict[str, Union[str, Dict]]]] = None
+    tool_choice: Optional[Union[str, Dict]] = 'auto'
     images: List[str] = field(default_factory=list)
 
 
@@ -89,9 +91,23 @@ class UsageInfo:
 
 
 @dataclass
+class Function:
+    arguments: Optional[str] = None
+    name: str = ''
+
+
+@dataclass
+class ChatCompletionMessageToolCall:
+    id: str
+    function: Function
+    type: str = 'function'
+
+
+@dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
+    tool_calls: Optional[ChatCompletionMessageToolCall] = None
 
 
 @dataclass
@@ -132,6 +148,7 @@ class CompletionResponse:
 class DeltaMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
+    tool_calls: Optional[ChatCompletionMessageToolCall] = None
 
 
 @dataclass

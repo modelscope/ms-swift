@@ -627,13 +627,6 @@ swift sft \
     --model_author 魔搭 ModelScope \
 ```
 
-将lora从swift格式转换成peft格式:
-```shell
-CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/llama2-7b-chat/vx-xxx/checkpoint-xxx \
-    --to_peft_format true
-```
-
 
 ### VLLM推理加速
 

@@ -448,6 +448,7 @@ class SftArguments(ArgumentsBase):
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
+    resume_only_model: bool = False
     ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
@@ -460,7 +461,9 @@ class SftArguments(ArgumentsBase):
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
+    loss_scale_config_path: str = 'DEFAULT'
     system: Optional[str] = None
+    tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
@@ -662,6 +665,27 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
+    def load_from_checkpoint(self) -> None:
+        # resume_from_checkpoint: reading the model architecture
+        sft_args_path = os.path.join(self.resume_from_checkpoint, 'sft_args.json')
+        if not os.path.exists(sft_args_path):
+            logger.info(f'{sft_args_path} not found')
+            return
+        with open(sft_args_path, 'r', encoding='utf-8') as f:
+            sft_args = json.load(f)
+        imported_keys = [
+            'model_type', 'model_revision', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+            'bnb_4bit_use_double_quant', 'model_id_or_path'
+        ]
+
+        for key in imported_keys:
+            value = getattr(self, key)
+            if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
+                continue
+            if key in {'model_type', 'model_revision', 'model_id_or_path'} and value is not None:
+                continue
+            setattr(self, key, sft_args.get(key))
+
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
             return
@@ -730,12 +754,23 @@ class SftArguments(ArgumentsBase):
             if self.deepspeed == ds_name:
                 self.deepspeed = os.path.join(ds_config_folder, ds_config)
                 break
-
+        if self.loss_scale_config_path:
+            if self.loss_scale_config_path == 'DEFAULT':
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'default_loss_scale_config.json'))
+            elif self.loss_scale_config_path == 'alpha-umi':  # https://arxiv.org/pdf/2401.07324
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'alpha_umi_loss_scale_config.json'))
+            elif self.loss_scale_config_path == 'agent-flan':  # https://arxiv.org/abs/2403.12881
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'agentflan.json'))
         self.handle_path()
         self._handle_dataset_sample()
         self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
+        if self.resume_from_checkpoint is not None:
+            self.load_from_checkpoint()
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -1031,6 +1066,7 @@ class InferArguments(ArgumentsBase):
     show_dataset_sample: int = 10
     save_result: bool = True
     system: Optional[str] = None
+    tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
     max_length: int = -1  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
@@ -1077,6 +1113,8 @@ class InferArguments(ArgumentsBase):
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
+    disable_custom_all_reduce: bool = True  # Default values different from vllm
+    enforce_eager: bool = False
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
@@ -1284,7 +1322,7 @@ class EvalArguments(InferArguments):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
         if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
-            args.eval_dataset = []
+            self.eval_dataset = []
         if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:

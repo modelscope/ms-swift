@@ -419,6 +419,8 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
+    # codestral
+    codestral_22b = 'codestral-22b'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -2271,6 +2273,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-7B-v0.1')
+@register_model(
+    ModelType.codestral_22b,
+    'huangjintao/Codestral-22B-v0.1',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.34'],
+    ignore_file_pattern=['consolidated.safetensors'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Codestral-22B-v0.1')
 @register_model(
     ModelType.mistral_7b_v2,
     'AI-ModelScope/Mistral-7B-v0.2-hf',
@@ -4852,22 +4864,23 @@ def get_model_tokenizer(model_type: str,
     if 'device_map' not in model_kwargs and not use_torchacc():
         model_kwargs['device_map'] = 'auto'
 
-    if model_info.get('torch_dtype') is not None:
-        model_torch_dtype = model_info['torch_dtype']
-        if torch_dtype is None:
-            torch_dtype = model_torch_dtype
-            logger.info(f'Setting torch_dtype: {torch_dtype}')
+    if load_model:
+        if model_info.get('torch_dtype') is not None:
+            model_torch_dtype = model_info['torch_dtype']
+            if torch_dtype is None:
+                torch_dtype = model_torch_dtype
+                logger.info(f'Setting torch_dtype: {torch_dtype}')
+            else:
+                assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
         else:
-            assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
-    else:
-        if torch_dtype is None:
-            torch_dtype = get_torch_dtype(model_dir)
-            logger.info(f'Setting torch_dtype: {torch_dtype}')
-            quantization_config = model_kwargs.get('quantization_config')
-            if (isinstance(quantization_config, BitsAndBytesConfig)
-                    and quantization_config.bnb_4bit_compute_dtype is None):
-                quantization_config.bnb_4bit_compute_dtype = torch_dtype
-                logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
+            if torch_dtype is None:
+                torch_dtype = get_torch_dtype(model_dir)
+                logger.info(f'Setting torch_dtype: {torch_dtype}')
+                quantization_config = model_kwargs.get('quantization_config')
+                if (isinstance(quantization_config, BitsAndBytesConfig)
+                        and quantization_config.bnb_4bit_compute_dtype is None):
+                    quantization_config.bnb_4bit_compute_dtype = torch_dtype
+                    logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
     kwargs['eos_token'] = model_info['eos_token']
     pad_token = model_info.get('pad_token')
     if pad_token is not None:

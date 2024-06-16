@@ -17,8 +17,6 @@ We support three methods for **customizing datasets**.
 Supports directly passing in custom `dataset_id` (compatible with MS and HF) and `dataset_path`, as well as simultaneously passing in multiple custom datasets and their respective sample sizes. The script will automatically preprocess and concatenate the datasets. If a `dataset_id` is passed in, it will default to using the 'default' subset in the dataset_id and set the split to 'train'. If the dataset_id has already been registered, it will use the subsets, split, and preprocessing functions that were passed in during registration. If a `dataset_path` is passed in, it can be specified as a relative path or an absolute path, where the relative path is relative to the current running directory.
 
 
-
-
 ```bash
 --dataset {dataset_id} {dataset_path}
 
