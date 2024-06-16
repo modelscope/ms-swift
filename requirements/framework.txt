@@ -1,6 +1,6 @@
+accelerate
 aiohttp
 binpacking
-ccelerate
 dacite
 jieba
 matplotlib
