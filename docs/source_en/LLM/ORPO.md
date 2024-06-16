@@ -44,7 +44,8 @@ Swift has built-in methods for processing this dataset, using `answer_zh` as `re
 # Memory usage: 4*24G
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=2 \
-swift orpo \
+swift rlhf \
+    --rlhf_type orpo \
     --model_type  llama3-8b-instruct \
     --beta 0.5 \
     --sft_type  lora \
@@ -57,10 +58,12 @@ swift orpo \
     --gradient_accumulation_steps  $(expr 16 / $nproc_per_node)  \
     --warmup_ratio  0.03  \
     --save_total_limit  2
+
 # MP(device map)
 # Memory usage: 2*24G
 CUDA_VISIBLE_DEVICES=0,1 \
-swift orpo \
+swift rlhf \
+    --rlhf_type orpo \
     --model_type  llama3-8b-instruct \
     --beta 0.5 \
     --sft_type  lora \
@@ -76,7 +79,8 @@ swift orpo \
 
 # Memory usage: 40G
 CUDA_VISIBLE_DEVICES=0 \
-swift orpo \
+swift rlhf \
+    --rlhf_type orpo \
     --model_type  llama3-8b-instruct \
     --beta 0.5 \
     --sft_type  lora \

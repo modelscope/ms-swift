@@ -3,21 +3,23 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import torch
 from torch import nn
 from transformers import PreTrainedModel, trainer
-from trl import ORPOTrainer as HFORPOTrainer
+from trl import DPOTrainer as HFDPOTrainer
 
 from swift.llm.utils.template import Context, Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
+from .utils import build_tokenized_answer, concat_template
 
 logger = get_logger()
 
 
-class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
+class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
-    def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
+    def __init__(self, *args, template: Template, sft_beta=0., test_oom_error=False, **kwargs):
         self.template = template
+        self.sft_beta = sft_beta
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
         val_ds_info = self.stat_dataset(self.eval_dataset)
@@ -38,53 +40,10 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
             self.perf['memory'][f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
         return res
 
-    def concat_template(self, feature):
-        query: Optional[str] = feature.get('query', None)
-        system: Optional[str] = feature.get('system', None)
-        history: List = feature.get('history', [])
-        if system is None:
-            if self.template.use_default_system:
-                system = self.template.default_system
-        else:
-            assert self.template.prefix_has_system is not None, 'not support `system`'
-        res_context_list: List[Context] = []
-        compute_loss_idx: List[float] = []
-        if system is None:
-            assert self.template.prefix != self.template.prefix_has_system, f'template.prefix: {self.template.prefix}'
-            prefix = self.template.prefix
-        else:
-            prefix = self.template.prefix_has_system
-        self.template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
-        for i, (q, r) in enumerate(history):
-            self.template._concat_context_list(
-                [
-                    *self.template.prompt,
-                    '{{RESPONSE}}',
-                    *self.template.chat_sep  # noqa
-                ],
-                res_context_list,
-                compute_loss_idx,
-                query=q,
-                response=r,
-                round0=i)  # noqa
-        self.template._concat_context_list(
-            self.template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
-        res_context_list, compute_loss_idx = self.template._simplify_context_list(res_context_list, compute_loss_idx)
-
-        return res_context_list, feature['response'], feature['rejected_response'], compute_loss_idx
-
-    def build_tokenized_answer(self, answer):
-        tgt_input_ids = self.template._encode_context_list([answer], [1.0])[0]
-        tgt_input_ids += self.template._encode_context_list(self.template.suffix, [1.0])[0]
-        return dict(
-            input_ids=tgt_input_ids,
-            attention_mask=[1] * len(tgt_input_ids),
-        )
-
     def tokenize_row(self, feature, model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
         batch = {}
         if not self.is_encoder_decoder:
-            prompt, chosen, rejected, loss_scale = self.concat_template(feature)
+            prompt, chosen, rejected, loss_scale = concat_template(feature, self.template)
 
             prompt_tokens, _, _, _ = self.template._encode_context_list(prompt, loss_scale)
             prompt_tokens = {
@@ -95,13 +54,13 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
 
             if not isinstance(chosen, str):
                 raise ValueError(f'chosen should be an str but got {type(chosen)}')
-            chosen_tokens = self.build_tokenized_answer(chosen)
+            chosen_tokens = build_tokenized_answer(chosen, self.template)
             # Avoid tokenizing the prompt repeatedly.
             chosen_tokens.update(prompt_tokens)
 
             if not isinstance(rejected, str):
                 raise ValueError(f'rejected should be an str but got {type(rejected)}')
-            rejected_tokens = self.build_tokenized_answer(rejected)
+            rejected_tokens = build_tokenized_answer(rejected, self.template)
             rejected_tokens.update(prompt_tokens)
 
             longer_response_length = max(len(chosen_tokens['input_ids']), len(rejected_tokens['input_ids']))
@@ -173,7 +132,122 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
 
+    def get_batch_loss_metrics(
+        self,
+        model,
+        batch: Dict[str, Union[List, torch.LongTensor]],
+        train_eval: Literal['train', 'eval'] = 'train',
+    ):
+        """Compute the DPO loss and other metrics for the given batch of inputs for train or test."""
+        metrics = {}
 
+        (
+            policy_chosen_logps,
+            policy_rejected_logps,
+            policy_chosen_logits,
+            policy_rejected_logits,
+            concatenated_batch,
+        ) = self.concatenated_forward(model, batch)
+
+        # if reference_chosen_logps and reference_rejected_logps in batch use them, otherwise use the reference model
+        if 'reference_chosen_logps' in batch and 'reference_rejected_logps' in batch:
+            reference_chosen_logps = batch['reference_chosen_logps']
+            reference_rejected_logps = batch['reference_rejected_logps']
+        else:
+            with torch.no_grad():
+                if self.ref_model is None:
+                    with self.null_ref_context():
+                        (
+                            reference_chosen_logps,
+                            reference_rejected_logps,
+                            _,
+                            _,
+                            _,
+                        ) = self.concatenated_forward(self.model, batch)
+                else:
+                    (
+                        reference_chosen_logps,
+                        reference_rejected_logps,
+                        _,
+                        _,
+                        _,
+                    ) = self.concatenated_forward(self.ref_model, batch)
+
+        losses, chosen_rewards, rejected_rewards = self.dpo_loss(
+            policy_chosen_logps,
+            policy_rejected_logps,
+            reference_chosen_logps,
+            reference_rejected_logps,
+        )
+
+        if self.sft_beta > 0.:
+            chosen_labels = concatenated_batch['concatenated_labels'][:batch['chosen_labels'].shape[0]]
+            sft_loss = -self.get_batch_logps(policy_chosen_logits, chosen_labels, average_log_prob=True)
+            if losses.shape[0] == 2 * sft_loss.shape[0]:
+                sft_loss = sft_loss.repeat(2, *sft_loss.shape[1:])
+            losses = (1 - self.sft_beta) * losses + self.sft_beta * sft_loss
+
+        reward_accuracies = (chosen_rewards > rejected_rewards).float()
+
+        prefix = 'eval_' if train_eval == 'eval' else ''
+        metrics[f'{prefix}rewards/chosen'] = chosen_rewards.mean().cpu()
+        metrics[f'{prefix}rewards/rejected'] = rejected_rewards.mean().cpu()
+        metrics[f'{prefix}rewards/accuracies'] = reward_accuracies.mean().cpu()
+        metrics[f'{prefix}rewards/margins'] = (chosen_rewards - rejected_rewards).mean().cpu()
+        metrics[f'{prefix}logps/rejected'] = policy_rejected_logps.detach().mean().cpu()
+        metrics[f'{prefix}logps/chosen'] = policy_chosen_logps.detach().mean().cpu()
+        metrics[f'{prefix}logps/ref_rejected'] = reference_rejected_logps.detach(  # noqa
+        ).mean().cpu()  # noqa
+        metrics[f'{prefix}logps/ref_chosen'] = reference_chosen_logps.detach().mean().cpu()
+        metrics[f'{prefix}logits/rejected'] = policy_rejected_logits.detach().mean().cpu()
+        metrics[f'{prefix}logits/chosen'] = policy_chosen_logits.detach().mean().cpu()
+
+        return losses.mean(), metrics
+
+    def concatenated_forward(
+        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, Dict[str, torch.LongTensor]]:
+        """Run the given model on the given batch of inputs, concatenating the chosen and rejected inputs together.
+
+        We do this to avoid doing two forward passes, because it's faster for FSDP.
+        """
+        concatenated_batch = self.concatenated_inputs(
+            batch,
+            is_encoder_decoder=self.is_encoder_decoder,
+            label_pad_token_id=self.label_pad_token_id,
+            padding_value=self.padding_value,
+            device=self.accelerator.device,
+        )
+        len_chosen = batch['chosen_labels'].shape[0]
+
+        model_kwargs = ({
+            'labels': concatenated_batch['concatenated_labels'],
+            'decoder_input_ids': concatenated_batch.pop('concatenated_decoder_input_ids', None),
+        } if self.is_encoder_decoder else {})
+        all_logits = model(
+            concatenated_batch['concatenated_input_ids'],
+            attention_mask=concatenated_batch['concatenated_attention_mask'],
+            **model_kwargs,
+        ).logits
+
+        all_logps = self.get_batch_logps(
+            all_logits,
+            concatenated_batch['concatenated_labels'],
+            average_log_prob=False,
+            is_encoder_decoder=self.is_encoder_decoder,
+            label_pad_token_id=self.label_pad_token_id,
+        )
+
+        chosen_logps = all_logps[:len_chosen]
+        rejected_logps = all_logps[len_chosen:]
+
+        chosen_logits = all_logits[:len_chosen]
+        rejected_logits = all_logits[len_chosen:]
+
+        return (chosen_logps, rejected_logps, chosen_logits, rejected_logits, concatenated_batch)
+
+
+# monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
 trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
 trainer.PrinterCallback = PrinterCallbackNew
