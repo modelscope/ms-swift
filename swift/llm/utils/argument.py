@@ -1402,7 +1402,8 @@ class RLHFArguments(SftArguments):
             'orpo': 'trl.trainer.orpo_config.ORPOConfig',
             'kto': 'trl.trainer.kto_config.KTOConfig',
             'simpo': 'trl.trainer.cpo_config.CPOConfig',
-            'cpo': 'trl.trainer.cpo_config.CPOConfig'
+            'cpo': 'trl.trainer.cpo_config.CPOConfig',
+            'dpo': 'trl.trainer.dpo_config.DPOConfig'
         }
 
         if self.rlhf_type in CONFIG_MAPPING:

@@ -1,5 +1,5 @@
 # Human Preference Alignment Training Documentation
-This document provides training scripts for various human preference alignment algorithms. If you wish to delve deeper into more detailed algorithm information and selection methods, please refer to [documentation](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/%E4%BA%BA%E7%B1%BB%E5%81%8F%E5%A5%BD%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83.md)
+This document provides training scripts for various human preference alignment algorithms. If you wish to delve deeper into more detailed algorithm information and selection methods, please refer to [documentation](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/M.%E4%BA%BA%E7%B1%BB%E5%81%8F%E5%A5%BD%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83.md)
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)

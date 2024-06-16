@@ -47,6 +47,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 🔥2024.06.16: Supoprts **KTO** and **CPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md) to start training!
 - 🔥2024.06.07: Support **Qwen2** series LLM, including Base and Instruct models of 0.5B, 1.5B, 7B, and 72B, as well as corresponding quantized versions gptq-int4, gptq-int8, and awq-int4. The best practice for self-cognition fine-tuning, inference and deployment of Qwen2-72B-Instruct using dual-card 80GiB A100 can be found [here](https://github.com/modelscope/swift/issues/1092).
 - 🔥2024.06.05: Support for **glm4** series LLM and glm4v-9b-chat MLLM. You can refer to [glm4v best practice](docs/source_en/Multi-Modal/glm4v-best-practice.md).
 - 🔥2024.06.01: Supoprts **SimPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/SimPO.md) to start training!
@@ -629,6 +630,7 @@ make docs
 | [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
 | [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
 | [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
+| [Human Preference Alignment Training Documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md) |
 
 ### Reference Documentation
 | Document Name                                                |
