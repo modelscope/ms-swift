@@ -68,8 +68,8 @@ Specifically, you have access to the following APIs: {tool_list}'''
 def calculate_loss_scale(query: str,
                          response: str,
                          use_loss_scale=False,
-                         response_loss_scale_map: Optional[dict[str, list]] = None,
-                         query_loss_scale_map: Optional[dict[str, list]] = None) -> Tuple[List[str], List[float]]:
+                         response_loss_scale_map: Optional[Dict[str, list]] = None,
+                         query_loss_scale_map: Optional[Dict[str, list]] = None) -> Tuple[List[str], List[float]]:
     """Calculate the loss scale by splitting the agent response.
 
     This algorithm comes from paper: https://arxiv.org/pdf/2309.00986.pdf
@@ -173,10 +173,10 @@ def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float
                 text_list[i:i + 1] = segments
 
 
-def get_tools_prompt(TOOLS: list[dict[str, Union[str, dict]]], prompt_format: str = 'react_en') -> Optional[str]:
+def get_tools_prompt(TOOLS: List[Dict[str, Union[str, dict]]], prompt_format: str = 'react_en') -> Optional[str]:
     tool_descs = []
     tool_names = []
-    for info in TOOLS:  # info: dict[str, Union[str, dict]]
+    for info in TOOLS:  # info: Dict[str, Union[str, dict]]
         try:
             if 'function' in info:
                 info = info['function']

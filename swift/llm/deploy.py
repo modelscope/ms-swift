@@ -14,8 +14,8 @@ from modelscope import GenerationConfig
 from packaging import version
 from peft import PeftModel
 
-from swift.llm.agent.utils import split_action_action_input
 from swift.utils import get_logger, get_main, seed_everything
+from .agent import split_action_action_input
 from .infer import merge_lora, prepare_model_template
 from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,

@@ -152,6 +152,16 @@ Multimodal large model fine-tuning usually uses **custom datasets**. Here is a d
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type phi3-vision-128k-instruct \
     --dataset coco-en-mini \
+
+# DDP Full
+# Experimental environment: 2 * A100
+# 2 * 50GB GPU memory
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_type phi3-vision-128k-instruct \
+    --dataset coco-en-mini \
+    --sft_type full \
+    --ddp_find_unused_parameters true
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) supports json, jsonl styles. The following is an example of a custom dataset:
