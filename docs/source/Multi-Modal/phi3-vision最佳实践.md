@@ -151,6 +151,16 @@ road:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type phi3-vision-128k-instruct \
     --dataset coco-en-mini \
+
+# DDP Full
+# Experimental environment: 2 * A100
+# 2 * 50GB GPU memory
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 swift sft \
+    --model_type phi3-vision-128k-instruct \
+    --dataset coco-en-mini \
+    --sft_type full \
+    --ddp_find_unused_parameters true
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
