@@ -381,6 +381,8 @@ class LLMInfer(BaseUI):
 
         _, args = Runtime.parse_info_from_cmdline(running_task)
         model_type, template, sft_type = model_and_template
+        if sft_type in ('lora', 'longlora') and not args.get('merge_lora'):
+            model_type = 'default-lora'
         old_history, history = history or [], []
         request_config = XRequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)

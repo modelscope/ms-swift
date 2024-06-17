@@ -70,6 +70,16 @@ class Model(BaseUI):
                 'en': 'system can be modified after the model weights loaded'
             }
         },
+        'merge_lora': {
+            'label': {
+                'zh': '合并lora',
+                'en': 'merge lora'
+            },
+            'info': {
+                'zh': '仅在sft_type=lora时可用',
+                'en': 'Only available when sft_type=lora'
+            }
+        },
         'more_params': {
             'label': {
                 'zh': '更多参数',
@@ -100,6 +110,7 @@ class Model(BaseUI):
             model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
             template_type = gr.Dropdown(
                 elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+            gr.Checkbox(elem_id='merge_lora', scale=4)
             reset_btn = gr.Button(elem_id='reset', scale=2)
             model_state = gr.State({})
         with gr.Row():
