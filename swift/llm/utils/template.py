@@ -1179,7 +1179,7 @@ class InternvlTemplate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
-        labels = inputs['labels']
+        labels = inputs.get('labels')
         if example.get('images'):
             from .vision_utils import load_image
             if len(idx_list) >= 2:
