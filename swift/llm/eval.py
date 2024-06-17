@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
+import datetime as dt
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,7 +10,7 @@ from llmuses.models.custom import CustomModel
 from modelscope import GenerationConfig
 from tqdm import tqdm
 
-from swift.utils import get_logger, get_main, seed_everything
+from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
 from .utils import EvalArguments, XRequestConfig, inference, inference_client_async
 
@@ -31,7 +32,6 @@ class EvalModel(CustomModel):
         self.args = args
         super(EvalModel, self).__init__(config={'model_id': model_name, **config}, **kwargs)
         self.model_name = model_name
-        self.generation_info = {'time': 0, 'tokens': 0}
 
     @staticmethod
     async def _call_openai(model_type: str, query: str, eval_url: str, *, is_chat_model: bool,
@@ -108,16 +108,7 @@ class EvalModel(CustomModel):
             use_tqdm = True if len(prompts) >= 5 else False
             prog_bar = tqdm(total=len(prompts), dynamic_ncols=True, disable=not use_tqdm)
             for prompt in prompts:
-                generation_info = {}
-                ts = time.time()
-                response, _ = inference(
-                    self.model,
-                    self.template,
-                    prompt,
-                    generation_info=generation_info,
-                    generation_config=generation_config)
-                self.generation_info['time'] += time.time() - ts
-                self.generation_info['tokens'] += generation_info['num_generated_tokens']
+                response, _ = inference(self.model, self.template, prompt, generation_config=generation_config)
                 response_list.append(response)
                 prog_bar.update()
             prog_bar.close()
@@ -168,11 +159,22 @@ def run_eval_single_model(args: EvalArguments) -> Dict[str, Any]:
 
     run_task(task_cfg=task_configs)
     final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
-    final_report = {
-        'report': final_report,
-        'generation_info': eval_model.generation_info,
-    }
     logger.info(f'Final report:{final_report}\n')
+
+    if args.save_result:
+        result_dir = args.ckpt_dir
+        if result_dir is None:
+            result_dir = llm_engine.model_dir if args.infer_backend == 'vllm' else model.model_dir
+        if result_dir is not None:
+            jsonl_path = os.path.join(result_dir, 'eval_result.jsonl')
+        result = {report['name']: report['score'] for report in final_report}
+        logger.info(f'result: {result}')
+        result_info = {
+            'result': result,
+            'time': dt.datetime.now().strftime('%Y%m%d-%H%M%S'),
+        }
+        append_to_jsonl(jsonl_path, result_info)
+        logger.info(f'save_result_path: {jsonl_path}')
     return final_report
 
 
