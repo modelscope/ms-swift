@@ -1027,7 +1027,7 @@ class InternvlTemplate(Template):
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         pixel_values = None
-        if example.get('images') is not None:
+        if example.get('images'):
             from .vision_utils import load_image
             labels = inputs['labels']
             if len(idx_list) >= 2:

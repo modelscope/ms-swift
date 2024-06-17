@@ -206,9 +206,9 @@ class ExpManager:
             for key, value in args.items():
                 cmd += f' --{key} {value}'
         elif exp.cmd == 'dpo':
-            from swift.llm import DPOArguments
+            from swift.llm import RLHFArguments
             args = exp.args
-            dpo_args = DPOArguments(**args)
+            dpo_args = RLHFArguments(**args)
             args['output_dir'] = dpo_args.output_dir
             args['logging_dir'] = dpo_args.logging_dir
             args['add_output_dir_suffix'] = False

@@ -3,13 +3,14 @@
 
 import inspect
 from types import FunctionType, MethodType
-from typing import List, Union
+from typing import Dict, List, Optional, Union
 
 from torch.nn import Module
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
                                         SchedulerType)
 
+from swift.llm.utils.template import Context, History, Template
 from swift.utils import get_logger
 
 try:
@@ -54,3 +55,49 @@ def is_instance_of_ms_model(model: Module) -> bool:
         if cls_name == 'Model' and cls_module.startswith('modelscope'):
             return True
     return False
+
+
+def concat_template(feature: Dict, template: Template):
+    query: Optional[str] = feature.get('query', None)
+    system: Optional[str] = feature.get('system', None)
+    history: Optional[History] = feature.get('history', None)
+    if history is None:
+        history = []
+    if system is None:
+        if template.use_default_system:
+            system = template.default_system
+    else:
+        assert template.prefix_has_system is not None, 'not support `system`'
+    res_context_list: List[Context] = []
+    compute_loss_idx: List[float] = []
+    if system is None:
+        assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
+        prefix = template.prefix
+    else:
+        prefix = template.prefix_has_system
+    template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
+    for i, (q, r) in enumerate(history):
+        template._concat_context_list(
+            [
+                *template.prompt,
+                '{{RESPONSE}}',
+                *template.chat_sep  # noqa
+            ],
+            res_context_list,
+            compute_loss_idx,
+            query=q,
+            response=r,
+            round0=i)  # noqa
+    template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
+    res_context_list, compute_loss_idx = template._simplify_context_list(res_context_list, compute_loss_idx)
+
+    return res_context_list, feature['response'], feature['rejected_response'], compute_loss_idx
+
+
+def build_tokenized_answer(answer, template: Template):
+    tgt_input_ids = template._encode_context_list([answer], [1.0])[0]
+    tgt_input_ids += template._encode_context_list(template.suffix, [1.0])[0]
+    return dict(
+        input_ids=tgt_input_ids,
+        attention_mask=[1] * len(tgt_input_ids),
+    )

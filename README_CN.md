@@ -48,6 +48,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
+- 🔥2024.06.16: 支持**KTO**和**CPO**训练，使用`swift rlhf --rlhf_type kto`和`swift rlhf --rlhf_type cpo`来开始训练，可以参考[文档](./docs/source/LLM/人类偏好对齐训练文档.md)
 - 2024.06.11: 支持符合OpenAI接口的工具调用Agent部署, 可以查看[Agent部署最佳实践](docs/source/LLM/Agent部署最佳实践.md).
 - 🔥2024.06.07: 支持**Qwen2**系列LLM, 包括0.5B、1.5B、7B、72B的Base和Instruct模型, 以及对应的gptq-int4、gptq-int8、awq-int4量化版本. 使用双卡80GiB A100对Qwen2-72B-Instruct进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
 - 🔥2024.06.05: 支持glm4系列大模型和glm4v-9b-chat多模态大模型, 可以查看[glm4v最佳实践](docs/source/Multi-Modal/glm4v最佳实践.md).
@@ -239,7 +240,7 @@ swift web-ui
 | -------- |------------------------------------|
 | 预训练   | 文本生成                               |
 | 微调     | 单轮/多轮<br>Agent训练/自我认知<br>多模态视觉/多模态语音 |
-| 人类对齐 | DPO<br>ORPO<br>SimPO                |
+| 人类对齐 | DPO<br>ORPO<br>SimPO<br>KTO<br>CPO  |
 | 文生图   | DreamBooth等                        |
 | 文生视频 | -                                  |
 
@@ -628,6 +629,7 @@ make docs
 | [LLM量化](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md) |
 | [LLM部署](https://github.com/modelscope/swift/blob/main/docs/source/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.md) |
 | [AnimateDiff训练](https://github.com/modelscope/swift/blob/main/docs/source/AIGC/AnimateDiff%E5%BE%AE%E8%B0%83%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.md) |
+| [人类偏好对齐训练](./docs/source/LLM/人类偏好对齐训练文档.md) |
 
 
 ### 参考文档
