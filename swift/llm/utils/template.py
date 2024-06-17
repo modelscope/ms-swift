@@ -254,7 +254,7 @@ class Template:
         pass
 
     def add_default_tags(self, example):
-        history: Optional[History] = example.get('history') or []
+        history: Optional[History] = deepcopy(example.get('history') or [])
         query: Optional[str] = example.get('query') or ''
         for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
             if example.get(media_key) and media_tag not in ''.join([h[0] for h in history]) + query:
@@ -266,6 +266,7 @@ class Template:
                             h[0] = media_tag + h[0]
                     if example[media_key][-1]:
                         query = media_tag + query
+                    example[media_key] = [m for m in example[media_key] if m]
                 else:
                     example[media_key] = [m for m in example[media_key] if m]
                     media_len = len(example[media_key]) if isinstance(example[media_key],
@@ -276,6 +277,7 @@ class Template:
                         query = ''.join([media_tag] * media_len) + query
 
         example['query'] = query
+        example['history'] = history
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
