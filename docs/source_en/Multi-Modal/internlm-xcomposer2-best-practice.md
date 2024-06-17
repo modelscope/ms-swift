@@ -29,12 +29,15 @@ Output: (supports passing local path or URL)
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What's the difference between these two images?
  These two images are different. The first one is a picture of sheep, and the second one is a picture of a cat.
 --------------------------------------------------
+<<< clear
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>How many sheep are there in the picture?
  There are 4 sheep in the picture
 --------------------------------------------------
+<<< clear
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png</img>What is the calculation result?
  The calculation result is 1452+45304=46756
 --------------------------------------------------
+<<< clear
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>Write a poem based on the content in the picture
  Ripples glisten on the lake's surface, a lone boat drifts.
 On the boat, a light illuminates the night,

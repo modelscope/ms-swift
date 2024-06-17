@@ -1445,33 +1445,45 @@ class Phi3VisionTemplate(Template):
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
-        assert media_type == 'image'
-        image = example['image_info'][index]
-        if 'num_img_tokens' in image:
-            num_img_tokens = image['num_img_tokens']
-        else:
-            assert 'num_crops' in image, 'num_crops must be provided in images if num_img_tokens is not provided'
-            num_crops = image['num_crops']
-            num_img_tokens = [_num_crops * example['num_img_tokens'] for _num_crops in num_crops]
-        return [-index - 1] * num_img_tokens[0] + [1]
+        return '<s>'
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        image_path = example.get('images')
-        if image_path:
-            if not isinstance(image_path, (list, tuple)):
-                image_path = [image_path]
-            raw_images = [_read_from_path(path) for path in image_path]
-            image_infos = [
-                self.tokenizer.processor.image_processor(raw_image, return_tensors='pt') for raw_image in raw_images
-            ]
-            pixel_values = torch.concat([image_info['pixel_values'] for image_info in image_infos], dim=0)
-            image_sizes = torch.concat([image_info['image_sizes'] for image_info in image_infos], dim=0)
-            example['image_info'] = image_infos
-            example['num_img_tokens'] = self.tokenizer.processor.image_processor.num_img_tokens
+        example = example.copy()
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<s>')
+        images_path.extend(example.get('images', []))
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            images.append(image)
         inputs, _ = super().encode(example)
-        if image_path:
-            inputs['pixel_values'] = pixel_values
-            inputs['image_sizes'] = image_sizes
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 1)[1:]  # 1: <s>
+        if len(images) > 0:
+            processor = self.tokenizer.processor
+            inputs.update(processor.image_processor(images, return_tensors='pt'))
+            assert len(idx_list) == len(images)
+            res_input_ids = []
+            res_labels = []
+            num_img_tokens = inputs.pop('num_img_tokens').tolist()
+            idx_list.insert(0, -1)
+            for i in range(len(idx_list) - 1):
+                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [-1] * num_img_tokens[i] + [1]
+                if labels is not None:
+                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
+            res_input_ids += input_ids[idx_list[-1] + 1:]
+            input_ids = res_input_ids
+            if labels is not None:
+                res_labels += labels[idx_list[-1] + 1:]
+                labels = res_labels
+
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
