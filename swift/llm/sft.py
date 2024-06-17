@@ -197,6 +197,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if use_model:
         template_kwargs['model'] = model
     template_kwargs['use_loss_scale'] = args.use_loss_scale
+    if args.loss_scale_config_path is not None:
+        cwd = os.getcwd()
+        config_path = args.loss_scale_config_path if os.path.isabs(args.loss_scale_config_path) else os.path.join(
+            cwd, args.loss_scale_config_path)
+        with open(config_path, 'r') as json_file:
+            template_kwargs['loss_scale_map'] = json.load(json_file)
     template_kwargs['tools_prompt'] = args.tools_prompt
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
@@ -249,6 +255,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             val_dataset = LazyLLMDataset(val_dataset, template)
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.eval_strategy = IntervalStrategy.NO
         training_args.do_eval = False
 
     padding_to = args.max_length if args.sft_type == 'longlora' else None

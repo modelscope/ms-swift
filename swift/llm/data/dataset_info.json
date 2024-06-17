@@ -631,6 +631,13 @@
         },
         "tags": ["chat", "agent", "multi-round", "🔥"]
     },
+    "msagent-pro": {
+        "dataset_id": "iic/MSAgent-Pro",
+        "conversations": {
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "agent", "multi-round", "🔥"]
+    },
     "codefuse-python-en": {
         "dataset_id": "codefuse-ai/CodeExercise-Python-27k",
         "conversations": {

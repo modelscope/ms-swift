@@ -461,6 +461,7 @@ class SftArguments(ArgumentsBase):
     dataset_seed: int = 42
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
+    loss_scale_config_path: str = 'DEFAULT'
     system: Optional[str] = None
     tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
     max_length: int = 2048  # -1: no limit
@@ -753,7 +754,16 @@ class SftArguments(ArgumentsBase):
             if self.deepspeed == ds_name:
                 self.deepspeed = os.path.join(ds_config_folder, ds_config)
                 break
-
+        if self.loss_scale_config_path:
+            if self.loss_scale_config_path == 'DEFAULT':
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'default_loss_scale_config.json'))
+            elif self.loss_scale_config_path == 'alpha-umi':  # https://arxiv.org/pdf/2401.07324
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'alpha_umi_loss_scale_config.json'))
+            elif self.loss_scale_config_path == 'agent-flan':  # https://arxiv.org/abs/2403.12881
+                self.loss_scale_config_path = os.path.abspath(
+                    os.path.join(__file__, '..', '..', 'agent', 'agentflan.json'))
         self.handle_path()
         self._handle_dataset_sample()
         self._register_self_cognition()
@@ -1103,6 +1113,8 @@ class InferArguments(ArgumentsBase):
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
     max_model_len: Optional[int] = None
+    disable_custom_all_reduce: bool = True  # Default values different from vllm
+    enforce_eager: bool = False
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
@@ -1310,7 +1322,7 @@ class EvalArguments(InferArguments):
         if isinstance(self.eval_dataset, str):
             self.eval_dataset = [self.eval_dataset]
         if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
-            args.eval_dataset = []
+            self.eval_dataset = []
         if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:

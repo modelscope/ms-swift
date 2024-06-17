@@ -233,6 +233,15 @@ class Template:
         self.truncation_strategy = truncation_strategy
         self.model = kwargs.get('model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
+        self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
+        self.query_loss_scale_map = None
+        if self.response_loss_scale_map is not None:
+            if 'query' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['query'], dict):
+                self.query_loss_scale_map = self.response_loss_scale_map['query']
+            if 'response' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['response'],
+                                                                         dict):
+                self.response_loss_scale_map = self.response_loss_scale_map['response']
+
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
@@ -313,15 +322,14 @@ class Template:
         return inputs, tokenizer_kwargs
 
     def _concat_context_list(
-        self,
-        context_list: List[Context],
-        res_context_list: List[Context],  # inplace
-        loss_scale_list: List[float],  # inplace
-        system: Optional[str] = None,
-        query: Optional[str] = None,
-        response: Optional[str] = None,
-        round0: Optional[int] = None,
-    ) -> None:
+            self,
+            context_list: List[Context],
+            res_context_list: List[Context],  # inplace
+            loss_scale_list: List[float],  # inplace
+            system: Optional[str] = None,
+            query: Optional[str] = None,
+            response: Optional[str] = None,
+            round0: Optional[int] = None) -> None:
         # concat context list and replace placeholder
         round1 = None
         if round0 is not None:
@@ -331,7 +339,9 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(response, self.use_loss_scale)
+                    content_part, weight_part = calculate_loss_scale(query, response, self.use_loss_scale,
+                                                                     self.response_loss_scale_map,
+                                                                     self.query_loss_scale_map)
                     res_context_list.extend(content_part)
                     loss_scale_list.extend(weight_part)
                     continue
@@ -505,7 +515,6 @@ class Template:
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
-
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list,
                                                                                     **kwargs)

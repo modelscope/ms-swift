@@ -252,6 +252,72 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 在返回结果的tool_calls中，可以获得调用的函数以及参数信息。
 
+你也可以通过OpenAI SDK进行测试
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+query = "What's the weather like in Boston today?"
+messages = [{
+    'role': 'user',
+    'content': query
+}]
+tools =  [
+      {
+        "name": "url_for_newapi",
+        "description": "This is the subfunction for tool \"newapi\", you can use this tool.The description of this function is: \"url_for_newapi\"",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "",
+              "example_value": "https://www.instagram.com/reels/CtB6vWMMHFD/"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "optional": [
+            "url"
+          ]
+        }
+      },
+]
+resp = client.chat.completions.create(
+    model='llama3-8b-instruct',
+    tools = tools,
+    messages=messages,
+    seed=42)
+tool_calls = resp.choices[0].message.tool_calls
+print(f'query: {query}')
+print(f'tool_calls: {tool_calls}')
+
+# 流式
+stream_resp = client.chat.completions.create(
+    model='llama3-8b-instruct',
+    messages=messages,
+    tools=tools,
+    stream=True,
+    seed=42)
+
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+
+"""
+query: What's the weather like in Boston today?
+tool_calls: {'id': 'toolcall-e4c637435e754cf9b2034c3e6861a4ad', 'function': {'arguments': ' {"url": "https://api.weatherapi.com/v1/current.json?key=YOUR_API_KEY&q=Boston"}', 'name': 'url_for_newapi'}, 'type': 'function'}
+query: What's the weather like in Boston today?
+response: Thought: I need to find the weather information for Boston today. I can use the 'newapi' tool to get the weather forecast.
+Action: url_for_newapi
+Action Input: {"url": "https://api.weatherapi.com/v1/current.json?key=YOUR_API_KEY&q=Boston"}
+"""
+```
 假设调用返回的结果为`The weather in Boston today is 32°F (0°C), with clear skies`, 我们将结果在role tool字段填入message传入
 ```shell
 curl -X POST http://localhost:8000/v1/chat/completions \
