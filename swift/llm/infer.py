@@ -239,8 +239,7 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
         return
     if infer_media_type == 'round' or len(images) == 0:
         image = input(text)
-        if len(image) > 0:
-            images += [image]
+        images += [image or None]
     if len(images) > 0:
         infer_kwargs['images'] = images
 
@@ -357,8 +356,6 @@ def llm_infer(args: InferArguments) -> None:
                 infer_kwargs = {}
 
             read_media_file(infer_kwargs, args.infer_media_type)
-            if infer_kwargs.get('images'):
-                query = '<image>' + query
             if args.truncation_strategy:
                 infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:

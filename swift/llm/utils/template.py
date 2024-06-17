@@ -149,6 +149,7 @@ class Template:
     """
 
     special_tokens = ['<image>', '<video_label>', '<audio_label>', '<bbox>', '<ref-object>']
+    special_keys = ['images', 'videos', 'audios', 'objects']
 
     def __init__(self,
                  prefix: Prompt,
@@ -257,13 +258,22 @@ class Template:
         query: Optional[str] = example.get('query') or ''
         for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
             if example.get(media_key) and media_tag not in ''.join([h[0] for h in history]) + query:
-                example[media_key] = [m for m in example[media_key] if m]
-                media_len = len(example[media_key]) if isinstance(example[media_key],
-                                                                  (tuple, list)) else 1 if example[media_key] else 0
-                if history:
-                    history[0][0] = ''.join([media_tag] * media_len) + history[0][0]
+                infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
+                if infer_media_type == 'round':
+                    assert len(example[media_key]) == len(history) + 1
+                    for h, m in zip(history, example[media_key][:-1]):
+                        if m:
+                            h[0] = media_tag + h[0]
+                    if example[media_key][-1]:
+                        query = media_tag + query
                 else:
-                    query = ''.join([media_tag] * media_len) + query
+                    example[media_key] = [m for m in example[media_key] if m]
+                    media_len = len(example[media_key]) if isinstance(example[media_key],
+                                                                      (tuple, list)) else 1 if example[media_key] else 0
+                    if history:
+                        history[0][0] = ''.join([media_tag] * media_len) + history[0][0]
+                    else:
+                        query = ''.join([media_tag] * media_len) + query
 
         example['query'] = query
 
@@ -288,6 +298,7 @@ class Template:
         system: Optional[str] = example.get('system', None)
         template_type = getattr(self, 'template_type', None)
         tools: Optional[list] = example.get('tools', None)
+        multi_modal: Optional[bool] = any([example.get(key) for key in Template.special_keys])
         if history is None:
             history = []
         if len(history) > 0:
@@ -316,7 +327,8 @@ class Template:
             system,
             self.truncation_strategy,
             auto_add_bos=self.auto_add_bos,
-            example=example)
+            example=example,
+            multi_modal=multi_modal)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -355,11 +367,12 @@ class Template:
 
     @staticmethod
     def _simplify_context_list(context_list: List[Context],
-                               loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
+                               loss_scale_list: List[float], **kwargs) -> Tuple[List[Context], List[float]]:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
         temp: List[str] = []
         temp_index: List[int] = []
+        multi_modal: bool = kwargs.get('multi_modal', False)
         for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str) and loss_scale_list[i] == 0.0:
                 temp.append(context)
@@ -375,7 +388,10 @@ class Template:
             res.append(''.join(temp))
             res_loss_scale.append(0.0)
 
-        return Template.split_special_tokens(res, res_loss_scale)
+        if multi_modal:
+            return Template.split_special_tokens(res, res_loss_scale)
+        else:
+            return res, res_loss_scale
 
     @staticmethod
     def split_special_tokens(context_list, loss_scale_list):
@@ -409,14 +425,20 @@ class Template:
             return '<audio_label>'
 
     def replace_object(self, index, example):
-        objects = example['objects']
-        object = objects[index]
-        return object[0]
+        objects = example.get('objects')
+        if objects:
+            object = objects[index]
+            return object[0]
+        else:
+            return '<ref-object>'
 
     def replace_box(self, index, example):
-        objects = example['objects']
-        object = objects[index]
-        return f'({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})'
+        objects = example.get('objects')
+        if objects:
+            object = objects[index]
+            return f'({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})'
+        else:
+            return '<bbox>'
 
     def pre_tokenize(self, prompt, **kwargs):
         example = kwargs.get('example')
@@ -515,7 +537,7 @@ class Template:
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
-        res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list)
+        res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list,
                                                                                     **kwargs)
 
@@ -833,7 +855,7 @@ class YiVLTemplate(Template):
 
     def replace_tag(self, media_type, index, example):
         assert media_type == 'image'
-        return [-200]
+        return [-200] + self.tokenizer.encode('\n', add_special_tokens=False)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
@@ -931,7 +953,7 @@ register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogu
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate([], ['### Human: ', '\n{{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
+    YiVLTemplate([], ['### Human: ', '{{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
                  ['{{SYSTEM}}\n\n']),
     use_model=True,
     infer_media_type='round',
@@ -1345,7 +1367,7 @@ class LLavaYiTemplate(LLavaTemplate):
     llavayi_query_template = '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'
 
     def __init__(self):
-        Template.__init__(self, [], [[-200], self.llavayi_query_template], None, ['<|im_end|>'])
+        Template.__init__(self, [], [self.llavayi_query_template], None, ['<|im_end|>'])
 
 
 register_template(
