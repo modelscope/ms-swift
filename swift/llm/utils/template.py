@@ -247,7 +247,7 @@ class Template:
         history: Optional[History] = example.get('history') or []
         query: Optional[str] = example.get('query') or ''
         for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
-            if media_key in example and media_tag not in ''.join([h[0] for h in history]) + query:
+            if example.get(media_key) and media_tag not in ''.join([h[0] for h in history]) + query:
                 example[media_key] = [m for m in example[media_key] if m]
                 media_len = len(example[media_key]) if isinstance(example[media_key],
                                                                   (tuple, list)) else 1 if example[media_key] else 0
@@ -721,7 +721,7 @@ class QwenVLTemplate(QwenTemplate):
     def replace_box(self, index, example):
         objects = example['objects']
         object = objects[index]
-        return f'<bbox>({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})</box>'
+        return f'<box>({object[1][0]},{object[1][1]}),({object[1][2]},{object[1][3]})</box>'
 
 
 register_template(TemplateType.qwen, QwenTemplate())
@@ -875,7 +875,7 @@ class GLMTemplate(Template):
 class GLM4VTemplate(GLMTemplate):
 
     def __init__(self):
-        return super().__init__([], ['<|user|>\n', [-100], '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
+        return super().__init__([], ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
                                 ['<|system|>\n{{SYSTEM}}'])
 
     def check_example(self, example):
