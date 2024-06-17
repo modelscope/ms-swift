@@ -255,6 +255,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             val_dataset = LazyLLMDataset(val_dataset, template)
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.eval_strategy = IntervalStrategy.NO
         training_args.do_eval = False
 
     padding_to = args.max_length if args.sft_type == 'longlora' else None
