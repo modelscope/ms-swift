@@ -170,8 +170,7 @@ def run_eval_single_model(args: EvalArguments) -> Dict[str, Any]:
         result = {report['name']: report['score'] for report in final_report}
         logger.info(f'result: {result}')
         result_info = {
-            'result': {report['name']: report['score']
-                       for report in final_report},
+            'result': result,
             'time': dt.datetime.now().strftime('%Y%m%d-%H%M%S'),
         }
         append_to_jsonl(jsonl_path, result_info)
