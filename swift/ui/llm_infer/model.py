@@ -110,8 +110,8 @@ class Model(BaseUI):
             model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
             template_type = gr.Dropdown(
                 elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+            gr.Checkbox(elem_id='merge_lora', scale=4)
             reset_btn = gr.Button(elem_id='reset', scale=2)
-            gr.Checkbox(elem_id='merge_lora', scale=2)
             model_state = gr.State({})
         with gr.Row():
             system = gr.Textbox(elem_id='system', lines=4, scale=20)
