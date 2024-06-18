@@ -34,8 +34,8 @@ class Model(BaseUI):
                 'en': 'Model id or path'
             },
             'info': {
-                'zh': '实际的模型id',
-                'en': 'The actual model id or model path'
+                'zh': '实际的模型id，如果是训练后的模型请填入checkpoint-xxx的目录',
+                'en': 'The actual model id or path, if is a Trained model, please fill in the checkpoint-xxx dir'
             }
         },
         'reset': {
