@@ -509,7 +509,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | MAMBA                                               | [MAMBA时序卷积模型](https://github.com/state-spaces/mamba)   | 英文       | 130M-2.8B                 | base模型                                    |
 | Gemma                                               | [Google Gemma系列模型](https://github.com/google/gemma_pytorch) | 英文       | 2B-7B                     | base模型<br>instruct模型                      |
 | MiniCPM                                             | [OpenBmB MiniCPM系列模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 2B-3B                     | chat模型<br>MoE模型                                    |
-| OpenBuddy                                           | [OpenBuddy系列模型](https://github.com/OpenBuddy/OpenBuddy)  | 中文<br>英文 | 7B-67B                    | base模型<br>chat模型                          |
+| OpenBuddy                                           | [OpenBuddy系列模型](https://github.com/OpenBuddy/OpenBuddy)  | 中文<br>英文 | 7B-70B                    | base模型<br>chat模型                          |
 | Orion                                               | [猎户星空系列模型](https://github.com/OrionStarAI)           | 中文<br>英文 | 14B                       | base模型<br>chat模型                          |
 | BlueLM                                              | [VIVO蓝心大模型](https://github.com/vivo-ai-lab/BlueLM)      | 中文<br>英文 | 7B                        | base模型<br>chat模型                          |
 | Ziya2                                               | [封神榜系列模型](https://github.com/IDEA-CCNL/Fengshenbang-LM) | 中文<br>英文 | 13B                       | base模型<br>chat模型                          |
