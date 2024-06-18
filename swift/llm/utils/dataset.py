@@ -1,15 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import itertools
+import json
 import os
 import re
-import string
 from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-import datasets.utils.py_utils
-import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
@@ -21,11 +19,10 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
-from .media import MediaCache, MediaTag
+from .media import MediaCache
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
-                         TextGenerationPreprocessor, parse_medias, preprocess_sharegpt)
-from .template import History
+                         TextGenerationPreprocessor, preprocess_sharegpt)
 from .utils import download_dataset
 
 

@@ -19,6 +19,15 @@ class TestDataset(unittest.TestCase):
         assert isinstance(train_dataset, HfDataset) and isinstance(train_dataset, HfDataset)
         assert len(train_dataset) + len(val_dataset) == totol_len
 
+    def test_load_v_dataset(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+
+        for ds in ['m3it', 'mantis_instruct', 'llava-med-zh-instruct']:
+            ds = get_dataset(ds)
+            assert len(ds)
+
 
 if __name__ == '__main__':
     unittest.main()
