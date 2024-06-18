@@ -16,6 +16,10 @@ class Export(BaseUI):
                 'zh': '合并lora',
                 'en': 'Merge lora'
             },
+            'info': {
+                'zh': 'lora合并的路径在填入的checkpoint同级目录，请查看运行时log获取更具体的信息',
+                'en': 'The output path is in the sibling directory as the input checkpoint. Please refer to the runtime log for more specific information.'
+            },           
         },
         'merge_device_map': {
             'label': {
@@ -53,8 +57,12 @@ class Export(BaseUI):
         },
         'quant_output_dir': {
             'label': {
-                'zh': '量化输出路径，注意该路径仅量化使用，如果仅merge-lora不需要修改这里',
-                'en': 'Output dir for quantization, if merge-lora only please ignore this input'
+                'zh': '量化输出路径',
+                'en': 'Output dir for quantization'
+            },
+            'info': {
+                'zh': '如果仅merge-lora不需要修改这里, 留空时量化输出在当前目录的<model-type>-<quant_method>-<quant_bits>下',
+                'en': 'If only merging LoRA, no need to modify this. When left blank, the output will be in the current directory under <model-type>-<quant_method>-<quant_bits>'
             },
         },
         'dataset': {

@@ -139,11 +139,6 @@ class LLMEval(BaseUI):
                 model_dir = snapshot_download(model_dir)
             kwargs['ckpt_dir'] = model_dir
 
-        if 'ckpt_dir' in kwargs:
-            with open(os.path.join(kwargs['ckpt_dir'], 'sft_args.json'), 'r') as f:
-                _json = json.load(f)
-                kwargs['model_type'] = _json['model_type']
-                kwargs['sft_type'] = _json['sft_type']
         eval_args = EvalArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
