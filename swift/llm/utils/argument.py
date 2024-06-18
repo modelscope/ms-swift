@@ -1397,30 +1397,78 @@ class ExportArguments(InferArguments):
 
 
 @dataclass
-class DPOArguments(SftArguments):
-
+class RLHFArguments(SftArguments):
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
 
     ref_model_id_or_path: Optional[str] = None
-
+    ref_model_free: bool = False
     max_prompt_length: int = 1024
-    beta: float = 0.1
+    beta: Optional[float] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
+    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair', 'simpo',
+                       'bco'] = 'sigmoid'
     sft_beta: float = 0.1
+    simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
+    # KTO
+    desirable_weight: float = 1.0
+    undesirable_weight: float = 1.0
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        # without reference model
+        self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
+        if self.rlhf_type == 'simpo':
+            self.loss_type = 'simpo'  # compatibility with trl > 0.9.5
+            self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
+        self.set_default_beta()
+        self.set_default_config()
+        self.check_loss_type()
 
-@dataclass
-class SimPOArguments(DPOArguments):
-    beta: float = 2.0
-    gamma: float = 1.0
+    def set_default_beta(self):
+        if self.beta is None:
+            if self.rlhf_type in ['dpo', 'orpo', 'kto', 'cpo']:
+                self.beta = 0.1
+            elif self.rlhf_type == 'simpo':
+                self.beta = 2.0
 
+    def set_default_config(self):
+        from importlib import import_module
+        from dataclasses import fields, MISSING
+        CONFIG_MAPPING = {
+            'orpo': 'trl.trainer.orpo_config.ORPOConfig',
+            'kto': 'trl.trainer.kto_config.KTOConfig',
+            'simpo': 'trl.trainer.cpo_config.CPOConfig',
+            'cpo': 'trl.trainer.cpo_config.CPOConfig',
+            'dpo': 'trl.trainer.dpo_config.DPOConfig'
+        }
 
-@dataclass
-class ORPOArguments(SftArguments):
-    max_prompt_length: int = 1024
-    beta: float = 0.1
+        if self.rlhf_type in CONFIG_MAPPING:
+            config_path = CONFIG_MAPPING[self.rlhf_type]
+            module_path, config_name = config_path.rsplit('.', 1)
+            config_module = import_module(module_path)
+            cls = getattr(config_module, config_name, None)
+            assert cls is not None
+            for f in fields(cls):
+                if hasattr(self.training_args, f.name):
+                    continue
+                elif hasattr(self, f.name):
+                    setattr(self.training_args, f.name, getattr(self, f.name))
+                elif f.default != MISSING:
+                    setattr(self.training_args, f.name, f.default)
+                elif f.default_factory != MISSING:
+                    setattr(self.training_args, f.name, f.default_factory())
+
+    def check_loss_type(self):
+        supported_loss_types = {
+            'dpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust'],
+            'cpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'simpo'],
+            'kto': ['kto', 'bco']
+        }
+        if self.rlhf_type in supported_loss_types:
+            assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
+                f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
 
 
 @dataclass

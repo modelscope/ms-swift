@@ -12,7 +12,7 @@
 8. [LLM Experimental](LLM-exp.md)
 9. [ORPO Training](ORPO.md)
 10. [SimPO Training](SimPO.md)
-
+11. [Human Preference Alignment Training Documentation](Human-Preference-Alignment-Training-Documentation.md)
 ### ⭐️Best Practices!
 
 1. [Self Cognition Best Practice](Self-cognition-best-practice.md)

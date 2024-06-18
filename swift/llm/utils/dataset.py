@@ -133,12 +133,13 @@ class DatasetName:
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
 
-    # dpo/hfrl dataset
+    # rlhf
     hh_rlhf = 'hh-rlhf'
     hh_rlhf_cn = 'hh-rlhf-cn'
     orpo_dpo_mix_40k = 'orpo-dpo-mix-40k'
     stack_exchange_paired = 'stack-exchange-paired'
     shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
+    ultrafeedback_kto = 'ultrafeedback-kto'
 
     # for awq
     pileval = 'pileval'
@@ -1233,6 +1234,27 @@ def process_shareai_dpo(dataset):
     return dataset.map(reorganize_row, load_from_cache_file=False)
 
 
+def process_ultrafeedback_kto(dataset: HfDataset):
+
+    def reorganize_row(row):
+        return {
+            'prompt': row['prompt'],
+            'completion': row['completion'],
+            'label': row['label'],
+        }
+
+    return dataset.map(reorganize_row)
+
+
+register_dataset(
+    DatasetName.ultrafeedback_kto,
+    'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto', ['default'],
+    process_ultrafeedback_kto,
+    get_dataset_from_repo,
+    remove_useless_columns=False,
+    tags=['rlhf', 'kto'])
+
+	
 def preprocess_guanaco(dataset):
     from swift.utils.utils import split_str_parts_by
 
