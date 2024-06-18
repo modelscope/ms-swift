@@ -297,7 +297,8 @@ class LLMTrain(BaseUI):
                 value = int(value)
             elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                 value = float(value)
-
+            elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
+                value = True if value.lower() == 'true' else False
             if key not in ignore_elements and key in sft_args and compare_value_ui != compare_value_arg and value:
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)

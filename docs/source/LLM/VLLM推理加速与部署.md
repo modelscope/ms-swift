@@ -633,7 +633,7 @@ swift sft \
 推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/llama2-7b-chat/vx-xxx/checkpoint-xxx-peft \
+    --ckpt_dir output/llama2-7b-chat/vx-xxx/checkpoint-xxx \
     --infer_backend vllm \
     --vllm_enable_lora true
 ```
@@ -656,7 +656,7 @@ from swift.llm import (
     get_template, inference_stream_vllm, LoRARequest, inference_vllm
 )
 
-lora_checkpoint = 'output/llama2-7b-chat/vx-xxx/checkpoint-xxx-peft'
+lora_checkpoint = 'output/llama2-7b-chat/vx-xxx/checkpoint-xxx'
 lora_request = LoRARequest('default-lora', 1, lora_checkpoint)
 
 model_type = ModelType.llama2_7b_chat
@@ -699,7 +699,7 @@ response:  Hello! I'm just an AI assistant, here to help you with any questions 
 **服务端**:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --ckpt_dir output/llama2-7b-chat/vx-xxx/checkpoint-xxx-peft \
+    --ckpt_dir output/llama2-7b-chat/vx-xxx/checkpoint-xxx \
     --infer_backend vllm \
     --vllm_enable_lora true
 ```

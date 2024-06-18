@@ -123,6 +123,8 @@ class LLMEval(BaseUI):
                     value = int(value)
                 elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                     value = float(value)
+                elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
+                    value = True if value.lower() == 'true' else False
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list)
             else:
@@ -137,11 +139,6 @@ class LLMEval(BaseUI):
                 model_dir = snapshot_download(model_dir)
             kwargs['ckpt_dir'] = model_dir
 
-        if 'ckpt_dir' in kwargs:
-            with open(os.path.join(kwargs['ckpt_dir'], 'sft_args.json'), 'r') as f:
-                _json = json.load(f)
-                kwargs['model_type'] = _json['model_type']
-                kwargs['sft_type'] = _json['sft_type']
         eval_args = EvalArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value
