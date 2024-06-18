@@ -271,7 +271,7 @@ class ModelType:
     deepseek_coder_6_7b_instruct = 'deepseek-coder-6_7b-instruct'
     deepseek_coder_33b = 'deepseek-coder-33b'
     deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
-    #deepseek2-coder
+    # deepseek2-coder
     deepseek_coder_v2_instruct = 'deepseek-coder-v2-instruct'
     deepseek_coder_v2_lite_instruct = 'deepseek-coder-v2-lite-instruct'
     # deepseek-math
