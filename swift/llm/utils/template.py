@@ -18,7 +18,7 @@ from swift.utils import get_dist_setting, upper_bound, use_torchacc
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
-Prompt = List[Union[str, List[str]]]
+Prompt = List[Union[str, List[str], List[int]]]
 StopWords = Prompt
 Context = Union[str, List[int]]
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
@@ -64,7 +64,6 @@ class TemplateType:
     sus = 'sus'
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
-    deepseek_coder2 = 'deepseek-coder2'
     deepseek_vl = 'deepseek-vl'
     deepseek2 = 'deepseek2'
     codefuse_codellama = 'codefuse-codellama'
