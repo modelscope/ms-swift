@@ -98,7 +98,7 @@ class TemplateType:
         return res
 
 
-Prompt = List[Union[str, List[Union[str, int]]]]
+Prompt = List[Union[str, List[str], List[int]]]
 StopWords = Prompt
 
 Context = Union[str, List[int]]

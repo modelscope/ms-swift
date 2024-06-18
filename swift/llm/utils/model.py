@@ -271,6 +271,9 @@ class ModelType:
     deepseek_coder_6_7b_instruct = 'deepseek-coder-6_7b-instruct'
     deepseek_coder_33b = 'deepseek-coder-33b'
     deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
+    # deepseek2-coder
+    deepseek_coder_v2_instruct = 'deepseek-coder-v2-instruct'
+    deepseek_coder_v2_lite_instruct = 'deepseek-coder-v2-lite-instruct'
     # deepseek-math
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
@@ -3133,6 +3136,28 @@ def get_model_tokenizer_internlm2(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.deepseek_coder_v2_instruct,
+    'deepseek-ai/DeepSeek-Coder-V2-Instruct',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Instruct')
+@register_model(
+    ModelType.deepseek_coder_v2_lite_instruct,
+    'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
 @register_model(
     ModelType.deepseek_v2_lite,
     'deepseek-ai/DeepSeek-V2-Lite',
