@@ -1312,13 +1312,6 @@ register_template(
               'and other non-computer science questions, you will refuse to answer\n')))
 
 
-register_template(
-    TemplateType.deepseek_coder2,
-    Template(['<｜begin▁of▁sentence｜>{{SYSTEM}}'], ['User: {{QUERY}}\n\n Assistant: \n'],
-             ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'],
-             None))
-
-
 class LLavaTemplate(Template):
 
     def __init__(self):

@@ -1864,26 +1864,6 @@ def get_model_tokenizer_chatglm(model_dir: str,
     tags=['coding'],
     hf_model_id='deepseek-ai/deepseek-coder-33b-instruct')
 @register_model(
-    ModelType.deepseek_coder_v2_instruct,
-    'deepseek-ai/DeepSeek-Coder-V2-Instruct',
-    LoRATM.llama,
-    TemplateType.deepseek_coder2,
-    eos_token='<｜end▁of▁sentence｜>',
-    support_flash_attn=True,
-    support_vllm=True,
-    tags=['coding'],
-    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Instruct')
-@register_model(
-    ModelType.deepseek_coder_v2_lite_instruct,
-    'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct',
-    LoRATM.llama,
-    TemplateType.deepseek_coder2,
-    eos_token='<｜end▁of▁sentence｜>',
-    support_flash_attn=True,
-    support_vllm=True,
-    tags=['coding'],
-    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
-@register_model(
     ModelType.openbuddy_deepseek_67b_chat,
     'OpenBuddy/openbuddy-deepseek-67b-v15.2',
     LoRATM.llama,
@@ -3147,6 +3127,26 @@ def get_model_tokenizer_internlm2(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.deepseek_coder_v2_instruct,
+    'deepseek-ai/DeepSeek-Coder-V2-Instruct',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    eos_token='<｜end▁of▁sentence｜>',
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Instruct')
+@register_model(
+    ModelType.deepseek_coder_v2_lite_instruct,
+    'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    eos_token='<｜end▁of▁sentence｜>',
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
 @register_model(
     ModelType.deepseek_v2_lite,
     'deepseek-ai/DeepSeek-V2-Lite',
