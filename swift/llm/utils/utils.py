@@ -10,7 +10,7 @@ from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import accelerate
 import multiprocess
@@ -136,6 +136,18 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
         if v > 0 and k != 'cpu':
             new_max_memory[k] = next(new_max_memory_iter)
     return new_max_memory
+
+
+def fetch_one(element: Union[Tuple, List, Set, Dict, Any]) -> Any:
+    if isinstance(element, (tuple, set, list)):
+        for ele in element:
+            out = fetch_one(ele)
+            if out:
+                return out
+    elif isinstance(element, dict):
+        return fetch_one(list(element.values()))
+    else:
+        return element
 
 
 class LLMDataset(Dataset):

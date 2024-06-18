@@ -35,20 +35,24 @@ def write_dataset_info() -> None:
         text_list = []
 
     ignore_dataset = {text.split('|', 2)[1].lstrip('🔥 '): text for text in text_list}
-    dataset_name_list = DatasetName.get_dataset_name_list()
+    all_keys = set(DATASET_MAPPING.keys())
+    py_keys = DatasetName.get_dataset_name_list()
+    json_keys = list(all_keys - set(py_keys))
+    json_keys.sort()
+    dataset_name_list = py_keys + json_keys
     mapping = {}
     _iter = zip(
         ['llm', 'vision', 'audio'],
         [ModelType.qwen_7b_chat, ModelType.qwen_vl_chat, ModelType.qwen_audio_chat],
     )
-    try:
-        for task_type, model_type in _iter:
-            _, tokenizer = get_model_tokenizer(model_type, load_model=False)
-            template_type = get_default_template_type(model_type)
-            template = get_template(template_type, tokenizer)
-            mapping[task_type] = template
+    for task_type, model_type in _iter:
+        _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+        template_type = get_default_template_type(model_type)
+        template = get_template(template_type, tokenizer)
+        mapping[task_type] = template
 
-        for dataset_name in dataset_name_list:
+    for dataset_name in dataset_name_list:
+        try:
             dataset_info = DATASET_MAPPING[dataset_name]
             tags = dataset_info.get('tags', [])
             subsets = dataset_info.get('subsets', [])
@@ -62,28 +66,33 @@ def write_dataset_info() -> None:
             if dataset_name in ignore_dataset:
                 dataset_size, stat_str = ignore_dataset[dataset_name].split('|')[4:6]
             else:
-                train_dataset, val_dataset = get_dataset([dataset_name],
-                                                         model_name=['小黄', 'Xiao Huang'],
-                                                         model_author=['魔搭', 'ModelScope'])
-                dataset_size = len(train_dataset)
-                assert val_dataset is None
-
-                raw_dataset = train_dataset
-                if val_dataset is not None:
-                    raw_dataset = concatenate_datasets([raw_dataset, val_dataset])
-                if len(raw_dataset) < 5000:
-                    num_proc = 1
+                dataset_info = DATASET_MAPPING[dataset_name]
+                if dataset_info.get('huge_dataset', False):
+                    dataset_size = '-'
+                    stat_str = 'Dataset is too huge, please click the original link to view the dataset stat.'
                 else:
-                    num_proc = 4
+                    train_dataset, val_dataset = get_dataset([dataset_name],
+                                                             model_name=['小黄', 'Xiao Huang'],
+                                                             model_author=['魔搭', 'ModelScope'])
+                    dataset_size = len(train_dataset)
+                    assert val_dataset is None
 
-                dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
+                    raw_dataset = train_dataset
+                    if val_dataset is not None:
+                        raw_dataset = concatenate_datasets([raw_dataset, val_dataset])
+                    if len(raw_dataset) < 5000:
+                        num_proc = 1
+                    else:
+                        num_proc = 4
 
-                _token_len = []
-                input_ids = dataset['input_ids']
-                for i in range(len(dataset)):
-                    _token_len.append(len(input_ids[i]))
-                stat = stat_array(_token_len)[0]
-                stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
+                    dataset = dataset_map(raw_dataset, template.encode, num_proc=num_proc)
+
+                    _token_len = []
+                    input_ids = dataset['input_ids']
+                    for i in range(len(dataset)):
+                        _token_len.append(len(input_ids[i]))
+                    stat = stat_array(_token_len)[0]
+                    stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
 
             ms_url = f"https://modelscope.cn/datasets/{dataset_info['dataset_id_or_path']}/summary"
 
@@ -103,14 +112,17 @@ def write_dataset_info() -> None:
 
             res_text_list.append(f"|{dataset_name}|[{dataset_info['dataset_id_or_path']}]({ms_url})|{subsets}|"
                                  f'{dataset_size}|{stat_str}|{tags_str}|{hf_dataset_id_str}|')
-    finally:
-        print(f'数据集总数: {len(dataset_name_list)}')
+        except Exception:
+            import traceback
+            print(traceback.format_exc())
+            break
 
-        for idx in range(len(fpaths)):
-            text = '\n'.join(res_text_list)
-            text = pre_texts[idx] + text + '\n'
-            with open(fpaths[idx], 'w', encoding='utf-8') as f:
-                f.write(text)
+    for idx in range(len(fpaths)):
+        text = '\n'.join(res_text_list)
+        text = pre_texts[idx] + text + '\n'
+        with open(fpaths[idx], 'w', encoding='utf-8') as f:
+            f.write(text)
+    print(f'数据集总数: {len(dataset_name_list)}')
 
 
 if __name__ == '__main__':
