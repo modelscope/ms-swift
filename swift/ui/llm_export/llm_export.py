@@ -53,8 +53,8 @@ class LLMExport(BaseUI):
                 'en': 'Choose GPU'
             },
             'info': {
-                'zh': '选择训练使用的GPU号，如CUDA不可用只能选择CPU',
-                'en': 'Select GPU to train'
+                'zh': '选择使用的GPU号，如CUDA不可用只能选择CPU',
+                'en': 'Select GPU to export'
             }
         },
     }
