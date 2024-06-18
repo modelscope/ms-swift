@@ -64,7 +64,6 @@ class TemplateType:
     sus = 'sus'
     deepseek = 'deepseek'
     deepseek_coder = 'deepseek-coder'
-    deepseek_coder2 = 'deepseek-coder2'
     deepseek_vl = 'deepseek-vl'
     deepseek2 = 'deepseek2'
     codefuse_codellama = 'codefuse-codellama'
