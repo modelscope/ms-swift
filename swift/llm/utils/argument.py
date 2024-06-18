@@ -442,7 +442,7 @@ class SftArguments(ArgumentsBase):
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
-    ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl']] = None
+    ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl', 'hccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
 
