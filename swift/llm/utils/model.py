@@ -271,6 +271,9 @@ class ModelType:
     deepseek_coder_6_7b_instruct = 'deepseek-coder-6_7b-instruct'
     deepseek_coder_33b = 'deepseek-coder-33b'
     deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
+    # deepseek2-coder
+    deepseek_coder_v2_instruct = 'deepseek-coder-v2-instruct'
+    deepseek_coder_v2_lite_instruct = 'deepseek-coder-v2-lite-instruct'
     # deepseek-math
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
@@ -304,10 +307,11 @@ class ModelType:
     minicpm_v_v2_chat = 'minicpm-v-v2-chat'
     minicpm_v_v2_5_chat = 'minicpm-v-v2_5-chat'
     # openbuddy
+    openbuddy_llama_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
-    openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
-    openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
+    openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
+    openbuddy_llama3_70b_chat = 'openbuddy-llama3-70b-chat'
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
     openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
@@ -2214,13 +2218,21 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='OpenBuddy/openbuddy-llama2-70b-v10.1-bf16')
 @register_model(
-    ModelType.openbuddy_llama2_65b_chat,
+    ModelType.openbuddy_llama_65b_chat,
     'OpenBuddy/openbuddy-llama-65b-v8-bf16',
     LoRATM.llama,
     TemplateType.openbuddy,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='OpenBuddy/openbuddy-llama-65b-v8-bf16')
+@register_model(
+    ModelType.openbuddy_llama3_70b_chat,
+    'OpenBuddy/openbuddy-llama3-70b-v21.1-8k',
+    LoRATM.llama,
+    TemplateType.openbuddy2,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama3-70b-v21.1-8k')
 @register_model(
     ModelType.openbuddy_llama3_8b_chat,
     'OpenBuddy/openbuddy-llama3-8b-v21.1-8k',
@@ -3124,6 +3136,28 @@ def get_model_tokenizer_internlm2(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.deepseek_coder_v2_instruct,
+    'deepseek-ai/DeepSeek-Coder-V2-Instruct',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Instruct')
+@register_model(
+    ModelType.deepseek_coder_v2_lite_instruct,
+    'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
 @register_model(
     ModelType.deepseek_v2_lite,
     'deepseek-ai/DeepSeek-V2-Lite',
