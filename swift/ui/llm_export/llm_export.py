@@ -53,8 +53,8 @@ class LLMExport(BaseUI):
                 'en': 'Choose GPU'
             },
             'info': {
-                'zh': '选择训练使用的GPU号，如CUDA不可用只能选择CPU',
-                'en': 'Select GPU to train'
+                'zh': '选择使用的GPU号，如CUDA不可用只能选择CPU',
+                'en': 'Select GPU to export'
             }
         },
     }
@@ -121,6 +121,8 @@ class LLMExport(BaseUI):
                     value = int(value)
                 elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                     value = float(value)
+                elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
+                    value = True if value.lower() == 'true' else False
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list)
             else:
@@ -134,12 +136,8 @@ class LLMExport(BaseUI):
             if not os.path.exists(model_dir):
                 model_dir = snapshot_download(model_dir)
             kwargs['ckpt_dir'] = model_dir
+            kwargs.pop('model_type')
 
-        if 'ckpt_dir' in kwargs:
-            with open(os.path.join(kwargs['ckpt_dir'], 'sft_args.json'), 'r') as f:
-                _json = json.load(f)
-                kwargs['model_type'] = _json['model_type']
-                kwargs['sft_type'] = _json['sft_type']
         export_args = ExportArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value

@@ -82,6 +82,7 @@ class BaseUI:
     lang: str = all_langs[0]
     int_regex = r'^[-+]?[0-9]+$'
     float_regex = r'[-+]?(?:\d*\.*\d+)'
+    bool_regex = r'^(T|t)rue$|^(F|f)alse$'
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
