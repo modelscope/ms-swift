@@ -1,13 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import itertools
-import json
 import os
 import re
 from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset

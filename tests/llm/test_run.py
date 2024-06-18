@@ -164,18 +164,13 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        train_dataset_fnames = [
-            'science-qa', 'a-okvqa', 'alpaca-cleaned'
-        ]
-        val_dataset_fnames = [
-            'okvqa'
-        ]
+        train_dataset_fnames = ['science-qa#300', 'a-okvqa#300', 'alpaca-cleaned#300']
+        val_dataset_fnames = ['okvqa']
 
         sft_args = SftArguments(
             model_type='yi-vl-6b-chat',
             dataset=train_dataset_fnames,
             lora_target_modules='ALL',
-            train_dataset_sample=1000,
             num_train_epochs=1,
             check_dataset_strategy='warning')
 
@@ -197,23 +192,20 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        train_dataset_fnames = [
-            'sharegpt-4o-image'
-        ]
+        train_dataset_fnames = ['sharegpt-4o-image']
 
         sft_args = SftArguments(
             model_type='yi-vl-6b-chat',
             dataset=train_dataset_fnames,
             lora_target_modules='ALL',
-            train_dataset_sample=1000,
+            train_dataset_sample=200,
             num_train_epochs=1,
-            eval_steps=50,
-            save_steps=50,
+            eval_steps=10,
+            save_steps=10,
             check_dataset_strategy='warning')
 
         torch.cuda.empty_cache()
-        result = sft_main(sft_args)
-        best_model_checkpoint = result['best_model_checkpoint']
+        self.assertTrue(sft_main(sft_args)['best_model_checkpoint'])
 
     def test_custom_dataset(self):
         if not __name__ == '__main__':
