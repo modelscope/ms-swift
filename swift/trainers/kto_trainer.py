@@ -40,16 +40,16 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
         if template.use_default_system:
             system = template.default_system
     else:
-        assert template.prefix_has_system is not None, 'not support `system`'
+        assert template.system_prefix is not None, 'not support `system`'
 
     res_context_list: List[Context] = []
     compute_loss_idx: List[float] = []
 
     if system is None:
-        assert template.prefix != template.prefix_has_system, f'template.prefix: {template.prefix}'
+        assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
         prefix = template.prefix
     else:
-        prefix = template.prefix_has_system
+        prefix = template.system_prefix
 
     template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
 

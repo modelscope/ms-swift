@@ -1254,7 +1254,7 @@ register_dataset(
     remove_useless_columns=False,
     tags=['rlhf', 'kto'])
 
-	
+
 def preprocess_guanaco(dataset):
     from swift.utils.utils import split_str_parts_by
 

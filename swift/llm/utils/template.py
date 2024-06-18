@@ -368,8 +368,8 @@ class Template:
             loss_scale_list.append(0.0 if context not in self.suffix else 1.0)
 
     @staticmethod
-    def _simplify_context_list(context_list: List[Context],
-                               loss_scale_list: List[float], **kwargs) -> Tuple[List[Context], List[float]]:
+    def _simplify_context_list(context_list: List[Context], loss_scale_list: List[float],
+                               **kwargs) -> Tuple[List[Context], List[float]]:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
         temp: List[str] = []
@@ -1315,7 +1315,8 @@ class LLavaTemplate(Template):
 
     def __init__(self):
         # This template follows: https://github.com/haotian-liu/LLaVA/blob/main/llava/conversation.py#L350
-        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], None, ['</s>'],
+        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'],
+                         None, ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
