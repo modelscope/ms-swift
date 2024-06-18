@@ -304,10 +304,11 @@ class ModelType:
     minicpm_v_v2_chat = 'minicpm-v-v2-chat'
     minicpm_v_v2_5_chat = 'minicpm-v-v2_5-chat'
     # openbuddy
+    openbuddy_llama_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
-    openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
-    openbuddy_llama2_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
+    openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
+    openbuddy_llama3_70b_chat = 'openbuddy-llama3-70b-chat'
     openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
     openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
@@ -2214,13 +2215,21 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     hf_model_id='OpenBuddy/openbuddy-llama2-70b-v10.1-bf16')
 @register_model(
-    ModelType.openbuddy_llama2_65b_chat,
+    ModelType.openbuddy_llama_65b_chat,
     'OpenBuddy/openbuddy-llama-65b-v8-bf16',
     LoRATM.llama,
     TemplateType.openbuddy,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='OpenBuddy/openbuddy-llama-65b-v8-bf16')
+@register_model(
+    ModelType.openbuddy_llama3_70b_chat,
+    'OpenBuddy/openbuddy-llama3-70b-v21.1-8k',
+    LoRATM.llama,
+    TemplateType.openbuddy2,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama3-70b-v21.1-8k')
 @register_model(
     ModelType.openbuddy_llama3_8b_chat,
     'OpenBuddy/openbuddy-llama3-8b-v21.1-8k',
