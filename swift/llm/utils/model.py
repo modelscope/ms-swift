@@ -4871,7 +4871,7 @@ def safe_snapshot_download(model_type: str,
                 else:
                     ignore_file_pattern += [r'.+\.bin$', r'.+\.safetensors$']
             if use_hf:
-                if revision is None:
+                if revision is None or revision == 'master':
                     revision = 'main'
                 logger.info(f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}')
                 use_hf_transfer = strtobool(os.environ.get('USE_HF_TRANSFER', 'False'))
