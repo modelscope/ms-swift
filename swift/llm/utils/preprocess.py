@@ -118,7 +118,8 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             'response': output,
             'tools': tool,
         }
-        self.media_replacer(row, self.parse_medias(d))
+        medias = self.parse_medias(d)
+        self.media_replacer(row, medias)
         if self.media_type:
             if not isinstance(self.media_key, str):
                 row[self.media_name] = medias
@@ -191,10 +192,11 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 'response': response,
                 'tools': tool,
             })
-            self.media_replacer(kwargs, self.parse_medias(d))
+            medias = self.parse_medias(d)
+            self.media_replacer(kwargs, medias)
             if self.media_type:
                 if not isinstance(self.media_key, str):
-                    row[self.media_name] = medias
+                    kwargs[self.media_name] = medias
             return kwargs
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
@@ -244,10 +246,11 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 'query': query,
                 'response': response,
             }
+            medias = self.parse_medias(d)
             self.media_replacer(d_dict, self.parse_medias(d))
             if self.media_type:
                 if not isinstance(self.media_key, str):
-                    row[self.media_name] = medias
+                    d_dict[self.media_name] = medias
         except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
