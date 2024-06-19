@@ -70,15 +70,14 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
 class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
 
     def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
-        train_dataset = kwargs.get('train_dataset')
         eval_dataset = kwargs.get('eval_dataset', None)
-        train_dataset = train_dataset.map(
+        kwargs['train_dataset'] = kwargs['train_dataset'].map(
             encode_batch,
             fn_kwargs={'template': template},
             desc='Encode dataset with template',
         )
         if eval_dataset is not None:
-            eval_dataset = eval_dataset.map(
+            kwargs['eval_dataset'] = eval_dataset.map(
                 encode_batch,
                 fn_kwargs={'template': template},
                 desc='Encode dataset with template',
