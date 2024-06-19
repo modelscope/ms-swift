@@ -182,11 +182,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         if self.sft_beta > 0.:
             chosen_labels = concatenated_batch['concatenated_labels'][:batch['chosen_labels'].shape[0]]
-            try:  # for trl < 0.9.4
-                sft_loss = -self.get_batch_logps(policy_chosen_logits, chosen_labels, average_log_prob=True)
-            except TypeError:
-                sft_loss, size_completion = self.get_batch_logps(policy_chosen_logits, chosen_labels)
-                sft_loss = -sft_loss / size_completion
+            sft_loss, size_completion = self.get_batch_logps(policy_chosen_logits, chosen_labels)
+            sft_loss = -sft_loss / size_completion
             if losses.shape[0] == 2 * sft_loss.shape[0]:
                 sft_loss = sft_loss.repeat(2, *sft_loss.shape[1:])
             losses = (1 - self.sft_beta) * losses + self.sft_beta * sft_loss
