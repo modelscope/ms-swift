@@ -60,7 +60,7 @@ class MediaMixin:
 
 class RowPreprocessMixin:
 
-    def preprocess(self, d):
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
 
@@ -96,8 +96,9 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         self.concat_inst_inp = concat_inst_inp
         super().__init__(**kwargs)
 
-    def preprocess(self, d):
-        inst, inp = d['instruction'], d.get('input', None)
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
+        inst = d['instruction']
+        inp: Optional[str] = d.get('input', None)
         h, output = d.pop('history', None), d['output']
         sys = d.pop('system', None)
         tool = d.pop('tools', None)
@@ -159,7 +160,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
 
-    def preprocess(self, d):
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
         try:
             conversations = d[self.conversations_key]
             conversations = self.repair_conversations(conversations)
@@ -228,7 +229,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
 
-    def preprocess(self, d):
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
         conversations = None
         try:
             conversations = d[self.conversations_key]
@@ -245,7 +246,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 'response': response,
             }
             medias = self.parse_medias(d)
-            self.media_replacer(row, self.parse_medias(d))
+            self.media_replacer(row, medias)
             if self.media_type:
                 if not isinstance(self.media_key, str):
                     row[self.media_name] = medias
