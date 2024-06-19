@@ -418,7 +418,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
         _, val_dataset = args._handle_dataset_compat(_, val_dataset)
         assert val_dataset is not None
-        if args.show_dataset_sample >= 0 and val_dataset.shape[0] > args.show_dataset_sample:
+        if 0 <= args.show_dataset_sample < val_dataset.shape[0]:
             random_state = np.random.RandomState(args.dataset_seed)
             logger.info(f'show_dataset_sample: {args.show_dataset_sample}')
             val_dataset = sample_dataset(val_dataset, args.show_dataset_sample, random_state)

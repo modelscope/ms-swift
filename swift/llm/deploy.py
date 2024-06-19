@@ -458,7 +458,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **adapter_kwargs)
 
         print_idx = 0
-        total_res = ''
+        response = ''
         is_finished = False
         while not is_finished:
             try:
@@ -477,7 +477,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 print_idx = len(response)
                 toolcall = None
                 if is_finished:
-                    action, action_input = split_action_action_input(total_res)
+                    action, action_input = split_action_action_input(response)
                     if action:
                         toolcall = ChatCompletionMessageToolCall(
                             id=f'toolcall-{random_uuid()}',
