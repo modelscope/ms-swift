@@ -1,11 +1,11 @@
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Union
 
 import torch
 from torch import nn
 from transformers import PreTrainedModel, trainer
 from trl import ORPOTrainer as HFORPOTrainer
 
-from swift.llm.utils.template import Context, Template
+from swift.llm.utils.template import Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew

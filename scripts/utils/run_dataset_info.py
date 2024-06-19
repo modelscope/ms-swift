@@ -104,7 +104,6 @@ def write_dataset_info() -> None:
                 tags_str = '-'
             hf_dataset_id = dataset_info.get('hf_dataset_id')
             if hf_dataset_id is None:
-                hf_dataset_id = '-'
                 hf_dataset_id_str = '-'
             else:
                 hf_url = f'https://huggingface.co/datasets/{hf_dataset_id}'

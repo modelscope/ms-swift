@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import importlib
-from typing import Any, Dict
 
 from swift.llm.utils import RLHFArguments
 

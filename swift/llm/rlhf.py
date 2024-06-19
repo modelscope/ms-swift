@@ -1,8 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from typing import Any, Dict
 
 import json
-import numpy as np
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
@@ -19,7 +19,7 @@ from .utils import (TEMPLATE_MAPPING, RLHFArguments, Template, get_dataset, get_
 logger = get_logger()
 
 
-def llm_rlhf(args: RLHFArguments) -> str:
+def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args

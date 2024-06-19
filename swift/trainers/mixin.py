@@ -6,11 +6,10 @@ import shutil
 import time
 from pathlib import Path
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
-import peft
 import safetensors
 import torch
 import transformers
@@ -513,7 +512,7 @@ class SwiftMixin:
             # Control the behavior of "resume_from_checkpoint" by swift.
             self._resume_from_checkpoint = resume_from_checkpoint
             resume_from_checkpoint = None
-        if (self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled):
+        if self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled:
             self._load_from_checkpoint(self._resume_from_checkpoint)
         res = super().train(resume_from_checkpoint, *args, **kwargs)
         self._resume_from_checkpoint = None

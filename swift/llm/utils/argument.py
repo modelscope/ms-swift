@@ -6,7 +6,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Set, Tuple, Union
+from typing import Any, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -275,12 +275,12 @@ class ArgumentsBase:
             if self.eval_strategy is not None:
                 self.evaluation_strategy = self.eval_strategy
 
-    def handle_custom_dataset_info(self):
+    def handle_custom_dataset_info(self: Union['SftArguments', 'InferArguments']):
         if self.custom_dataset_info is None:
             return
         register_dataset_info_file(self.custom_dataset_info)
 
-    def _handle_dataset_sample(self):
+    def _handle_dataset_sample(self: Union['SftArguments', 'InferArguments']):
         # compatibility. (Deprecated)
         # Avoid post-processing
         if len(self.dataset) != 1 or self.train_dataset_sample == -1:
@@ -326,8 +326,8 @@ class ArgumentsBase:
                                      'Representing the model name and model author in Chinese and English.')
                 setattr(self, k, v)
 
-    def _handle_dataset_compat(self, train_dataset: Optional[HfDataset],
-                               val_dataset: Optional[HfDataset]) -> Tuple[HfDataset, Optional[HfDataset]]:
+    def _handle_dataset_compat(self: Union['SftArguments', 'InferArguments'], train_dataset: Optional[HfDataset],
+                               val_dataset: Optional[HfDataset]) -> Tuple[Optional[HfDataset], Optional[HfDataset]]:
         # compatibility. (Deprecated)
         random_state = np.random.RandomState(self.dataset_seed)
         val_dataset_sample = self.val_dataset_sample
@@ -364,7 +364,7 @@ class ArgumentsBase:
         train_dataset = concatenate_datasets([train_dataset, mixed_dataset])
         return train_dataset, val_dataset
 
-    def prepare_template(self):
+    def prepare_template(self: Union['SftArguments', 'InferArguments']):
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
@@ -1264,7 +1264,7 @@ class InferArguments(ArgumentsBase):
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
-        """Check the checkpoint dir is correct, which means it must contains a `configuration.json` file.
+        """Check the checkpoint dir is correct, which means it must contain a `configuration.json` file.
         Args:
             ckpt_dir: The checkpoint dir
         Returns:
@@ -1516,7 +1516,7 @@ def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     return lora_checkpoint_path
 
 
-def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List['LoRARequest']:
+def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List[Any]:
     VllmLoRARequest = None
     if use_vllm:
         try:

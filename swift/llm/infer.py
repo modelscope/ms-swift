@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 import shutil
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import json
 import numpy as np
@@ -244,7 +244,7 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
         infer_kwargs['images'] = images
 
 
-def llm_infer(args: InferArguments) -> None:
+def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     if args.merge_lora:
@@ -286,7 +286,7 @@ def llm_infer(args: InferArguments) -> None:
         assert len(args.lora_request_list) == 1
         lora_request = args.lora_request_list[0]
     # Inference
-    result = []
+    result: List[Dict[str, Any]] = []
     jsonl_path = None
     if args.save_result:
         result_dir = args.ckpt_dir
@@ -418,7 +418,7 @@ def llm_infer(args: InferArguments) -> None:
             _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
         _, val_dataset = args._handle_dataset_compat(_, val_dataset)
         assert val_dataset is not None
-        if args.show_dataset_sample >= 0 and val_dataset.shape[0] > args.show_dataset_sample:
+        if 0 <= args.show_dataset_sample < val_dataset.shape[0]:
             random_state = np.random.RandomState(args.dataset_seed)
             logger.info(f'show_dataset_sample: {args.show_dataset_sample}')
             val_dataset = sample_dataset(val_dataset, args.show_dataset_sample, random_state)

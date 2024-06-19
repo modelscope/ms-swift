@@ -6,7 +6,7 @@ import sys
 from contextlib import nullcontext
 from functools import partial, update_wrapper, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
 import torch.distributed as dist
@@ -499,7 +499,7 @@ def register_model(
         ignore_file_pattern: Optional[List[str]] = None,
         function_kwargs: Optional[Dict[str, Any]] = None,
         exist_ok: bool = False,
-        eos_token: Optional[str] = None,
+        eos_token: Union[str, int, None] = None,
         **kwargs) -> Optional[Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]]:
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
@@ -874,8 +874,10 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     eos_token = kwargs.get('eos_token')
-    if eos_token is not None:
+    if isinstance(eos_token, str):
         tokenizer.eos_token = eos_token
+    elif isinstance(eos_token, int):
+        tokenizer.eos_token_id = eos_token
     pad_token = kwargs.get('pad_token')
     if pad_token is not None:
         tokenizer.pad_token = pad_token
@@ -1490,7 +1492,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     if version.parse(transformers.__version__) >= version.parse('4.34'):
         tokenizer_config = get_tokenizer_config(model_dir)
         class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-        tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+        tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
         tokenizer_cls._auto_class = 'AutoTokenizer'
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
@@ -3348,8 +3350,8 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             @wraps(old_forward)
             def _new_forward(*args, **kwargs):
-                input_ids = kwargs.get('input_ids', None)
-                input_embeds = kwargs.get('inputs_embeds', None)
+                input_ids: Optional[Tensor] = kwargs.get('input_ids', None)
+                input_embeds: Optional[Tensor] = kwargs.get('inputs_embeds', None)
                 device = input_ids.device if input_ids is not None else input_embeds.device
                 output = old_forward(*args, **kwargs)
                 output['logits'] = output['logits'].to(device)
@@ -4025,7 +4027,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     get_qwen_function = kwargs.pop('get_qwen_function', get_model_tokenizer_qwen_chat)
     tokenizer_config = get_tokenizer_config(model_dir)
     class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
     if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
@@ -4087,7 +4089,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     get_qwen_function = kwargs.pop('get_qwen_function')
     tokenizer_config = get_tokenizer_config(model_dir)
     class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
     if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
@@ -4427,13 +4429,6 @@ def get_model_tokenizer_yuan(model_dir: str,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              **kwargs):
-    model_folder, model_name = os.path.split(model_dir)
-    need_rename = '.' in model_name
-    if need_rename:
-        model_name = model_name.replace('.', '_')  # fix transformers_modules
-        new_model_dir = os.path.join(model_folder, model_name)
-        logger.info(f'Using new_model_dir: {new_model_dir}')
-        os.rename(model_dir, new_model_dir)
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attention = kwargs.pop('use_flash_attn', False)
     model_config.use_flash_attention = use_flash_attention
@@ -4447,8 +4442,6 @@ def get_model_tokenizer_yuan(model_dir: str,
     tokenizer.add_tokens(addi_tokens, special_tokens=True)
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
-    if need_rename:
-        os.rename(new_model_dir, model_dir)
     return model, tokenizer
 
 
@@ -4825,21 +4818,21 @@ def fix_gradient_checkpointing_warning() -> None:
         return
     elif torch_version < version.parse('2.1'):
         # fix https://github.com/Dao-AILab/flash-attention/issues/341
-        use_reentrant = True
+        _use_reentrant = True
     else:
-        use_reentrant = False
+        _use_reentrant = False
     _old_checkpoint = torch.utils.checkpoint.checkpoint
     if not hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
 
         torch.utils.checkpoint._old_checkpoint = _old_checkpoint
         torch.utils.checkpoint.checkpoint = update_wrapper(
-            lambda *args, use_reentrant=use_reentrant, **kwargs: _old_checkpoint(
+            lambda *args, use_reentrant=_use_reentrant, **kwargs: _old_checkpoint(
                 *args, use_reentrant=use_reentrant, **kwargs),
             _old_checkpoint)
     try:
         import transformers.modeling_utils
         if hasattr(transformers.modeling_utils, 'checkpoint'):
-            transformers.modeling_utils.checkpoint = (lambda *args, use_reentrant=use_reentrant, **kwargs:
+            transformers.modeling_utils.checkpoint = (lambda *args, use_reentrant=_use_reentrant, **kwargs:
                                                       _old_checkpoint(*args, use_reentrant=use_reentrant, **kwargs))
     except ImportError:
         pass
