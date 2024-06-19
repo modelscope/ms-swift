@@ -182,7 +182,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         if self.sft_beta > 0.:
             chosen_labels = concatenated_batch['concatenated_labels'][:batch['chosen_labels'].shape[0]]
-            sft_loss = -self.get_batch_logps(policy_chosen_logits, chosen_labels, average_log_prob=True)
+            sft_loss, size_completion = self.get_batch_logps(policy_chosen_logits, chosen_labels)
+            sft_loss = -sft_loss / size_completion
             if losses.shape[0] == 2 * sft_loss.shape[0]:
                 sft_loss = sft_loss.repeat(2, *sft_loss.shape[1:])
             losses = (1 - self.sft_beta) * losses + self.sft_beta * sft_loss
@@ -230,10 +231,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             **model_kwargs,
         ).logits
 
-        all_logps = self.get_batch_logps(
+        all_logps, _ = self.get_batch_logps(
             all_logits,
             concatenated_batch['concatenated_labels'],
-            average_log_prob=False,
             is_encoder_decoder=self.is_encoder_decoder,
             label_pad_token_id=self.label_pad_token_id,
         )
