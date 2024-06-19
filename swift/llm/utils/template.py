@@ -950,6 +950,13 @@ class GLM4VTemplate(GLMTemplate):
         inputs['labels'] = labels
         return inputs, {}
 
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        images = [b['images'] for b in batch if 'images' in b]
+        if images:
+            res['images'] = torch.concat(images)
+        return res
+
 
 register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True)
 
