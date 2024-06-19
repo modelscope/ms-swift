@@ -12,7 +12,7 @@ class SelfCog(BaseUI):
     locale_dict = {
         'self_cognition': {
             'label': {
-                'zh': '自我认知任务参数',
+                'zh': '自我认知任务参数设置',
                 'en': 'Self cognition settings'
             },
         },
