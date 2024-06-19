@@ -163,16 +163,6 @@ class LLMTrain(BaseUI):
                 'en': 'The data parallel size of DDP'
             }
         },
-        'neftune_noise_alpha': {
-            'label': {
-                'zh': 'neftune_noise_alpha',
-                'en': 'neftune_noise_alpha'
-            },
-            'info': {
-                'zh': '使用neftune提升训练效果, 一般设置为5或者10',
-                'en': 'Use neftune to improve performance, normally the value should be 5 or 10'
-            }
-        },
         'tuner_backend': {
             'label': {
                 'zh': 'Tuner backend',
@@ -210,6 +200,8 @@ class LLMTrain(BaseUI):
             with gr.Blocks():
                 Model.build_ui(base_tab)
                 Dataset.build_ui(base_tab)
+                Hyper.build_ui(base_tab)
+                Save.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 with gr.Row():
                     gr.Dropdown(elem_id='sft_type', scale=4)
@@ -219,7 +211,6 @@ class LLMTrain(BaseUI):
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                     gr.Textbox(elem_id='ddp_num', value='2', scale=4)
-                    gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=4)
                 with gr.Row():
                     gr.Dropdown(
                         elem_id='gpu_id',
@@ -234,15 +225,17 @@ class LLMTrain(BaseUI):
                         gr.Checkbox(elem_id='dry_run', value=False, scale=4)
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
-                Save.build_ui(base_tab)
                 LoRA.build_ui(base_tab)
-                Hyper.build_ui(base_tab)
                 Galore.build_ui(base_tab)
                 Lisa.build_ui(base_tab)
                 LlamaPro.build_ui(base_tab)
                 Quantization.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
+
+                cls.element('sft_type').change(
+                    Hyper.update_lr, inputs=[base_tab.element('sft_type')], outputs=[cls.element('learning_rate')])
+
                 if cls.is_studio:
                     submit.click(
                         cls.update_runtime, [],

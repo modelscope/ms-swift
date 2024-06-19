@@ -12,7 +12,7 @@ class Quantization(BaseUI):
     locale_dict = {
         'quantization_tab': {
             'label': {
-                'zh': '量化参数',
+                'zh': '量化参数设置',
                 'en': 'Quantization settings'
             },
         },
