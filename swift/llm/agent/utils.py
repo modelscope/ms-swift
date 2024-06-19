@@ -107,7 +107,7 @@ def calculate_loss_scale(query: str,
         agent_parts = split_str_parts_by(response, delimiters)
         regex_delimiters = {k: v for k, v in response_loss_scale_map.items() if len(v) == 1}
         if len(regex_delimiters):
-            agent_parts = split_parts_by_regex(agent_parts, regex_delimiters)
+            split_parts_by_regex(agent_parts, regex_delimiters)
         weights = []
         agent_content = []
         for c in agent_parts:

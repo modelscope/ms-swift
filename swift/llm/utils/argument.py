@@ -1407,8 +1407,8 @@ class RLHFArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: Optional[float] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair', 'simpo',
-                       'bco'] = 'sigmoid'
+    loss_type: Optional[Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair',
+                                'simpo', 'kto', 'bco']] = None
     sft_beta: float = 0.1
     simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
     # KTO
@@ -1424,6 +1424,7 @@ class RLHFArguments(SftArguments):
             self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
         self.set_default_beta()
         self.set_default_config()
+        self.set_default_loss_type()
         self.check_loss_type()
 
     def set_default_beta(self):
@@ -1469,6 +1470,14 @@ class RLHFArguments(SftArguments):
         if self.rlhf_type in supported_loss_types:
             assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
                 f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
+
+    def set_default_loss_type(self):
+        if self.loss_type is not None:
+            return
+        if self.rlhf_type in ['dpo', 'cpo']:
+            self.loss_type = 'sigmoid'
+        elif self.rlhf_type == 'kto':
+            self.loss_type = 'kto'
 
 
 @dataclass
