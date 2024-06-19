@@ -1423,8 +1423,8 @@ class RLHFArguments(SftArguments):
             self.loss_type = 'simpo'  # compatibility with trl > 0.9.5
             self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
         self.set_default_beta()
-        self.set_default_config()
         self.set_default_loss_type()
+        self.set_default_config()
         self.check_loss_type()
 
     def set_default_beta(self):

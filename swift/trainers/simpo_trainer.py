@@ -196,15 +196,22 @@ class SimPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             use_cache=False,
             **model_kwargs,
         ).logits
-
-        all_logps = self.get_batch_logps(
-            all_logits,
-            concatenated_batch['concatenated_labels'],
-            average_log_prob=True,
-            is_encoder_decoder=self.is_encoder_decoder,
-            label_pad_token_id=self.label_pad_token_id,
-        )
-
+        try:  # for trl < 0.9.4
+            all_logps = self.get_batch_logps(
+                all_logits,
+                concatenated_batch['concatenated_labels'],
+                average_log_prob=True,
+                is_encoder_decoder=self.is_encoder_decoder,
+                label_pad_token_id=self.label_pad_token_id,
+            )
+        except TypeError:
+            all_logps, size_completion = self.get_batch_logps(
+                all_logits,
+                concatenated_batch['concatenated_labels'],
+                is_encoder_decoder=self.is_encoder_decoder,
+                label_pad_token_id=self.label_pad_token_id,
+            )
+            all_logps = all_logps / size_completion
         chosen_logps = all_logps[:len_chosen]
         rejected_logps = all_logps[len_chosen:]
 
