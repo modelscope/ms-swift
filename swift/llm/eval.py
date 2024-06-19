@@ -19,7 +19,7 @@ logger = get_logger()
 
 class EvalModel(CustomModel):
 
-    def __init__(self, args: EvalArguments, model_name: str, config={}, **kwargs) -> None:
+    def __init__(self, args: EvalArguments, model_name: str, **kwargs) -> None:
         if args.eval_url is None:
             if args.merge_lora:
                 merge_lora(args, device_map=args.merge_device_map)
@@ -30,7 +30,7 @@ class EvalModel(CustomModel):
                 self.model, self.template = prepare_model_template(args)
 
         self.args = args
-        super(EvalModel, self).__init__(config={'model_id': model_name, **config}, **kwargs)
+        super().__init__(config={'model_id': model_name}, **kwargs)
         self.model_name = model_name
 
     @staticmethod
@@ -59,7 +59,7 @@ class EvalModel(CustomModel):
                     is_chat_model=self.args.eval_is_chat_model,
                     request_config=request_config,
                     idx=i))
-        response_list = [None] * len(prompts)
+        response_list: List[Optional[str]] = [None] * len(prompts)
         for coro in asyncio.as_completed(tasks):
             response, i = await coro
             response_list[i] = response
@@ -129,10 +129,12 @@ class EvalModel(CustomModel):
         return res_d
 
 
-def run_eval_single_model(args: EvalArguments) -> Dict[str, Any]:
+def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
     from llmuses.run import run_task
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
+    logger.info(f'args: {args}')
+    seed_everything(args.seed)
     model_name = args.model_type
     if args.name:
         model_name += f'-{args.name}'
@@ -165,8 +167,8 @@ def run_eval_single_model(args: EvalArguments) -> Dict[str, Any]:
         result_dir = args.ckpt_dir
         if result_dir is None:
             result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
-        if result_dir is not None:
-            jsonl_path = os.path.join(result_dir, 'eval_result.jsonl')
+        assert result_dir is not None
+        jsonl_path = os.path.join(result_dir, 'eval_result.jsonl')
         result = {report['name']: report['score'] for report in final_report}
         logger.info(f'result: {result}')
         result_info = {
@@ -176,12 +178,6 @@ def run_eval_single_model(args: EvalArguments) -> Dict[str, Any]:
         append_to_jsonl(jsonl_path, result_info)
         logger.info(f'save_result_path: {jsonl_path}')
     return final_report
-
-
-def llm_eval(args: EvalArguments) -> Dict[str, Any]:
-    logger.info(f'args: {args}')
-    seed_everything(args.seed)
-    return run_eval_single_model(args)
 
 
 eval_main = get_main(EvalArguments, llm_eval)

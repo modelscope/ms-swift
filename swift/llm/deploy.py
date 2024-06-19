@@ -22,15 +22,15 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
                     Model, ModelList, UsageInfo, decode_base64, inference, inference_stream, messages_join_observation,
-                    messages_to_history, random_uuid)
+                    messages_to_history, random_uuid, Template)
 
 logger = get_logger()
 
 app = FastAPI()
-_args = None
+_args: Optional[DeployArguments] = None
 model = None
 llm_engine = None
-template = None
+template: Optional[Template] = None
 
 
 def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:

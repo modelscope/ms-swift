@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -6,7 +6,7 @@ from torch import nn
 from transformers import PreTrainedModel, trainer
 from trl import DPOTrainer as HFDPOTrainer
 
-from swift.llm.utils.template import Context, Template
+from swift.llm.utils.template import Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
@@ -211,7 +211,7 @@ class SimPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         chosen_logits = all_logits[:len_chosen]
         rejected_logits = all_logits[len_chosen:]
 
-        return (chosen_logps, rejected_logps, chosen_logits, rejected_logits)
+        return chosen_logps, rejected_logps, chosen_logits, rejected_logits
 
     def simpo_loss(
         self,

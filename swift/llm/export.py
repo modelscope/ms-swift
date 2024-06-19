@@ -1,16 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-
 import torch
-
+from typing import Optional
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import ExportArguments, get_dataset, swift_to_peft_format
+from .utils import ExportArguments, get_dataset, swift_to_peft_format, Template
 
 logger = get_logger()
 
-_args = None
-template = None
+_args: Optional[ExportArguments] = None
+template: Optional[Template] = None
 
 
 def _get_dataset(*args, **kwargs):

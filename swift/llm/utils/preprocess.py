@@ -1,9 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import os.path
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
-import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
 
@@ -146,8 +144,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                  conversations_key: str = 'conversations',
                  from_key: str = 'from',
                  value_key: str = 'value',
-                 repair_conversations: Callable[[Union[str, Dict[str, str]]],
-                                                Optional[Dict[str, str]]] = _default_repair_conversations,
+                 repair_conversations: Callable[[Union[str, List[Dict[str, str]]]],
+                                                Optional[List[Dict[str, str]]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
                  **kwargs):
         self.user_role = user_role
@@ -185,17 +183,17 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             system = sys
             history = h
             tool = d.get('tools', [])
-            kwargs = {'system': system, 'history': history}
-            kwargs.update({
+            row = {'system': system, 'history': history}
+            row.update({
                 'query': query,
                 'response': response,
                 'tools': tool,
             })
-            self.media_replacer(kwargs, self.parse_medias(d))
+            self.media_replacer(row, self.parse_medias(d))
             if self.media_type:
                 if not isinstance(self.media_key, str):
                     row[self.media_name] = medias
-            return kwargs
+            return row
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
@@ -239,12 +237,12 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 history.append([c[self.query_key], c[self.response_key]])
 
             query, response = history.pop(-1)
-            d_dict = {
+            row = {
                 'history': history,
                 'query': query,
                 'response': response,
             }
-            self.media_replacer(d_dict, self.parse_medias(d))
+            self.media_replacer(row, self.parse_medias(d))
             if self.media_type:
                 if not isinstance(self.media_key, str):
                     row[self.media_name] = medias
@@ -253,7 +251,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 raise ValueError(f'conversations: {conversations}')
             else:
                 return self.empty_row
-        return d_dict
+        return row
 
     def __call__(self, dataset: HfDataset):
         dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('query'))

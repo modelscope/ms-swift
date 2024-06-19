@@ -111,7 +111,7 @@ class StopWordsCriteria(StoppingCriteria):
         self.tokenizer_kwargs = tokenizer_kwargs
         self.start_idx = -1
 
-    def __call__(self, input_ids: Tensor, scores: Tensor) -> bool:
+    def __call__(self, input_ids: Tensor, scores: Tensor, **kwargs) -> bool:
         if self.start_idx == -1:
             self.start_idx = len(input_ids[0]) - 1
         tokenizer = self.tokenizer
@@ -502,7 +502,7 @@ class Template:
         return: inputs, tokenizer_kwargs
         """
         if history_roles is None:
-            history_roles = [('user', 'assistant') for _ in range(len(history))]
+            history_roles = [['user', 'assistant'] for _ in range(len(history))]
 
         if query is not None:
             if query_role is None:
@@ -629,10 +629,10 @@ class Template:
     def _is_chinese_char(cp: int) -> bool:
         """Checks whether CP is the codepoint of a CJK character."""
         # copy from transformers.generation.streamers.TextStreamer
-        if ((cp >= 0x4E00 and cp <= 0x9FFF) or (cp >= 0x3400 and cp <= 0x4DBF) or (cp >= 0x20000 and cp <= 0x2A6DF)
-                or (cp >= 0x2A700 and cp <= 0x2B73F) or (cp >= 0x2B740 and cp <= 0x2B81F)
-                or (cp >= 0x2B820 and cp <= 0x2CEAF) or (cp >= 0xF900 and cp <= 0xFAFF)
-                or (cp >= 0x2F800 and cp <= 0x2FA1F)):
+        if ((0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or (0x20000 <= cp <= 0x2A6DF)
+                or (0x2A700 <= cp <= 0x2B73F) or (0x2B740 <= cp <= 0x2B81F)
+                or (0x2B820 <= cp <= 0x2CEAF) or (0xF900 <= cp <= 0xFAFF)
+                or (0x2F800 <= cp <= 0x2FA1F)):
             return True
 
         return False
@@ -908,7 +908,7 @@ class GLMTemplate(Template):
 class GLM4VTemplate(GLMTemplate):
 
     def __init__(self):
-        return super().__init__([], ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
+        super().__init__([], ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
                                 ['<|system|>\n{{SYSTEM}}'])
 
     def check_example(self, example):
@@ -944,7 +944,7 @@ class GLM4VTemplate(GLMTemplate):
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             messages = history_to_messages(example.get('history', []), example['query'], example.get('system', None))
             messages[0]['image'] = image
-            inputs2 = self.tokenizer.apply_chat_template(messages, return_dict=True)
+            inputs2: Dict[str, Any] = self.tokenizer.apply_chat_template(messages, return_dict=True)
             inputs['images'] = inputs2['images']
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
@@ -1576,7 +1576,7 @@ class DeepseekVLTemplate(Template):
                           'and assist the user with a variety of tasks using natural language.')
 
     def __init__(self):
-        return super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
+        super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
                                 ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
@@ -1757,7 +1757,7 @@ class MiniCPMVTemplate(Template):
 
     def __init__(self, *args, **kwargs):
         self.is_v2_5 = kwargs.pop('is_v2_5', False)
-        return super().__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         assert media_type == 'image'

@@ -6,6 +6,7 @@ from bisect import bisect_right
 from typing import List, Optional, Tuple
 
 import numpy as np
+import time
 import torch
 import torch.distributed as dist
 from torch.nn import Module
@@ -128,7 +129,7 @@ def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
         p.requires_grad = False
 
 
-def activate_model_parameters(model: Module, additional_trainable_parameters: List[int]) -> None:
+def activate_model_parameters(model: Module, additional_trainable_parameters: List[str]) -> None:
     if len(additional_trainable_parameters) == 0:
         return
     has_activate = False

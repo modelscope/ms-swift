@@ -88,7 +88,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         gen_kwargs['pad_token_id'] = self.tokenizer.pad_token_id
         gen_kwargs['eos_token_id'] = self.tokenizer.eos_token_id
         # fix generate warning
-        if ('max_length' in gen_kwargs and 'max_new_tokens' in gen_kwargs and gen_kwargs['max_new_tokens'] is not None):
+        if 'max_length' in gen_kwargs and 'max_new_tokens' in gen_kwargs and gen_kwargs['max_new_tokens'] is not None:
             gen_kwargs.pop('max_length')
         gen_time = time.time()
         generate_inputs = inputs.copy()
@@ -149,7 +149,8 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
-    def compute_scaled_loss(self, labels: torch.Tensor, lm_logits: torch.Tensor,
+    @staticmethod
+    def compute_scaled_loss(labels: torch.Tensor, lm_logits: torch.Tensor,
                             loss_scale: torch.Tensor) -> torch.Tensor:
         device = lm_logits.device
         # Shift so that tokens < n predict n
@@ -203,7 +204,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
         if use_torchacc():
             ta_trim_graph()
-        preds = outputs.logits.argmax(dim=2)[..., :-1]
         if labels is None:
             labels = inputs['labels']
 
@@ -212,7 +212,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
         preds = outputs.logits.argmax(dim=2)[..., :-1]
-
         labels = labels[..., 1:]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
@@ -256,7 +255,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             return super().get_train_dataloader()
 
-    def get_eval_dataloader(self, eval_dataset):
+    def get_eval_dataloader(self, eval_dataset=None):
         if not use_torchacc():
             return super().get_eval_dataloader(eval_dataset)
         else:

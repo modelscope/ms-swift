@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 import shutil
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple, List
 
 import json
 import numpy as np
@@ -244,7 +244,7 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
         infer_kwargs['images'] = images
 
 
-def llm_infer(args: InferArguments) -> None:
+def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     if args.merge_lora:
@@ -286,7 +286,7 @@ def llm_infer(args: InferArguments) -> None:
         assert len(args.lora_request_list) == 1
         lora_request = args.lora_request_list[0]
     # Inference
-    result = []
+    result: List[Dict[str, Any]] = []
     jsonl_path = None
     if args.save_result:
         result_dir = args.ckpt_dir
