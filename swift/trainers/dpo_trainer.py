@@ -231,14 +231,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             **model_kwargs,
         ).logits
 
-        all_logps = self.get_batch_logps(
+        all_logps, _ = self.get_batch_logps(
             all_logits,
             concatenated_batch['concatenated_labels'],
             is_encoder_decoder=self.is_encoder_decoder,
             label_pad_token_id=self.label_pad_token_id,
         )
-        if isinstance(all_logps, tuple):
-            all_logps = all_logps[0]
 
         chosen_logps = all_logps[:len_chosen]
         rejected_logps = all_logps[len_chosen:]
