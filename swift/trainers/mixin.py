@@ -6,7 +6,7 @@ import shutil
 import time
 from pathlib import Path
 from types import MethodType
-from typing import Callable, Dict, List, Optional, Tuple, Union, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np

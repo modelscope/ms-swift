@@ -1988,7 +1988,7 @@ NoneType = type(None)
 
 
 def _check_dataset(dataset: Optional[HfDataset], check_dataset_strategy: Literal['none', 'discard', 'error',
-                                                                            'warning']) -> Optional[HfDataset]:
+                                                                                 'warning']) -> Optional[HfDataset]:
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
@@ -2040,8 +2040,10 @@ def _check_dataset(dataset: Optional[HfDataset], check_dataset_strategy: Literal
     return dataset
 
 
-def _safe_split(s: str, sep: str, use_0: bool, split_mode: Literal['left', 'right'] = 'left'
-) -> Tuple[Optional[str], Optional[str]]:
+def _safe_split(s: str,
+                sep: str,
+                use_0: bool,
+                split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
     # use_0: When the length of the part is 1, is it considered as part0 or part1.
     if s is None or len(s) == 0:
         return None, None

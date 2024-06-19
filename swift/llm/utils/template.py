@@ -630,9 +630,8 @@ class Template:
         """Checks whether CP is the codepoint of a CJK character."""
         # copy from transformers.generation.streamers.TextStreamer
         if ((0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or (0x20000 <= cp <= 0x2A6DF)
-                or (0x2A700 <= cp <= 0x2B73F) or (0x2B740 <= cp <= 0x2B81F)
-                or (0x2B820 <= cp <= 0x2CEAF) or (0xF900 <= cp <= 0xFAFF)
-                or (0x2F800 <= cp <= 0x2FA1F)):
+                or (0x2A700 <= cp <= 0x2B73F) or (0x2B740 <= cp <= 0x2B81F) or (0x2B820 <= cp <= 0x2CEAF)
+                or (0xF900 <= cp <= 0xFAFF) or (0x2F800 <= cp <= 0x2FA1F)):
             return True
 
         return False
@@ -909,7 +908,7 @@ class GLM4VTemplate(GLMTemplate):
 
     def __init__(self):
         super().__init__([], ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
-                                ['<|system|>\n{{SYSTEM}}'])
+                         ['<|system|>\n{{SYSTEM}}'])
 
     def check_example(self, example):
         images = example.get('images')
@@ -1577,7 +1576,7 @@ class DeepseekVLTemplate(Template):
 
     def __init__(self):
         super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
-                                ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
+                         ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         assert media_type == 'image'

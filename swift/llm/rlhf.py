@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from typing import Any, Dict
 
 import json
 import torch
-from typing import Dict, Any
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled

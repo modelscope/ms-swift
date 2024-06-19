@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import torch
 from typing import Optional
+
+import torch
+
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import ExportArguments, get_dataset, swift_to_peft_format, Template
+from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
 
 logger = get_logger()
 

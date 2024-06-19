@@ -150,8 +150,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         return loss, generated_tokens, labels
 
     @staticmethod
-    def compute_scaled_loss(labels: torch.Tensor, lm_logits: torch.Tensor,
-                            loss_scale: torch.Tensor) -> torch.Tensor:
+    def compute_scaled_loss(labels: torch.Tensor, lm_logits: torch.Tensor, loss_scale: torch.Tensor) -> torch.Tensor:
         device = lm_logits.device
         # Shift so that tokens < n predict n
         shift_logits = lm_logits[..., :-1, :]

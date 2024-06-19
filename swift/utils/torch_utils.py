@@ -2,11 +2,11 @@
 
 import os
 import socket
+import time
 from bisect import bisect_right
 from typing import List, Optional, Tuple
 
 import numpy as np
-import time
 import torch
 import torch.distributed as dist
 from torch.nn import Module

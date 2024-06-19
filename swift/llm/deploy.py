@@ -21,8 +21,8 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, UsageInfo, decode_base64, inference, inference_stream, messages_join_observation,
-                    messages_to_history, random_uuid, Template)
+                    Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream,
+                    messages_join_observation, messages_to_history, random_uuid)
 
 logger = get_logger()
 

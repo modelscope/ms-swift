@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 import shutil
-from typing import Any, Dict, Literal, Optional, Tuple, List
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import json
 import numpy as np

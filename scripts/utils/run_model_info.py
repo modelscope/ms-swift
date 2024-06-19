@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import Any, List
 
 from swift.llm import MODEL_MAPPING, ModelType
 

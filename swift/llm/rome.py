@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from typing import Optional
+
 import json
 import torch
 from modelscope import GenerationConfig
-from typing import Optional
+
 from swift.tuners import Swift
 from swift.tuners.rome import RomeConfig
 from swift.utils import get_logger, get_main, get_model_info, seed_everything, show_layers
