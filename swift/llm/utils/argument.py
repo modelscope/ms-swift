@@ -1425,7 +1425,6 @@ class RLHFArguments(SftArguments):
         self.set_default_beta()
         self.set_default_loss_type()
         self.set_default_config()
-        self.set_default_loss_type()
         self.check_loss_type()
 
     def set_default_beta(self):
