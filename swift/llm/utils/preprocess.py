@@ -51,7 +51,7 @@ class MediaMixin:
             'response': '',
             'tools': None,
             'system': None,
-            'history': [],
+            'history': None,
         }
         if self.media_type and not isinstance(self.media_key, str):
             empty_row[self.media_name] = None
