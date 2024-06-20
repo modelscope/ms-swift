@@ -213,10 +213,11 @@ class LLMTrain(BaseUI):
                 Model.build_ui(base_tab)
                 Dataset.build_ui(base_tab)
                 with gr.Row():
-                    gr.Dropdown(elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft')
-                    gr.Dropdown(elem_id='sft_type', scale=4)
-                    gr.Dropdown(elem_id='tuner_backend', scale=4)
-                    gr.Textbox(elem_id='sequence_parallel_size', scale=4)
+                    gr.Dropdown(elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
+                    gr.Dropdown(elem_id='sft_type', scale=2)
+                    gr.Dropdown(elem_id='tuner_backend', scale=2)
+                    gr.Textbox(elem_id='sequence_parallel_size', scale=3)
+                with gr.Row():
                     gr.Textbox(elem_id='seed', scale=4)
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
