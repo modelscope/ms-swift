@@ -3,8 +3,8 @@ MODELSCOPE_CACHE_DIR_IN_CONTAINER=/modelscope_cache
 CODE_DIR=$PWD
 CODE_DIR_IN_CONTAINER=/swift
 echo "$USER"
-gpus='0,1 2,3 4,5 6,7'
-cpu_sets='0-15 16-31 32-47 48-63'
+gpus='0,1 2,3'
+cpu_sets='0-15 16-31'
 cpu_sets_arr=($cpu_sets)
 is_get_file_lock=false
 CI_COMMAND=${CI_COMMAND:-bash .dev_scripts/ci_container_test.sh python tests/run.py --parallel 2 --run_config tests/run_config.yaml}
