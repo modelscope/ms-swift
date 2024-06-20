@@ -101,7 +101,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         inp: Optional[str] = d.get('input', None)
         h, output = d.pop('history', None), d['output']
         sys = d.pop('system', None)
-        tool = d.pop('tools', [])
+        tool = d.pop('tools')
         if output is None:
             return self.empty_row
         if inp is None or len(inp) == 0:
@@ -189,7 +189,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             response = conversations[-1][self.value_key]
             system = sys
             history = h
-            tools = d.get('tools')
+            tools = d.get('tools', [])
             row = {'system': system, 'history': history, 'history_roles': hr}
             row.update({
                 'query': query,
