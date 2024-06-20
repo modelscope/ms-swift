@@ -25,7 +25,7 @@ class AnimateDiffArguments:
     sft_type: str = field(default='lora', metadata={'choices': ['lora', 'full']})
 
     output_dir: str = 'output'
-    ddp_backend: str = field(default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl']})
+    ddp_backend: str = field(default='nccl', metadata={'choices': ['nccl', 'gloo', 'mpi', 'ccl', 'hccl']})
 
     seed: int = 42
 
