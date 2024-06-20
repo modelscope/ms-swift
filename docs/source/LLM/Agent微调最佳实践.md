@@ -61,7 +61,7 @@ swift现支持的agent数据集:
 `tool`字段表示工具调用返回结果
 
 
-如果你想保留模型的通用能力, 可以混合一定比例的通用数据集, 以下以混合ms-bench和ms-agent数据集训练agent为例, 
+如果你想保留模型的通用能力, 可以混合一定比例的通用数据集, 以下以混合ms-bench和ms-agent数据集训练agent为例,
 - [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
 - [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
 
