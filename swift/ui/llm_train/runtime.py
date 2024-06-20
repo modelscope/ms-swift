@@ -57,31 +57,72 @@ class Runtime(BaseUI):
 
     dpo_plot = [
         {
-            'name': 'loss',
+            'name': 'train/loss',
             'smooth': 0.9,
         },
         {
-            'name': 'learning_rate',
+            'name': 'train/rewards/accuracies',
             'smooth': None,
         },
         {
-            'name': 'rewards/margins',
+            'name': 'train/rewards/margins',
             'smooth': 0.9,
         },
         {
-            'name': 'rewards/chosen',
+            'name': 'train/logps/chosen',
             'smooth': 0.9,
         },
         {
-            'name': 'rewards/rejected',
+            'name': 'train/logps/rejected',
             'smooth': 0.9,
-        },
-        {
-            'name': 'rewards/accuracies',
-            'smooth': None,
         },
     ]
 
+    kto_plot = [
+        {
+            'name': 'kl',
+            'smooth': None,
+        },
+        {
+            'name': 'rewards/chosen_sum',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'logps/chosen_sum',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'rewards/rejected_sum',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'logps/rejected_sum',
+            'smooth': 0.9,
+        },
+    ]
+
+    orpo_plot = [
+        {
+            'name': 'train/loss',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/rewards/accuracies',
+            'smooth': None,
+        },
+        {
+            'name': 'train/rewards/margins',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/rewards/chosen',
+            'smooth': 0.9,
+        },
+        {
+            'name': 'train/log_odds_ratio',
+            'smooth': 0.9,
+        },
+    ]
     locale_dict = {
         'runtime_tab': {
             'label': {
@@ -206,13 +247,14 @@ class Runtime(BaseUI):
 
                 with gr.Row():
                     cls.all_plots = []
-                    for k in Runtime.sft_plot:
+                    for idx, k in enumerate(Runtime.sft_plot):
                         name = k['name']
-                        cls.all_plots.append(gr.Plot(elem_id=name, label=name))
+                        cls.all_plots.append(gr.Plot(elem_id=str(idx), label=name))
 
                 if not cls.is_studio:
                     cls.log_event = base_tab.element('show_log').click(
-                        Runtime.update_log, [], [cls.element('log')] + cls.all_plots).then(
+                        Runtime.update_log, [base_tab.element('running_tasks')],
+                        [cls.element('log')] + cls.all_plots).then(
                             Runtime.wait, [base_tab.element('logging_dir'),
                                            base_tab.element('running_tasks')], [cls.element('log')] + cls.all_plots)
 
@@ -237,8 +279,27 @@ class Runtime(BaseUI):
                     )
 
     @classmethod
-    def update_log(cls):
-        return [gr.update(visible=True)] * (len(Runtime.sft_plot) + 1)
+    def get_plot(cls, task):
+        if 'swift sft' in task:
+            return cls.sft_plot
+
+        args: dict = cls.parse_info_from_cmdline(task)[1]
+        train_type = args.get('rlhf_type', 'dpo')
+        if train_type in ('dpo', 'cpo'):
+            return cls.dpo_plot
+        elif train_type == 'kto':
+            return cls.kto_plot
+        elif train_type == 'orpo':
+            return cls.orpo_plot
+
+    @classmethod
+    def update_log(cls, task):
+        ret = [gr.update(visible=True)]
+        plot = Runtime.get_plot(task)
+        for i in range(len(plot)):
+            p = plot[i]
+            ret.append(gr.update(visible=True, label=p['name']))
+        return ret
 
     @classmethod
     def wait(cls, logging_dir, task):
@@ -402,7 +463,7 @@ class Runtime(BaseUI):
         else:
             os.system(f'pkill -9 -f {output_dir}')
         time.sleep(1)
-        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.sft_plot) + 1)
+        return [Runtime.refresh_tasks()] + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod
     def reset():
@@ -425,16 +486,17 @@ class Runtime(BaseUI):
                 ret.append(gr.update(value=arg))
             else:
                 ret.append(gr.update())
-        return ret + [gr.update(value=None)] * (len(Runtime.sft_plot) + 1)
+        return ret + [gr.update(value=None)] * (len(Runtime.get_plot(task)) + 1)
 
     @staticmethod
     def plot(task):
+        plot = Runtime.get_plot(task)
         if not task:
-            return [None] * len(Runtime.sft_plot)
+            return [None] * len(plot)
         _, all_args = Runtime.parse_info_from_cmdline(task)
         tb_dir = all_args['logging_dir']
         if not os.path.exists(tb_dir):
-            return [None] * len(Runtime.sft_plot)
+            return [None] * len(plot)
         fname = [
             fname for fname in os.listdir(tb_dir)
             if os.path.isfile(os.path.join(tb_dir, fname)) and fname.startswith('events.out')
@@ -442,12 +504,12 @@ class Runtime(BaseUI):
         if fname:
             fname = fname[0]
         else:
-            return [None] * len(Runtime.sft_plot)
+            return [None] * len(plot)
         tb_path = os.path.join(tb_dir, fname)
         data = read_tensorboard_file(tb_path)
 
         plots = []
-        for k in Runtime.sft_plot:
+        for k in plot:
             name = k['name']
             smooth = k['smooth']
             if name not in data:
