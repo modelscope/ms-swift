@@ -51,6 +51,7 @@ def update_data(fn):
                 if argument and 'label' in kwargs:
                     kwargs['label'] = kwargs['label'] + f'({argument})'
 
+        kwargs['elem_classes'] = 'align'
         ret = fn(self, **kwargs)
         self.constructor_args.update(kwargs)
 
