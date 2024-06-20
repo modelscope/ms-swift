@@ -101,7 +101,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         inp: Optional[str] = d.get('input', None)
         h, output = d.pop('history', None), d['output']
         sys = d.pop('system', None)
-        tool = d.pop('tools', None)
+        tool = d.pop('tools', [])
         if output is None:
             return self.empty_row
         if inp is None or len(inp) == 0:
