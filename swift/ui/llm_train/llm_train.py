@@ -12,7 +12,7 @@ import json
 import torch
 from gradio import Accordion, Tab
 
-from swift.llm import SftArguments, RLHFArguments
+from swift.llm import RLHFArguments, SftArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset
@@ -62,6 +62,16 @@ class LLMTrain(BaseUI):
             'label': {
                 'zh': 'LLM训练',
                 'en': 'LLM Training',
+            }
+        },
+        'train_type': {
+            'label': {
+                'zh': '训练Stage',
+                'en': 'Train Stage'
+            },
+            'info': {
+                'zh': '请注意选择于此匹配的数据集，人类对齐配置在页面下方',
+                'en': 'Please choose matched dataset, RLHF settings is at the bottom of the page'
             }
         },
         'submit_alert': {
@@ -206,6 +216,7 @@ class LLMTrain(BaseUI):
                 Save.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 with gr.Row():
+                    gr.Dropdown(elem_id='train_type', choices=['pretrain/sft', 'rlhf'])
                     gr.Dropdown(elem_id='sft_type', scale=4)
                     gr.Dropdown(elem_id='tuner_backend', scale=4)
                     gr.Textbox(elem_id='sequence_parallel_size', scale=4)
@@ -276,7 +287,7 @@ class LLMTrain(BaseUI):
 
     @classmethod
     def train(cls, *args):
-        ignore_elements = ('model_type', 'logging_dir', 'more_params', 'rlhf')
+        ignore_elements = ('model_type', 'logging_dir', 'more_params', 'train_type')
         sft_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
@@ -304,8 +315,8 @@ class LLMTrain(BaseUI):
             if key == 'model_type':
                 model_type = value
 
-            if key == 'rlhf':
-                do_rlhf = value
+            if key == 'train_type':
+                do_rlhf = value == 'rlhf'
 
         if os.path.exists(kwargs['model_id_or_path']):
             kwargs['model_type'] = model_type

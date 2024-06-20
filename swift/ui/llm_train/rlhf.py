@@ -2,7 +2,7 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import ModelType, MODEL_MAPPING
+from swift.llm import MODEL_MAPPING, ModelType
 from swift.ui.base import BaseUI
 
 
@@ -16,16 +16,6 @@ class RLHF(BaseUI):
                 'zh': '人类对齐参数设置',
                 'en': 'RLHF settings'
             },
-        },
-        'rlhf': {
-            'label': {
-                'zh': '进行人类对齐训练',
-                'en': 'Process RLHF training'
-            },
-            'info': {
-                'zh': '选择代表进行对齐训练，请注意数据集是否匹配',
-                'en': 'Check means processing RLHF training, pay attention to the dataset type'
-            }
         },
         'rlhf_type': {
             'label': {
@@ -102,10 +92,10 @@ class RLHF(BaseUI):
         with gr.Accordion(elem_id='rlhf_tab', open=False):
             with gr.Blocks():
                 with gr.Row():
-                    gr.Checkbox(elem_id='rlhf')
                     rlhf_type = gr.Dropdown(elem_id='rlhf_type')
                     ref_model_type = gr.Dropdown(
-                        elem_id='ref_model_type', choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
+                        elem_id='ref_model_type',
+                        choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
                         scale=20)
                     ref_model_id_or_path = gr.Textbox(elem_id='ref_model_id_or_path', lines=1, scale=20)
                     model_state = gr.State({})
@@ -113,10 +103,10 @@ class RLHF(BaseUI):
                     loss_type = gr.Dropdown(elem_id='loss_type')
                     gr.Textbox(elem_id='max_prompt_length', lines=1, scale=20)
                     beta = gr.Slider(elem_id='beta', minimum=0., maximum=5.0, step=0.1, scale=20)
-                    gr.Slider(elem_id='sft_beta', minimum=0., maximum=0.95, step=0.05,  scale=20)
+                    gr.Slider(elem_id='sft_beta', minimum=0., maximum=0.95, step=0.05, scale=20)
                     gr.Slider(elem_id='simpo_gamma', minimum=0., maximum=2.0, step=0.1, scale=20)
                     gr.Slider(elem_id='desirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
-                    gr.Slider(elem_id='undesirable_weight', minimum=0., maximum=2.0, step=0.1,scale=20)
+                    gr.Slider(elem_id='undesirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
 
             def update_input_model(choice, model_state=None):
                 if choice is None:
@@ -148,13 +138,12 @@ class RLHF(BaseUI):
 
                 return beta, loss_type
 
-            rlhf_type.change(update_value, inputs=[rlhf_type], outputs=[
-                beta, loss_type
-            ])
+            rlhf_type.change(update_value, inputs=[rlhf_type], outputs=[beta, loss_type])
 
             ref_model_type.change(
                 update_input_model, inputs=[ref_model_type, model_state], outputs=[ref_model_id_or_path])
 
             ref_model_id_or_path.change(
-                update_model_id_or_path, inputs=[ref_model_type, ref_model_id_or_path, model_state],
+                update_model_id_or_path,
+                inputs=[ref_model_type, ref_model_id_or_path, model_state],
                 outputs=[model_state])
