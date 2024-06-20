@@ -122,7 +122,7 @@ trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
 trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
 trainer.PrinterCallback = PrinterCallbackNew
 
-# fix kto when tokenizer without bos_token_id
+# fix kto when tokenizer do not have a bos_token_id
 def new_process_tokens(example: Dict[str, Any], model = None, **kwargs) -> Dict:
     """Process tokens of a KTO specific dataset.
 
