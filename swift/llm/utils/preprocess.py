@@ -51,7 +51,7 @@ class MediaMixin:
             'response': '',
             'tools': None,
             'system': None,
-            'history': [],
+            'history': None,
         }
         if self.media_type and not isinstance(self.media_key, str):
             empty_row[self.media_name] = None
@@ -189,7 +189,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             response = conversations[-1][self.value_key]
             system = sys
             history = h
-            tools = d.get('tools', [])
+            tools = d.get('tools')
             row = {'system': system, 'history': history, 'history_roles': hr}
             row.update({
                 'query': query,
