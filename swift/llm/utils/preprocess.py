@@ -146,6 +146,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                  conversations_key: str = 'conversations',
                  from_key: str = 'from',
                  value_key: str = 'value',
+                 tool_role: str = 'tool',
                  repair_conversations: Callable[[Union[str, List[Dict[str, str]]]],
                                                 Optional[List[Dict[str, str]]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
@@ -156,6 +157,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         self.conversations_key = conversations_key
         self.from_key = from_key
         self.value_key = value_key
+        self.tool_role = tool_role
         self.repair_conversations = repair_conversations
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
@@ -169,27 +171,32 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             lo = 0
             sys = None
             h: History = []
+            hr: History = []
             assert len(conversations) >= 2
             if conversations[0][self.from_key] == self.system_role:
                 lo += 1
                 sys = conversations[0][self.value_key]
-            assert conversations[-2][self.from_key] == self.user_role
+            assert conversations[-2][self.from_key] in [self.user_role, self.tool_role]
             assert conversations[-1][self.from_key] == self.assistant_role
 
+
             for q, r in zip(conversations[lo:-2:2], conversations[lo + 1:-2:2]):
-                assert q[self.from_key] == self.user_role
+                assert q[self.from_key] in [self.user_role, self.tool_role]
                 assert r[self.from_key] == self.assistant_role
                 h.append([q[self.value_key], r[self.value_key]])
+                hr.append([q[self.from_key], r[self.from_key]])
             query = conversations[-2][self.value_key]
+            query_role = conversations[-2][self.from_key]
             response = conversations[-1][self.value_key]
             system = sys
             history = h
-            tool = d.get('tools', [])
-            row = {'system': system, 'history': history}
+            tools = d.get('tools', [])
+            row = {'system': system, 'history': history, 'history_roles':hr}
             row.update({
                 'query': query,
+                'query_role': query_role,
                 'response': response,
-                'tools': tool,
+                'tools': tools,
             })
             medias = self.parse_medias(d)
             self.media_replacer(row, medias)
