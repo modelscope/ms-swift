@@ -153,7 +153,7 @@ Adding dataset_id:
 }
 ```
 
-添加dataset\_path:
+Adding dataset\_path:
 ```python
 # You can specify relative and absolute paths. Relative paths are relative to the directory where dataset_info.json is located.
 # Usage: `--dataset <dataset_name>`
