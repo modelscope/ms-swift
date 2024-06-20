@@ -212,11 +212,8 @@ class LLMTrain(BaseUI):
             with gr.Blocks():
                 Model.build_ui(base_tab)
                 Dataset.build_ui(base_tab)
-                Hyper.build_ui(base_tab)
-                Save.build_ui(base_tab)
-                Runtime.build_ui(base_tab)
                 with gr.Row():
-                    gr.Dropdown(elem_id='train_type', choices=['pretrain/sft', 'rlhf'])
+                    gr.Dropdown(elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft')
                     gr.Dropdown(elem_id='sft_type', scale=4)
                     gr.Dropdown(elem_id='tuner_backend', scale=4)
                     gr.Textbox(elem_id='sequence_parallel_size', scale=4)
@@ -224,6 +221,9 @@ class LLMTrain(BaseUI):
                     gr.Dropdown(elem_id='dtype', scale=4)
                     gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                     gr.Textbox(elem_id='ddp_num', value='2', scale=4)
+                Hyper.build_ui(base_tab)
+                Save.build_ui(base_tab)
+                Runtime.build_ui(base_tab)
                 with gr.Row():
                     gr.Dropdown(
                         elem_id='gpu_id',
