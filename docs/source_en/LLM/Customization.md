@@ -106,13 +106,32 @@ system,instruction,input,output
 00002,AAAAA,BBBBB,CCCCC
 ```
 
-**Reinforcement Learning (DPO/ORPO)**
+**Human preference alignment (DPO/ORPO/SimPO/CPO)**
 
 ```jsonl
 {"query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 {"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 {"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
+
+**Tool-Calling Agent**
+
+Format 1
+```jsonl
+{"tools":"{API_LIST}","conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "tool", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "tool", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+```
+
+Format 2
+```jsonl
+{"tools":"{API_LIST}","messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "tool", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "tool", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+```
+For the tools format, please refer to [Agent-Deoloyment Document](./Agent-deployment-best-practice.md)
+
+The `tool` field represents the return result of the tool calling.
 
 ### Adding dataset_info.json
 
