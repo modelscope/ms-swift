@@ -15,7 +15,7 @@ def clear_session() -> History:
 def gradio_generation_demo(args: AppUIArguments) -> None:
     import gradio as gr
     if args.infer_backend == 'vllm':
-        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
+        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm
         llm_engine, template = prepare_vllm_engine_template(args)
     else:
         model, template = prepare_model_template(args)

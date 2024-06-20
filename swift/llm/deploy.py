@@ -21,16 +21,16 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, UsageInfo, decode_base64, inference, inference_stream, messages_join_observation,
-                    messages_to_history, random_uuid)
+                    Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream,
+                    messages_join_observation, messages_to_history, random_uuid)
 
 logger = get_logger()
 
 app = FastAPI()
-_args = None
+_args: Optional[DeployArguments] = None
 model = None
 llm_engine = None
-template = None
+template: Optional[Template] = None
 
 
 def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
@@ -458,7 +458,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             **adapter_kwargs)
 
         print_idx = 0
-        total_res = ''
+        response = ''
         is_finished = False
         while not is_finished:
             try:
@@ -477,7 +477,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 print_idx = len(response)
                 toolcall = None
                 if is_finished:
-                    action, action_input = split_action_action_input(total_res)
+                    action, action_input = split_action_action_input(response)
                     if action:
                         toolcall = ChatCompletionMessageToolCall(
                             id=f'toolcall-{random_uuid()}',

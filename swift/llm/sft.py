@@ -4,10 +4,7 @@ from functools import partial
 from typing import Any, Dict, Union
 
 import json
-import numpy as np
 import torch
-import torch.distributed as dist
-from datasets import Dataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -21,7 +18,7 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          plot_images, preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (MODEL_MAPPING, TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
+from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
                     get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
                     sort_by_max_length, stat_dataset)
 

@@ -283,7 +283,7 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
-MapFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
+MapFunc = Callable[[Dict[str, Any]], Tuple[Dict[str, Any], Dict[str, Any]]]
 
 
 def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]]:

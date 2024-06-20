@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass, field
 from functools import reduce
 
 import torch
-from packaging import version
 from transformers import Trainer
 
 from .lora_layers import *  # noqa
@@ -26,7 +25,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
             Deprecated, do not use this argument.
         lora_dtype(str): The dtype for all lora modules, supported values are `fp32`, `fp16`, `bf16`.
             Default value is `None`, which means follow the dtype of original module's weight.
-        lr_ratio(float): The lr_ratio argument for [LoRA+](https://arxiv.org/abs/2402.12354)
+        lorap_lr_ratio(float): The lr_ratio argument for [LoRA+](https://arxiv.org/abs/2402.12354)
     """
 
     use_qa_lora: bool = field(
@@ -37,7 +36,7 @@ class LoRAConfig(LoraConfig, SwiftConfig):
     enable_lora: List[bool] = field(
         default=None, metadata={'help': 'The modules need to be turned on when using the merged linear layer'})
 
-    lora_dtype: str = field(
+    lora_dtype: Optional[str] = field(
         default=None, metadata={'help': 'The lora dtype, default None means following the original layer\'s dtype'})
 
     lorap_lr_ratio: float = field(default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})

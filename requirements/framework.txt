@@ -6,7 +6,7 @@ jieba
 matplotlib
 modelscope>=1.14
 nltk
-numpy<2.0.0
+numpy<2.0
 optimum>=1.17.0
 pandas
 peft>=0.11.0,<0.12.0

@@ -73,7 +73,7 @@ def get_vllm_engine(
         engine_kwargs['max_loras'] = max_loras
         engine_kwargs['max_lora_rank'] = max_lora_rank
     else:
-        assert not enable_lora, ('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
+        assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
 
     engine_args = engine_args_cls(
         model=model_dir,
@@ -249,7 +249,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
         assert lora_request is None, (
             'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
     request_temp = []
-    resp_list = [None] * len(request_list)
+    resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:
@@ -345,7 +345,7 @@ def inference_vllm(llm_engine: LLMEngine,
         assert lora_request is None, (
             'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
 
-    resp_list = [None] * len(request_list)
+    resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     for i, request in enumerate(request_list):
         history = request.get('history', None)
         if history is None:

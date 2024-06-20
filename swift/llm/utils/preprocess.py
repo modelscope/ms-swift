@@ -1,9 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import os.path
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
-import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
 
@@ -62,7 +60,7 @@ class MediaMixin:
 
 class RowPreprocessMixin:
 
-    def preprocess(self, d):
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
 
@@ -98,8 +96,9 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         self.concat_inst_inp = concat_inst_inp
         super().__init__(**kwargs)
 
-    def preprocess(self, d):
-        inst, inp = d['instruction'], d.get('input', None)
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
+        inst = d['instruction']
+        inp: Optional[str] = d.get('input', None)
         h, output = d.pop('history', None), d['output']
         sys = d.pop('system', None)
         tool = d.pop('tools', None)
@@ -147,8 +146,9 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                  conversations_key: str = 'conversations',
                  from_key: str = 'from',
                  value_key: str = 'value',
-                 repair_conversations: Callable[[Union[str, Dict[str, str]]],
-                                                Optional[Dict[str, str]]] = _default_repair_conversations,
+                 tool_role: str = 'tool',
+                 repair_conversations: Callable[[Union[str, List[Dict[str, str]]]],
+                                                Optional[List[Dict[str, str]]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
                  **kwargs):
         self.user_role = user_role
@@ -157,11 +157,12 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         self.conversations_key = conversations_key
         self.from_key = from_key
         self.value_key = value_key
+        self.tool_role = tool_role
         self.repair_conversations = repair_conversations
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
 
-    def preprocess(self, d):
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
         try:
             conversations = d[self.conversations_key]
             conversations = self.repair_conversations(conversations)
@@ -170,34 +171,38 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             lo = 0
             sys = None
             h: History = []
+            hr: History = []
             assert len(conversations) >= 2
             if conversations[0][self.from_key] == self.system_role:
                 lo += 1
                 sys = conversations[0][self.value_key]
-            assert conversations[-2][self.from_key] == self.user_role
+            assert conversations[-2][self.from_key] in [self.user_role, self.tool_role]
             assert conversations[-1][self.from_key] == self.assistant_role
 
             for q, r in zip(conversations[lo:-2:2], conversations[lo + 1:-2:2]):
-                assert q[self.from_key] == self.user_role
+                assert q[self.from_key] in [self.user_role, self.tool_role]
                 assert r[self.from_key] == self.assistant_role
                 h.append([q[self.value_key], r[self.value_key]])
+                hr.append([q[self.from_key], r[self.from_key]])
             query = conversations[-2][self.value_key]
+            query_role = conversations[-2][self.from_key]
             response = conversations[-1][self.value_key]
             system = sys
             history = h
-            tool = d.get('tools', [])
-            kwargs = {'system': system, 'history': history}
-            kwargs.update({
+            tools = d.get('tools', [])
+            row = {'system': system, 'history': history, 'history_roles': hr}
+            row.update({
                 'query': query,
+                'query_role': query_role,
                 'response': response,
-                'tools': tool,
+                'tools': tools,
             })
             medias = self.parse_medias(d)
-            self.media_replacer(kwargs, medias)
+            self.media_replacer(row, medias)
             if self.media_type:
                 if not isinstance(self.media_key, str):
-                    kwargs[self.media_name] = medias
-            return kwargs
+                    row[self.media_name] = medias
+            return row
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
@@ -230,7 +235,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
 
-    def preprocess(self, d):
+    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
         conversations = None
         try:
             conversations = d[self.conversations_key]
@@ -241,22 +246,22 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 history.append([c[self.query_key], c[self.response_key]])
 
             query, response = history.pop(-1)
-            d_dict = {
+            row = {
                 'history': history,
                 'query': query,
                 'response': response,
             }
             medias = self.parse_medias(d)
-            self.media_replacer(d_dict, self.parse_medias(d))
+            self.media_replacer(row, medias)
             if self.media_type:
                 if not isinstance(self.media_key, str):
-                    d_dict[self.media_name] = medias
+                    row[self.media_name] = medias
         except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
                 return self.empty_row
-        return d_dict
+        return row
 
     def __call__(self, dataset: HfDataset):
         dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('response'))

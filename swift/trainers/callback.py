@@ -2,7 +2,6 @@
 import os
 import time
 
-import json
 from tqdm.auto import tqdm
 from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback, TrainerCallback, TrainerControl,
                                            TrainerState)

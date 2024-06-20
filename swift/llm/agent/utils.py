@@ -148,7 +148,7 @@ def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[st
     return action, action_input
 
 
-def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]):
+def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:
     import re
     compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
     for i in range(len(text_list) - 1, -1, -1):
