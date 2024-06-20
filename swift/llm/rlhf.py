@@ -47,7 +47,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             model_kwargs = {'device_map': json.load(json_file)}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
-        if is_dist() and not is_ddp_plus_mp():
+        if (is_dist() and not is_ddp_plus_mp()) or torch.cuda.device_count() == 1:
             model_kwargs['device_map'] = {'': local_rank}
         else:
             model_kwargs['device_map'] = 'auto'
