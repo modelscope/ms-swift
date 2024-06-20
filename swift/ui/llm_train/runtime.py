@@ -123,6 +123,7 @@ class Runtime(BaseUI):
             'smooth': 0.9,
         },
     ]
+
     locale_dict = {
         'runtime_tab': {
             'label': {
@@ -285,7 +286,7 @@ class Runtime(BaseUI):
 
         args: dict = cls.parse_info_from_cmdline(task)[1]
         train_type = args.get('rlhf_type', 'dpo')
-        if train_type in ('dpo', 'cpo'):
+        if train_type in ('dpo', 'cpo', 'simpo'):
             return cls.dpo_plot
         elif train_type == 'kto':
             return cls.kto_plot
