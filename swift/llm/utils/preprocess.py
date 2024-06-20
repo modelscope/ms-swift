@@ -179,7 +179,6 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             assert conversations[-2][self.from_key] in [self.user_role, self.tool_role]
             assert conversations[-1][self.from_key] == self.assistant_role
 
-
             for q, r in zip(conversations[lo:-2:2], conversations[lo + 1:-2:2]):
                 assert q[self.from_key] in [self.user_role, self.tool_role]
                 assert r[self.from_key] == self.assistant_role
@@ -191,7 +190,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             system = sys
             history = h
             tools = d.get('tools', [])
-            row = {'system': system, 'history': history, 'history_roles':hr}
+            row = {'system': system, 'history': history, 'history_roles': hr}
             row.update({
                 'query': query,
                 'query_role': query_role,
