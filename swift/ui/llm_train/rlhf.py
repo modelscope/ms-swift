@@ -112,11 +112,11 @@ class RLHF(BaseUI):
                 with gr.Row():
                     loss_type = gr.Dropdown(elem_id='loss_type')
                     gr.Textbox(elem_id='max_prompt_length', lines=1, scale=20)
-                    beta = gr.Slider(elem_id='beta', minimum=0, maximum=5.0, step=0.1, scale=20)
-                    gr.Slider(elem_id='sft_beta', minimum=0, maximum=0.95, step=0.05,  scale=20)
-                    gr.Slider(elem_id='simpo_gamma', minimum=0, maximum=2.0, step=0.1, scale=20)
-                    gr.Slider(elem_id='desirable_weight', minimum=0, maximum=2.0, step=0.1, scale=20)
-                    gr.Slider(elem_id='undesirable_weight', minimum=0, maximum=2.0, step=0.1,scale=20)
+                    beta = gr.Slider(elem_id='beta', minimum=0., maximum=5.0, step=0.1, scale=20)
+                    gr.Slider(elem_id='sft_beta', minimum=0., maximum=0.95, step=0.05,  scale=20)
+                    gr.Slider(elem_id='simpo_gamma', minimum=0., maximum=2.0, step=0.1, scale=20)
+                    gr.Slider(elem_id='desirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
+                    gr.Slider(elem_id='undesirable_weight', minimum=0., maximum=2.0, step=0.1,scale=20)
 
             def update_input_model(choice, model_state=None):
                 if choice is None:

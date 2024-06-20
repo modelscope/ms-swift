@@ -287,16 +287,13 @@ class LLMTrain(BaseUI):
         do_rlhf = False
         for key, value in zip(keys, args):
             compare_value = sft_args.get(key)
-            compare_value_arg = str(compare_value) if not isinstance(compare_value, (list, dict)) else compare_value
-            compare_value_ui = str(value) if not isinstance(value, (list, dict)) else value
-
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                 value = int(value)
             elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                 value = float(value)
             elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
                 value = True if value.lower() == 'true' else False
-            if key not in ignore_elements and key in sft_args and compare_value_ui != compare_value_arg and value:
+            if key not in ignore_elements and key in sft_args and compare_value != value and value:
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
@@ -331,7 +328,7 @@ class LLMTrain(BaseUI):
             else:
                 params += f'--{e} "{kwargs[e]}" '
         params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
-                  f'--logging_dir {sft_args.logging_dir} '
+                  f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
         ddp_param = ''
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
