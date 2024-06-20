@@ -2262,6 +2262,7 @@ def get_dataset(
             if 'history' in ds.features:
                 features = ds.features.copy()
                 features['_history'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
+            if 'system' in ds.features:
                 features['_system'] = Value(dtype='string')
             ds = ds.map(_reduce_column, load_from_cache_file=False, features=features)
             if 'history' in ds.features:
