@@ -280,7 +280,7 @@ class Runtime(BaseUI):
 
     @classmethod
     def get_plot(cls, task):
-        if 'swift sft' in task:
+        if not task or 'swift sft' in task:
             return cls.sft_plot
 
         args: dict = cls.parse_info_from_cmdline(task)[1]
@@ -375,7 +375,7 @@ class Runtime(BaseUI):
         output_dir = running_task if not running_task or 'pid:' not in running_task else None
         process_name = 'swift'
         negative_name = 'swift.exe'
-        cmd_name = 'sft'
+        cmd_name = ['sft', 'rlhf']
         process = []
         selected = None
         for proc in psutil.process_iter():
@@ -386,7 +386,7 @@ class Runtime(BaseUI):
             if any([process_name in cmdline
                     for cmdline in cmdlines]) and not any([negative_name in cmdline
                                                            for cmdline in cmdlines]) and any(  # noqa
-                                                               [cmd_name == cmdline for cmdline in cmdlines]):  # noqa
+                                                               [cmdline in cmd_name for cmdline in cmdlines]):  # noqa
                 process.append(Runtime.construct_running_task(proc))
                 if output_dir is not None and any(  # noqa
                     [output_dir == cmdline for cmdline in cmdlines]):  # noqa
@@ -434,7 +434,10 @@ class Runtime(BaseUI):
                 if i == 0:
                     pid = task[:slash].split(':')[1]
                 task = task[slash + 1:]
-        args = task.split('swift sft')[1]
+        if 'swift sft' in task:
+            args = task.split('swift sft')[1]
+        elif 'swift rlhf' in task:
+            args = task.split('swift rlhf')[1]
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
         for i in range(len(args)):
@@ -447,7 +450,7 @@ class Runtime(BaseUI):
             with open(os.path.join(output_dir, 'sft_args.json'), 'r') as f:
                 _json = json.load(f)
             for key in all_args.keys():
-                all_args[key] = _json[key]
+                all_args[key] = _json.get(key)
                 if isinstance(all_args[key], list):
                     if any([' ' in value for value in all_args[key]]):
                         all_args[key] = [f'"{value}"' for value in all_args[key]]
