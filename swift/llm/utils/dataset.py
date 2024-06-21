@@ -7,6 +7,7 @@ from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import datasets.fingerprint
 import json
 import numpy as np
 import pandas as pd
@@ -19,11 +20,26 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from swift.utils.torch_utils import _find_local_mac
 from .media import MediaCache
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
 from .utils import download_dataset
+
+
+def _update_fingerprint_mac(*args, **kwargs):
+    mac = _find_local_mac().replace(':', '')
+    fp = datasets.fingerprint._update_fingerprint(*args, **kwargs)
+    fp += '-' + mac
+    if len(fp) > 64:
+        fp = fp[:64]
+    return fp
+
+
+datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
+datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
+datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -349,7 +365,7 @@ def _post_preprocess(
             train_sample = dataset_sample - val_sample
             assert isinstance(val_sample, int)
             train_dataset, val_dataset = train_dataset.train_test_split(
-                test_size=val_sample, seed=get_seed(random_state)).values()
+                test_size=val_sample, seed=get_seed(random_state), load_from_cache_file=False).values()
 
         assert train_sample > 0
         train_dataset = sample_dataset(train_dataset, train_sample, random_state)
@@ -972,7 +988,8 @@ def process_hh_rlhf_cn(dataset):
         except:  # noqa
             return False
 
-    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(lambda row: row['query'])
+    return dataset.filter(row_can_be_parsed).map(
+        reorganize_row, load_from_cache_file=False).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -1240,7 +1257,7 @@ def process_ultrafeedback_kto(dataset: HfDataset):
             'label': row['label'],
         }
 
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row, load_from_cache_file=False)
 
 
 register_dataset(
@@ -1545,7 +1562,8 @@ def preprocess_llava_mix_sft(dataset):
                 value_key='content',
                 media_key='images',
                 media_type='image',
-            ).preprocess)
+            ).preprocess,
+            load_from_cache_file=False)
     return dataset
 
 
@@ -1931,7 +1949,7 @@ def _preprocess_toolbench(dataset: HfDataset) -> HfDataset:
             'response': convs[-1]['value']
         }
 
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row, load_from_cache_file=False)
 
 
 register_dataset(
