@@ -39,6 +39,7 @@ def _update_fingerprint_mac(*args, **kwargs):
 
 datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
+datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -364,7 +365,7 @@ def _post_preprocess(
             train_sample = dataset_sample - val_sample
             assert isinstance(val_sample, int)
             train_dataset, val_dataset = train_dataset.train_test_split(
-                test_size=val_sample, seed=get_seed(random_state)).values()
+                test_size=val_sample, seed=get_seed(random_state), load_from_cache_file=False).values()
 
         assert train_sample > 0
         train_dataset = sample_dataset(train_dataset, train_sample, random_state)
