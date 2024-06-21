@@ -7,9 +7,8 @@ from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-import json
-
 import datasets.fingerprint
+import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
@@ -21,12 +20,12 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from ...utils.torch_utils import _find_local_mac
 from .media import MediaCache
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
 from .utils import download_dataset
-from ...utils.torch_utils import _find_local_mac
 
 
 def _update_fingerprint_mac(*args, **kwargs):
@@ -988,7 +987,8 @@ def process_hh_rlhf_cn(dataset):
         except:  # noqa
             return False
 
-    return dataset.filter(row_can_be_parsed).map(reorganize_row, load_from_cache_file=False).filter(lambda row: row['query'])
+    return dataset.filter(row_can_be_parsed).map(
+        reorganize_row, load_from_cache_file=False).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -1561,7 +1561,8 @@ def preprocess_llava_mix_sft(dataset):
                 value_key='content',
                 media_key='images',
                 media_type='image',
-            ).preprocess, load_from_cache_file=False)
+            ).preprocess,
+            load_from_cache_file=False)
     return dataset
 
 

@@ -36,7 +36,7 @@ def _find_free_port() -> str:
 
 def _find_local_mac() -> str:
     mac = uuid.getnode()
-    mac_address = ':'.join(('%012x' % mac)[i:i+2] for i in range(0, 12, 2))
+    mac_address = ':'.join(('%012x' % mac)[i:i + 2] for i in range(0, 12, 2))
     return mac_address
 
 
