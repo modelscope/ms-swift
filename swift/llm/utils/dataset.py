@@ -1346,16 +1346,14 @@ register_dataset(
 def preprocess_okvqa(dataset):
 
     def preprocess(row):
-        image = row['image']
         query = row['question']
         response = np.random.choice(row['answers'])
         return {
             'response': response,
-            'images': image,
             'query': query,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=False)
+    return dataset.map(preprocess, load_from_cache_file=False).rename_column('image', 'images')
 
 
 register_dataset(
@@ -1371,16 +1369,14 @@ register_dataset(
 def preprocess_a_okvqa(dataset):
 
     def preprocess(row):
-        image = row['image']
         query = row['question']
         response = np.random.choice(row['rationales'])
         return {
             'response': response,
-            'images': image,
             'query': query,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=False)
+    return dataset.map(preprocess, load_from_cache_file=False).rename_column('image', 'images')
 
 
 register_dataset(
@@ -1396,17 +1392,15 @@ register_dataset(
 def preprocess_ocr_vqa(dataset):
 
     def preprocess(row):
-        image = row['image']
         idx = np.random.choice(range(len(row['questions'])))
         query = row['questions'][idx]
         response = row['answers'][idx]
         return {
             'response': response,
-            'images': image,
             'query': query,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=False)
+    return dataset.map(preprocess, load_from_cache_file=False).rename_column('image', 'images')
 
 
 register_dataset(
