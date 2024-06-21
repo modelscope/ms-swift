@@ -215,7 +215,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         acc: Optional[Tensor] = None
 
         if self.state.global_step % self.sft_args.acc_steps == 0:
-            print('calc acc....')
             if preds.shape != labels.shape:
                 pass
             elif acc_strategy == 'sentence':
