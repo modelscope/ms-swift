@@ -167,6 +167,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         empty_row = super().empty_row
         empty_row['history_roles'] = None
         empty_row['query_role'] = None
+        empty_row['tools'] = None
         return empty_row
 
     def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:

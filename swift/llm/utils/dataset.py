@@ -2257,12 +2257,10 @@ def get_dataset(
             return res
 
         def _reduce_dataset(ds: HfDataset):
-            features = None
+            features = ds.features.copy()
             if 'history' in ds.features:
-                features = ds.features.copy()
                 features['_history'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
             if 'history_roles' in ds.features:
-                features = ds.features.copy()
                 features['_history_roles'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
             if 'system' in ds.features:
                 features['_system'] = Value(dtype='string')
