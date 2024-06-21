@@ -4,8 +4,8 @@
 
 # MASTER_ADDR=127.0.0.1 \
 
-NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=1 \
+CUDA_VISIBLE_DEVICES=7 \
 swift sft \
   --model_id_or_path qwen/Qwen-72B-Chat \
   --dataset codefuse-python-en \
@@ -22,5 +22,6 @@ swift sft \
   --eval_steps 2000000 \
   --save_steps 2000000 \
   --logging_steps 100 \
+  --acc_steps 100 \
   --preprocess_num_proc 1 \
   --metric_warmup_step 0.1 \
