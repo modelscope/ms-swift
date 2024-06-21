@@ -1,16 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
 import datetime as dt
+import multiprocessing
 import os
+import subprocess
 import time
+from dataclasses import fields
 from typing import Any, Dict, List, Optional, Tuple
 
 import json
-from llmuses.models.custom import CustomModel
+from llmuses.backend.opencompass import OpenCompassBackendManager
+from llmuses.run import run_task
 from modelscope import GenerationConfig
 from tqdm import tqdm
 
-from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
+from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything, safe_ddp_context
+from . import DeployArguments
 from .infer import merge_lora, prepare_model_template
 from .utils import EvalArguments, XRequestConfig, inference, inference_client_async
 
@@ -129,10 +134,28 @@ class EvalModel(CustomModel):
         return res_d
 
 
+def prepare_evalscope_dataset():
+    from swift.llm.utils.media import MediaCache
+    data_url = 'https://github.com/open-compass/opencompass/releases/download/0.2.2.rc1/OpenCompassData-core-20240207.zip'
+    return MediaCache.download(data_url, 'evalscope')
+
+
+def run_custom_model(args: EvalArguments):
+    from swift.utils.torch_utils import _find_free_port
+    from swift.llm.deploy import llm_deploy
+    deploy_args = DeployArguments()
+    for f in fields(args):
+        if hasattr(deploy_args, f.name):
+            setattr(deploy_args, f.name, getattr(args, f.name))
+    deploy_args.port = _find_free_port()
+    llm_deploy(deploy_args)
+
+
 def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
     from llmuses.run import run_task
     from llmuses.config import TaskConfig
     from llmuses.summarizer import Summarizer
+    from swift.utils.torch_utils import _find_free_port
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     model_name = args.model_type
@@ -146,7 +169,23 @@ def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
             for _ds in custom_eval:
                 custom_names.append(_ds['name'])
                 TaskConfig.registry(_ds['name'], _ds['pattern'], _ds['dataset'], subset_list=_ds.get('subset_list'))
-    eval_model = EvalModel(args, model_name)
+
+    port = _find_free_port()
+    dataset_dir = prepare_evalscope_dataset()
+    args.port = port
+    process = multiprocessing.Process(target=run_custom_model, args=(args,))
+    process.start()
+
+    model_type = 'default-lora' if args.sft_type == 'lora' and not args.merge_lora else args.model_type
+
+    task_cfg = dict(
+        eval_backend='OpenCompass',
+        eval_config={'datasets': args.eval_dataset,
+                     'models': [
+                         {'path': model_type, 'openai_api_base': f'http://127.0.0.1:{port}/v1/chat/completions'}, ]
+                     },
+    )
+    run_task(task_cfg=task_cfg)
 
     task_configs = TaskConfig.load(custom_model=eval_model, tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
