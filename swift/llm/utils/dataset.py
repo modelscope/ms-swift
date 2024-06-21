@@ -8,6 +8,8 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import json
+
+import datasets.fingerprint
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
@@ -24,6 +26,20 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocesso
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
 from .utils import download_dataset
+from ...utils.torch_utils import _find_local_mac
+
+
+def _update_fingerprint_mac(*args, **kwargs):
+    mac = _find_local_mac().replace(':', '')
+    fp = datasets.fingerprint._update_fingerprint(*args, **kwargs)
+    fp += '-' + mac
+    if len(fp) > 64:
+        fp = fp[:64]
+    return fp
+
+
+datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
+datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
@@ -972,7 +988,7 @@ def process_hh_rlhf_cn(dataset):
         except:  # noqa
             return False
 
-    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(lambda row: row['query'])
+    return dataset.filter(row_can_be_parsed).map(reorganize_row, load_from_cache_file=False).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -1240,7 +1256,7 @@ def process_ultrafeedback_kto(dataset: HfDataset):
             'label': row['label'],
         }
 
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row, load_from_cache_file=False)
 
 
 register_dataset(
@@ -1545,7 +1561,7 @@ def preprocess_llava_mix_sft(dataset):
                 value_key='content',
                 media_key='images',
                 media_type='image',
-            ).preprocess)
+            ).preprocess, load_from_cache_file=False)
     return dataset
 
 
@@ -1931,7 +1947,7 @@ def _preprocess_toolbench(dataset: HfDataset) -> HfDataset:
             'response': convs[-1]['value']
         }
 
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row, load_from_cache_file=False)
 
 
 register_dataset(
