@@ -20,8 +20,6 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
-from datasets.arrow_writer import SchemaInferenceError
-from datasets.exceptions import DatasetGenerationError
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
@@ -479,7 +477,7 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str) -> L
     return list(target_module_names)
 
 
-def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
+def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
     logger.info('sort by max length...')
     dataset_len = [len(d['input_ids']) for d in llm_dataset]
     idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
@@ -783,7 +781,6 @@ def inference(model: PreTrainedModel,
     generate_ids = template.get_generate_ids(generate_ids, token_len)
     if generation_info is not None:
         generation_info['num_generated_tokens'] = len(generate_ids)
-    response = None
     if verbose and stream is False:
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         print(response)
