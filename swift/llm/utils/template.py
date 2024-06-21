@@ -940,7 +940,10 @@ class GLM4VTemplate(GLMTemplate):
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
+                image_size: int = self.model.config.vision_config['image_size']
+                patch_size: int = self.model.config.vision_config['patch_size']
+                num_patches = (image_size // patch_size // 2)**2
+                labels = (labels[:idx] + [-100] * (len(placeholder_id) + num_patches - 1) + labels[idx + 1:])
             messages = history_to_messages(example.get('history', []), example['query'], example.get('system', None))
             messages[0]['image'] = image
             inputs2: Dict[str, Any] = self.tokenizer.apply_chat_template(messages, return_dict=True)
@@ -949,8 +952,15 @@ class GLM4VTemplate(GLMTemplate):
         inputs['labels'] = labels
         return inputs, {}
 
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        images = [b['images'] for b in batch if 'images' in b]
+        if images:
+            res['images'] = torch.concat(images)
+        return res
 
-register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True)
+
+register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True, use_model=True)
 
 register_template(
     TemplateType.yi_vl,
