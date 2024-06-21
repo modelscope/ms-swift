@@ -201,20 +201,19 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 loss = self.label_smoother(outputs, labels)
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
-        if use_torchacc():
-            ta_trim_graph()
-        if labels is None:
-            labels = inputs['labels']
 
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
+        if labels is None:
+            labels = inputs['labels']
         preds = outputs.logits.argmax(dim=2)[..., :-1]
         labels = labels[..., 1:]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
         acc: Optional[Tensor] = None
+
         if preds.shape != labels.shape:
             pass
         elif acc_strategy == 'sentence':
@@ -223,6 +222,11 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 acc_list.append(torch.all(preds[i, m] == labels[i, m]).to(torch.int64).item())
             acc = torch.tensor(acc_list, device=preds.device).float().mean()
         else:
+            if use_torchacc():
+                ta_trim_graph()
+                preds = preds.to('cpu')
+                masks = masks.to('cpu')
+                labels = labels.to('cpu')
             acc = (torch.masked_select(preds, masks) == torch.masked_select(labels, masks)).float().mean()
         if model.training and acc is not None:
             if 'acc' not in self._custom_metrics:
