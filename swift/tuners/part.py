@@ -3,7 +3,7 @@
 import re
 import types
 from dataclasses import dataclass, field
-from typing import List, Union, Optional
+from typing import List, Optional, Union
 
 import torch
 from torch import nn
@@ -54,5 +54,3 @@ class Part(SwiftAdapter):
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
         pass
-
-
