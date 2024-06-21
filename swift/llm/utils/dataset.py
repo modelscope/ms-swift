@@ -2247,20 +2247,28 @@ def get_dataset(
                     res['_history'] = None
                 else:
                     res['_history'] = row['history']
+            if 'history_roles' in row:
+                if not row['history_roles']:
+                    res['_history_roles'] = None
+                else:
+                    res['_history_roles'] = row['history_roles']
             if 'system' in row:
                 res['_system'] = row['system']
             return res
 
         def _reduce_dataset(ds: HfDataset):
-            features = None
+            features = ds.features.copy()
             if 'history' in ds.features:
-                features = ds.features.copy()
                 features['_history'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
+            if 'history_roles' in ds.features:
+                features['_history_roles'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
             if 'system' in ds.features:
                 features['_system'] = Value(dtype='string')
             ds = ds.map(_reduce_column, load_from_cache_file=False, features=features)
             if 'history' in ds.features:
                 ds = ds.remove_columns(['history']).rename_column('_history', 'history')
+            if 'history_roles' in ds.features:
+                ds = ds.remove_columns(['history_roles']).rename_column('_history_roles', 'history_roles')
             if 'system' in ds.features:
                 ds = ds.remove_columns(['system']).rename_column('_system', 'system')
             return ds

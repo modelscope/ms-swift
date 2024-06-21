@@ -162,6 +162,14 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
 
+    @property
+    def empty_row(self):
+        empty_row = super().empty_row
+        empty_row['history_roles'] = None
+        empty_row['query_role'] = None
+        empty_row['tools'] = None
+        return empty_row
+
     def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
         try:
             conversations = d[self.conversations_key]
