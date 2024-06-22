@@ -134,12 +134,6 @@ class EvalModel(CustomModel):
         return res_d
 
 
-def prepare_evalscope_dataset():
-    from swift.llm.utils.media import MediaCache
-    data_url = 'https://github.com/open-compass/opencompass/releases/download/0.2.2.rc1/OpenCompassData-core-20240207.zip'
-    return MediaCache.download(data_url, 'evalscope')
-
-
 def run_custom_model(args: EvalArguments):
     from swift.utils.torch_utils import _find_free_port
     from swift.llm.deploy import llm_deploy
@@ -149,6 +143,26 @@ def run_custom_model(args: EvalArguments):
             setattr(deploy_args, f.name, getattr(args, f.name))
     deploy_args.port = _find_free_port()
     llm_deploy(deploy_args)
+
+
+class EvalDatasetContext:
+
+    def __init__(self):
+        self.cache_dir = self.prepare_evalscope_dataset()
+
+    def __enter__(self):
+        os.symlink(self.cache_dir, os.path.join(os.getcwd(), 'data'))
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if os.path.islink(os.path.join(os.getcwd(), 'data')):
+            os.remove(os.path.join(os.getcwd(), 'data'))
+
+    @staticmethod
+    def prepare_evalscope_dataset():
+        from swift.llm.utils.media import MediaCache
+        data_url = 'https://github.com/open-compass/opencompass/releases/download/0.2.2.rc1/OpenCompassData-core-20240207.zip'
+        return MediaCache.download(data_url, 'evalscope')
+
 
 
 def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
@@ -171,7 +185,6 @@ def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
                 TaskConfig.registry(_ds['name'], _ds['pattern'], _ds['dataset'], subset_list=_ds.get('subset_list'))
 
     port = _find_free_port()
-    dataset_dir = prepare_evalscope_dataset()
     args.port = port
     process = multiprocessing.Process(target=run_custom_model, args=(args,))
     process.start()
@@ -185,38 +198,40 @@ def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
                          {'path': model_type, 'openai_api_base': f'http://127.0.0.1:{port}/v1/chat/completions'}, ]
                      },
     )
-    run_task(task_cfg=task_cfg)
 
-    task_configs = TaskConfig.load(custom_model=eval_model, tasks=args.eval_dataset + custom_names)
-    for task_config in task_configs:
-        task_config.use_cache = args.eval_use_cache
-        if args.eval_limit is not None:
-            task_config.limit = args.eval_limit
-        if args.eval_few_shot is not None:
-            for dataset in task_config.datasets:
-                if not task_config.dataset_args.get(dataset):
-                    task_config.dataset_args[dataset] = {}
-                task_config.dataset_args[dataset]['few_shot_num'] = args.eval_few_shot
+    with EvalDatasetContext():
+        run_task(task_cfg=task_cfg)
 
-    run_task(task_cfg=task_configs)
-    final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
-    logger.info(f'Final report:{final_report}\n')
+    # task_configs = TaskConfig.load(custom_model=eval_model, tasks=args.eval_dataset + custom_names)
+    # for task_config in task_configs:
+    #     task_config.use_cache = args.eval_use_cache
+    #     if args.eval_limit is not None:
+    #         task_config.limit = args.eval_limit
+    #     if args.eval_few_shot is not None:
+    #         for dataset in task_config.datasets:
+    #             if not task_config.dataset_args.get(dataset):
+    #                 task_config.dataset_args[dataset] = {}
+    #             task_config.dataset_args[dataset]['few_shot_num'] = args.eval_few_shot
 
-    if args.save_result:
-        result_dir = args.ckpt_dir
-        if result_dir is None:
-            result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
-        assert result_dir is not None
-        jsonl_path = os.path.join(result_dir, 'eval_result.jsonl')
-        result = {report['name']: report['score'] for report in final_report}
-        logger.info(f'result: {result}')
-        result_info = {
-            'result': result,
-            'time': dt.datetime.now().strftime('%Y%m%d-%H%M%S'),
-        }
-        append_to_jsonl(jsonl_path, result_info)
-        logger.info(f'save_result_path: {jsonl_path}')
-    return final_report
+    # run_task(task_cfg=task_configs)
+    # final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
+    # logger.info(f'Final report:{final_report}\n')
+    #
+    # if args.save_result:
+    #     result_dir = args.ckpt_dir
+    #     if result_dir is None:
+    #         result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
+    #     assert result_dir is not None
+    #     jsonl_path = os.path.join(result_dir, 'eval_result.jsonl')
+    #     result = {report['name']: report['score'] for report in final_report}
+    #     logger.info(f'result: {result}')
+    #     result_info = {
+    #         'result': result,
+    #         'time': dt.datetime.now().strftime('%Y%m%d-%H%M%S'),
+    #     }
+    #     append_to_jsonl(jsonl_path, result_info)
+    #     logger.info(f'save_result_path: {jsonl_path}')
+    # return final_report
 
 
 eval_main = get_main(EvalArguments, llm_eval)
