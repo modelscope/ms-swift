@@ -214,24 +214,25 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
         acc: Optional[Tensor] = None
 
-        if preds.shape != labels.shape:
-            pass
-        elif acc_strategy == 'sentence':
-            acc_list = []
-            for i, m in enumerate(masks):
-                acc_list.append(torch.all(preds[i, m] == labels[i, m]).to(torch.int64).item())
-            acc = torch.tensor(acc_list, device=preds.device).float().mean()
-        else:
-            if use_torchacc():
-                ta_trim_graph()
-                preds = preds.to('cpu')
-                masks = masks.to('cpu')
-                labels = labels.to('cpu')
-            acc = (torch.masked_select(preds, masks) == torch.masked_select(labels, masks)).float().mean()
-        if model.training and acc is not None:
-            if 'acc' not in self._custom_metrics:
-                self._custom_metrics['acc'] = self._acc
-            self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
+        if self.state.global_step % self.sft_args.acc_steps == 0:
+            if preds.shape != labels.shape:
+                pass
+            elif acc_strategy == 'sentence':
+                acc_list = []
+                for i, m in enumerate(masks):
+                    acc_list.append(torch.all(preds[i, m] == labels[i, m]).to(torch.int64).item())
+                acc = torch.tensor(acc_list, device=preds.device).float().mean()
+            else:
+                if use_torchacc():
+                    ta_trim_graph()
+                    preds = preds.to('cpu')
+                    masks = masks.to('cpu')
+                    labels = labels.to('cpu')
+                acc = (torch.masked_select(preds, masks) == torch.masked_select(labels, masks)).float().mean()
+            if model.training and acc is not None:
+                if 'acc' not in self._custom_metrics:
+                    self._custom_metrics['acc'] = self._acc
+                self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
 
     def get_train_dataloader(self):

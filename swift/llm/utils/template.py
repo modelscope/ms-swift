@@ -575,12 +575,20 @@ class Template:
         """
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
-        input_ids = [torch.tensor(b['input_ids']) for b in batch]
+        inputs_embeds, input_ids = None, None
+        if 'inputs_embeds' in batch[0]:
+            inputs_embeds = [b['inputs_embeds'] for b in batch]
+            attention_mask = [
+                torch.ones((inputs_embeds[i].shape[0]), dtype=torch.int64) for i in range(len(inputs_embeds))
+            ]
+        else:
+            input_ids = [torch.tensor(b['input_ids']) for b in batch]
+            attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
         labels = [torch.tensor(b['labels']) for b in batch]
         loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
-        attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
 
         if padding_to is not None:
+            assert input_ids is not None  # inputs_embeds not support padding_to
             padding_len = padding_to - input_ids[0].shape[-1]
             if padding_len > 0:
                 input_ids[0] = F.pad(input_ids[0], (0, padding_len), 'constant', tokenizer.pad_token_id)
@@ -589,7 +597,10 @@ class Template:
                 if loss_scale:
                     loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]), 'constant', 0.)
 
-        input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+        if input_ids is None:
+            inputs_embeds = pad_sequence(inputs_embeds, batch_first=True, padding_value=0)
+        else:
+            input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
         attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
         if loss_scale:
             loss_scale = pad_sequence(loss_scale, batch_first=True, padding_value=0.)
@@ -600,23 +611,26 @@ class Template:
             input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(padding_to, input_ids, attention_mask,
                                                                                 labels, loss_scale, self.max_length,
                                                                                 self.tokenizer, rank, world_size)
+        if input_ids is not None:
+            bs, seq_len = input_ids.shape
+            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
 
-        bs, seq_len = input_ids.shape
-        position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-
-        if self.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
-            if get_xtuner_sequence_parallel_world_size() > 1:
-                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
-                input_ids, labels, position_ids, attention_mask, loss_scale = \
-                    pad_and_split_for_sequence_parallel(
-                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+            if self.sequence_parallel_size > 1:
+                from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
+                if get_xtuner_sequence_parallel_world_size() > 1:
+                    from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
+                    input_ids, labels, position_ids, attention_mask, loss_scale = \
+                        pad_and_split_for_sequence_parallel(
+                            tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
 
         res = {
-            'input_ids': input_ids,
             'attention_mask': attention_mask,
             'labels': labels,
         }
+        if inputs_embeds is not None:
+            res['inputs_embeds'] = inputs_embeds
+        else:
+            res['input_ids'] = input_ids
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
@@ -1159,22 +1173,11 @@ class InternLMXComposer2(Template):
         return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        inputs_embeds = [b['inputs_embeds'] for b in batch]
-        labels = [torch.tensor(b['labels']) for b in batch]
+        res = super().data_collator(batch, padding_to)
         im_mask = [b['im_mask'][0] for b in batch]
-        attention_mask = [torch.ones(inputs_embeds[i].shape[0], dtype=torch.int64) for i in range(len(inputs_embeds))]
-
-        inputs_embeds = pad_sequence(inputs_embeds, batch_first=True, padding_value=0)
-        attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
         im_mask = pad_sequence(im_mask, batch_first=True, padding_value=0)
-        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
-
-        return {
-            'inputs_embeds': inputs_embeds,
-            'attention_mask': attention_mask,
-            'im_mask': im_mask,
-            'labels': labels,
-        }
+        res['im_mask'] = im_mask
+        return res
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
@@ -1642,21 +1645,6 @@ class DeepseekVLTemplate(Template):
         inputs['inputs_embeds'] = inputs_embeds
         inputs['labels'] = new_labels
         return inputs, {}
-
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        inputs_embeds = [b['inputs_embeds'] for b in batch]
-        labels = [torch.tensor(b['labels']) for b in batch]
-        attention_mask = [torch.ones(inputs_embeds[i].shape[0], dtype=torch.int64) for i in range(len(inputs_embeds))]
-
-        inputs_embeds = pad_sequence(inputs_embeds, batch_first=True, padding_value=0)
-        attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
-        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
-
-        return {
-            'inputs_embeds': inputs_embeds,
-            'attention_mask': attention_mask,
-            'labels': labels,
-        }
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:

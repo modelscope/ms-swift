@@ -23,6 +23,7 @@ swift sft \
   --eval_steps 2000000 \
   --save_steps 2000000 \
   --logging_steps 100 \
+  --acc_steps 100 \
   --preprocess_num_proc 1 \
   --metric_warmup_step 0.1 \
   --report_to 'none'

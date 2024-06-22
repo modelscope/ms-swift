@@ -28,6 +28,7 @@ swift sft \
     --eval_steps 200 \
     --save_steps 200 \
     --logging_steps 100 \
+    --acc_steps 100 \
     --metric_warmup_step 0.1 \
     --report_to 'none' \
     --fsdp_num 4 \
