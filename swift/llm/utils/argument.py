@@ -140,7 +140,8 @@ class ArgumentsBase:
             fp16, bf16 = False, False
         return torch_dtype, fp16, bf16
 
-    def select_bnb(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
+    def select_bnb(self: Union['SftArguments', 'InferArguments'],
+                   quantization_bit: int) -> Tuple[Optional[Dtype], bool, bool]:
         if self.bnb_4bit_comp_dtype == 'AUTO':
             self.bnb_4bit_comp_dtype = self.dtype
 
@@ -149,7 +150,6 @@ class ArgumentsBase:
             assert bnb_4bit_compute_dtype in {torch.float16, torch.bfloat16, torch.float32}
         else:
             bnb_4bit_compute_dtype = None
-        quantization_bit = self.quantization_bit
         if self.quant_method == 'bnb':
             if quantization_bit == 4:
                 require_version('bitsandbytes')
@@ -861,7 +861,7 @@ class SftArguments(ArgumentsBase):
                 logger.info('Since you have specified quantization_bit as greater than 0 '
                             "and have not designated a quant_method, quant_method will be set to 'hqq'.")
 
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
+        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb(self.quantization_bit)
 
         if self.neftune_backend is None:
             self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
@@ -1178,7 +1178,7 @@ class InferArguments(ArgumentsBase):
                 logger.info('Since you have specified quantization_bit as greater than 0 '
                             "and have not designated a quant_method, quant_method will be set to 'hqq'.")
 
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
+        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb(self.quantization_bit)
 
         if self.max_length == -1:
             self.max_length = None
@@ -1359,9 +1359,10 @@ class ExportArguments(InferArguments):
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 
-    # awq: 4; gptq: 2, 3, 4, 8
+    # awq: 4; gptq: 2, 3, 4, 8; bnb: 4,8
     quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['awq', 'gptq'] = 'awq'
+    quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
+    # awq,gptq
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
@@ -1377,6 +1378,10 @@ class ExportArguments(InferArguments):
     hub_private_repo: bool = False
     commit_message: str = 'update files'
 
+    def select_bnb(self: Union['SftArguments', 'InferArguments'],
+                   quantization_bit: int) -> Tuple[Optional[Dtype], bool, bool]:
+        return super().select_bnb(self.quant_bits)
+
     def __post_init__(self):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
@@ -1384,7 +1389,7 @@ class ExportArguments(InferArguments):
             self.dtype = 'fp16'
             logger.info(f'Setting args.dtype: {self.dtype}')
         super().__post_init__()
-        if len(self.dataset) == 0 and self.quant_bits > 0:
+        if len(self.dataset) == 0 and self.quant_bits > 0 and self.quant_method in {'awq', 'gptq'}:
             self.dataset = ['alpaca-zh#10000', 'alpaca-en#10000']
             logger.info(f'Setting args.dataset: {self.dataset}')
         if self.quant_output_dir is None:
