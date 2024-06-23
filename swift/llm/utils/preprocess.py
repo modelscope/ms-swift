@@ -11,13 +11,13 @@ from .template import History
 PreprocessFunc = Callable[[HfDataset], HfDataset]
 
 
-def parse_medias(d, media_key=None):
+def parse_medias(d: Dict[str, Any], media_key=None):
     if isinstance(media_key, str):
         if media_key in d:
             medias = d[media_key]
         else:
             medias = None
-    elif media_key:
+    elif media_key:  # function
         medias = media_key(d)
     else:
         medias = None
@@ -41,7 +41,7 @@ class MediaMixin:
             return None
         return self.media_replacer.media_keys[self.media_type]
 
-    def parse_medias(self, d):
+    def parse_medias(self, d: Dict[str, Any]):
         return parse_medias(d, self.media_key)
 
     @property
