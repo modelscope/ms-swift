@@ -93,9 +93,6 @@ if not use_hf:
     def _msdataset_ddp_load(*args, **kwargs):
         with safe_ddp_context():
             dataset = _old_msdataset_load(*args, **kwargs)
-
-        if is_dist():  # sync
-            dist.barrier()
         return dataset
 
     # monkey patching

@@ -510,6 +510,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 async def create_chat_completion(request: ChatCompletionRequest, raw_request: Request) -> ChatCompletionResponse:
     global _args
     assert _args is not None
+    if request.stop is None:
+        request.stop = []
     if _args.infer_backend == 'vllm':
         return await inference_vllm_async(request, raw_request)
     else:
@@ -520,6 +522,8 @@ async def create_chat_completion(request: ChatCompletionRequest, raw_request: Re
 async def create_completion(request: CompletionRequest, raw_request: Request) -> CompletionResponse:
     global _args
     assert _args is not None
+    if request.stop is None:
+        request.stop = []
     if _args.infer_backend == 'vllm':
         return await inference_vllm_async(request, raw_request)
     else:

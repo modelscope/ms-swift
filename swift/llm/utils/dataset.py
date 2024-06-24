@@ -2256,7 +2256,7 @@ def get_dataset(
             assert model_name is not None and model_author is not None
             dataset = _preprocess_self_cognition_dataset(dataset, model_name, model_author)
 
-        def _reduce_column(row):
+        def _reduce_column(row: Dict[str, Any]) -> Dict[str, Any]:
             res = {}
             if 'query' in row and isinstance(row['query'], (list, tuple)):
                 res['query'] = np.random.choice(row['query'])
