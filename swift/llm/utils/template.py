@@ -377,7 +377,7 @@ class Template:
 
         if is_multi_modal:
             context_list, loss_scale_list = self.split_special_tokens(context_list, loss_scale_list)
-        context_list = self.pre_tokenize(context_list, **kwargs)
+        context_list, loss_scale_list = self.pre_tokenize(context_list, loss_scale_list, **kwargs)
 
         for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str) and loss_scale_list[i] == 0.0:
@@ -448,30 +448,34 @@ class Template:
         else:
             return ['<bbox>']
 
-    def pre_tokenize(self, context_list: List[Context], **kwargs) -> List[Context]:
+    def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
+                     **kwargs) -> Tuple[List[Context], List[float]]:
         # replace tag/object/box
         example = kwargs['example']  # get x_index
-        res = []
+        res: List[Context] = []  # result of context_list
+        res_loss_scale: List[float] = []  # result of loss_scale_list
 
-        for context in context_list:
+        for context, loss_scale in zip(context_list, loss_scale_list):
             if context == '<image>':
-                res += self.replace_tag('image', example.get('image_index', 0), example)
+                c_list = self.replace_tag('image', example.get('image_index', 0), example)
                 example['image_index'] = example.get('image_index', 0) + 1
             elif context == '<video_label>':
-                res += self.replace_tag('video', example.get('video_index', 0), example)
+                c_list = self.replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
             elif context == '<audio_label>':
-                res += self.replace_tag('audio', example.get('audio_index', 0), example)
+                c_list = self.replace_tag('audio', example.get('audio_index', 0), example)
                 example['audio_index'] = example.get('audio_index', 0) + 1
             elif context == '<ref-object>':
-                res += self.replace_object(example.get('object_index', 0), example)
+                c_list = self.replace_object(example.get('object_index', 0), example)
                 example['object_index'] = example.get('object_index', 0) + 1
             elif context == '<bbox>':
-                res += self.replace_box(example.get('box_index', 0), example)
+                c_list = self.replace_box(example.get('box_index', 0), example)
                 example['box_index'] = example.get('box_index', 0) + 1
             else:
-                res.append(context)
-        return res
+                c_list = [context]
+            res += c_list
+            res_loss_scale += [loss_scale] * len(c_list)
+        return res, res_loss_scale
 
     def _encode_context_list(self, context_list: List[Context],
                              loss_scale_list: List[float]) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
@@ -482,6 +486,8 @@ class Template:
         tokenizer_kwargs = {}
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
+                # tokenizer_kwargs is the returned tokenizer_kwargs,
+                # while curr_tokenizer_kwargs is the tokenizer_kwargs for the current context.
                 curr_tokenizer_kwargs = self._get_tokenizer_kwargs(context)
                 self._concat_tokenizer_kwargs(tokenizer_kwargs, curr_tokenizer_kwargs)
                 token_list = self._tokenize(context, **curr_tokenizer_kwargs)
@@ -1201,7 +1207,7 @@ class InternvlTemplate(Template):
 
     def check_example(self, example):
         images = example.get('images') or []
-        assert len(images) == 1
+        assert len(images) <= 1
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1227,7 +1233,8 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
 
             idx = idx_list[0]
-            img_tokens = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n')
+            img_tokens: List[int] = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs
+                                                          + '</img>\n')
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx + 1:]
@@ -1670,14 +1677,14 @@ class CogTemplate(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
-        images_path = example['images']
-        image = _read_from_path(images_path[0])
+        images_path = example.get('images') or []
+        image = _read_from_path(images_path[0]) if len(images_path) >= 1 else []
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
-            self.tokenizer, query=example['query'], history=example.get('history'), images=[image] if image else [])
+            self.tokenizer, query=example['query'], history=example.get('history'), images=[image])
         image_token_len = inputs2['token_type_ids'].sum()
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -1748,11 +1755,8 @@ class MiniCPMVTemplate(Template):
         return [[-1]]
 
     def check_example(self, example):
-        images = example.get('images')
-        if isinstance(images, (list, tuple)):
-            assert len(images) == 1
-        else:
-            assert images
+        images = example.get('images') or []
+        assert len(images) == 1
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)

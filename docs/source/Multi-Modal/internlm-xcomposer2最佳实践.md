@@ -26,26 +26,27 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type internlm-xcomposer2-7b-chat
 ```python
 """
 <<< 你是谁？
- 我是你的助手，一个基于语言的人工智能模型，可以回答你的问题。
+我是浦语·灵笔，一个由上海人工智能实验室开发的语言模型。我能理解并流畅地使用英语和中文与你对话。
 --------------------------------------------------
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>这两张图片有什么区别
- 这两张图片是不同的, 第一张是羊的图片, 第二张是猫的图片
+这两张图片没有直接的关联，它们分别展示了两个不同的场景。第一幅图是一张卡通画，描绘了一群羊在草地上，背景是蓝天和山脉。第二幅图则是一张猫的照片，猫正看着镜头，背景模糊不清。
 --------------------------------------------------
+<<< clear
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>图中有几只羊
- 图中有4只羊
+图中有4只羊
 --------------------------------------------------
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png</img>计算结果是多少
- 计算结果是1452+45304=46756
+1452 + 45304 = 46756
 --------------------------------------------------
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>根据图片中的内容写首诗
- 湖面波光粼粼，小舟独自飘荡。
-船上点灯，照亮夜色，
-星星点点，倒映水中。
-
-远处山峦，云雾缭绕，
-天空繁星，闪烁不停。
-湖面如镜，倒影清晰，
-小舟穿行，如诗如画。
+夜色苍茫月影斜，
+湖面平静如明镜。
+小舟轻荡波光里，
+灯火微摇映水乡。
+--------------------------------------------------
+<<< clear
+<<< <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png</img>对图片进行OCR
+很抱歉，我无法对您提供的图片进行OCR。如果您需要文本识别服务，您可以上传图片到其他支持OCR服务的平台，或者您可以尝试使用一些在线OCR工具。
 """
 ```
 
@@ -67,6 +68,9 @@ poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
+ocr:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 
