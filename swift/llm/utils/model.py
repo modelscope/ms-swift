@@ -2360,6 +2360,8 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     if version.parse(transformers.__version__) >= version.parse('4.36'):
         if use_flash_attn:
             model_config._attn_implementation = 'flash_attention_2'
+        else:
+            model_config._attn_implementation = 'eager'
     else:
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(

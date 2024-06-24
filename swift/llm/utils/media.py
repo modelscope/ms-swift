@@ -1,7 +1,7 @@
 import os
 import shutil
 import time
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 
@@ -63,7 +63,7 @@ class MediaTag:
         self.task_type = task_type
         self.media_tag = media_tag or '<unused_tag>'
 
-    def __call__(self, d: dict, medias: Union[tuple, list], objects: List = None):
+    def __call__(self, d: Dict[str, Any], medias: Union[tuple, list], objects: List = None) -> None:
         """Format the query/response/history with medias
 
         Args:

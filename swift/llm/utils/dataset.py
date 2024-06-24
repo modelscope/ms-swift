@@ -300,10 +300,12 @@ def load_ms_dataset(dataset_id: str,
         if use_hf:
             try:
                 dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
-            except Exception as e:
+            except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
                 continue
+            except Exception:
+                raise
         else:
             if is_dist() and not is_local_master():
                 force_redownload = False
@@ -312,10 +314,12 @@ def load_ms_dataset(dataset_id: str,
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
             try:
                 dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
-            except Exception as e:
+            except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
                 continue
+            except Exception:
+                raise
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)

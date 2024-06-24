@@ -356,8 +356,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 infer_kwargs = {}
 
             read_media_file(infer_kwargs, args.infer_media_type)
-            if args.truncation_strategy:
-                infer_kwargs['truncation_strategy'] = args.truncation_strategy
+            infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:
                 system = template.default_system
             if args.infer_backend == 'vllm':
@@ -456,8 +455,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 request['system'] = system
                 if images is not None:
                     request['images'] = images
-                if args.truncation_strategy:
-                    request['truncation_strategy'] = args.truncation_strategy
+                request['truncation_strategy'] = args.truncation_strategy
                 request_list.append(request)
             resp_list = inference_vllm(llm_engine, template, request_list, use_tqdm=True)
             result = []
@@ -499,8 +497,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     kwargs['images'] = images
                 if tools is not None:
                     kwargs['tools'] = tools
-                if args.truncation_strategy:
-                    kwargs['truncation_strategy'] = args.truncation_strategy
+                kwargs['truncation_strategy'] = args.truncation_strategy
                 if args.infer_backend == 'vllm':
                     assert args.stream is True
                     if args.verbose:

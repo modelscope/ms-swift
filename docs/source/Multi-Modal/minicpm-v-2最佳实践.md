@@ -45,6 +45,11 @@ Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.co
 <<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
 这幅图片描绘了一个宁静的夜晚场景，一艘船漂浮在水面之上。船看起来是一艘小木船，船头有一个桅杆，上面挂着一个灯笼，发出温暖的光芒。船身涂成深棕色，与水面形成鲜明对比。水面反射着星星和船只的灯光，营造出一种宁静而梦幻的氛围。背景中，树木繁茂，树叶呈现出金色和绿色，暗示着可能是黄昏或黎明时分。天空布满星星，给整个场景增添了神秘感。整体氛围宁静而幽静，让人联想到一个童话般的场景。
+--------------------------------------------------
+<<< clear
+<<< 对图片进行OCR
+Input a media path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png
+图片中的文字内容为：“SWIFT支持250+LLM和35+LLM（多模态大模型）的训练、推理和评估部署。开发者可以直接将我们的Research和生产环境中应用的模型框架应用到自己的Research和生产环境中。我们提供了完整的Adapters库以支持最新的训练技术，如NEFtune、Lora、LMA-PRO等，这个适配器库可以脱壳脚本直接在自己的流程中使用。为方便不熟悉深度学习用户的使用，我们提供了配套的深度学习课程和最佳实践新手入门门。此外，我们还在拓展其他强大的能力，目前我们支持了AnimateDiff的全参数LORA训练。SWIFT有丰富的文档体系，如有使用问题请查看这里。”
 """
 ```
 
@@ -65,6 +70,10 @@ math:
 poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
+
+ocr:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 
