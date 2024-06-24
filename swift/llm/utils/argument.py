@@ -7,7 +7,7 @@ import platform
 import sys
 from dataclasses import dataclass, field
 from typing import Any, List, Literal, Optional, Set, Tuple, Union
-
+from llmuses.backend.opencompass import OpenCompassBackendManager
 import json
 import numpy as np
 import torch
@@ -1306,8 +1306,8 @@ class DeployArguments(InferArguments):
 class EvalArguments(InferArguments):
 
     eval_dataset: List[str] = field(
-        default_factory=lambda: ['ceval', 'gsm8k', 'arc'],
-        metadata={'help': f"dataset choices: {['arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa']}"})
+        default_factory=lambda: OpenCompassBackendManager.list_datasets(),
+        metadata={'help': f"dataset choices: {OpenCompassBackendManager.list_datasets()}"})
     eval_few_shot: Optional[int] = None
     eval_limit: Optional[int] = None
 
