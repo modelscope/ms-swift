@@ -42,6 +42,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-instruct
 输出: (支持传入本地路径或URL)
 ```python
 """
+<<< who are you
+Input a media path or URL <<<
+I am a language model, specifically a transformer model, trained to generate text based on the input it receives. I do not have personal experiences or emotions, and I do not have a physical form. I exist purely as a software program that can process and generate text.
+--------------------------------------------------
 <<< Describe this image.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 The image shows a close-up of a kitten with a soft, blurred background that suggests a natural, outdoor setting. The kitten has a mix of white and gray fur with darker stripes, typical of a tabby pattern. Its eyes are wide open, with a striking blue color that contrasts with the kitten's fur. The kitten's nose is small and pink, and its whiskers are long and white, adding to the kitten's cute and innocent appearance. The lighting in the image is soft and diffused, creating a gentle and warm atmosphere. The focus is sharp on the kitten's face, while the rest of the image is slightly out of focus, which draws attention to the kitten's features.
@@ -85,6 +89,20 @@ The boat, a symbol of solitude,
 In the vast expanse of the universe's beauty,
 A lone journey, a solitary quest,
 In the quiet of the night, it finds its rest.
+--------------------------------------------------
+<<< Perform OCR on the image.
+Input a media path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png
+The text in the image is as follows:
+
+INTRODUCTION
+
+SWIFT supports training, inference, evaluation and deployment of 250+ LLMs (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition, SWIFT provides a complete Adapters library to support the latest training techniques such as NLP, Vision, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
+
+To facilitate use by users unfamiliar with deep learning, we provide a Grado web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
+
+SWIFT has rich documentation for users, please check here.
+
+SWIFT is web-ui available both on Huggingface space and ModelScope studio, please feel free to try!
 """
 ```
 
@@ -105,6 +123,10 @@ math:
 poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
+
+ocr_en:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 
