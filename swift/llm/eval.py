@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import multiprocessing
 import multiprocessing as mp
 import os
 import time
@@ -34,17 +33,20 @@ class EvalDatasetContext:
         self.cache_dir = self.prepare_evalscope_dataset()
 
     def __enter__(self):
-        os.symlink(os.path.join(self.cache_dir, 'data'), os.path.join(os.getcwd(), 'data'))
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if os.path.islink(os.path.join(os.getcwd(), 'data')):
-            os.remove(os.path.join(os.getcwd(), 'data'))
+        data_dir = os.path.join(self.cache_dir, 'data')
+        local_dir = os.path.join(os.getcwd(), 'data')
+        if os.path.exists(local_dir) and not os.path.islink(local_dir):
+            raise AssertionError('Please promise your pwd dir does not contain a `data` dir.')
+        if os.path.islink(local_dir):
+            os.remove(os.path.join(local_dir))
+        os.symlink(data_dir, local_dir)
 
     @staticmethod
     def prepare_evalscope_dataset():
         from swift.llm.utils.media import MediaCache
-        data_url = 'https://www.modelscope.cn/api/v1/datasets/swift/evalscope_resource/repo?Revision=master&FilePath=eval.zip'
-        return MediaCache.download(data_url, 'evalscope')
+        return MediaCache.download(
+            'https://www.modelscope.cn/api/v1/datasets/swift/evalscope_resource/'
+            'repo?Revision=master&FilePath=eval.zip', 'evalscope')
 
 
 def get_model_type(port):
@@ -73,18 +75,24 @@ def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
     seed_everything(args.seed)
     port = _find_free_port()
     args.port = port
-    process = multiprocessing.Process(target=run_custom_model, args=(args,))
+    process = mp.Process(target=run_custom_model, args=(args, ))
     process.start()
 
+    # health check: try to get model_type until raises
     get_model_type(port)
-    model_type = 'default-lora' if args.sft_type == 'lora' and not args.merge_lora else args.model_type
+    model_type = 'default-lora' if args.sft_type in ('lora', 'longlora') and not args.merge_lora else args.model_type
 
     task_cfg = dict(
         eval_backend='OpenCompass',
-        eval_config={'datasets': args.eval_dataset,
-                     'models': [
-                         {'path': model_type, 'openai_api_base': f'http://127.0.0.1:{port}/v1/chat/completions'}, ]
-                     },
+        eval_config={
+            'datasets': args.eval_dataset,
+            'models': [
+                {
+                    'path': model_type,
+                    'openai_api_base': f'http://127.0.0.1:{port}/v1/chat/completions'
+                },
+            ]
+        },
     )
 
     with EvalDatasetContext():
@@ -108,7 +116,7 @@ def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
     # if args.save_result:
     #     result_dir = args.ckpt_dir
     #     if result_dir is None:
-    #         result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
+    #       result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
     #     assert result_dir is not None
     #     jsonl_path = os.path.join(result_dir, 'eval_result.jsonl')
     #     result = {report['name']: report['score'] for report in final_report}

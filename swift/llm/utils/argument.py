@@ -7,13 +7,14 @@ import platform
 import sys
 from dataclasses import dataclass, field
 from typing import Any, List, Literal, Optional, Set, Tuple, Union
-from llmuses.backend.opencompass import OpenCompassBackendManager
+
 import json
 import numpy as np
 import torch
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
+from llmuses.backend.opencompass import OpenCompassBackendManager
 from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
@@ -1307,7 +1308,7 @@ class EvalArguments(InferArguments):
 
     eval_dataset: List[str] = field(
         default_factory=lambda: OpenCompassBackendManager.list_datasets(),
-        metadata={'help': f"dataset choices: {OpenCompassBackendManager.list_datasets()}"})
+        metadata={'help': f'dataset choices: {OpenCompassBackendManager.list_datasets()}'})
     eval_few_shot: Optional[int] = None
     eval_limit: Optional[int] = None
 
