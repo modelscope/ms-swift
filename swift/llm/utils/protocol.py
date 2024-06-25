@@ -42,7 +42,7 @@ class XRequestConfig:
 
     n: int = 1
     seed: Optional[int] = None
-    stop: List[str] = field(default_factory=list)
+    stop: Optional[List[str]] = None
     stream: bool = False
 
     best_of: Optional[int] = None

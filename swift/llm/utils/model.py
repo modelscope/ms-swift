@@ -189,6 +189,7 @@ class ModelType:
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
+    llava1_5_7b_chat = 'llava1_5-7b-chat'
     llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
     llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
@@ -4643,6 +4644,25 @@ def _patch_llava(model):
         return generate(inputs, *args, **kwargs)
 
     model.generate = _new_generate
+
+
+@register_model(
+    ModelType.llava1_5_7b_chat,
+    'huangjintao/llava-1.5-7b-hf',
+    LoRATM.llama,
+    TemplateType.llava1_5,
+    eos_token='</s>',
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-1.5-7b-hf')
+def get_model_tokenizer_llava1_5(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, LlavaForConditionalGeneration
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, *args, automodel_class=LlavaForConditionalGeneration, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
 
 
 @register_model(

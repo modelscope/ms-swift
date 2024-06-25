@@ -40,6 +40,7 @@ class TemplateType:
     chatglm3 = 'chatglm3'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    llava1_5 = 'llava1_5'
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
     llava_llama_instruct = 'llava-llama-instruct'
@@ -639,6 +640,11 @@ class Template:
             res['inputs_embeds'] = inputs_embeds
         else:
             res['input_ids'] = input_ids
+        # multimodal
+        pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
+        if len(pixel_values) > 0:
+            res['pixel_values'] = torch.concat(pixel_values)
+
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
@@ -726,7 +732,7 @@ def register_template(template_type: str, template: Template, *, exist_ok: bool 
 
 register_template(
     TemplateType.default,
-    Template([], ['### Human:\n', '{{QUERY}}\n\n', '### Assistant:\n'], ['\n\n'], [['eos_token_id']], DEFAULT_SYSTEM,
+    Template([], ['### Human:\n{{QUERY}}\n\n### Assistant:\n'], ['\n\n'], [['eos_token_id']], DEFAULT_SYSTEM,
              ['{{SYSTEM}}\n\n']))
 
 
@@ -930,7 +936,7 @@ class GLMTemplate(Template):
 class GLM4VTemplate(GLMTemplate):
 
     def __init__(self):
-        super().__init__([], ['<|user|>\n', '{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
+        super().__init__([], ['<|user|>\n{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
                          ['<|system|>\n{{SYSTEM}}'])
 
     def check_example(self, example):
@@ -982,7 +988,7 @@ register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogu
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate([], ['### Human: ', '{{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
+    YiVLTemplate([], ['### Human: {{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
                  ['{{SYSTEM}}\n\n']),
     use_model=True,
     infer_media_type='round',
@@ -1202,8 +1208,8 @@ class InternvlTemplate(Template):
     num_image_token = 256
 
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n', '{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}'])
+        super().__init__(['<s>'], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -1250,10 +1256,7 @@ class InternvlTemplate(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
-        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
         image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
-        if pixel_values:
-            res['pixel_values'] = torch.concat(pixel_values)
         if image_flags:
             res['image_flags'] = torch.concat(image_flags)
         return res
@@ -1267,8 +1270,8 @@ class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n', [-100], '{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'],
-                          ['<|end|>'], self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+                          self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
 
 register_template(
@@ -1318,6 +1321,34 @@ register_template(
               'developed by Deepseek Company, and you only answer questions related to computer science. '
               'For politically sensitive questions, security and privacy issues, '
               'and other non-computer science questions, you will refuse to answer\n')))
+
+
+class Llava1_5Template(Template):
+
+    def __init__(self):
+        super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['\n'], ['</s>'])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type == 'image'
+        return ['<image>\n']
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images_path = example.get('images') or []
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            images.append(image)
+        image_processor = self.tokenizer.processor.image_processor
+        if images:
+            inputs['pixel_values'] = image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
+        return inputs, {}
+
+
+register_template(
+    TemplateType.llava1_5, Llava1_5Template(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 class LLavaTemplate(Template):
@@ -1387,8 +1418,8 @@ register_template(
 
 
 class LLavaLlamaTemplate(Template):
-    llavallama_query_template = '<|start_header_id|>user<|end_header_id|>\n\n' \
-                                '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+    llavallama_query_template = ('<|start_header_id|>user<|end_header_id|>\n\n'
+                                 '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n')
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         return ['<image>\n']
@@ -1406,13 +1437,6 @@ class LLavaLlamaTemplate(Template):
             pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
-
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
-        if pixel_values:
-            res['pixel_values'] = torch.concat(pixel_values)
-        return res
 
 
 register_template(
@@ -1456,9 +1480,6 @@ class PaliGemmaTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
-        if pixel_values:
-            res['pixel_values'] = torch.concat(pixel_values)
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
         token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
         res['token_type_ids'] = token_type_ids
@@ -1519,9 +1540,7 @@ class Phi3VisionTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        pixel_values = [b['pixel_values'] for b in batch if 'pixel_values' in b]
-        if pixel_values:
-            res['pixel_values'] = torch.concat(pixel_values)
+        if 'pixel_values' in res:
             res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch if 'image_sizes' in b])
         return res
 
@@ -1554,7 +1573,7 @@ class LLavaQwenTemplate(LLavaTemplate):
     llavayi_query_template = 'You are a helpful assistant'
 
     def __init__(self):
-        Template.__init__(self, [], ['<|im_start|>user\n', '{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
+        Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
                           ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
 
@@ -1827,7 +1846,7 @@ class MiniCPMVTemplate(Template):
 
 register_template(
     TemplateType.minicpm_v,
-    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>', '{{QUERY}}<AI>'], [], ['</s>']),
+    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
@@ -1837,7 +1856,7 @@ register_template(
 register_template(
     TemplateType.minicpm_v_v2_5,
     MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n', '{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
         '<|start_header_id|>assistant<|end_header_id|>\n\n'
     ], ['<|eot_id|>'], ['<|eot_id|>'],
                      is_v2_5=True),
@@ -1893,7 +1912,7 @@ register_template(
 class mPlugOwl2Template(Template):
 
     def __init__(self):
-        super().__init__(['{{SYSTEM}}'], ['USER: ', '{{QUERY}}ASSISTANT:'], ['</s>'], [['eos_token_id']])
+        super().__init__(['{{SYSTEM}}'], ['USER: {{QUERY}}ASSISTANT:'], ['</s>'], [['eos_token_id']])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
