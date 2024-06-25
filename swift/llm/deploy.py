@@ -21,7 +21,7 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream,
+                    Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream, is_quant_model,
                     messages_join_observation, messages_to_history, random_uuid)
 
 logger = get_logger()
@@ -157,7 +157,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             kwargs[key] = new_value
 
     generation_config = VllmGenerationConfig(**kwargs)
-    if generation_config.use_beam_search is True and request.stream is True:
+    if generation_config.use_beam_search and request.stream:
         error_msg = 'Streaming generation does not support beam search.'
         raise ValueError(error_msg)
     tokenizer = template.tokenizer
@@ -391,17 +391,18 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     created_time = int(time.time())
     adapter_kwargs = {}
-    if request.model != _args.model_type and (_args.quant_method not in {'gptq', 'awq', 'aqlm'}
-                                              or not is_quant_model(_args.model_type)):
-        adapter_names = None
-        for lora_req in _args.lora_request_list:
-            if lora_req.lora_name == request.model:
-                adapter_names = request.model
-                break
-        assert adapter_names is not None
-        adapter_kwargs['adapter_names'] = [adapter_names]
-    elif isinstance(model, PeftModel):
-        adapter_kwargs['adapter_names'] = ['-']
+    if not is_quant_model(_args.model_type, model):
+        if request.model != _args.model_type:
+        
+            adapter_names = None
+            for lora_req in _args.lora_request_list:
+                if lora_req.lora_name == request.model:
+                    adapter_names = request.model
+                    break
+            assert adapter_names is not None
+            adapter_kwargs['adapter_names'] = [adapter_names]
+        elif isinstance(model, PeftModel):
+            adapter_kwargs['adapter_names'] = ['-']
 
     async def _generate_full():
         generation_info = {}

@@ -114,7 +114,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         is_training=True,
         **kwargs)
     for k in ['gptq', 'awq', 'aqlm']:
-        if getattr(model, f'is_{k}', None) is True:
+        if getattr(model, f'is_{k}', None):
             args.quant_method = k
             break
     logger.info(f'model_config: {model.config}')

@@ -227,7 +227,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
-    if generation_config.use_beam_search is True:
+    if generation_config.use_beam_search:
         error_msg = 'Streaming generation does not support beam search.'
         raise ValueError(error_msg)
 
@@ -368,7 +368,7 @@ def inference_vllm(llm_engine: LLMEngine,
         else:
             llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
 
-    if use_tqdm is True:
+    if use_tqdm:
         assert verbose is False
     prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     outputs = []

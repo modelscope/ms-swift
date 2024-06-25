@@ -502,7 +502,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     kwargs['tools'] = tools
                 kwargs['truncation_strategy'] = args.truncation_strategy
                 if args.infer_backend == 'vllm':
-                    assert args.stream is True
+                    assert args.stream
                     if args.verbose:
                         print(f"[QUERY]{data['query']}\n[RESPONSE]", end='')
                     gen = inference_stream_vllm(llm_engine, template, [kwargs], lora_request=lora_request)
