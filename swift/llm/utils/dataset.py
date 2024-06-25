@@ -1115,7 +1115,9 @@ def preprocess_text_caps(dataset):
 
 def preprocess_refcoco_unofficial(dataset):
 
-    cache_dir = MediaCache.download('https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/coco_res/repo?Revision=master&FilePath=coco_2014.zip', 'coco2014') # noqa
+    cache_dir = MediaCache.download(
+        'https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/coco_res/repo?Revision=master&FilePath=coco_2014.zip',
+        'coco2014')  # noqa
 
     def preprocess(row):
         caption = row['captions'][0]
@@ -1131,9 +1133,7 @@ def preprocess_refcoco_unofficial(dataset):
             res['response'] = ''
         return res
 
-    return dataset.map(
-        preprocess,
-        load_from_cache_file=False).filter(lambda row: row.get('response'))
+    return dataset.map(preprocess, load_from_cache_file=False).filter(lambda row: row.get('response'))
 
 
 register_dataset(
@@ -1145,7 +1145,6 @@ register_dataset(
     hf_dataset_id='jxu124/refcoco',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'caption', 'quality'])
-
 
 register_dataset(
     DatasetName.text_caps,
