@@ -13,7 +13,7 @@ import torch.distributed as dist
 from torch.nn import Module
 from transformers.utils import is_torch_npu_available, strtobool
 
-from .logger import get_logger, is_master
+from .logger import get_logger
 
 logger = get_logger()
 
@@ -80,6 +80,11 @@ def get_dist_setting() -> Tuple[int, int, int, int]:
 def is_local_master():
     local_rank = get_dist_setting()[1]
     return local_rank in {-1, 0}
+
+
+def is_master():
+    rank = get_dist_setting()[0]
+    return rank in {-1, 0}
 
 
 def use_torchacc() -> bool:
