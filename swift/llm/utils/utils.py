@@ -425,6 +425,13 @@ def find_embedding(model: Module) -> List[str]:
     return _find_layers(model, torch.nn.Embedding)
 
 
+def is_quant_model(model_type: str) -> bool:
+    for k in ['int4', 'int8', 'awq', 'aqlm']:
+        if k in model_type:
+            return True
+    return False
+
+
 def find_all_linears(model: Module, quantization_bit: int, model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'

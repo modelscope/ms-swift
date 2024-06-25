@@ -820,8 +820,9 @@ class SftArguments(ArgumentsBase):
                 'lora does not support `freeze_parameters`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
-            if 'int4' in self.model_type or 'int8' in self.model_type or 'awq' in self.model_type:
-                assert self.quantization_bit == 0, 'int4, int8 or awq models do not need to be quantized again.'
+            if is_quant_model(self.model_type):
+                assert self.quantization_bit == 0, (
+                    f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:

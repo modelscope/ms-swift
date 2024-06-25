@@ -391,7 +391,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     created_time = int(time.time())
     adapter_kwargs = {}
-    if request.model != _args.model_type:
+    if request.model != _args.model_type and (_args.quant_method not in {'gptq', 'awq', 'aqlm'}
+                                              or not is_quant_model(_args.model_type)):
         adapter_names = None
         for lora_req in _args.lora_request_list:
             if lora_req.lora_name == request.model:

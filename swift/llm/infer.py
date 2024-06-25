@@ -16,8 +16,8 @@ from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
 from .utils import (DeployArguments, InferArguments, Template, get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, sample_dataset,
-                    set_generation_config)
+                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, is_quant_model,
+                    sample_dataset, set_generation_config)
 
 logger = get_logger()
 
@@ -91,8 +91,8 @@ def merge_lora(args: InferArguments,
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
     assert args.sft_type in ('lora', 'adalora', 'longlora'), 'Only supports lora series models'
-    for s in ['int4', 'int8', 'awq']:
-        assert s not in args.model_type, f'{s} model is not supported'
+    assert not is_quant_model(
+        args.model_type), f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
@@ -182,6 +182,7 @@ def prepare_model_template(args: InferArguments,
         model_kwargs,
         model_id_or_path=model_id_or_path,
         revision=args.model_revision,
+        quant_method=args.quant_method,
         **kwargs)
     if verbose:
         logger.info(f'model_config: {model.config}')

@@ -4930,6 +4930,7 @@ def get_model_tokenizer(model_type: str,
                         *,
                         model_id_or_path: Optional[str] = None,
                         revision: Optional[str] = None,
+                        quant_method: Optional[str] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
@@ -4947,10 +4948,14 @@ def get_model_tokenizer(model_type: str,
     get_function = model_info['get_function']
     if model_kwargs is None:
         model_kwargs = {}
-    if 'device_map' not in model_kwargs and not use_torchacc():
-        model_kwargs['device_map'] = 'auto'
 
     if load_model:
+        if 'device_map' not in model_kwargs and not use_torchacc():
+            model_kwargs['device_map'] = 'auto'
+        for k in ['gptq', 'awq', 'aqlm']:
+            if quant_method == k:
+                kwargs[f'is_{k}'] = True
+                break
         if model_info.get('torch_dtype') is not None:
             model_torch_dtype = model_info['torch_dtype']
             if torch_dtype is None:
@@ -4967,6 +4972,7 @@ def get_model_tokenizer(model_type: str,
                         and quantization_config.bnb_4bit_compute_dtype is None):
                     quantization_config.bnb_4bit_compute_dtype = torch_dtype
                     logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
+
     kwargs['eos_token'] = model_info['eos_token']
     pad_token = model_info.get('pad_token')
     if pad_token is not None:

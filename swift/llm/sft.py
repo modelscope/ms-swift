@@ -100,10 +100,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
-    for k in ['gptq', 'awq', 'aqlm']:
-        if args.quant_method == k:
-            kwargs[f'is_{k}'] = True
-            break
 
     if args.rope_scaling:
         kwargs['rope_scaling'] = args.rope_scaling
@@ -114,6 +110,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
+        quant_method=args.quant_method,
         is_training=True,
         **kwargs)
     for k in ['gptq', 'awq', 'aqlm']:
