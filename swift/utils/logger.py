@@ -14,7 +14,7 @@ def is_master():
     return rank in {-1, 0}
 
 
-def get_logger(log_file: Optional[str] = None, log_level: int = None, file_mode: str = 'w'):
+def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, file_mode: str = 'w'):
     """ Get logging logger
 
     Args:
