@@ -2,7 +2,6 @@
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 export USE_TORCHACC=1
-export TORCHACC_TRIM_GRAPH=1
 export XLA_IR_SHAPE_CACHE_SIZE=100000000
 export XLA_ALLOCATOR_FRACTION=0.95
 export XLA_EXPERIMENTAL=nonzero:masked_select
