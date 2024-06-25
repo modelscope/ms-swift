@@ -71,6 +71,7 @@ def run_ui():
         concurrent = {'concurrency_count': 5}
     app.queue(**concurrent).launch(
         server_name=os.environ.get('WEBUI_SERVER', None),
+        inbrowser=True,
         server_port=port if port is None else int(port),
         height=800,
         share=bool(int(os.environ.get('WEBUI_SHARE', '0'))))
