@@ -10,7 +10,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 
 
 def is_master():
-    rank = int(os.getenv('RANK', -1))
+    rank = int(os.getenv('LOCAL_RANK', -1))
     return rank in {-1, 0}
 
 
