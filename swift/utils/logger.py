@@ -9,12 +9,7 @@ init_loggers = {}
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
-def is_master():
-    rank = int(os.getenv('RANK', -1))
-    return rank in {-1, 0}
-
-
-def get_logger(log_file: Optional[str] = None, log_level: int = logging.INFO, file_mode: str = 'w'):
+def get_logger(log_file: Optional[str] = None, log_level: Optional[int] = None, file_mode: str = 'w'):
     """ Get logging logger
 
     Args:
@@ -24,7 +19,9 @@ def get_logger(log_file: Optional[str] = None, log_level: int = logging.INFO, fi
         file_mode: Specifies the mode to open the file, if filename is
             specified (if filemode is unspecified, it defaults to 'w').
     """
-
+    if log_level is None:
+        log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+        log_level = getattr(logging, log_level, logging.INFO)
     logger_name = __name__.split('.')[0]
     logger = logging.getLogger(logger_name)
     logger.propagate = False
@@ -47,7 +44,7 @@ def get_logger(log_file: Optional[str] = None, log_level: int = logging.INFO, fi
     handlers = [stream_handler]
 
     if importlib.util.find_spec('torch') is not None:
-        is_worker0 = is_master()
+        is_worker0 = int(os.getenv('LOCAL_RANK', -1)) in {-1, 0}
     else:
         is_worker0 = True
 
@@ -76,7 +73,7 @@ def add_file_handler_if_needed(logger, log_file, file_mode, log_level):
             return
 
     if importlib.util.find_spec('torch') is not None:
-        is_worker0 = is_master()
+        is_worker0 = int(os.getenv('LOCAL_RANK', -1)) in {-1, 0}
     else:
         is_worker0 = True
 

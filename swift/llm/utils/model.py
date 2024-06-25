@@ -910,9 +910,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 trust_remote_code=True,
             )
         else:
+            logger.info(f'Model loading with args: model_dir: {model_dir},'
+                        f'torch_dtype: {torch_dtype},'
+                        f'model_kwargs: {model_kwargs}')
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        if hasattr(model, 'hf_device_map'):
+            logger.debug(f'Model hf_device_map: {model.hf_device_map}')
     return model, tokenizer
 
 
