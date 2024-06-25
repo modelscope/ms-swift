@@ -424,7 +424,7 @@ def find_embedding(model: Module) -> List[str]:
     return _find_layers(model, torch.nn.Embedding)
 
 
-def is_quant_model(model_type: Optional[str] = None, model = None) -> bool:
+def is_quant_model(model_type: Optional[str] = None, model=None) -> bool:
     if model_type is not None:
         for k in ['int4', 'int8', 'awq', 'aqlm']:
             if k in model_type:

@@ -391,9 +391,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     created_time = int(time.time())
     adapter_kwargs = {}
-    if not is_quant_model(_args.model_type, model):
+    if _args.lora_request_list is not None:
         if request.model != _args.model_type:
-        
             adapter_names = None
             for lora_req in _args.lora_request_list:
                 if lora_req.lora_name == request.model:
@@ -402,7 +401,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             assert adapter_names is not None
             adapter_kwargs['adapter_names'] = [adapter_names]
         elif isinstance(model, PeftModel):
-            adapter_kwargs['adapter_names'] = ['-']
+            adapter_kwargs['adapter_names'] = ['-']  # use base model
 
     async def _generate_full():
         generation_info = {}

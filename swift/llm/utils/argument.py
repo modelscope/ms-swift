@@ -30,7 +30,7 @@ from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
-from .utils import is_vllm_available
+from .utils import is_quant_model, is_vllm_available
 
 logger = get_logger()
 
@@ -1214,13 +1214,12 @@ class InferArguments(ArgumentsBase):
                 logger.warning(f'vllm not support `{self.model_type}`')
             if self.sft_type == 'lora' and not self.vllm_enable_lora:
                 assert self.merge_lora, ('To use VLLM, you need to provide the complete weight parameters. '
-                                                 'Please set `--merge_lora true`.')
+                                         'Please set `--merge_lora true`.')
         if (self.infer_backend == 'vllm' and self.vllm_enable_lora
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
             self.lora_request_list = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
-            logger.info(f'args.lora_request_list: {self.lora_request_list}')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
