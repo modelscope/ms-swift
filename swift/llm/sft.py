@@ -116,6 +116,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     for k in ['gptq', 'awq', 'aqlm']:
         if getattr(model, f'is_{k}', None):
             args.quant_method = k
+            logger.info(f'Setting args.quant_method: {args.quant_method}')
             break
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
