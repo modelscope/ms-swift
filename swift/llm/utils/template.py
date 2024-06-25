@@ -395,10 +395,7 @@ class Template:
             res.append(''.join(temp))
             res_loss_scale.append(0.0)
 
-        if is_multi_modal:
-            return Template.split_special_tokens(res, res_loss_scale)
-        else:
-            return res, res_loss_scale
+        return res, res_loss_scale
 
     @staticmethod
     def split_special_tokens(context_list: List[Context],
@@ -978,6 +975,8 @@ class GLM4VTemplate(GLMTemplate):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
+        pad_len = res['labels'].shape[1] - res['input_ids'].shape[1]
+        res['attention_mask'] = F.pad(res['attention_mask'], (pad_len, 0), 'constant', 1)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
