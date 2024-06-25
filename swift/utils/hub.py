@@ -15,8 +15,15 @@ from .utils import subprocess_run
 logger = get_logger()
 
 
-def create_ms_repo(hub_model_id: str, hub_token: Optional[str] = None, hub_private_repo: bool = False) -> str:
-    assert hub_model_id is not None, 'Please enter a valid hub_model_id'
+def create_ms_repo(
+        repo_id: str,
+        *,
+        token: Optional[str] = None,
+        private: bool = False,
+        repo_type: Optional[str] = None,
+        exist_ok: bool = False,
+        **kwargs) -> str:
+    assert repo_id is not None, 'Please enter a valid hub_model_id'
 
     api = HubApi()
     if hub_token is None:
