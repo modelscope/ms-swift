@@ -913,6 +913,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        model.is_gptq = is_gptq
+        model.is_awq = is_awq
+        model.is_aqlm = is_aqlm
     return model, tokenizer
 
 

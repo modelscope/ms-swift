@@ -29,6 +29,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     target_dir: str,
                     *,
                     save_safetensors: bool = True,
+                    sft_args_kwargs: Dict[str, Any],
                     **kwargs) -> None:
     if model is not None:
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
@@ -75,9 +76,10 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             with open(old_sft_args_path, 'r', encoding='utf-8') as f:
                 res = json.load(f)
             res['sft_type'] = 'full'
-            dtype = kwargs.get('dtype')
-            if dtype is not None:
-                res['dtype'] = dtype
+            for k in ['dtype', 'quant_method']:
+                v = sft_args_kwargs.get(k)
+                if v is not None:
+                    res[k] = v
             with open(new_sft_args_path, 'w', encoding='utf-8') as f:
                 json.dump(res, f, ensure_ascii=False, indent=2)
 
@@ -117,7 +119,7 @@ def merge_lora(args: InferArguments,
             args.ckpt_dir,
             merged_lora_path,
             save_safetensors=args.save_safetensors,
-            dtype=args.dtype)
+            sft_args_kwargs={'dtype': args.dtype})
         logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
     logger.info("Setting args.sft_type: 'full'")
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')

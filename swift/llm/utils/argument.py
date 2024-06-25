@@ -675,15 +675,15 @@ class SftArguments(ArgumentsBase):
         with open(sft_args_path, 'r', encoding='utf-8') as f:
             sft_args = json.load(f)
         imported_keys = [
-            'model_type', 'model_revision', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
-            'bnb_4bit_use_double_quant', 'model_id_or_path'
+            'model_type', 'model_revision', 'quant_method', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype',
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path'
         ]
 
         for key in imported_keys:
             value = getattr(self, key)
             if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
                 continue
-            if key in {'model_type', 'model_revision', 'model_id_or_path'} and value is not None:
+            if key in {'model_type', 'model_revision', 'model_id_or_path', 'quant_method'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 
@@ -1075,7 +1075,8 @@ class InferArguments(ArgumentsBase):
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
-    quant_method: Literal['bnb', 'hqq', 'eetq'] = None
+    # 'awq', 'gptq', 'aqlm' are used for inference on pre-quantized models.
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq', 'aqlm'] = None
     quantization_bit: Literal[0, 1, 2, 3, 4, 8] = 0  # hqq: 1,2,3,4,8. bnb: 4,8
     hqq_axis: Literal[0, 1] = 0
     hqq_dynamic_config_path: Optional[str] = None
@@ -1236,7 +1237,7 @@ class InferArguments(ArgumentsBase):
         with open(sft_args_path, 'r', encoding='utf-8') as f:
             sft_args = json.load(f)
         imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quantization_bit',
+            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
         ]
         if self.load_dataset_config:
@@ -1248,7 +1249,7 @@ class InferArguments(ArgumentsBase):
             value = getattr(self, key)
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
-            if key in {'dataset_test_ratio', 'system'} and value is not None:
+            if key in {'dataset_test_ratio', 'system', 'quant_method'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 
