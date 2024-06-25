@@ -47,10 +47,8 @@ logger.handlers[0].setFormatter(logger_format)
 ms_logger.handlers[0].setFormatter(logger_format)
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 if is_local_master():
-    logger.setLevel(log_level)
     ms_logger.setLevel(log_level)
 else:
-    logger.setLevel(logging.ERROR)
     ms_logger.setLevel(logging.ERROR)
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'

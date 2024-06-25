@@ -14,7 +14,7 @@ def is_master():
     return rank in {-1, 0}
 
 
-def get_logger(log_file: Optional[str] = None, log_level: int = logging.INFO, file_mode: str = 'w'):
+def get_logger(log_file: Optional[str] = None, log_level: int = None, file_mode: str = 'w'):
     """ Get logging logger
 
     Args:
@@ -24,7 +24,9 @@ def get_logger(log_file: Optional[str] = None, log_level: int = logging.INFO, fi
         file_mode: Specifies the mode to open the file, if filename is
             specified (if filemode is unspecified, it defaults to 'w').
     """
-
+    if log_level is None:
+        log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+        log_level = getattr(logging, log_level, logging.INFO)
     logger_name = __name__.split('.')[0]
     logger = logging.getLogger(logger_name)
     logger.propagate = False
