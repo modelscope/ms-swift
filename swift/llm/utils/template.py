@@ -40,7 +40,7 @@ class TemplateType:
     chatglm3 = 'chatglm3'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
-    llava1_5 = 'llava1-5'
+    llava1_5 = 'llava1_5'
     llava_mistral_instruct = 'llava-mistral-instruct'
     llava_yi_instruct = 'llava-yi-instruct'
     llava_llama_instruct = 'llava-llama-instruct'
