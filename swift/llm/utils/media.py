@@ -82,7 +82,8 @@ class MediaTag:
             pass
         elif self.task_type in ('ref_grounding', 'grounding_caption'):
             lang = np.random.choice(['en', 'zh'], p=[0.8, 0.2])
-            query, response = np.random.choice(self.task_prompts[self.task_type][lang])
+            prompts = self.task_prompts[self.task_type][lang]
+            query, response = prompts[np.random.choice(range(len(prompts)))]
         elif self.task_type == 'ocr':
             raise NotImplementedError
         else:
@@ -100,8 +101,7 @@ class MediaTag:
         if 'history' in d:
             d['history'] = history
         d['query'] = query
-        if 'response' in d:
-            d['response'] = response
+        d['response'] = response
 
 
 class MediaCache:

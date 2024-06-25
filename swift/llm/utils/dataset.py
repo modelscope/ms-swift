@@ -1120,13 +1120,13 @@ def preprocess_refcoco_unofficial(dataset):
     def preprocess(row):
         caption = row['captions'][0]
         bbox = row['bbox']
-        image_path = os.path.join(cache_dir, row['image_path'])
+        image_path = os.path.join(cache_dir, row['image_path'].replace('coco/train2014', 'train2014'))
         media_tag = MediaTag(media_type='image', task_type='grounding_caption')
         res = {}
         objects = [[caption, bbox]]
         media_tag(res, [image_path])
         res['images'] = [image_path]
-        res['objects'] = objects
+        res['objects'] = json.dumps(objects)
         if not os.path.exists(image_path):
             res['response'] = ''
         return res
@@ -1141,7 +1141,7 @@ register_dataset(
     'swift/refcoco', [],
     preprocess_func=preprocess_refcoco_unofficial,
     get_function=get_dataset_from_repo,
-    split=['train', 'val'],
+    split=['train', 'validation'],
     hf_dataset_id='jxu124/refcoco',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'caption', 'quality'])
