@@ -21,7 +21,7 @@ from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
 from swift.utils.torch_utils import _find_local_mac
-from .media import MediaCache
+from .media import MediaCache, MediaTag
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
@@ -162,6 +162,7 @@ class DatasetName:
     midefics = 'midefics'
     gqa = 'gqa'
     text_caps = 'text-caps'
+    refcoco_unofficial = 'refcoco_unofficial'
     a_okvqa = 'a-okvqa'
     okvqa = 'okvqa'
     ocr_vqa = 'ocr-vqa'
@@ -1110,6 +1111,40 @@ def preprocess_text_caps(dataset):
     return dataset.map(
         preprocess,
         load_from_cache_file=False).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
+
+
+def preprocess_refcoco_unofficial(dataset):
+
+    cache_dir = MediaCache.download('https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/coco_res/repo?Revision=master&FilePath=coco_2014.zip', 'coco2014') # noqa
+
+    def preprocess(row):
+        caption = row['captions'][0]
+        bbox = row['bbox']
+        image_path = os.path.join(cache_dir, row['image_path'])
+        media_tag = MediaTag(media_type='image', task_type='grounding_caption')
+        res = {}
+        objects = [[caption, bbox]]
+        media_tag(res, [image_path])
+        res['images'] = [image_path]
+        res['objects'] = objects
+        if not os.path.exists(image_path):
+            res['response'] = ''
+        return res
+
+    return dataset.map(
+        preprocess,
+        load_from_cache_file=False).filter(lambda row: row.get('response'))
+
+
+register_dataset(
+    DatasetName.refcoco_unofficial,
+    'swift/refcoco', [],
+    preprocess_func=preprocess_refcoco_unofficial,
+    get_function=get_dataset_from_repo,
+    split=['train', 'val'],
+    hf_dataset_id='jxu124/refcoco',
+    huge_dataset=True,
+    tags=['multi-modal', 'en', 'caption', 'quality'])
 
 
 register_dataset(
