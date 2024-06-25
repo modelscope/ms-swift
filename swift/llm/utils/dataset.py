@@ -1116,8 +1116,8 @@ def preprocess_text_caps(dataset):
 def preprocess_refcoco_unofficial(dataset):
 
     cache_dir = MediaCache.download(
-        'https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/coco_res/repo?Revision=master&FilePath=coco_2014.zip',
-        'coco2014')  # noqa
+        'https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/'
+        'coco_res/repo?Revision=master&FilePath=coco_2014.zip', 'coco2014')
 
     def preprocess(row):
         caption = row['captions'][0]
