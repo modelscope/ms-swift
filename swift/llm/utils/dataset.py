@@ -1124,7 +1124,10 @@ def preprocess_refcoco_unofficial(dataset):
         bbox = row['bbox']
         image_path = os.path.join(cache_dir, row['image_path'].replace('coco/train2014', 'train2014'))
         media_tag = MediaTag(media_type='image', task_type='grounding_caption')
+        for i in range(len(bbox)):
+            bbox[i] = round(float(bbox[i]))
         res = {}
+
         objects = [[caption, bbox]]
         media_tag(res, [image_path])
         res['images'] = [image_path]
