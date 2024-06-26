@@ -45,11 +45,10 @@ logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
 
 logger.handlers[0].setFormatter(logger_format)
 ms_logger.handlers[0].setFormatter(logger_format)
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 if is_local_master():
-    logger.setLevel(logging.INFO)
-    ms_logger.setLevel(logging.INFO)
+    ms_logger.setLevel(log_level)
 else:
-    logger.setLevel(logging.ERROR)
     ms_logger.setLevel(logging.ERROR)
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
@@ -425,6 +424,19 @@ def find_embedding(model: Module) -> List[str]:
     return _find_layers(model, torch.nn.Embedding)
 
 
+def is_quant_model(model_type: Optional[str] = None, model=None) -> bool:
+    # Check if the model is gptq, awq, aqlm model. Do not check for other quantization situations such as bnb.
+    if model_type is not None:
+        for k in ['int4', 'int8', 'awq', 'aqlm']:
+            if k in model_type:
+                return True
+    if model is not None:
+        for k in ['gptq', 'awq', 'aqlm']:
+            if getattr(model, f'is_{k}', None):
+                return True
+    return False
+
+
 def find_all_linears(model: Module, quantization_bit: int, model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
@@ -735,7 +747,7 @@ def inference(model: PreTrainedModel,
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
     generation_config = deepcopy(generation_config)
-    if stream is True and verbose is False:
+    if stream and not verbose:
         logger.warning('Please set verbose to True to support TextStreamer, or use `inference_stream.`')
         stream = False
     streamer = None

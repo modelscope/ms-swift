@@ -100,16 +100,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
-    if args.quant_method == 'awq':
-        kwargs['is_awq'] = True
-    elif args.quant_method == 'aqlm':
-        kwargs['is_aqlm'] = True
-    elif args.quant_method == 'gptq':
-        kwargs['is_gptq'] = True
 
     if args.rope_scaling:
         kwargs['rope_scaling'] = args.rope_scaling
-        kwargs['max_length'] = args.max_length
 
     model, tokenizer = get_model_tokenizer(
         args.model_type,
@@ -117,8 +110,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
+        quant_method=args.quant_method,
         is_training=True,
         **kwargs)
+    for k in ['gptq', 'awq', 'aqlm']:
+        if getattr(model, f'is_{k}', None):
+            args.quant_method = k
+            logger.info(f'Setting args.quant_method: {args.quant_method}')
+            break
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
