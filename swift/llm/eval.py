@@ -1,28 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import multiprocessing as mp
-import os
-import time
-from typing import Any, Dict, List
-
-from openai import APIConnectionError
 import asyncio
 import datetime as dt
+import json
+import multiprocessing as mp
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-import json
 from llmuses.models.custom import CustomModel
+from llmuses.summarizer import Summarizer
 from modelscope import GenerationConfig
+from openai import APIConnectionError
 from tqdm import tqdm
 
-from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
-from .infer import merge_lora, prepare_model_template
-from .utils import EvalArguments, XRequestConfig, inference, inference_client_async
+from swift.utils import append_to_jsonl
 from swift.utils import get_logger, get_main, seed_everything
 from . import DeployArguments
+from .infer import merge_lora, prepare_model_template
 from .utils import EvalArguments
-from llmuses.summarizer import Summarizer
+from .utils import XRequestConfig, inference, inference_client_async
 
 logger = get_logger()
 mp.set_start_method('spawn', force=True)
@@ -280,7 +276,7 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
     final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
     logger.info(f'Final report:{final_report}\n')
 
-    result_dir = args.eval_output_dir or args.ckpt_dir
+    result_dir = os.path.join(args.eval_output_dir, dt.datetime.now().strftime('%Y%m%d_%H%M%S'))
     if result_dir is None:
         result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
     assert result_dir is not None
@@ -297,6 +293,7 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
 
 
 def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
+    args.eval_output_dir = os.path.join(args.eval_output_dir, 'default' or args.name)
     if args.custom_eval_config:
         args.eval_backend = 'llmuses'
     if args.eval_backend == 'OpenCompass':

@@ -1312,13 +1312,13 @@ class EvalArguments(InferArguments):
     eval_few_shot: Optional[int] = None
     eval_limit: Optional[int] = None
 
-    name: str = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    name: str = ''
     eval_url: Optional[str] = None
     eval_token: str = 'EMPTY'
     eval_is_chat_model: Optional[bool] = None
     custom_eval_config: Optional[str] = None  # path
     eval_use_cache: bool = False
-    eval_output_dir: Optional[str] = None
+    eval_output_dir: Optional[str] = 'eval_outputs'
     eval_backend: str = 'OpenCompass'
     eval_batch_size: int = 8
 
