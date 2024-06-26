@@ -3537,7 +3537,6 @@ def _patch_deepseek_vl(model) -> None:
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    requires=['attrdict'],
     hf_model_id='deepseek-ai/deepseek-vl-7b-chat')
 @register_model(
     ModelType.deepseek_vl_1_3b_chat,
@@ -3546,7 +3545,6 @@ def _patch_deepseek_vl(model) -> None:
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    requires=['attrdict'],
     hf_model_id='deepseek-ai/deepseek-vl-1.3b-chat')
 def get_model_tokenizer_deepseek_vl(model_dir: str,
                                     torch_dtype: Dtype,
