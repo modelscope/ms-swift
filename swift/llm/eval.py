@@ -166,6 +166,9 @@ class EvalDatasetContext:
         if os.path.islink(local_dir):
             os.remove(os.path.join(local_dir))
         os.symlink(data_dir, local_dir)
+    
+    def __exit__(self, *args, **kwargs):
+        pass
 
     @staticmethod
     def prepare_evalscope_dataset():
@@ -223,13 +226,13 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
         eval_backend='OpenCompass',
         eval_config={
             'datasets': args.eval_dataset,
+            'work_dir': args.eval_output_dir,
+            'reuse': 'latest' if args.eval_use_cache else None,
+            'batch_size': args.eval_batch_size,
             'models': [
                 {
                     'path': model_type,
                     'openai_api_base': url,
-                    'work_dir': args.eval_output_dir,
-                    'reuse': 'latest' if args.eval_use_cache else None,
-                    'batch_size': args.eval_batch_size,
                 },
             ]
         },
