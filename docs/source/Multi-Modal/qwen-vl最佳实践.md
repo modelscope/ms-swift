@@ -49,6 +49,11 @@ Picture 2:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.pn
 <<<[M] Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>
 根据图片中的内容写首诗#
 月光如水船如星，独坐船头吹夜风。深林倒影照水面，萤火点点照船行。
+--------------------------------------------------
+<<< clear
+<<<[M] Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png</img>
+对图片进行OCR#
+SWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除了支持PEPT提供的轻量训练方案外，也提供了一个完整的Adapters库以支持最新的训练技术，如NEFTune、LoRA+、LLaMa-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
 """
 ```
 
@@ -69,6 +74,10 @@ math:
 poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
+
+ocr:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 

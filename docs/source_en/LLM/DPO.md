@@ -34,7 +34,8 @@ nproc_per_node=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
-swift dpo \
+swift rlhf \
+    --rlhf_type dpo \
     --model_type  yi-6b-chat \
     --ref_model_type  yi-6b-chat \
     --model_revision  master \

@@ -21,8 +21,8 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
 from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (DatasetName, DPOArguments, InferArguments, ModelType, SftArguments, dpo_main, infer_main,
-                       merge_lora_main, sft_main)
+from swift.llm import (DatasetName, InferArguments, ModelType, RLHFArguments, SftArguments, infer_main, merge_lora_main,
+                       rlhf_main, sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -160,6 +160,53 @@ class TestRun(unittest.TestCase):
             result = infer_main(infer_args)
             print(result)
 
+    def test_vqa(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        train_dataset_fnames = ['science-qa#300', 'a-okvqa#300', 'alpaca-cleaned#300']
+        val_dataset_fnames = ['okvqa']
+
+        sft_args = SftArguments(
+            model_type='yi-vl-6b-chat',
+            dataset=train_dataset_fnames,
+            lora_target_modules='ALL',
+            num_train_epochs=1,
+            check_dataset_strategy='warning')
+
+        torch.cuda.empty_cache()
+        result = sft_main(sft_args)
+        best_model_checkpoint = result['best_model_checkpoint']
+
+        infer_args = InferArguments(
+            ckpt_dir=best_model_checkpoint,
+            load_args_from_ckpt_dir=True,
+            load_dataset_config=True,
+            merge_lora=False,
+            val_dataset_sample=10,
+            dataset=val_dataset_fnames)
+        torch.cuda.empty_cache()
+        infer_main(infer_args)
+
+    def test_gpt4o_image(self):
+        if not __name__ == '__main__':
+            # ignore citest error in github
+            return
+        train_dataset_fnames = ['sharegpt-4o-image']
+
+        sft_args = SftArguments(
+            model_type='yi-vl-6b-chat',
+            dataset=train_dataset_fnames,
+            lora_target_modules='ALL',
+            train_dataset_sample=200,
+            num_train_epochs=1,
+            eval_steps=10,
+            save_steps=10,
+            check_dataset_strategy='warning')
+
+        torch.cuda.empty_cache()
+        self.assertTrue(sft_main(sft_args)['best_model_checkpoint'])
+
     def test_custom_dataset(self):
         if not __name__ == '__main__':
             # ignore citest error in github
@@ -247,21 +294,25 @@ class TestRun(unittest.TestCase):
         torch.cuda.empty_cache()
         infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
-    def test_dpo(self):
+    def test_rlhf(self):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
         torch.cuda.empty_cache()
-        output = dpo_main(
-            DPOArguments(
-                model_type=ModelType.qwen_1_8b_chat,
-                sft_type='full',
-                dataset='hh-rlhf-cn-harmless-base-cn',
-                train_dataset_sample=100,
-                eval_steps=5))
-        best_model_checkpoint = output['best_model_checkpoint']
-        torch.cuda.empty_cache()
-        infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']
+        for rlhf_type in rlhf_types:
+            dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
+            output = rlhf_main(
+                RLHFArguments(
+                    rlhf_type=rlhf_type,
+                    model_type=ModelType.qwen_1_8b_chat,
+                    sft_type='full',
+                    dataset=dataset_name,
+                    train_dataset_sample=100,
+                    eval_steps=5))
+            best_model_checkpoint = output['best_model_checkpoint']
+            torch.cuda.empty_cache()
+            infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_pai_compat(self):
         if not __name__ == '__main__':

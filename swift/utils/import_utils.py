@@ -68,4 +68,4 @@ class _LazyModule(ModuleType):
                 f' traceback):\n{e}') from e
 
     def __reduce__(self):
-        return (self.__class__, (self._name, self.__file__, self._import_structure))
+        return self.__class__, (self._name, self.__file__, self._import_structure)

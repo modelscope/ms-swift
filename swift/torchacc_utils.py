@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import math
 import os
 import sys
 import types
@@ -174,7 +173,7 @@ def consolidate_checkpoint(resume_from_checkpoint, model_name='adapter_model'):
 
     state_dict_list = []
     if xm.is_master_ordinal(local=False) and use_safetensors:
-        from safetensors.torch import load_file, save_file
+        from safetensors.torch import load_file
         for rank in range(xm.xrt_world_size()):
             shard_dir = os.path.join(resume_from_checkpoint, f'{rank}')
             filename = os.path.join(shard_dir, f'{model_name}.safetensors')

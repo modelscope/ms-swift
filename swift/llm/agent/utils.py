@@ -107,7 +107,7 @@ def calculate_loss_scale(query: str,
         agent_parts = split_str_parts_by(response, delimiters)
         regex_delimiters = {k: v for k, v in response_loss_scale_map.items() if len(v) == 1}
         if len(regex_delimiters):
-            agent_parts = split_parts_by_regex(agent_parts, regex_delimiters)
+            split_parts_by_regex(agent_parts, regex_delimiters)
         weights = []
         agent_content = []
         for c in agent_parts:
@@ -148,7 +148,7 @@ def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[st
     return action, action_input
 
 
-def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]):
+def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:
     import re
     compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
     for i in range(len(text_list) - 1, -1, -1):

@@ -2,7 +2,7 @@
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 
 def random_uuid() -> str:
@@ -42,7 +42,7 @@ class XRequestConfig:
 
     n: int = 1
     seed: Optional[int] = None
-    stop: List[str] = field(default_factory=list)
+    stop: Optional[List[str]] = None
     stream: bool = False
 
     best_of: Optional[int] = None

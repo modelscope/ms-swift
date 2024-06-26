@@ -12,7 +12,7 @@ class Advanced(BaseUI):
     locale_dict = {
         'advanced_param': {
             'label': {
-                'zh': '高级参数',
+                'zh': '高级参数设置',
                 'en': 'Advanced settings'
             },
         },

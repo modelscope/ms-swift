@@ -12,7 +12,7 @@ class Save(BaseUI):
     locale_dict = {
         'save_param': {
             'label': {
-                'zh': '存储参数',
+                'zh': '存储参数设置',
                 'en': 'Saving settings'
             },
         },

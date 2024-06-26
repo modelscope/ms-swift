@@ -48,6 +48,7 @@ SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spa
 
 ## 🎉 News
 - 🔥2024.06.18: Supports **DeepSeek-Coder-v2** series model! Use model_type `deepseek-coder-v2-instruct` and `deepseek-coder-v2-lite-instruct` to begin.
+- 🔥2024.06.16: Supports **KTO** and **CPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md) to start training!
 - 2024.06.11: Support for tool-calling agent deployment that conform to the OpenAI interface.You can refer to [Agent deployment best practice](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md)
 - 🔥2024.06.07: Support **Qwen2** series LLM, including Base and Instruct models of 0.5B, 1.5B, 7B, and 72B, as well as corresponding quantized versions gptq-int4, gptq-int8, and awq-int4. The best practice for self-cognition fine-tuning, inference and deployment of Qwen2-72B-Instruct using dual-card 80GiB A100 can be found [here](https://github.com/modelscope/swift/issues/1092).
 - 🔥2024.06.05: Support for **glm4** series LLM and glm4v-9b-chat MLLM. You can refer to [glm4v best practice](docs/source_en/Multi-Modal/glm4v-best-practice.md).
@@ -501,7 +502,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 |------------------------------------------------|------------------------------------------------------------------------|--------------------|----------------------------------------|------------------------------------------- |
 | Qwen<br>Qwen1.5<br>Qwen2                            | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-110B<br>including quantized versions | base model<br>chat model<br>MoE model<br>code model                      |
 | ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4           | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B-9B                                     | base model<br>chat model<br>code model<br>long text model  |
-| Baichuan/Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>including quantized versions             | base model<br>chat model                       |
+| Baichuan<br>Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>including quantized versions             | base model<br>chat model                       |
 | Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese<br>English    | 2B-102B                                | instruct model                                 |
 | XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese<br>English    | 7B-65B                                 | base model<br>chat model<br>long text model<br>MoE model                |
 | LLaMA2                                         | [LLaMA2 series models](https://github.com/facebookresearch/llama)       | English            | 7B-70B<br>including quantized versions   | base model<br>chat model                       |
@@ -547,7 +548,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | DeepSeek-VL        | [DeepSeek series vision models](https://github.com/deepseek-ai)              | Chinese<br>English | 1.3B-7B                            | chat model         |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5  | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM) | Chinese<br>English | 3B-9B            | chat model          |
 | CogVLM<br>CogVLM2<br>CogAgent<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | Chinese<br>English | 9B-19B                            | chat model         |
-| Llava              | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English            | 7B-34B                             | chat model |
+| Llava1.5<br>Llava1.6           | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English            | 7B-34B                             | chat model |
 | Llava-Next              | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                  | Chinese<br>English | 8B-110B                             | chat model |
 | mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English            | 11B                                | chat model |
 | InternVL           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 2B-25.5B<br>including quantized version                              | chat model |
@@ -631,6 +632,7 @@ make docs
 | [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
 | [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
 | [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
+| [Human Preference Alignment Training Documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md) |
 
 ### Reference Documentation
 | Document Name                                                |

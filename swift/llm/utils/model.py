@@ -6,7 +6,7 @@ import sys
 from contextlib import nullcontext
 from functools import partial, update_wrapper, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type
+from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
 import torch.distributed as dist
@@ -189,6 +189,7 @@ class ModelType:
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
+    llava1_5_7b_chat = 'llava1_5-7b-chat'
     llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
     llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
@@ -499,7 +500,7 @@ def register_model(
         ignore_file_pattern: Optional[List[str]] = None,
         function_kwargs: Optional[Dict[str, Any]] = None,
         exist_ok: bool = False,
-        eos_token: Optional[str] = None,
+        eos_token: Union[str, int, None] = None,
         **kwargs) -> Optional[Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]]:
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
@@ -874,8 +875,10 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
     eos_token = kwargs.get('eos_token')
-    if eos_token is not None:
+    if isinstance(eos_token, str):
         tokenizer.eos_token = eos_token
+    elif isinstance(eos_token, int):
+        tokenizer.eos_token_id = eos_token
     pad_token = kwargs.get('pad_token')
     if pad_token is not None:
         tokenizer.pad_token = pad_token
@@ -907,9 +910,15 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 trust_remote_code=True,
             )
         else:
+            logger.info(f'model_kwargs: {model_kwargs}')
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        model.is_gptq = is_gptq
+        model.is_awq = is_awq
+        model.is_aqlm = is_aqlm
+        if hasattr(model, 'hf_device_map'):
+            logger.debug(f'Model hf_device_map: {model.hf_device_map}')
     return model, tokenizer
 
 
@@ -1101,7 +1110,7 @@ def get_model_tokenizer_cogagent(model_dir: str,
                                  load_model: bool = True,
                                  **kwargs):
     tokenizer = AutoTokenizer.from_pretrained('AI-ModelScope/vicuna-7b-v1.5', revision='master', trust_remote_code=True)
-    if load_model is True:
+    if load_model:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
                        'to avoid this, please uninstall apex.')
     model, tokenizer = get_model_tokenizer_from_repo(
@@ -1490,7 +1499,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     if version.parse(transformers.__version__) >= version.parse('4.34'):
         tokenizer_config = get_tokenizer_config(model_dir)
         class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-        tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+        tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
         tokenizer_cls._auto_class = 'AutoTokenizer'
         remove_property(tokenizer_cls, tokenizer_config)
         kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
@@ -2358,6 +2367,8 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     if version.parse(transformers.__version__) >= version.parse('4.36'):
         if use_flash_attn:
             model_config._attn_implementation = 'flash_attention_2'
+        else:
+            model_config._attn_implementation = 'eager'
     else:
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
@@ -3348,8 +3359,8 @@ def get_model_tokenizer_internvl(model_dir: str,
 
             @wraps(old_forward)
             def _new_forward(*args, **kwargs):
-                input_ids = kwargs.get('input_ids', None)
-                input_embeds = kwargs.get('inputs_embeds', None)
+                input_ids: Optional[Tensor] = kwargs.get('input_ids', None)
+                input_embeds: Optional[Tensor] = kwargs.get('inputs_embeds', None)
                 device = input_ids.device if input_ids is not None else input_embeds.device
                 output = old_forward(*args, **kwargs)
                 output['logits'] = output['logits'].to(device)
@@ -3992,7 +4003,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
-    TemplateType.qwen,
+    TemplateType.qwenvl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen-VL-Chat')
@@ -4025,7 +4036,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     get_qwen_function = kwargs.pop('get_qwen_function', get_model_tokenizer_qwen_chat)
     tokenizer_config = get_tokenizer_config(model_dir)
     class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
     if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
@@ -4087,7 +4098,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     get_qwen_function = kwargs.pop('get_qwen_function')
     tokenizer_config = get_tokenizer_config(model_dir)
     class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
     if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
@@ -4427,13 +4438,6 @@ def get_model_tokenizer_yuan(model_dir: str,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
                              **kwargs):
-    model_folder, model_name = os.path.split(model_dir)
-    need_rename = '.' in model_name
-    if need_rename:
-        model_name = model_name.replace('.', '_')  # fix transformers_modules
-        new_model_dir = os.path.join(model_folder, model_name)
-        logger.info(f'Using new_model_dir: {new_model_dir}')
-        os.rename(model_dir, new_model_dir)
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attention = kwargs.pop('use_flash_attn', False)
     model_config.use_flash_attention = use_flash_attention
@@ -4447,8 +4451,6 @@ def get_model_tokenizer_yuan(model_dir: str,
     tokenizer.add_tokens(addi_tokens, special_tokens=True)
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
-    if need_rename:
-        os.rename(new_model_dir, model_dir)
     return model, tokenizer
 
 
@@ -4651,6 +4653,25 @@ def _patch_llava(model):
 
 
 @register_model(
+    ModelType.llava1_5_7b_chat,
+    'huangjintao/llava-1.5-7b-hf',
+    LoRATM.llama,
+    TemplateType.llava1_5,
+    eos_token='</s>',
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-1.5-7b-hf')
+def get_model_tokenizer_llava1_5(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, LlavaForConditionalGeneration
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, *args, automodel_class=LlavaForConditionalGeneration, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
+
+
+@register_model(
     ModelType.llava1_6_yi_34b_instruct,
     'AI-ModelScope/llava-v1.6-34b',
     LoRATM.llama,
@@ -4825,21 +4846,21 @@ def fix_gradient_checkpointing_warning() -> None:
         return
     elif torch_version < version.parse('2.1'):
         # fix https://github.com/Dao-AILab/flash-attention/issues/341
-        use_reentrant = True
+        _use_reentrant = True
     else:
-        use_reentrant = False
+        _use_reentrant = False
     _old_checkpoint = torch.utils.checkpoint.checkpoint
     if not hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
 
         torch.utils.checkpoint._old_checkpoint = _old_checkpoint
         torch.utils.checkpoint.checkpoint = update_wrapper(
-            lambda *args, use_reentrant=use_reentrant, **kwargs: _old_checkpoint(
+            lambda *args, use_reentrant=_use_reentrant, **kwargs: _old_checkpoint(
                 *args, use_reentrant=use_reentrant, **kwargs),
             _old_checkpoint)
     try:
         import transformers.modeling_utils
         if hasattr(transformers.modeling_utils, 'checkpoint'):
-            transformers.modeling_utils.checkpoint = (lambda *args, use_reentrant=use_reentrant, **kwargs:
+            transformers.modeling_utils.checkpoint = (lambda *args, use_reentrant=_use_reentrant, **kwargs:
                                                       _old_checkpoint(*args, use_reentrant=use_reentrant, **kwargs))
     except ImportError:
         pass
@@ -4871,7 +4892,7 @@ def safe_snapshot_download(model_type: str,
                 else:
                     ignore_file_pattern += [r'.+\.bin$', r'.+\.safetensors$']
             if use_hf:
-                if revision is None:
+                if revision is None or revision == 'master':
                     revision = 'main'
                 logger.info(f'Downloading the model from HuggingFace Hub, model_id: {model_id_or_path}')
                 use_hf_transfer = strtobool(os.environ.get('USE_HF_TRANSFER', 'False'))
@@ -4912,6 +4933,7 @@ def get_model_tokenizer(model_type: str,
                         *,
                         model_id_or_path: Optional[str] = None,
                         revision: Optional[str] = None,
+                        quant_method: Literal['gptq', 'awq', 'aqlm', None] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
@@ -4929,10 +4951,14 @@ def get_model_tokenizer(model_type: str,
     get_function = model_info['get_function']
     if model_kwargs is None:
         model_kwargs = {}
-    if 'device_map' not in model_kwargs and not use_torchacc():
-        model_kwargs['device_map'] = 'auto'
 
     if load_model:
+        if 'device_map' not in model_kwargs and not use_torchacc():
+            model_kwargs['device_map'] = 'auto'
+        for k in ['gptq', 'awq', 'aqlm']:
+            if quant_method == k:
+                kwargs[f'is_{k}'] = True
+                break
         if model_info.get('torch_dtype') is not None:
             model_torch_dtype = model_info['torch_dtype']
             if torch_dtype is None:
@@ -4949,6 +4975,7 @@ def get_model_tokenizer(model_type: str,
                         and quantization_config.bnb_4bit_compute_dtype is None):
                     quantization_config.bnb_4bit_compute_dtype = torch_dtype
                     logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
+
     kwargs['eos_token'] = model_info['eos_token']
     pad_token = model_info.get('pad_token')
     if pad_token is not None:

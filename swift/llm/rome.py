@@ -1,4 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from typing import Optional
+
 import json
 import torch
 from modelscope import GenerationConfig
@@ -41,7 +43,7 @@ def rome_infer(args: RomeArguments) -> None:
     with open(args.rome_request_file, 'r', encoding='utf-8') as f:
         request = json.load(f)
 
-    rome_type: str = None
+    rome_type: Optional[str] = None
     if args.model_type in ('llama2-13b-chat', 'llama2-13b', 'llama-13b-chat', 'llama-13b'):
         rome_type = 'llama-13b'
         batch_first = True

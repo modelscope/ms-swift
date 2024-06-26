@@ -7,11 +7,12 @@ from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import datasets.fingerprint
 import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets
+from datasets import Sequence, Value, concatenate_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
 from pandas import DataFrame
@@ -19,23 +20,40 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from swift.utils.torch_utils import _find_local_mac
+from .media import MediaCache
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
-                         preprocess_sharegpt)
-from .template import History
+                         ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
+                         TextGenerationPreprocessor, preprocess_sharegpt)
 from .utils import download_dataset
+
+
+def _update_fingerprint_mac(*args, **kwargs):
+    mac = _find_local_mac().replace(':', '')
+    fp = datasets.fingerprint._update_fingerprint(*args, **kwargs)
+    fp += '-' + mac
+    if len(fp) > 64:
+        fp = fp[:64]
+    return fp
+
+
+datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
+datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
+datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
 def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     k_list = []
     for k in dataset.features.keys():
-        if k in {'query', 'response', 'rejected_response', 'system', 'history', 'images'}:
+        if k in {
+                'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
+                'objects', 'videos', 'audios', 'tools'
+        }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
 
 
-GetDatasetFunction = Callable[[], Union[HfDataset, Tuple[HfDataset, Optional[HfDataset]]]]
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
 DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -63,7 +81,7 @@ class DatasetName:
     coig_cqia = 'coig-cqia'
     ruozhiba = 'ruozhiba'
     long_alpaca_12k = 'long-alpaca-12k'
-
+    lmsys_chat_1m = 'lmsys-chat-1m'
     # agent
     ms_agent = 'ms-agent'
     ms_agent_for_agentfabric = 'ms-agent-for-agentfabric'
@@ -95,6 +113,7 @@ class DatasetName:
     # sql
     text2sql_en = 'text2sql-en'
     sql_create_context_en = 'sql-create-context-en'
+    synthetic_text_to_sql = 'synthetic-text-to-sql'
     # text-generation
     advertise_gen_zh = 'advertise-gen-zh'
     dureader_robust_zh = 'dureader-robust-zh'
@@ -103,6 +122,7 @@ class DatasetName:
     jd_sentiment_zh = 'jd-sentiment-zh'
     hc3_zh = 'hc3-zh'
     hc3_en = 'hc3-en'
+    dolly_15k = 'dolly-15k'
     # other
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
@@ -126,14 +146,39 @@ class DatasetName:
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
 
-    # dpo/hfrl dataset
+    # rlhf
     hh_rlhf = 'hh-rlhf'
     hh_rlhf_cn = 'hh-rlhf-cn'
+    orpo_dpo_mix_40k = 'orpo-dpo-mix-40k'
     stack_exchange_paired = 'stack-exchange-paired'
     shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
+    ultrafeedback_kto = 'ultrafeedback-kto'
 
     # for awq
     pileval = 'pileval'
+
+    mantis_instruct = 'mantis-instruct'
+    llava_data_instruct = 'llava-data-instruct'
+    midefics = 'midefics'
+    gqa = 'gqa'
+    text_caps = 'text-caps'
+    a_okvqa = 'a-okvqa'
+    okvqa = 'okvqa'
+    ocr_vqa = 'ocr-vqa'
+    grit = 'grit'
+    llava_instruct_mix = 'llava-instruct-mix'
+    lnqa = 'lnqa'
+    science_qa = 'science-qa'
+    guanaco = 'guanaco'
+    mind2web = 'mind2web'
+    sharegpt_4o_image = 'sharegpt-4o-image'
+
+    m3it = 'm3it'
+    # additional images
+    sharegpt4v = 'sharegpt4v'
+
+    llava_instruct_150k = 'llava-instruct-150k'
+    llava_pretrain = 'llava-pretrain'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -149,14 +194,14 @@ def register_dataset(dataset_name: str,
                      dataset_id_or_path: Optional[str] = None,
                      subsets: Optional[List[str]] = None,
                      preprocess_func: Optional[PreprocessFunc] = None,
-                     get_function: Optional[GetDatasetFunction] = None,
+                     get_function: Optional[Callable] = None,
                      *,
                      split: Optional[List[str]] = None,
                      hf_dataset_id: Optional[str] = None,
                      function_kwargs: Optional[Dict[str, Any]] = None,
                      exist_ok: bool = False,
                      is_local: bool = False,
-                     **kwargs) -> Optional[Callable[[GetDatasetFunction], GetDatasetFunction]]:
+                     **kwargs) -> Optional[Callable]:
     if preprocess_func is None:
         preprocess_func = SmartPreprocessor()
     if not exist_ok and dataset_name in DATASET_MAPPING:
@@ -184,7 +229,7 @@ def register_dataset(dataset_name: str,
         DATASET_MAPPING[dataset_name] = dataset_info
         return
 
-    def _register_dataset(get_function: GetDatasetFunction) -> GetDatasetFunction:
+    def _register_dataset(get_function: Callable) -> Callable:
         _old_get_function = get_function
         if len(function_kwargs) > 0:
             get_function = partial(get_function, **function_kwargs)
@@ -216,7 +261,6 @@ def register_local_dataset(
 
 
 def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
-    preprocess_func = None
     if 'columns' in d_info:
         preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
         d_info.pop('columns')
@@ -254,14 +298,28 @@ def load_ms_dataset(dataset_id: str,
         assert len(subset_split) == 2
         subset_name, split = subset_split
         if use_hf:
-            dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
+            try:
+                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
+            except ValueError as e:
+                logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
+                             f'split={split} with error: {e}')
+                continue
+            except Exception:
+                raise
         else:
             if is_dist() and not is_local_master():
                 force_redownload = False
             else:
                 force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
-            dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
+            try:
+                dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
+            except ValueError as e:
+                logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
+                             f'split={split} with error: {e}')
+                continue
+            except Exception:
+                raise
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
@@ -311,7 +369,7 @@ def _post_preprocess(
             train_sample = dataset_sample - val_sample
             assert isinstance(val_sample, int)
             train_dataset, val_dataset = train_dataset.train_test_split(
-                test_size=val_sample, seed=get_seed(random_state)).values()
+                test_size=val_sample, seed=get_seed(random_state), load_from_cache_file=False).values()
 
         assert train_sample > 0
         train_dataset = sample_dataset(train_dataset, train_sample, random_state)
@@ -364,6 +422,36 @@ register_dataset(
     hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh')
 
 
+def preprocess_sharegpt_4o_images(dataset):
+    url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
+    local_dir = MediaCache.download(url, 'sharegpt_4o_images')
+    prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
+
+    def preprocess_row(row):
+        image = row['image']
+        if not image:
+            return {'image': []}
+        image = os.path.join(prefix_path, image)
+        if not os.path.exists(image):
+            return {'image': [], 'conversations': []}
+        return {'image': [image]}
+
+    dataset = dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['conversations'])
+    return ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')(
+            dataset)
+
+
+register_dataset(
+    DatasetName.sharegpt_4o_image,
+    'AI-ModelScope/ShareGPT-4o', ['image_caption'],
+    preprocess_sharegpt_4o_images,
+    get_dataset_from_repo,
+    split=['images'],
+    tags=['vqa', 'multi-modal'],
+    hf_dataset_id='OpenGVLab/ShareGPT-4o')
+
+
 def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
     prompt = 'please describe the image.'
     image_key = 'image'
@@ -381,6 +469,123 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
     dataset = HfDataset.from_dict({'query': query, 'response': response})
     return dataset
 
+
+def preprocess_mantis_image(dataset, subset):
+    url = f'https://www.modelscope.cn/api/v1/datasets/swift/Mantis-Instruct/repo?Revision=master&FilePath={subset}/train_images.zip'  # noqa
+    local_dir = MediaCache.download(url, f'mantis_{subset}')
+
+    def preprocess_row(row):
+        images = [os.path.join(local_dir, p['path']) for p in row['images']]
+        if all([os.path.exists(d) for d in images]):
+            return {'images': images}
+        else:
+            return {'images': []}
+
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['images'])
+
+
+def get_mantis_dataset(dataset_id: str,
+                       subsets: Optional[List[str]],
+                       preprocess_func: PreprocessFunc,
+                       split: List[str],
+                       dataset_sample: int = -1,
+                       *,
+                       random_state: Optional[RandomState] = None,
+                       dataset_test_ratio: float = 0.,
+                       remove_useless_columns: bool = True,
+                       use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+    if subsets is None:
+        subsets = []
+    assert len(split) > 0
+    if len(subsets) == 0:
+        subset_split_list = split
+    else:
+        subset_split_list = list(itertools.product(subsets, split))
+    all_datasets = []
+    for subset in subset_split_list:
+        dataset = load_ms_dataset(dataset_id, [subset], use_hf)
+        dataset = preprocess_mantis_image(dataset, subset=subset[0])
+        all_datasets.append(dataset)
+        break
+    dataset = concatenate_datasets(all_datasets)
+    return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
+                            remove_useless_columns)
+
+
+register_dataset(
+    DatasetName.mantis_instruct,
+    'swift/Mantis-Instruct', [
+        'birds-to-words', 'chartqa', 'coinstruct', 'contrastive_caption', 'docvqa', 'dreamsim', 'dvqa', 'iconqa',
+        'imagecode', 'llava_665k_multi', 'lrv_multi', 'multi_vqa', 'nextqa', 'nlvr2', 'spot-the-diff', 'star',
+        'visual_story_telling'
+    ],
+    ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        media_type='image',
+        media_key='images',
+        error_strategy='delete'),
+    get_mantis_dataset,
+    split=['train'],
+    tags=['chat', 'multi-modal', 'vision', 'quality'],
+    hf_dataset_id='TIGER-Lab/Mantis-Instruct')
+
+
+def preprocess_llava_data(dataset: HfDataset) -> HfDataset:
+
+    all_folders = {}
+    for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
+        all_folders[media_type] = MediaCache.download(media_type)
+    dataset._image_dir = all_folders
+
+    def preprocess_image(example):
+        if not example['images']:
+            return {}
+        images = [p['path'] for p in example['images']]
+        new_images = []
+        for image in images:
+            if 'coco/' in image:
+                image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+            elif 'gqa/' in image:
+                image = os.path.join(dataset._image_dir['gqa'], image.replace('gqa/', ''))
+            elif 'ocr_vqa/' in image:
+                image = os.path.join(dataset._image_dir['ocr_vqa'], image)
+            elif 'textvqa/' in image:
+                image = os.path.join(dataset._image_dir['textvqa'], image.replace('textvqa/', ''))
+            elif 'VG_100K/' in image:
+                image = os.path.join(dataset._image_dir['VG_100K'], image.replace('vg/', ''))
+            elif 'VG_100K_2/' in image:
+                image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('vg/', ''))
+            new_images.append(image)
+        if all(os.path.exists(image) for image in new_images):
+            example['images'] = new_images
+        else:
+            example['images'] = []
+        return example
+
+    dataset = dataset.map(preprocess_image, load_from_cache_file=False).filter(lambda row: row['images'])
+    return ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        media_type='image',
+        media_key='images')(
+            dataset)
+
+
+register_dataset(
+    DatasetName.llava_data_instruct,
+    'swift/llava-data', ['llava_instruct'],
+    preprocess_llava_data,
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['sft', 'multi-modal', 'quality'],
+    hf_dataset_id='TIGER-Lab/llava-data')
 
 register_dataset(
     DatasetName.coco_en,
@@ -470,7 +675,7 @@ register_dataset(
     is_main=False)
 
 
-def _repair_agent_conversations(conversations: str, use_mini: bool) -> List[Dict[str, str]]:
+def _repair_agent_conversations(conversations: str, use_mini: bool) -> Optional[List[Dict[str, str]]]:
     if use_mini:
         pattern = r'\d\. {"plugin_name": "(.+?)"'
     else:
@@ -490,10 +695,11 @@ def _repair_agent_conversations(conversations: str, use_mini: bool) -> List[Dict
     return conversations
 
 
-def _repair_ms_bench(conversations: str) -> List[Dict[str, str]]:
+def _repair_ms_bench(conversations: str) -> Optional[List[Dict[str, str]]]:
     if isinstance(conversations, str):
         conversations = ast.literal_eval(conversations)
     default_system = 'You are a helpful assistant.'
+    conversations: List[Dict[str, str]]
     if conversations[0]['from'] == 'system' and conversations[0]['value'] == default_system:
         conversations.pop(0)
     # skip MOSS
@@ -514,7 +720,7 @@ def long_alpaca_preprocessor(dataset: HfDataset):
         return response
 
     dataset = AlpacaPreprocessor()(dataset)
-    return dataset.map(map_row)
+    return dataset.map(map_row, load_from_cache_file=False)
 
 
 register_dataset(
@@ -541,7 +747,7 @@ def _preprocess_ruozhiba(dataset: HfDataset):
             title = match.group(1)
         return {'response': title}
 
-    return dataset.map(map_row).filter(lambda row: row['response'])
+    return dataset.map(map_row, load_from_cache_file=False).filter(lambda row: row['response'])
 
 
 register_dataset(
@@ -600,7 +806,7 @@ _firefly_kind_list = [
 ]
 
 
-def _preprocess_firefly(dataset: List[Dict[str, str]], kind_list: List[str]) -> HfDataset:
+def _preprocess_firefly(dataset: HfDataset, kind_list: List[str]) -> HfDataset:
     kind_set = set(kind_list)
     query: List[str] = []
     response: List[str] = []
@@ -618,10 +824,11 @@ def _preprocess_firefly(dataset: List[Dict[str, str]], kind_list: List[str]) -> 
 
 @register_dataset(
     DatasetName.firefly_zh,
-    'wyj123456/firefly',
+    'AI-ModelScope/firefly-train-1.1M',
     None,
     _preprocess_firefly,
     tags=['chat', 'general'],
+    hf_dataset_id='YeungNLP/firefly-train-1.1M',
     function_kwargs={'kind_list': _firefly_kind_list})
 def get_firefly_zh_dataset(dataset_id: str, _, preprocess_func: PreprocessFunc, *args, **kwargs) -> HfDataset:
     kind_list = kwargs['kind_list']
@@ -721,7 +928,7 @@ def process_hh_rlhf(dataset):
             'history': history,
         }
 
-    return dataset.map(reorganize_row).filter(lambda row: row['query'] is not None)
+    return dataset.map(reorganize_row, load_from_cache_file=False).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(
@@ -785,7 +992,8 @@ def process_hh_rlhf_cn(dataset):
         except:  # noqa
             return False
 
-    return dataset.filter(row_can_be_parsed).map(reorganize_row).filter(lambda row: row['query'])
+    return dataset.filter(row_can_be_parsed).map(
+        reorganize_row, load_from_cache_file=False).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -798,6 +1006,240 @@ register_dataset(
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
 
 
+def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
+
+    system = []
+    query = []
+    response = []
+    images = []
+    for d in tqdm(dataset):
+        system.append(d['instruction'])
+        query.append(d['inputs'])
+        images.append(d['image_base64_str'])
+        response.append(d['outputs'])
+    dataset = HfDataset.from_dict({'system': system, 'query': query, 'response': response, 'images': images})
+    return dataset
+
+
+def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
+    split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
+    IMAGE_DATASET_REQUIREMENTS = {
+        'ShareGPT4V': ['coco', 'sam', 'llava', 'wikiart', 'share_textvqa', 'web-celebrity', 'web-landmark'],
+        'ShareGPT4V-PT': ['coco', 'sam', 'llava']
+    }
+
+    if isinstance(split, str):
+        split = [split]
+    all_folders = {}
+    for sp in split:
+        for media_type in IMAGE_DATASET_REQUIREMENTS[sp]:
+            all_folders[media_type] = MediaCache.download(media_type)
+    dataset._image_dir = all_folders
+
+    def preprocess_image(example):
+        image = example['image']
+        if 'coco/' in image:
+            image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+        elif 'sam/' in image:
+            image = os.path.join(dataset._image_dir['sam'], image.replace('sam/images/', ''))
+        elif 'llava/' in image:
+            image = os.path.join(dataset._image_dir['llava'], image.replace('llava/llava_pretrain/images/', ''))
+        elif 'wikiart/' in image:
+            image = os.path.join(dataset._image_dir['wikiart'], image.replace('wikiart/images/',
+                                                                              'data/wikiart/images/'))
+        elif 'share_textvqa/' in image:
+            image = os.path.join(dataset._image_dir['share_textvqa'],
+                                 image.replace('share_textvqa/images/', 'data/share_textvqa/images/'))
+        elif 'web-celebrity/' in image:
+            image = os.path.join(dataset._image_dir['web-celebrity'],
+                                 image.replace('web-celebrity/images/', 'data/web-celebrity/images/'))
+        elif 'web-landmark/' in image:
+            image = os.path.join(dataset._image_dir['web-landmark'],
+                                 image.replace('web-landmark/images/', 'data/web-landmark/images/'))
+        if os.path.exists(image):
+            example['images'] = image
+        else:
+            example['images'] = None
+        return example
+
+    dataset = dataset.map(
+        preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
+    processer = ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
+    return processer(dataset)
+
+
+register_dataset(
+    DatasetName.m3it,
+    'AI-ModelScope/M3IT',  # error: 'vist' , 'iqa-rephrased ', 'mmchat' / test: 'winoground','chinese-food'
+    [
+        'coco', 'vqa-v2', 'shapes', 'shapes-rephrased', 'coco-goi-rephrased', 'snli-ve', 'snli-ve-rephrased', 'okvqa',
+        'a-okvqa', 'viquae', 'textcap', 'docvqa', 'science-qa', 'imagenet', 'imagenet-open-ended', 'imagenet-rephrased',
+        'coco-goi', 'clevr', 'clevr-rephrased', 'nlvr', 'coco-itm', 'coco-itm-rephrased', 'vsr', 'vsr-rephrased',
+        'mocheg', 'mocheg-rephrased', 'coco-text', 'fm-iqa', 'activitynet-qa', 'msrvtt', 'ss', 'coco-cn', 'refcoco',
+        'refcoco-rephrased', 'multi30k', 'image-paragraph-captioning', 'visual-dialog', 'visual-dialog-rephrased',
+        'iqa', 'vcr', 'visual-mrc', 'ivqa', 'msrvtt-qa', 'msvd-qa', 'gqa', 'text-vqa', 'ocr-vqa', 'st-vqa',
+        'flickr8k-cn'
+    ],
+    _preprocess_m3it,
+    get_dataset_from_repo,
+    split=['train'],
+    huge_dataset=True,
+    tags=['chat', 'multi-modal', 'vision'])
+
+register_dataset(
+    DatasetName.sharegpt4v,
+    'AI-ModelScope/ShareGPT4V', ['ShareGPT4V', 'ShareGPT4V-PT'],
+    _preprocess_sharegpt4v,
+    get_dataset_from_repo,
+    split=['train'],
+    huge_dataset=True,
+    tags=['chat', 'multi-modal', 'vision'])
+
+
+def preprocess_text_caps(dataset):
+
+    def preprocess(row):
+        try:
+            image = row['image']
+            response = np.random.choice(row['reference_strs'])
+            return {'response': response, 'image': image}
+        except Exception:
+            return {'response': '', 'image': None}
+
+    return dataset.map(
+        preprocess,
+        load_from_cache_file=False).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
+
+
+register_dataset(
+    DatasetName.text_caps,
+    'swift/TextCaps', [],
+    preprocess_func=preprocess_text_caps,
+    get_function=get_dataset_from_repo,
+    split=['train', 'val'],
+    hf_dataset_id='HuggingFaceM4/TextCaps',
+    huge_dataset=True,
+    tags=['multi-modal', 'en', 'caption', 'quality'])
+
+register_dataset(
+    DatasetName.lnqa,
+    'swift/lnqa', [],
+    preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='vikhyatk/lnqa',
+    huge_dataset=True,
+    tags=['multi-modal', 'en', 'ocr-vqa', 'quality'])
+
+
+def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
+    all_folders = {}
+    for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
+        all_folders[media_type] = MediaCache.download(media_type)
+    dataset._image_dir = all_folders
+
+    def preprocess_image(example):
+        image = example['image']
+        if 'coco/' in image:
+            image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+        elif 'gqa/' in image:
+            image = os.path.join(dataset._image_dir['gqa'], image.replace('gqa/', ''))
+        elif 'ocr_vqa/' in image:
+            image = os.path.join(dataset._image_dir['ocr_vqa'], image)
+        elif 'textvqa/' in image:
+            image = os.path.join(dataset._image_dir['textvqa'], image.replace('textvqa/', ''))
+        elif 'VG_100K/' in image:
+            image = os.path.join(dataset._image_dir['VG_100K'], image.replace('vg/', ''))
+        elif 'VG_100K_2/' in image:
+            image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('vg/', ''))
+        if os.path.exists(image):
+            example['images'] = image
+        else:
+            example['images'] = None
+        return example
+
+    dataset = dataset.map(
+        preprocess_image, load_from_cache_file=False).filter(lambda example: example['images'] is not None)
+    processer = ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
+    return processer(dataset)
+
+
+register_dataset(
+    DatasetName.llava_instruct_150k,
+    'AI-ModelScope/LLaVA-Instruct-150K',
+    None,
+    _preprocess_llava_instruct_images,
+    get_dataset_from_repo,
+    split=['train'],
+    tags=['chat', 'multi-modal', 'vision'])
+
+
+def preprocess_lmsys_chat(dataset):
+
+    def repair_conversations(s: Union[str, Any]) -> Any:
+        if isinstance(s, str):
+            s = s.replace('}\n {', '},{')
+            s = s.replace('}\n{', '},{')
+            s = s.replace('}{', '},{')
+            s = s.replace('}\n  {', '},{')
+            return ast.literal_eval(s)
+        return s
+
+    return ConversationsPreprocessor(
+        user_role='user',
+        assistant_role='assistant',
+        conversations_key='conversation',
+        from_key='role',
+        value_key='content',
+        error_strategy='delete',
+        repair_conversations=repair_conversations)(
+            dataset)
+
+
+register_dataset(
+    DatasetName.lmsys_chat_1m,
+    'AI-ModelScope/lmsys-chat-1m',
+    None,
+    preprocess_lmsys_chat,
+    get_dataset_from_repo,
+    hf_dataset_id='lmsys/lmsys-chat-1m',
+    tags=['chat', 'em'])
+
+
+def _preprocess_llava_pretrain(dataset):
+    media_dir = MediaCache.download(
+        'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip',  # noqa
+        'llava_pretrain')
+
+    def preprocess(row):
+        if row['image']:
+            file_path = os.path.join(media_dir, row['image'])
+            if os.path.exists(file_path):
+                return {'image': file_path}
+            else:
+                return {'image': ''}
+        else:
+            return {'image': ''}
+
+    dataset = dataset.map(preprocess, load_from_cache_file=False).filter(lambda row: row['image'])
+    return ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')(
+            dataset)
+
+
+register_dataset(
+    DatasetName.llava_pretrain,
+    'AI-ModelScope/LLaVA-Pretrain', ['blip_laion_cc_sbu_558k'],
+    _preprocess_llava_pretrain,
+    get_dataset_from_repo,
+    split=['train'],
+    hf_dataset_id='liuhaotian/LLaVA-Pretrain',
+    huge_dataset=True,
+    tags=['vqa', 'multi-modal', 'quality'])
+
+
 def process_shareai_dpo(dataset):
 
     def reorganize_row(row):
@@ -807,8 +1249,99 @@ def process_shareai_dpo(dataset):
             'rejected_response': row['answer_en'],
         }
 
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row, load_from_cache_file=False)
 
+
+def process_ultrafeedback_kto(dataset: HfDataset):
+
+    def reorganize_row(row):
+        return {
+            'prompt': row['prompt'],
+            'completion': row['completion'],
+            'label': row['label'],
+        }
+
+    return dataset.map(reorganize_row, load_from_cache_file=False)
+
+
+register_dataset(
+    DatasetName.ultrafeedback_kto,
+    'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto', ['default'],
+    process_ultrafeedback_kto,
+    get_dataset_from_repo,
+    remove_useless_columns=False,
+    tags=['rlhf', 'kto'])
+
+
+def preprocess_guanaco(dataset):
+    from swift.utils.utils import split_str_parts_by
+
+    def preprocess_row(row):
+        instruction = row['instruction']
+        input = row['input']
+        output = row['output']
+        history = []
+        if instruction:
+            parts = split_str_parts_by(
+                instruction, ['User:', 'User：', 'Assistant：', 'Assistant:', 'Asssistent:', 'Assistent:', 'Assistenz:'])
+            for idx, part in enumerate(parts):
+                if idx % 2 == 0:
+                    if 'user' not in part['key'].lower():
+                        return {'query': '', 'history': [], 'response': ''}
+                    history.append([part['content'], None])
+                else:
+                    if 'assist' not in part['key'].lower() and 'asssist' not in part['key'].lower():
+                        return {'query': '', 'history': [], 'response': ''}
+                    history[-1][-1] = part['content']
+        if input.startswith('User:'):
+            input = input[len('User:'):].strip()
+        if any([not h[0] or not h[1] for h in history]):
+            return {'query': '', 'history': [], 'response': ''}
+        return {
+            'history': history,
+            'query': input,
+            'response': output,
+        }
+
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['query'] and row['response'])
+
+
+register_dataset(
+    DatasetName.guanaco,
+    'AI-ModelScope/GuanacoDataset', ['default'],
+    preprocess_guanaco,
+    get_dataset_from_repo,
+    hf_dataset_id='JosephusCheung/GuanacoDataset',
+    tags=['chat', 'zh'])
+
+
+def preprocess_dolly_15k(dataset):
+
+    def preprocess_row(row):
+        instruction = row['instruction']
+        context = row['context']
+        response = row['response']
+        query = ''
+        if context:
+            query = 'Here gives some useful information:\n'
+            query += context
+            query += '\n'
+        query += instruction
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(preprocess_row, load_from_cache_file=False)
+
+
+register_dataset(
+    DatasetName.dolly_15k,
+    'AI-ModelScope/databricks-dolly-15k', ['default'],
+    preprocess_dolly_15k,
+    get_dataset_from_repo,
+    hf_dataset_id='databricks/databricks-dolly-15k',
+    tags=['multi-task', 'en', 'quality'])
 
 register_dataset(
     DatasetName.shareai_llama3_dpo_zh_en_emoji,
@@ -816,6 +1349,318 @@ register_dataset(
     process_shareai_dpo,
     get_dataset_from_repo,
     tags=['rlhf', 'dpo', 'pairwise'])
+
+register_dataset(
+    DatasetName.midefics,
+    'swift/MideficsDataset', [],
+    ListPreprocessor(
+        conversations_key='conversation',
+        query_key='question',
+        response_key='answer',
+        inner_key='data',
+        media_type='image'),
+    get_dataset_from_repo,
+    hf_dataset_id='WinterSchool/MideficsDataset',
+    tags=['medical', 'en', 'vqa'])
+
+
+def preprocess_okvqa(dataset):
+
+    def preprocess(row):
+        query = row['question']
+        response = np.random.choice(row['answers'])
+        return {
+            'response': response,
+            'query': query,
+        }
+
+    return dataset.map(preprocess, load_from_cache_file=False).rename_column('image', 'images')
+
+
+register_dataset(
+    DatasetName.okvqa,
+    'swift/OK-VQA_train', [],
+    preprocess_func=preprocess_okvqa,
+    get_function=get_dataset_from_repo,
+    split=['train'],
+    hf_dataset_id='Multimodal-Fatima/OK-VQA_train',
+    tags=['multi-modal', 'en', 'vqa', 'quality'])
+
+
+def preprocess_a_okvqa(dataset):
+
+    def preprocess(row):
+        query = row['question']
+        response = np.random.choice(row['rationales'])
+        return {
+            'response': response,
+            'query': query,
+        }
+
+    return dataset.map(preprocess, load_from_cache_file=False).rename_column('image', 'images')
+
+
+register_dataset(
+    DatasetName.a_okvqa,
+    'swift/A-OKVQA', [],
+    preprocess_func=preprocess_a_okvqa,
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='HuggingFaceM4/A-OKVQA',
+    tags=['multi-modal', 'en', 'vqa', 'quality'])
+
+
+def preprocess_ocr_vqa(dataset):
+
+    def preprocess(row):
+        idx = np.random.choice(range(len(row['questions'])))
+        query = row['questions'][idx]
+        response = row['answers'][idx]
+        return {
+            'response': response,
+            'query': query,
+        }
+
+    return dataset.map(preprocess, load_from_cache_file=False).rename_column('image', 'images')
+
+
+register_dataset(
+    DatasetName.ocr_vqa,
+    'swift/OCR-VQA', [],
+    preprocess_func=preprocess_ocr_vqa,
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='howard-hou/OCR-VQA',
+    tags=['multi-modal', 'en', 'ocr-vqa'])
+
+
+def preprocess_science_qa(dataset):
+
+    def preprocess_row(row):
+        query = row['question']
+        response = row['choices'][row['answer']]
+        solution = row['solution']
+        return {'query': query, 'response': f'{solution}\nSo the final answer is:{response}'}
+
+    return dataset.map(
+        preprocess_row, load_from_cache_file=False).filter(lambda row: row['image']).rename_columns({'image': 'images'})
+
+
+register_dataset(
+    DatasetName.science_qa,
+    'swift/ScienceQA', [],
+    preprocess_func=preprocess_science_qa,
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='derek-thomas/ScienceQA',
+    tags=['multi-modal', 'science', 'vqa', 'quality'])
+
+
+def preprocess_grit(dataset):
+
+    def has_overlap(start_ends):
+        for i in range(1, len(start_ends)):
+            if start_ends[i][0] < start_ends[i - 1][1]:
+                return True
+        return False
+
+    def replace_intervals_with_tags(response, start_ends):
+        result = []
+        last_end = 0
+        for start, end in start_ends:
+            result.append(response[int(last_end):int(start)])
+            result.append('<ref-object><bbox>')
+            last_end = end
+        result.append(response[int(last_end):])
+        return ''.join(result)
+
+    def preprocess_row(row):
+        images = row['url']
+        caption = row['caption']
+        ref_exps = row['ref_exps']
+        objects = []
+        start_end_pairs = []
+        for ref_exp in ref_exps:
+            start = ref_exp[0]
+            end = ref_exp[1]
+            # conf = ref_exp[6] TODO filter low confidence rows?
+            start_end_pairs.append(ref_exp[0:2])
+
+            object_part = caption[int(start):int(end)]
+            objects.append([object_part, ref_exp[2:6]])
+
+        start_end_pairs.sort(key=lambda x: (x[0], x[1]))
+        if has_overlap(start_end_pairs):
+            return {'images': None, 'response': '', 'objects': None}
+
+        response = replace_intervals_with_tags(caption, start_end_pairs)
+
+        return {'images': images, 'response': response, 'objects': json.dumps(objects or [])}
+
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['objects'])
+
+
+register_dataset(
+    DatasetName.grit,
+    'swift/GRIT', [],
+    preprocess_func=preprocess_grit,
+    get_function=get_dataset_from_repo,
+    split=['train'],
+    hf_dataset_id='zzliang/GRIT',
+    huge_dataset=True,
+    tags=['multi-modal', 'en', 'caption-grounding', 'quality'])
+
+
+def preprocess_gqa(dataset):
+    local_cache = MediaCache.download('gqa')
+
+    def preprocess_row(row):
+        if os.path.join(local_cache, 'images', row['imageId'] + '.jpg'):
+            return {
+                'query': row['question'],
+                'response': row['fullAnswer'],
+                'images': os.path.join(local_cache, 'images', row['imageId'] + '.jpg'),
+            }
+        else:
+            return {'query': '', 'response': '', 'images': ''}
+
+    return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['query'])
+
+
+register_dataset(
+    DatasetName.gqa,
+    None, ['train_all_instructions'],
+    preprocess_gqa,
+    get_function=get_dataset_from_repo,
+    hf_dataset_id='lmms-lab/GQA',
+    huge_dataset=True,
+    tags=['multi-modal', 'en', 'vqa', 'quality'])
+
+
+def preprocess_llava_mix_sft(dataset):
+
+    def preprocess_row(row):
+        messages = row['messages']
+        rounds = []
+        for msg in messages:
+            role = msg['role']
+            content = msg['content']
+            text = ''
+            for index in content:
+                if index['type'] == 'text':
+                    text += index['text']
+                elif index['type'] == 'image':
+                    text += '<image>'
+
+            rounds.append({'role': role, 'content': text})
+
+        return {'messages': rounds}
+
+    dataset = dataset.map(
+        preprocess_row, load_from_cache_file=False).map(
+            ConversationsPreprocessor(
+                user_role='user',
+                assistant_role='assistant',
+                conversations_key='messages',
+                from_key='role',
+                value_key='content',
+                media_key='images',
+                media_type='image',
+            ).preprocess,
+            load_from_cache_file=False)
+    return dataset
+
+
+register_dataset(
+    DatasetName.llava_instruct_mix,
+    'swift/llava-instruct-mix-vsft', [],
+    preprocess_llava_mix_sft,
+    get_function=get_dataset_from_repo,
+    split=['test'],
+    hf_dataset_id='HuggingFaceH4/llava-instruct-mix-vsft',
+    tags=['multi-modal', 'en', 'vqa', 'quality'])
+
+
+def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
+
+    def preprocess(row):
+        chosen_history = row['chosen']
+        rejected_history = row['rejected']
+        history = []
+        query = None
+        response = None
+        rejected_response = None
+        try:
+            for i, (chosen, rejected) in enumerate(zip(chosen_history, rejected_history)):
+                role = chosen['role']
+                content = chosen['content']
+                rejected_role = rejected['role']
+                rejected_content = rejected['content']
+                assert role == rejected_role
+                if i % 2 == 0:
+                    assert role == 'user'
+                else:
+                    assert role == 'assistant'
+
+                if content != rejected_content:
+                    assert role == 'assistant'
+                    response = content
+                    rejected_response = rejected_content
+                    query = history.pop(-1)[0]
+                else:
+                    if role == 'user':
+                        history.append([content, None])
+                    else:
+                        history[-1][-1] = content
+
+        except (AssertionError, IndexError) as e:
+            logger.warning(e)
+
+        return {
+            'history': history,
+            'query': query,
+            'response': response,
+            'rejected_response': rejected_response,
+        }
+
+    return dataset.map(
+        preprocess,
+        load_from_cache_file=False).filter(lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
+
+
+register_dataset(
+    DatasetName.orpo_dpo_mix_40k,
+    'AI-ModelScope/orpo-dpo-mix-40k', ['default'],
+    orpo_dpo_mix_40k_preprocessor,
+    get_dataset_from_repo,
+    hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
+    tags=['dpo', 'orpo', 'en', 'quality'])
+
+
+def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
+
+    def preprocess(row):
+        sql_prompt = row['sql_prompt']
+        sql_context = row['sql_context']
+        sql = row['sql_context']
+        sql_explanation = row['sql_explanation']
+        query = f'Sql Table information:\n{sql_context}\n{sql_prompt}'
+        response = f'Let\'s think step by step:\n{sql_explanation}\nSo the final sql is:\n{sql}'
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(preprocess, load_from_cache_file=False)
+
+
+register_dataset(
+    DatasetName.synthetic_text_to_sql,
+    'AI-ModelScope/synthetic_text_to_sql', ['default'],
+    synthetic_text_to_sql_preprocesser,
+    get_dataset_from_repo,
+    hf_dataset_id='gretelai/synthetic_text_to_sql',
+    tags=['nl2sql', 'en'])
 
 register_dataset(
     DatasetName.sharegpt,
@@ -850,9 +1695,9 @@ register_dataset(
     tags=['chat', 'multi-modal', 'vision'])
 
 
-def _repair_toolbench(conversations: Dict[str, str]) -> Dict[str, str]:
+def _repair_toolbench(conversations: List[Dict[str, str]]) -> List[Dict[str, str]]:
     assert len(conversations) == 2
-    if (conversations[1]['from'] in {'caller', 'conclusion'}):
+    if conversations[1]['from'] in {'caller', 'conclusion'}:
         conversations[1]['from'] = 'assistant'
     return conversations
 
@@ -862,7 +1707,8 @@ register_dataset(
     'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'],
     ConversationsPreprocessor('system', system_role='-', repair_conversations=_repair_toolbench),
     get_dataset_from_repo,
-    tags=['chat', 'agent', '🔥'])
+    tags=['chat', 'agent', '🔥'],
+    huge_dataset=True)
 
 
 def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
@@ -969,6 +1815,87 @@ register_dataset(
     tags=['chat', 'agent', 'multi-round'])
 
 
+def preprocess_mind2web(dataset):
+
+    def preprocess_row(row: Dict[str, Any]) -> Dict[str, Any]:
+        raw_html = row['cleaned_html']
+        screenshot = row['screenshot']
+        row['screenshot'] = MediaCache.safe_save(screenshot, row['action_uid'] + '.jpg', 'mind2web')
+        action = row['target_action_reprs']
+        actions = action.split('->')
+        row['query'] = f'The snapshot of screen:<image>\nThe html source code:{raw_html}\n'
+        action = actions[-1]
+        where = actions[0] if len(actions) > 1 else ''
+        what = ''
+        if ':' in action:
+            action, what = action[:action.find(':')], action[action.find(':') + 1:]
+        row['response'] = f'Action: {action.strip()}\nAction Input: {where.strip()}{"," + what.strip()}'
+        return row
+
+    conversations = []
+    tools = [{
+        'api': 'CLICK',
+        'desc': 'Choose and click an element in the web page',
+        'parameter': [{
+            'element': 'string, the element in the web page to click'
+        }]
+    }, {
+        'api':
+        'TYPE',
+        'desc':
+        'Input some text into a web element like <input> or <textbox>',
+        'parameter': [{
+            'element': 'string, the element in the web page to input to',
+            'content': 'string, what content to input into the textbox elment'
+        }]
+    }, {
+        'api':
+        'SELECT',
+        'desc':
+        'Select an element from a combobox',
+        'parameter': [{
+            'element': 'string, the combobox or dropdown in the web page on which the select happens',
+            'content': 'string, which choices to choose'
+        }]
+    }]
+    history = []
+    images = []
+    for row in tqdm(dataset):
+        target_action_index = row['target_action_index']
+        row = preprocess_row(row)
+        query = row['query']
+        if target_action_index == '0':
+            if history:
+                query, response = history.pop(-1)
+                conversations.append({
+                    'history': history,
+                    'query': query,
+                    'response': response,
+                    'images': images,
+                    'tools': tools
+                })
+                images = []
+                history = []
+            query = query + '\n' + row['confirmed_task']
+        history.append([query, row['response']])
+        images.append([row['screenshot']])
+
+    if history:
+        query, response = history.pop(-1)
+        conversations.append({'history': history, 'query': query, 'response': response, 'images': images})
+
+    return HfDataset.from_list(conversations)
+
+
+register_dataset(
+    DatasetName.mind2web,
+    'swift/Multimodal-Mind2Web', [],
+    preprocess_mind2web,
+    get_dataset_from_repo,
+    hf_dataset_id='osunlp/Multimodal-Mind2Web',
+    tags=['agent', 'multi-modal'])
+
+
 def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
     res_prompt = """\n\n【注意事项】\n1. 这是聊天室，不要发送私信给任何人\n2. 仅代表你个人说话,不要扮演其他人，
     只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
@@ -1026,7 +1953,7 @@ def _preprocess_toolbench(dataset: HfDataset) -> HfDataset:
             'response': convs[-1]['value']
         }
 
-    return dataset.map(reorganize_row)
+    return dataset.map(reorganize_row, load_from_cache_file=False)
 
 
 register_dataset(
@@ -1077,8 +2004,8 @@ register_dataset(
 NoneType = type(None)
 
 
-def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['none', 'discard', 'error',
-                                                                            'warning']) -> HfDataset:
+def _check_dataset(dataset: Optional[HfDataset], check_dataset_strategy: Literal['none', 'discard', 'error',
+                                                                                 'warning']) -> Optional[HfDataset]:
     if check_dataset_strategy == 'none' or dataset is None:
         return dataset
     idx_list = []
@@ -1130,7 +2057,10 @@ def _check_dataset(dataset: Optional[None], check_dataset_strategy: Literal['non
     return dataset
 
 
-def _safe_split(s: str, sep: str, use_0: bool, split_mode: Literal['left', 'right'] = 'left') -> Tuple[str, str]:
+def _safe_split(s: str,
+                sep: str,
+                use_0: bool,
+                split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
     # use_0: When the length of the part is 1, is it considered as part0 or part1.
     if s is None or len(s) == 0:
         return None, None
@@ -1176,7 +2106,7 @@ def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
     return tuple(t.strip() if isinstance(t, str) else t for t in [use_hf, dataset_name, subset_list, dataset_sample])
 
 
-def _dataset_name_exists(dataset_list: str, dataset_name: str) -> List[int]:
+def _dataset_name_exists(dataset_list: List[str], dataset_name: str) -> List[int]:
     dataset_name = parse_dataset_name(dataset_name)[1]
     cache_name_list = [parse_dataset_name(dataset)[1] for dataset in dataset_list]
     res = []
@@ -1190,7 +2120,7 @@ def _preprocess_self_cognition_dataset(
     dataset_list: Tuple[HfDataset, Optional[HfDataset]],
     model_name: Tuple[str, Optional[str]],
     model_author: Tuple[str, Optional[str]],
-) -> Tuple[HfDataset, HfDataset]:
+) -> Tuple[HfDataset, Optional[HfDataset]]:
     # model_name: Tuple[zh, en]
     assert model_name[0] is not None
     assert model_author[0] is not None
@@ -1217,7 +2147,7 @@ def _preprocess_self_cognition_dataset(
     return tuple(res_d_list)
 
 
-def _dataset_id_to_name(dataset_name_list: List[str]) -> List[int]:
+def _dataset_id_to_name(dataset_name_list: List[str]) -> List[str]:
     # register dataset_id (ms/hf). Convert dataset_id to dataset_name.
     ms_dataset_mapping = {}
     hf_dataset_mapping = {}
@@ -1272,8 +2202,8 @@ def get_dataset(
         check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none',
         *,
         # for self-cognition
-        model_name: Optional[Tuple[str, str]] = None,
-        model_author: Optional[Tuple[str, str]] = None) -> Tuple[HfDataset, Optional[HfDataset]]:
+        model_name: Union[Tuple[str, str], List[str], None] = None,
+        model_author: Union[Tuple[str, str], List[str], None] = None) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     if isinstance(dataset_name_list, str):
         dataset_name_list = [dataset_name_list]
@@ -1294,13 +2224,15 @@ def get_dataset(
         else:
             random_state = dataset_seed
 
-        get_function: GetDatasetFunction = dataset_info['get_function']
+        get_function = dataset_info['get_function']
         is_local = dataset_info.get('is_local', False)
         dataset_id_or_path = dataset_info['dataset_id_or_path']
         remove_useless_columns = dataset_info.get('remove_useless_columns', True)
 
         if not is_local:
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
+            if not dataset_id_or_path:
+                use_hf = True
             if use_hf:
                 dataset_id_or_path = dataset_info['hf_dataset_id']
                 dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id_or_path)
@@ -1323,11 +2255,57 @@ def get_dataset(
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
             dataset = _preprocess_self_cognition_dataset(dataset, model_name, model_author)
+
+        def _reduce_column(row: Dict[str, Any]) -> Dict[str, Any]:
+            res = {}
+            if 'query' in row and isinstance(row['query'], (list, tuple)):
+                res['query'] = np.random.choice(row['query'])
+            if 'response' in row and isinstance(row['response'], (list, tuple)):
+                res['response'] = np.random.choice(row['response'])
+            if 'rejected_response' in row and isinstance(row['rejected_response'], (list, tuple)):
+                res['rejected_response'] = np.random.choice(row['rejected_response'])
+            if 'history' in row:
+                if not row['history']:
+                    res['_history'] = None
+                else:
+                    res['_history'] = row['history']
+            if 'history_roles' in row:
+                if not row['history_roles']:
+                    res['_history_roles'] = None
+                else:
+                    res['_history_roles'] = row['history_roles']
+            if 'system' in row:
+                res['_system'] = row['system']
+            return res
+
+        def _reduce_dataset(ds: HfDataset):
+            features = ds.features.copy()
+            if 'history' in ds.features:
+                features['_history'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
+            if 'history_roles' in ds.features:
+                features['_history_roles'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
+            if 'system' in ds.features:
+                features['_system'] = Value(dtype='string')
+            ds = ds.map(_reduce_column, load_from_cache_file=False, features=features)
+            if 'history' in ds.features:
+                ds = ds.remove_columns(['history']).rename_column('_history', 'history')
+            if 'history_roles' in ds.features:
+                ds = ds.remove_columns(['history_roles']).rename_column('_history_roles', 'history_roles')
+            if 'system' in ds.features:
+                ds = ds.remove_columns(['system']).rename_column('_system', 'system')
+            return ds
+
         train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
         else:
             train_d, val_d = dataset, None
+
+        if train_d:
+            train_d = _reduce_dataset(train_d)
+        if val_d:
+            val_d = _reduce_dataset(val_d)
+
         assert train_d is not None or val_d is not None
         if train_d is not None:
             train_dataset_list.append(train_d)

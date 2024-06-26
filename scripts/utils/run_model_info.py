@@ -1,9 +1,9 @@
-from typing import List
+from typing import Any, List
 
 from swift.llm import MODEL_MAPPING, ModelType
 
 
-def get_model_info_table() -> List[str]:
+def get_model_info_table():
     fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
     end_words = [['### 多模态大模型', '## 数据集'], ['### MLLM', '## Datasets']]
     model_name_list = ModelType.get_model_name_list()
@@ -13,8 +13,8 @@ def get_model_info_table() -> List[str]:
         '| ---------  | -------- | --------------------------- | ---------------- |'
         ' ------------------ | ------------ | -------- | ---- | ----------- |\n'
     ] * 2
-    res_llm: List[str] = []
-    res_mllm: List[str] = []
+    res_llm: List[Any] = []
+    res_mllm: List[Any] = []
     bool_mapping = {True: '&#x2714;', False: '&#x2718;'}
     for model_name in model_name_list:
         model_info = MODEL_MAPPING[model_name]
@@ -69,8 +69,7 @@ def get_model_info_table() -> List[str]:
         output = text[:llm_start_idx] + result[0] + '\n\n' + text[llm_end_idx:mllm_start_idx] + result[
             1] + '\n\n' + text[mllm_end_idx:]
         with open(fpath, 'w') as f:
-            text = f.write(output)
-    return res
+            f.write(output)
 
 
 if __name__ == '__main__':

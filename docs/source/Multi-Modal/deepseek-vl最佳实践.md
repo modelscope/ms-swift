@@ -66,6 +66,14 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat
 舟儿前行不自知。
 夜深人静思绪远，
 孤舟独行心悠然。
+--------------------------------------------------
+<<< clear
+<<< <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png</img>对图片进行OCR
+The image contains Chinese text and appears to be a screenshot of a document or webpage. The text is divided into several paragraphs, and there are several instances of URLs and Chinese characters. The text is not entirely clear due to the resolution, but some of the visible words and phrases include "SWIFT", "250+", "LLM35+", "MLM", "PEFT", "adapters", "GPT", "XNLI", "Tune", "LORA", "LAMA-PRO", "Gradio", "web.ui", "AnimateDiff", "HuggingFace", "space", "ModelScope", and "SWIFT web".
+
+The text seems to be discussing topics related to machine learning, specifically mentioning models like SWIFT, GPT, and LAMA-PRO, as well as tools and frameworks like HuggingFace and ModelScope. The URLs suggest that the text might be referencing online resources or repositories related to these topics.
+
+The text is not fully legible due to the low resolution and the angle at which the image was taken, which makes it difficult to provide a precise transcription. However, the presence of technical terms and URLs indicates that the content is likely from a technical or academic context, possibly a research paper, a technical report, or an article discussing advancements in machine learning and related technologies.
 """
 ```
 
@@ -87,6 +95,9 @@ poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
+ocr:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 

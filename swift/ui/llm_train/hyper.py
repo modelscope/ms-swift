@@ -12,7 +12,7 @@ class Hyper(BaseUI):
     locale_dict = {
         'hyper_param': {
             'label': {
-                'zh': '超参数',
+                'zh': '超参数设置',
                 'en': 'Hyper settings',
             },
         },
@@ -116,6 +116,16 @@ class Hyper(BaseUI):
                 'en': 'Use Flash Attention to reduce memory',
             }
         },
+        'neftune_noise_alpha': {
+            'label': {
+                'zh': 'neftune_noise_alpha',
+                'en': 'neftune_noise_alpha'
+            },
+            'info': {
+                'zh': '使用neftune提升训练效果, 一般设置为5或者10',
+                'en': 'Use neftune to improve performance, normally the value should be 5 or 10'
+            }
+        },
     }
 
     @classmethod
@@ -124,7 +134,7 @@ class Hyper(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Slider(elem_id='batch_size', minimum=1, maximum=256, step=2, scale=20)
-                    learning_rate = gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
+                    gr.Textbox(elem_id='learning_rate', value='1e-4', lines=1, scale=20)
                     gr.Textbox(elem_id='num_train_epochs', lines=1, scale=20)
                     gr.Textbox(elem_id='max_steps', lines=1, scale=20)
                     gr.Slider(elem_id='gradient_accumulation_steps', minimum=1, maximum=256, step=2, value=16, scale=20)
@@ -134,12 +144,11 @@ class Hyper(BaseUI):
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                     gr.Checkbox(elem_id='predict_with_generate', scale=20)
                     gr.Checkbox(elem_id='use_flash_attn', scale=20)
+                    gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=4)
 
-            def update_lr(sft_type):
-                if sft_type == 'full':
-                    return 1e-5
-                else:
-                    return 1e-4
-
-            base_tab.element('sft_type').change(
-                update_lr, inputs=[base_tab.element('sft_type')], outputs=[learning_rate])
+    @staticmethod
+    def update_lr(sft_type):
+        if sft_type == 'full':
+            return 1e-5
+        else:
+            return 1e-4

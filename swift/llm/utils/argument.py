@@ -6,7 +6,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Set, Tuple, Union
+from typing import Any, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -30,7 +30,7 @@ from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
-from .utils import is_vllm_available
+from .utils import is_quant_model, is_vllm_available
 
 logger = get_logger()
 
@@ -275,12 +275,12 @@ class ArgumentsBase:
             if self.eval_strategy is not None:
                 self.evaluation_strategy = self.eval_strategy
 
-    def handle_custom_dataset_info(self):
+    def handle_custom_dataset_info(self: Union['SftArguments', 'InferArguments']):
         if self.custom_dataset_info is None:
             return
         register_dataset_info_file(self.custom_dataset_info)
 
-    def _handle_dataset_sample(self):
+    def _handle_dataset_sample(self: Union['SftArguments', 'InferArguments']):
         # compatibility. (Deprecated)
         # Avoid post-processing
         if len(self.dataset) != 1 or self.train_dataset_sample == -1:
@@ -326,8 +326,8 @@ class ArgumentsBase:
                                      'Representing the model name and model author in Chinese and English.')
                 setattr(self, k, v)
 
-    def _handle_dataset_compat(self, train_dataset: Optional[HfDataset],
-                               val_dataset: Optional[HfDataset]) -> Tuple[HfDataset, Optional[HfDataset]]:
+    def _handle_dataset_compat(self: Union['SftArguments', 'InferArguments'], train_dataset: Optional[HfDataset],
+                               val_dataset: Optional[HfDataset]) -> Tuple[Optional[HfDataset], Optional[HfDataset]]:
         # compatibility. (Deprecated)
         random_state = np.random.RandomState(self.dataset_seed)
         val_dataset_sample = self.val_dataset_sample
@@ -364,7 +364,7 @@ class ArgumentsBase:
         train_dataset = concatenate_datasets([train_dataset, mixed_dataset])
         return train_dataset, val_dataset
 
-    def prepare_template(self):
+    def prepare_template(self: Union['SftArguments', 'InferArguments']):
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
@@ -442,7 +442,7 @@ class SftArguments(ArgumentsBase):
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     output_dir: str = 'output'
     add_output_dir_suffix: Optional[bool] = None
-    ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl']] = None
+    ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl', 'hccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
 
@@ -580,6 +580,7 @@ class SftArguments(ArgumentsBase):
     save_only_model: Optional[bool] = None
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
+    acc_steps: int = 1
     dataloader_num_workers: Optional[int] = None
     dataloader_pin_memory: bool = True
     dataloader_drop_last: bool = False
@@ -674,15 +675,15 @@ class SftArguments(ArgumentsBase):
         with open(sft_args_path, 'r', encoding='utf-8') as f:
             sft_args = json.load(f)
         imported_keys = [
-            'model_type', 'model_revision', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
-            'bnb_4bit_use_double_quant', 'model_id_or_path'
+            'model_type', 'model_revision', 'quant_method', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype',
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path'
         ]
 
         for key in imported_keys:
             value = getattr(self, key)
             if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
                 continue
-            if key in {'model_type', 'model_revision', 'model_id_or_path'} and value is not None:
+            if key in {'model_type', 'model_revision', 'model_id_or_path', 'quant_method'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 
@@ -819,8 +820,9 @@ class SftArguments(ArgumentsBase):
                 'lora does not support `freeze_parameters`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
-            if 'int4' in self.model_type or 'int8' in self.model_type or 'awq' in self.model_type:
-                assert self.quantization_bit == 0, 'int4, int8 or awq models do not need to be quantized again.'
+            if is_quant_model(self.model_type):
+                assert self.quantization_bit == 0, (
+                    f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
@@ -1025,7 +1027,7 @@ class SftArguments(ArgumentsBase):
         self.training_args = training_args
 
     def _handle_pai_compat(self) -> None:
-        assert is_pai_training_job() is True
+        assert is_pai_training_job()
         logger.info('Handle pai compat...')
         pai_tensorboard_dir = get_pai_tensorboard_dir()
         if self.logging_dir is None and pai_tensorboard_dir is not None:
@@ -1074,7 +1076,8 @@ class InferArguments(ArgumentsBase):
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
-    quant_method: Literal['bnb', 'hqq', 'eetq'] = None
+    # 'awq', 'gptq', 'aqlm' are used for inference on pre-quantized models.
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq', 'aqlm'] = None
     quantization_bit: Literal[0, 1, 2, 3, 4, 8] = 0  # hqq: 1,2,3,4,8. bnb: 4,8
     hqq_axis: Literal[0, 1] = 0
     hqq_dynamic_config_path: Optional[str] = None
@@ -1210,14 +1213,13 @@ class InferArguments(ArgumentsBase):
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
             if self.sft_type == 'lora' and not self.vllm_enable_lora:
-                assert self.merge_lora is True, ('To use VLLM, you need to provide the complete weight parameters. '
-                                                 'Please set `--merge_lora true`.')
+                assert self.merge_lora, ('To use VLLM, you need to provide the complete weight parameters. '
+                                         'Please set `--merge_lora true`.')
         if (self.infer_backend == 'vllm' and self.vllm_enable_lora
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
             self.lora_request_list = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
-            logger.info(f'args.lora_request_list: {self.lora_request_list}')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
@@ -1235,7 +1237,7 @@ class InferArguments(ArgumentsBase):
         with open(sft_args_path, 'r', encoding='utf-8') as f:
             sft_args = json.load(f)
         imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quantization_bit',
+            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
         ]
         if self.load_dataset_config:
@@ -1247,7 +1249,7 @@ class InferArguments(ArgumentsBase):
             value = getattr(self, key)
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
-            if key in {'dataset_test_ratio', 'system'} and value is not None:
+            if key in {'dataset_test_ratio', 'system', 'quant_method'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 
@@ -1264,7 +1266,7 @@ class InferArguments(ArgumentsBase):
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
-        """Check the checkpoint dir is correct, which means it must contains a `configuration.json` file.
+        """Check the checkpoint dir is correct, which means it must contain a `configuration.json` file.
         Args:
             ckpt_dir: The checkpoint dir
         Returns:
@@ -1397,30 +1399,87 @@ class ExportArguments(InferArguments):
 
 
 @dataclass
-class DPOArguments(SftArguments):
-
+class RLHFArguments(SftArguments):
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
 
     ref_model_id_or_path: Optional[str] = None
-
+    ref_model_free: bool = False
     max_prompt_length: int = 1024
-    beta: float = 0.1
+    beta: Optional[float] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair'] = 'sigmoid'
+    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair', 'simpo',
+                       'kto', 'bco'] = None
     sft_beta: float = 0.1
+    simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
+    # KTO
+    desirable_weight: float = 1.0
+    undesirable_weight: float = 1.0
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        # without reference model
+        self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
+        if self.rlhf_type == 'simpo':
+            self.loss_type = 'simpo'  # compatibility with trl > 0.9.5
+            self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
+        self.set_default_beta()
+        self.set_default_loss_type()
+        self.set_default_config()
+        self.check_loss_type()
 
-@dataclass
-class SimPOArguments(DPOArguments):
-    beta: float = 2.0
-    gamma: float = 1.0
+    def set_default_beta(self):
+        if self.beta is None:
+            if self.rlhf_type in ['dpo', 'orpo', 'kto', 'cpo']:
+                self.beta = 0.1
+            elif self.rlhf_type == 'simpo':
+                self.beta = 2.0
 
+    def set_default_config(self):
+        from importlib import import_module
+        from dataclasses import fields, MISSING
+        CONFIG_MAPPING = {
+            'orpo': 'trl.trainer.orpo_config.ORPOConfig',
+            'kto': 'trl.trainer.kto_config.KTOConfig',
+            'simpo': 'trl.trainer.cpo_config.CPOConfig',
+            'cpo': 'trl.trainer.cpo_config.CPOConfig',
+            'dpo': 'trl.trainer.dpo_config.DPOConfig'
+        }
 
-@dataclass
-class ORPOArguments(SftArguments):
-    max_prompt_length: int = 1024
-    beta: float = 0.1
+        if self.rlhf_type in CONFIG_MAPPING:
+            config_path = CONFIG_MAPPING[self.rlhf_type]
+            module_path, config_name = config_path.rsplit('.', 1)
+            config_module = import_module(module_path)
+            cls = getattr(config_module, config_name, None)
+            assert cls is not None
+            for f in fields(cls):
+                if hasattr(self.training_args, f.name):
+                    continue
+                elif hasattr(self, f.name):
+                    setattr(self.training_args, f.name, getattr(self, f.name))
+                elif f.default != MISSING:
+                    setattr(self.training_args, f.name, f.default)
+                elif f.default_factory != MISSING:
+                    setattr(self.training_args, f.name, f.default_factory())
+
+    def check_loss_type(self):
+        supported_loss_types = {
+            'dpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust'],
+            'cpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'simpo'],
+            'kto': ['kto', 'bco']
+        }
+        if self.rlhf_type in supported_loss_types:
+            assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
+                f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
+
+    def set_default_loss_type(self):
+        if self.loss_type is not None:
+            return
+        if self.rlhf_type in ['dpo', 'cpo']:
+            self.loss_type = 'sigmoid'
+        elif self.rlhf_type == 'kto':
+            self.loss_type = 'kto'
 
 
 @dataclass
@@ -1459,7 +1518,7 @@ def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     return lora_checkpoint_path
 
 
-def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List['LoRARequest']:
+def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List[Any]:
     VllmLoRARequest = None
     if use_vllm:
         try:

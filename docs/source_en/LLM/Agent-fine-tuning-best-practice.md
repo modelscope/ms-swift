@@ -27,6 +27,38 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## Data Preparation
+Supported agent datasets in swift now include::
+- [msagent-pro](https://www.modelscope.cn/datasets/iic/MSAgent-Pro)
+- [toolbench](https://www.modelscope.cn/datasets/swift/ToolBench)
+- [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent)
+- [ms-agent-for-agentfabric](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric)
+- [ms-agent-multirole](https://www.modelscope.cn/datasets/iic/MSAgent-MultiRole)
+- [toolbench-for-alpha-umi](https://www.modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)
+- [damo-agent-zh](https://www.modelscope.cn/datasets/iic/MSAgent-Bench)
+- [agent-instruct-all-en](https://www.modelscope.cn/datasets/huangjintao/AgentInstruct_copy)
+
+You can also train using custom Agent datasets, now supporting two formats
+
+format 1
+```jsonl
+{"tools":"{API_LIST}","conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "tool", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "tool", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+```
+
+format 2
+```jsonl
+{"tools":"{API_LIST}","messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "tool", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "tool", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+```
+
+For the tools format, please refer to [Agent-Deoloyment Document](./Agent-deployment-best-practice.md) You can choose the corresponding prompt by setting `--tools_prompt`.
+
+The `tool` field represents the return result of the tool calling.
+
+
+If you want to maintain the model's general capability, you can mix a certain proportion of general-purpose datasets. Here’s an example of training an agent by blending the ms-bench and ms-agent datasets:
 
 For training Agent capability, the ModelScope team officially provides two open-source datasets:
 

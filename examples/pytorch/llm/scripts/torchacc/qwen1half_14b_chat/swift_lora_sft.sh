@@ -2,7 +2,7 @@
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 
-# MASTER_ADDR=127.0.0.1 \
+export USE_TORCH_XLA=0
 
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -22,5 +22,6 @@ swift sft \
   --eval_steps 2000000 \
   --save_steps 2000000 \
   --logging_steps 100 \
+  --acc_steps 100 \
   --preprocess_num_proc 1 \
   --metric_warmup_step 0.1 \

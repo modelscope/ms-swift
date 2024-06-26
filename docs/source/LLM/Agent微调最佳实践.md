@@ -30,8 +30,38 @@ pip install -r requirements/llm.txt  -U
 
 ## 数据准备
 
-为训练Agent能力，魔搭官方提供了两个开源数据集：
+swift现支持的agent数据集:
+- [msagent-pro](https://www.modelscope.cn/datasets/iic/MSAgent-Pro)
+- [toolbench](https://www.modelscope.cn/datasets/swift/ToolBench)
+- [ms-agent](https://www.modelscope.cn/datasets/iic/ms_agent)
+- [ms-agent-for-agentfabric](https://www.modelscope.cn/datasets/AI-ModelScope/ms_agent_for_agentfabric)
+- [ms-agent-multirole](https://www.modelscope.cn/datasets/iic/MSAgent-MultiRole)
+- [toolbench-for-alpha-umi](https://www.modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)
+- [damo-agent-zh](https://www.modelscope.cn/datasets/iic/MSAgent-Bench)
+- [agent-instruct-all-en](https://www.modelscope.cn/datasets/huangjintao/AgentInstruct_copy)
 
+你也可以使用自定义Agent数据集进行训练, 现支持两种格式
+
+格式1
+```jsonl
+{"tools":"{API_LIST}","conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "tool", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "tool", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+```
+
+格式2
+```jsonl
+{"tools":"{API_LIST}","messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "tool", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "tool", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+```
+
+其中tools格式参考[Agent部署文档](./Agent部署最佳实践.md#tools字段), 提供可调用的工具列表, 你可以通过设置`--tools_prompt`来选择对应的prompt
+
+`tool`字段表示工具调用返回结果
+
+
+如果你想保留模型的通用能力, 可以混合一定比例的通用数据集, 以下以混合ms-bench和ms-agent数据集训练agent为例,
 - [魔搭通用问答知识数据集](https://www.modelscope.cn/datasets/iic/ms_bench/summary) 该数据集包含了38万条通用知识多轮对话数据
 - [魔搭通用Agent训练数据集](https://www.modelscope.cn/datasets/iic/ms_agent/summary) 该数据集包含了3万条Agent格式的API调用数据
 

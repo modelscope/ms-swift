@@ -9,7 +9,6 @@ import json
 import peft
 import torch
 import torch.nn
-from packaging import version
 from peft import (AdaLoraConfig, BOFTConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
                   PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                   PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
@@ -28,7 +27,7 @@ dispatchers = []
 
 @dataclass
 class LoraConfig(peft.LoraConfig):
-    lora_dtype: str = field(
+    lora_dtype: Optional[str] = field(
         default=None, metadata={'help': 'The lora dtype, default None means following the original layer\'s dtype'})
 
     lorap_lr_ratio: float = field(default=2.0**4, metadata={'help': 'The lr ratio of lora_B in lora+'})

@@ -4,11 +4,12 @@
 
 export USE_TORCHACC=1
 export TORCHACC_TRIM_GRAPH=1
-export XLA_FLAGS='--xla_gpu_force_compilation_parallelism=32 --xla_multiheap_size_constraint_per_heap=4831838208 --xla_disable_hlo_passes=all-gather-combiner,all-reduce-combiner,reduce-scatter-combiner,gpu-convert-async-collectives-to-sync,rematerialization'
 export XLA_IR_SHAPE_CACHE_SIZE=100000000
 export XLA_ALLOCATOR_FRACTION=0.95
 export XLA_EXPERIMENTAL=nonzero:masked_select
-export XLA_COORDINATOR_PORT=12457
+
+export XLA_PERSISTENT_CACHE_PATH=./output/compiled_cache/Meta-Llama-3-8B-Instruct
+mkdir -p $XLA_PERSISTENT_CACHE_PATH
 
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -32,6 +33,7 @@ swift sft \
   --eval_steps 2000000 \
   --save_steps 2000000 \
   --logging_steps 100 \
+  --acc_steps 100 \
   --preprocess_num_proc 1 \
   --metric_warmup_step 0.1 \
   --report_to 'none'

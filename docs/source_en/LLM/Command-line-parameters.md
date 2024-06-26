@@ -93,6 +93,7 @@
 - `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `None`, i.e. if `sft_type` is 'lora' and not using deepspeed (`deepspeed` is `None`), set to False, otherwise set to True (e.g. using full fine-tuning or deepspeed).
 - `--save_total_limit`: Number of checkpoints to save, default is `2`, i.e. save best and last checkpoint. If set to -1, save all checkpoints.
 - `--logging_steps`: Print training information (e.g. loss, learning_rate, etc.) every this many steps, default is `5`.
+- `--acc_steps`: How often to calculate the accuracy information during training, by default it is calculated every `1` iteration.
 - `--dataloader_num_workers`: Default value is `None`. If running on a Windows machine, set it to `0`; otherwise, set it to `1`.
 - `--push_to_hub`: Whether to sync push trained checkpoint to ModelScope Hub, default is `False`.
 - `--hub_model_id`: Model_id to push to on ModelScope Hub, default is `None`, i.e. set to `f'{model_type}-{sft_type}'`. You can set this to model_id or repo_name. We will infer user_name based on hub_token. If the remote repository to push to does not exist, a new repository will be created, otherwise the previous repository will be reused. This parameter only takes effect when `push_to_hub` is set to True.
@@ -223,17 +224,19 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 - `--ia3_feedforward_modules`: Specify the Linear name of IA3's MLP, this name must be in `ia3_target_modules`.
 - `--ia3_modules_to_save`: Additional modules participating in IA3 training. See meaning of `lora_modules_to_save`.
 
-## dpo Parameters
-
-dpo parameters inherit from sft parameters, with the following added parameters:
-
-- `--ref_model_type`: Type of reference model, available `model_type` options can be found in `MODEL_MAPPING.keys()`.
-- `--ref_model_id_or_path`: The local cache dir for reference model, default `None`.
-- `--max_prompt_length`: Maximum prompt length, this parameter is passed to DPOTrainer, setting prompt length to not exceed this value, default is `1024`.
-- `--beta`: Regularization term for DPO logits, default is 0.1.
-- `--label_smoothing`: Whether to use DPO smoothing, default is 0, generally set between 0~0.5.
-- `--loss_type`: DPOloss type, supports 'sigmoid', 'hinge', 'ipo', 'kto_pair', default is 'sigmoid'.
-- `--sft_beta`: Whether to add sft loss in DPO, default is 0.1, supports [0, 1) interval, final loss is `(1-sft_beta)*KL_loss + sft_beta * sft_loss`.
+## RLHF Parameters
+RLHF parameters are an extension of the sft parameters, with the addition of the following options:
+- `--rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo'. For training scripts with  different algorithms, please refer to [document](./Human-Preference-Alignment-Training-Documentation.md)
+- `--ref_model_type`: Select the reference model, similar to the model_type parameter, by default consistent with the model being trained. No selection is necessary for `cpo` and `simpo` algorithms.
+- `--ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
+- `--max_prompt_length`: The maximum length of the prompt. This parameter is passed to the corresponding Trainer to ensure the prompt length does not exceed the set value. The default value is `1024`.
+- `--beta`: Coefficient for the KL regularization term. For `simpo` the default is 2.0, for other algorithms, the default is 0.1. For detail please check[document](./Human-Preference-Alignment-Training-Documentation.md)
+- `--label_smoothing`: Whether to use DPO smoothing, the default value is 0, normally set between 0 and 0.5.
+- `--loss_type`: Type of loss, default value is 'sigmoid'.
+- `--sft_beta`: Whether to include sft loss in DPO, default is 0.1, supporting the range $[0, 1)$ . The final loss is `(1-sft_beta)*KL_loss + sft_beta * sft_loss`.
+- `simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is 1.0.
+- `desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is 1.0.
+- `undesirable_weight`: The loss weight for undesirable responses $\lambda_U$ in the KTO paper, default is 1.0. Let $n_d$ and $n_u$ represent the number of desirable and undesirable examples in the dataset, respectively. The paper recommends controlling $\frac{\lambda_D n_D}{\lambda_Un_U} \in [1,\frac{4}{3}]$.
 
 ## merge-lora infer Parameters
 

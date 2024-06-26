@@ -4,10 +4,7 @@ from functools import partial
 from typing import Any, Dict, Union
 
 import json
-import numpy as np
 import torch
-import torch.distributed as dist
-from datasets import Dataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -21,7 +18,7 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          plot_images, preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (MODEL_MAPPING, TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
+from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
                     get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
                     sort_by_max_length, stat_dataset)
 
@@ -59,6 +56,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
             model_kwargs['device_map'] = {'': local_rank}
+        elif torch.cuda.device_count() == 1:
+            model_kwargs['device_map'] = 'cuda:0'
         elif not use_torchacc():
             model_kwargs['device_map'] = 'auto'
 
@@ -101,16 +100,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
-    if args.quant_method == 'awq':
-        kwargs['is_awq'] = True
-    elif args.quant_method == 'aqlm':
-        kwargs['is_aqlm'] = True
-    elif args.quant_method == 'gptq':
-        kwargs['is_gptq'] = True
 
     if args.rope_scaling:
         kwargs['rope_scaling'] = args.rope_scaling
-        kwargs['max_length'] = args.max_length
 
     model, tokenizer = get_model_tokenizer(
         args.model_type,
@@ -118,8 +110,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
+        quant_method=args.quant_method,
         is_training=True,
         **kwargs)
+    for k in ['gptq', 'awq', 'aqlm']:
+        if getattr(model, f'is_{k}', None):
+            args.quant_method = k
+            logger.info(f'Setting args.quant_method: {args.quant_method}')
+            break
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
@@ -301,8 +299,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         for args_obj, fname in zip([args, training_args], ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
             logger.info(f'The {args_obj.__class__.__name__} will be saved in: {fpath}')
+            args_dict = args_obj.__dict__
+            args_dict.pop('hub_token', None)
+            args_dict.pop('push_to_hub_token', None)
             with open(fpath, 'w', encoding='utf-8') as f:
-                json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
+                json.dump(check_json_format(args_dict), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
     trainer.train(training_args.resume_from_checkpoint)

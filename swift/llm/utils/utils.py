@@ -10,7 +10,7 @@ from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import accelerate
 import multiprocess
@@ -20,8 +20,6 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
-from datasets.arrow_writer import SchemaInferenceError
-from datasets.exceptions import DatasetGenerationError
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
@@ -47,11 +45,10 @@ logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
 
 logger.handlers[0].setFormatter(logger_format)
 ms_logger.handlers[0].setFormatter(logger_format)
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 if is_local_master():
-    logger.setLevel(logging.INFO)
-    ms_logger.setLevel(logging.INFO)
+    ms_logger.setLevel(log_level)
 else:
-    logger.setLevel(logging.ERROR)
     ms_logger.setLevel(logging.ERROR)
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
@@ -95,9 +92,6 @@ if not use_hf:
     def _msdataset_ddp_load(*args, **kwargs):
         with safe_ddp_context():
             dataset = _old_msdataset_load(*args, **kwargs)
-
-        if is_dist():  # sync
-            dist.barrier()
         return dataset
 
     # monkey patching
@@ -136,6 +130,18 @@ def _sync_max_memory(max_memory: Dict[Union[int, str], int]) -> Dict[Union[int, 
         if v > 0 and k != 'cpu':
             new_max_memory[k] = next(new_max_memory_iter)
     return new_max_memory
+
+
+def fetch_one(element: Union[Tuple, List, Set, Dict, Any]) -> Any:
+    if isinstance(element, (tuple, set, list)):
+        for ele in element:
+            out = fetch_one(ele)
+            if out:
+                return out
+    elif isinstance(element, dict):
+        return fetch_one(list(element.values()))
+    else:
+        return element
 
 
 class LLMDataset(Dataset):
@@ -271,7 +277,7 @@ class LazyLLMDataset(Dataset):
         return len(self.dataset)
 
 
-MapFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
+MapFunc = Callable[[Dict[str, Any]], Tuple[Dict[str, Any], Dict[str, Any]]]
 
 
 def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]]:
@@ -418,6 +424,19 @@ def find_embedding(model: Module) -> List[str]:
     return _find_layers(model, torch.nn.Embedding)
 
 
+def is_quant_model(model_type: Optional[str] = None, model=None) -> bool:
+    # Check if the model is gptq, awq, aqlm model. Do not check for other quantization situations such as bnb.
+    if model_type is not None:
+        for k in ['int4', 'int8', 'awq', 'aqlm']:
+            if k in model_type:
+                return True
+    if model is not None:
+        for k in ['gptq', 'awq', 'aqlm']:
+            if getattr(model, f'is_{k}', None):
+                return True
+    return False
+
+
 def find_all_linears(model: Module, quantization_bit: int, model_type: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
@@ -467,7 +486,7 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str) -> L
     return list(target_module_names)
 
 
-def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> HfDataset:
+def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
     logger.info('sort by max length...')
     dataset_len = [len(d['input_ids']) for d in llm_dataset]
     idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
@@ -728,7 +747,7 @@ def inference(model: PreTrainedModel,
     if generation_config is None:
         generation_config = getattr(model, 'generation_config', None)
     generation_config = deepcopy(generation_config)
-    if stream is True and verbose is False:
+    if stream and not verbose:
         logger.warning('Please set verbose to True to support TextStreamer, or use `inference_stream.`')
         stream = False
     streamer = None
@@ -771,7 +790,6 @@ def inference(model: PreTrainedModel,
     generate_ids = template.get_generate_ids(generate_ids, token_len)
     if generation_info is not None:
         generation_info['num_generated_tokens'] = len(generate_ids)
-    response = None
     if verbose and stream is False:
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         print(response)
