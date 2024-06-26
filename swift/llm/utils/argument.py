@@ -1321,6 +1321,7 @@ class EvalArguments(InferArguments):
     eval_output_dir: Optional[str] = 'eval_outputs'
     eval_backend: str = 'OpenCompass'
     eval_batch_size: int = 8
+    deploy_timeout: int = 60
 
     def __post_init__(self):
         super().__post_init__()

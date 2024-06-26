@@ -174,7 +174,7 @@ class EvalDatasetContext:
             'repo?Revision=master&FilePath=eval.zip', 'evalscope')
 
 
-def get_model_type(port):
+def get_model_type(port, timeout):
     cnt = 0
     while True:
         from openai import OpenAI
@@ -186,7 +186,7 @@ def get_model_type(port):
             return client.models.list().data
         except APIConnectionError as e:
             cnt += 1
-            if cnt > 60:
+            if cnt > timeout:
                 logger.error('Cannot get model_type from the deploy service, please check the error to continue eval')
                 raise e
             else:
@@ -197,7 +197,9 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
     from llmuses.run import run_task
     from swift.utils.torch_utils import _find_free_port
     logger.info(f'args: {args}')
-    logger.warn(f'OpenCompass does not support `eval_limit` and `eval_few_shot`')
+    if args.eval_few_shot or args.eval_limit:
+        logger.warn(f'OpenCompass does not support `eval_limit` and `eval_few_shot`')
+    process = None
     if not args.eval_url:
         seed_everything(args.seed)
         port = _find_free_port()
@@ -206,9 +208,13 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
         process.start()
 
         # health check: try to get model_type until raises
-        get_model_type(port)
+        get_model_type(port, args.deploy_timeout)
         model_type = 'default-lora' if args.sft_type in ('lora', 'longlora') and not args.merge_lora else args.model_type
-        url = f'http://127.0.0.1:{port}/v1/chat/completions'
+        from .deploy import is_generation_template
+        if is_generation_template(args.template_type):
+            url = f'http://127.0.0.1:{port}/v1/completions'
+        else:
+            url = f'http://127.0.0.1:{port}/v1/chat/completions'
     else:
         url = args.eval_url
         url = url.rstrip('/')
@@ -239,6 +245,8 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
 
     final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_cfg)
     logger.info(f'Final report:{final_report}\n')
+    if process:
+        process.kill()
     return final_report
 
 
@@ -249,8 +257,8 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     model_name = args.model_type
-    if args.name:
-        model_name += f'-{args.name}'
+    tm = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+    model_name += f'-{args.name or tm}'
     custom_names = []
     if args.custom_eval_config is not None:
         assert os.path.isfile(args.custom_eval_config)
@@ -276,16 +284,18 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
     final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
     logger.info(f'Final report:{final_report}\n')
 
-    result_dir = os.path.join(args.eval_output_dir, dt.datetime.now().strftime('%Y%m%d_%H%M%S'))
+    result_dir = os.path.join(args.eval_output_dir, tm)
     if result_dir is None:
         result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
     assert result_dir is not None
+    os.makedirs(result_dir, exist_ok=True)
     jsonl_path = os.path.join(result_dir, 'eval_result.jsonl')
     result = {report['name']: report['score'] for report in final_report}
     logger.info(f'result: {result}')
     result_info = {
         'result': result,
-        'time': dt.datetime.now().strftime('%Y%m%d-%H%M%S'),
+        'model': args.model_type,
+        'time': tm,
     }
     append_to_jsonl(jsonl_path, result_info)
     logger.info(f'save_result_path: {jsonl_path}')
@@ -293,9 +303,12 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
 
 
 def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
-    args.eval_output_dir = os.path.join(args.eval_output_dir, 'default' or args.name)
+    args.eval_output_dir = os.path.join(args.eval_output_dir, args.name or 'default')
     if args.custom_eval_config:
         args.eval_backend = 'llmuses'
+        if args.eval_dataset:
+            logger.warn(f'--custom_eval_config cannot use together with --eval_dataset')
+            args.eval_dataset = [] 
     if args.eval_backend == 'OpenCompass':
         return eval_opencompass(args)
     else:
