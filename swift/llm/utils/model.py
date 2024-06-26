@@ -426,7 +426,12 @@ class ModelType:
     c4ai_command_r_plus = 'c4ai-command-r-plus'
     # codestral
     codestral_22b = 'codestral-22b'
-
+    # florence
+    florence_2_large = 'florence-2-large'
+    florence_2_large_ft = 'florence-2-large-ft'
+    florence_2_base = 'florence-2-base'
+    florence_2_base_ft = 'florence-2-base-ft'
+    
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -2367,7 +2372,146 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    
+def fix_florence_forward(model) -> None:
+    from transformers.utils import ModelOutput
+    from dataclasses import dataclass
 
+    @dataclass
+    class Florence2Seq2SeqLMOutput(ModelOutput):
+        loss: Optional[torch.FloatTensor] = None
+        logits: torch.FloatTensor = None
+        last_hidden_state: torch.FloatTensor = None
+        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
+        decoder_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+        decoder_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+        cross_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+        encoder_last_hidden_state: Optional[torch.FloatTensor] = None
+        encoder_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+        encoder_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+        image_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+        
+    if not hasattr(model, '__old_forward'):  # Avoid double patching
+        old_forward = model.forward
+
+        @wraps(old_forward)
+        def _new_forward(
+            self,
+            input_ids: torch.LongTensor = None,
+            pixel_values: torch.FloatTensor = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            decoder_input_ids: Optional[torch.LongTensor] = None,
+            decoder_attention_mask: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.Tensor] = None,
+            decoder_head_mask: Optional[torch.Tensor] = None,
+            cross_attn_head_mask: Optional[torch.Tensor] = None,
+            encoder_outputs: Optional[List[torch.FloatTensor]] = None,
+            past_key_values: Optional[List[torch.FloatTensor]] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            use_cache: Optional[bool] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+        ):
+            output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+            output_hidden_states = (
+                output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            )
+            return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+            image_features = None
+            if inputs_embeds is None:
+                # 1. Extra the input embeddings
+                if input_ids is not None:
+                    inputs_embeds = self.get_input_embeddings()(input_ids)
+                # 2. Merge text and images
+                if pixel_values is not None:
+                    # (batch_size, num_image_tokens, hidden_size)
+                    image_features = self._encode_image(pixel_values)
+                    inputs_embeds, attention_mask = self._merge_input_ids_with_image_features(image_features, inputs_embeds)
+            if inputs_embeds is not None:
+                attention_mask = attention_mask.to(inputs_embeds.dtype)
+            outputs = self.language_model(
+                attention_mask=attention_mask,
+                labels=labels,
+                inputs_embeds=inputs_embeds,
+                decoder_input_ids=decoder_input_ids,
+                encoder_outputs=encoder_outputs,
+                decoder_attention_mask=decoder_attention_mask,
+                head_mask=head_mask,
+                decoder_head_mask=decoder_head_mask,
+                cross_attn_head_mask=cross_attn_head_mask,
+                past_key_values=past_key_values,
+                decoder_inputs_embeds=decoder_inputs_embeds,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+
+            logits = outputs.logits
+            logits = logits.float()
+            loss = outputs.loss
+            if not return_dict:
+                output = (logits,) + outputs[1:]
+                return (loss,) + output if loss is not None else output
+
+            return Florence2Seq2SeqLMOutput(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                decoder_hidden_states=outputs.decoder_hidden_states,
+                decoder_attentions=outputs.decoder_attentions,
+                cross_attentions=outputs.cross_attentions,
+                encoder_last_hidden_state=outputs.encoder_last_hidden_state,
+                encoder_hidden_states=outputs.encoder_hidden_states,
+                encoder_attentions=outputs.encoder_attentions,
+                image_hidden_states=image_features
+            )
+    model._old_forward = old_forward
+    model.forward = _new_forward.__get__(model, type(model))
+
+@register_model(
+    ModelType.florence_2_large_ft,
+    'AI-ModelScope/Florence-2-large-ft',
+    LoRATM.llama,
+    TemplateType.florence,
+    support_vllm=False,
+    support_flash_attn=True,
+    hf_model_id='-')
+@register_model(
+    ModelType.florence_2_large,
+    'AI-ModelScope/Florence-2-large-ft',
+    LoRATM.llama,
+    TemplateType.florence,
+    support_vllm=False,
+    support_flash_attn=True,
+    hf_model_id='-')
+def get_model_tokenizer_florence(model_dir: str,
+                                torch_dtype: Dtype,
+                                model_kwargs: Dict[str, Any],
+                                load_model: bool = True,
+                                model_config=None,
+                                **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_config.bos_token_id=0
+    model_config.eos_token_id=2
+    model_config.pad_token_id=1
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config,tokenizer=processor.tokenizer,**kwargs)
+    model.processor = processor
+    fix_florence_forward(model)
+    # fix_internvl_inplace_bug(model)
+    tokenizer.bos_token_id = 0
+    tokenizer.eos_token_id = 2
+    tokenizer.pad_token_id = 1
+    model.generation_config.max_new_tokens = 1024
+    return model, tokenizer
 
 @register_model(
     ModelType.phi3_small_128k_instruct,

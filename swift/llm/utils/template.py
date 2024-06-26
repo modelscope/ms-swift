@@ -53,6 +53,7 @@ class TemplateType:
     internlm_xcomposer2 = 'internlm-xcomposer2'
     internvl = 'internvl'
     internvl_phi3 = 'internvl-phi3'
+    florence = 'florence'
     yi = 'yi'
     yi1_5 = 'yi1_5'
     yi_vl = 'yi-vl'
@@ -1286,6 +1287,109 @@ register_template(
 register_template(
     TemplateType.internvl_phi3,
     InternvlPhi3Template(),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+class FlorenceTemplate(Template):
+
+    def __init__(self):
+        super().__init__(['<s>'], ['{{QUERY}}</s><s>'], None, ['</s>']) 
+        self.task_prompts_without_inputs = {
+            '<OCR>': 'What is the text in the image?',
+            '<OCR_WITH_REGION>': 'What is the text in the image, with regions?',
+            '<CAPTION>': 'What does the image describe?',
+            '<DETAILED_CAPTION>': 'Describe in detail what is shown in the image.',
+            '<MORE_DETAILED_CAPTION>': 'Describe with a paragraph what is shown in the image.',
+            '<OD>': 'Locate the objects with category name in the image.',
+            '<DENSE_REGION_CAPTION>': 'Locate the objects in the image, with their descriptions.',
+            '<REGION_PROPOSAL>': 'Locate the region proposals in the image.'
+        }
+
+        self.task_prompts_with_input = {
+            '<CAPTION_TO_PHRASE_GROUNDING>': "Locate the phrases in the caption: {input}",
+            '<REFERRING_EXPRESSION_SEGMENTATION>': 'Locate {input} in the image with mask',
+            '<REGION_TO_SEGMENTATION>': 'What is the polygon mask of region {input}',
+            '<OPEN_VOCABULARY_DETECTION>': 'Locate {input} in the image.',
+            '<REGION_TO_CATEGORY>': 'What is the region {input}?',
+            '<REGION_TO_DESCRIPTION>': 'What does the region {input} describe?',
+            '<REGION_TO_OCR>': 'What text is in the region {input}?',
+        }
+        
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        return []
+        
+    def _construct_prompts(self, text):
+        # replace the task tokens with the task prompts if task token is in the text
+        prompts = []
+        for _text in text:
+            # 1. fixed task prompts without additional inputs
+            for task_token, task_prompt in self.task_prompts_without_inputs.items():
+                if task_token in _text:
+                    assert _text == task_token, f"Task token {task_token} should be the only token in the text."
+                    _text = task_prompt
+                    break
+            # 2. task prompts with additional inputs 
+            for task_token, task_prompt in self.task_prompts_with_input.items():
+                if task_token in _text:
+                    _text = task_prompt.format(input=_text.replace(task_token, ''))
+                    break
+            prompts.append(_text)
+        return prompts
+    
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example['query'] = self._construct_prompts([example.get('query')])[0]
+        # inputs, _ = super().encode(example)
+        # if len(inputs) == 0:
+        #     return inputs, {}
+        processor = self.model.processor
+        images_path = example.get('images') or []
+        images = []
+        for image_path in images_path:
+            image = _read_from_path(image_path)
+            images.append(image)
+        # image_processor = self.model.processor.image_processor
+        # if images:
+        #     inputs['pixel_values'] = image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype).to(self.model.device)
+            
+        
+        
+        inputs = processor(
+            text=example['query'], 
+            images=images, 
+            return_tensors="pt"
+        ).to(self.model.device)
+
+        labels = None
+        if example.get('response') is not None:
+            labels = processor.tokenizer(
+            text=example['response'],
+            return_tensors="pt",
+            padding=True,
+            return_token_type_ids=False
+        ).input_ids.to(self.model.device)
+        if labels is not None:
+            inputs['labels'] = labels[0]
+        
+        inputs['input_ids'] = inputs['input_ids'][0]
+        inputs['attention_mask'] = inputs['attention_mask'][0]
+        # inputs['pixel_values'] = inputs['pixel_values'][0]
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        # assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
+        return res
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+register_template(
+    TemplateType.florence,
+    FlorenceTemplate(),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
