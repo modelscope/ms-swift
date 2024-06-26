@@ -1187,7 +1187,6 @@ register_dataset(
     huge_dataset=True,
     tags=['multi-modal', 'en', 'grounding'])
 
-
 register_dataset(
     DatasetName.text_caps,
     'swift/TextCaps', [],
