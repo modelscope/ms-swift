@@ -1318,6 +1318,9 @@ class EvalArguments(InferArguments):
     eval_is_chat_model: Optional[bool] = None
     custom_eval_config: Optional[str] = None  # path
     eval_use_cache: bool = False
+    eval_output_dir: Optional[str] = None
+    eval_backend: str = 'OpenCompass'
+    eval_batch_size: int = 8
 
     def __post_init__(self):
         super().__post_init__()
