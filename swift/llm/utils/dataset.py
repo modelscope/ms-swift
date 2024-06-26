@@ -1141,7 +1141,7 @@ def preprocess_refcoco_unofficial_caption(dataset):
 
 
 register_dataset(
-    DatasetName.refcoco_unofficial,
+    DatasetName.refcoco_unofficial_caption,
     'swift/refcoco', [],
     preprocess_func=preprocess_refcoco_unofficial_caption,
     get_function=get_dataset_from_repo,
