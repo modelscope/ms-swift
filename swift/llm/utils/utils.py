@@ -425,6 +425,7 @@ def find_embedding(model: Module) -> List[str]:
 
 
 def is_quant_model(model_type: Optional[str] = None, model=None) -> bool:
+    # Check if the model is gptq, awq, aqlm model. Do not check for other quantization situations such as bnb.
     if model_type is not None:
         for k in ['int4', 'int8', 'awq', 'aqlm']:
             if k in model_type:
