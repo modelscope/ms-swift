@@ -33,7 +33,7 @@ def _parse_stream_data(data: bytes) -> Optional[str]:
     data = data.strip()
     if len(data) == 0:
         return
-    assert data.startswith('data:')
+    assert data.startswith('data:'), f'data: {data}'
     return data[5:].strip()
 
 
