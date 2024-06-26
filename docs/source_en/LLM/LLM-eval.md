@@ -13,35 +13,9 @@ SWIFT supports the eval (evaluation) capability to provide standardized evaluati
 
 SWIFT's eval capability utilizes the [EvalScope evaluation framework](https://github.com/modelscope/eval-scope) from the ModelScope community and provides advanced encapsulation to support evaluation needs for various models. Currently, we support the evaluation process for **standard evaluation sets** and **user-defined evaluation sets**. The **standard evaluation sets** include:
 
-- MMLU
-
-> MMLU (Massive Multitask Language Understanding) aims to measure the knowledge gained during pretraining by specifically evaluating models in zero-shot and few-shot settings. This makes the benchmark more challenging and more similar to how we evaluate humans. The benchmark covers 57 subjects across STEM, humanities, and social sciences. Its difficulty ranges from elementary to advanced professional levels, testing world knowledge and problem-solving abilities. The subject range spans traditional fields such as mathematics and history to more specialized domains like law and ethics. The granularity and breadth of topics make the benchmark an ideal choice for identifying model blindspots.
->
-> MMLU is an **English evaluation dataset** containing **57 multiple-choice question-answering tasks** [Diversity Benchmark], covering elementary mathematics, American history, computer science, law, etc., covering human knowledge from high school level to expert level. It is currently the mainstream LLM evaluation dataset.
-
-- CEVAL
-
-> C-EVAL is the first comprehensive Chinese evaluation suite, aiming to evaluate the advanced knowledge and reasoning abilities of foundation models in the Chinese context. C-EVAL includes multiple-choice questions at four difficulty levels: middle school, high school, university, and professional. The questions cover 52 different subject areas, ranging from humanities to science and engineering subjects. C-EVAL also comes with C-EVAL HARD, which is a particularly challenging subset of topics from C-EVAL that requires advanced reasoning abilities to solve.
-
-- GSM8K
-
-> GSM8K (Grade School Math 8K) is a dataset containing 8.5K high-quality linguistically diverse elementary school math word problems. The dataset was created to support the task of question-answering on multi-step reasoning problems in elementary mathematics.
->
-> GSM8K is a high-quality English elementary math problem test set, containing 7.5K training data and 1K test data. These problems typically require 2-8 steps to solve, effectively evaluating mathematical and logical abilities.
-
-- ARC
-
-> The AI2 Reasoning Challeng(**arc**) dataset is a multiple-choice question-answering dataset containing questions from 3rd to 9th-grade science exams. The dataset is split into two partitions: Easy and Challenge, with the latter containing harder questions requiring reasoning. Most questions have 4 answer choices, with <1% of questions having 3 or 5 answer choices. ARC includes a supporting corpus of 14.3 million KB of unstructured text passages.
-
-- BBH
-
-> BBH (BIG-Bench Hard) is a dataset composed of 23 challenging tasks selected from the BIG-Bench evaluation suite.
->
-> BIG-Bench is a diverse test suite aimed at evaluating language model capabilities, including tasks considered to be beyond the current abilities of language models. In the initial BIG-Bench paper, researchers found that the most advanced language models at the time could only outperform the average human rater on 65% of the tasks with a few example prompts.
->
-> Therefore, the researchers filtered out the 23 particularly challenging tasks from BIG-Bench where language models failed to surpass human performance, constructing the BBH dataset. These 23 tasks are considered representative challenges that language models still struggle with. Researchers evaluated the effect of thought-chain prompts on improving language model performance on BBH.
->
-> Overall, the BBH dataset contains the 23 most challenging tasks from BIG-Bench, aiming to test the limits of language models' capabilities on complex multi-step reasoning problems. Through experiments on BBH, researchers can uncover the benefits of prompting strategies like thought-chains in enhancing language model performance.
+```text
+'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'commonsenseqa', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'flores', 'TheoremQA', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
+```
 
 ## Environment Setup
 
@@ -64,11 +38,11 @@ Evaluation supports the use of vLLM for acceleration. Here we demonstrate the ev
 ```shell
 # Original model (approximately half an hour on a single A100)
 CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
-    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
+    --eval_dataset ARC_e --infer_backend vllm
 
 # After LoRA fine-tuning
 CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint-xxx \
-    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --eval_dataset ARC_e --infer_backend vllm \
     --merge_lora true \
 ```
 
@@ -82,7 +56,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
 
 # Evaluate using the API
 # If it is not a Swift deployment, you need to additionally pass in `--eval_is_chat_model true --model_type qwen2-7b-instruct`.
-swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ceval mmlu arc gsm8k
+swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ARC_e
 
 # The same applies to the model after LoRA fine-tuning.
 ```

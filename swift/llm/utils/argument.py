@@ -1307,8 +1307,7 @@ class DeployArguments(InferArguments):
 class EvalArguments(InferArguments):
 
     eval_dataset: List[str] = field(
-        default_factory=lambda: [],
-        metadata={'help': f'dataset choices: {OpenCompassBackendManager.list_datasets()}'})
+        default_factory=lambda: [], metadata={'help': f'dataset choices: {OpenCompassBackendManager.list_datasets()}'})
     eval_few_shot: Optional[int] = None
     eval_limit: Optional[int] = None
 

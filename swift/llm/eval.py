@@ -1,24 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
 import datetime as dt
-import json
 import multiprocessing as mp
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import json
 from llmuses.models.custom import CustomModel
 from llmuses.summarizer import Summarizer
 from modelscope import GenerationConfig
 from openai import APIConnectionError
 from tqdm import tqdm
 
-from swift.utils import append_to_jsonl
-from swift.utils import get_logger, get_main, seed_everything
+from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
 from . import DeployArguments
 from .infer import merge_lora, prepare_model_template
-from .utils import EvalArguments
-from .utils import XRequestConfig, inference, inference_client_async
+from .utils import EvalArguments, XRequestConfig, inference, inference_client_async
 
 logger = get_logger()
 mp.set_start_method('spawn', force=True)
@@ -162,7 +160,7 @@ class EvalDatasetContext:
         if os.path.islink(local_dir):
             os.remove(os.path.join(local_dir))
         os.symlink(data_dir, local_dir)
-    
+
     def __exit__(self, *args, **kwargs):
         pass
 
@@ -198,18 +196,19 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
     from swift.utils.torch_utils import _find_free_port
     logger.info(f'args: {args}')
     if args.eval_few_shot or args.eval_limit:
-        logger.warn(f'OpenCompass does not support `eval_limit` and `eval_few_shot`')
+        logger.warn('OpenCompass does not support `eval_limit` and `eval_few_shot`')
     process = None
     if not args.eval_url:
         seed_everything(args.seed)
         port = _find_free_port()
         args.port = port
-        process = mp.Process(target=run_custom_model, args=(args,))
+        process = mp.Process(target=run_custom_model, args=(args, ))
         process.start()
 
         # health check: try to get model_type until raises
         get_model_type(port, args.deploy_timeout)
-        model_type = 'default-lora' if args.sft_type in ('lora', 'longlora') and not args.merge_lora else args.model_type
+        model_type = 'default-lora' if args.sft_type in ('lora',
+                                                         'longlora') and not args.merge_lora else args.model_type
         from .deploy import is_generation_template
         if is_generation_template(args.template_type):
             url = f'http://127.0.0.1:{port}/v1/completions'
@@ -303,12 +302,14 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
 
 
 def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
+    if not args.eval_dataset and not args.custom_eval_config:
+        raise ValueError('Please specify either --eval_dataset or --custom_eval_config')
     args.eval_output_dir = os.path.join(args.eval_output_dir, args.name or 'default')
     if args.custom_eval_config:
         args.eval_backend = 'llmuses'
         if args.eval_dataset:
-            logger.warn(f'--custom_eval_config cannot use together with --eval_dataset')
-            args.eval_dataset = [] 
+            logger.warn('--custom_eval_config cannot use together with --eval_dataset')
+            args.eval_dataset = []
     if args.eval_backend == 'OpenCompass':
         return eval_opencompass(args)
     else:
