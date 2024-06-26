@@ -83,7 +83,7 @@ def is_local_master():
 
 
 def is_master():
-    rank = int(os.getenv('RANK', -1))
+    rank = get_dist_setting()[0]
     return rank in {-1, 0}
 
 

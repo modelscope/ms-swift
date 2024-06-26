@@ -30,7 +30,7 @@ from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
-from .utils import is_vllm_available
+from .utils import is_quant_model, is_vllm_available
 
 logger = get_logger()
 
@@ -675,15 +675,15 @@ class SftArguments(ArgumentsBase):
         with open(sft_args_path, 'r', encoding='utf-8') as f:
             sft_args = json.load(f)
         imported_keys = [
-            'model_type', 'model_revision', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
-            'bnb_4bit_use_double_quant', 'model_id_or_path'
+            'model_type', 'model_revision', 'quant_method', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype',
+            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path'
         ]
 
         for key in imported_keys:
             value = getattr(self, key)
             if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
                 continue
-            if key in {'model_type', 'model_revision', 'model_id_or_path'} and value is not None:
+            if key in {'model_type', 'model_revision', 'model_id_or_path', 'quant_method'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 
@@ -820,8 +820,9 @@ class SftArguments(ArgumentsBase):
                 'lora does not support `freeze_parameters`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
-            if 'int4' in self.model_type or 'int8' in self.model_type or 'awq' in self.model_type:
-                assert self.quantization_bit == 0, 'int4, int8 or awq models do not need to be quantized again.'
+            if is_quant_model(self.model_type):
+                assert self.quantization_bit == 0, (
+                    f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
             if self.save_only_model is None:
@@ -1026,7 +1027,7 @@ class SftArguments(ArgumentsBase):
         self.training_args = training_args
 
     def _handle_pai_compat(self) -> None:
-        assert is_pai_training_job() is True
+        assert is_pai_training_job()
         logger.info('Handle pai compat...')
         pai_tensorboard_dir = get_pai_tensorboard_dir()
         if self.logging_dir is None and pai_tensorboard_dir is not None:
@@ -1075,7 +1076,8 @@ class InferArguments(ArgumentsBase):
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
-    quant_method: Literal['bnb', 'hqq', 'eetq'] = None
+    # 'awq', 'gptq', 'aqlm' are used for inference on pre-quantized models.
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq', 'aqlm'] = None
     quantization_bit: Literal[0, 1, 2, 3, 4, 8] = 0  # hqq: 1,2,3,4,8. bnb: 4,8
     hqq_axis: Literal[0, 1] = 0
     hqq_dynamic_config_path: Optional[str] = None
@@ -1211,14 +1213,13 @@ class InferArguments(ArgumentsBase):
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
             if self.sft_type == 'lora' and not self.vllm_enable_lora:
-                assert self.merge_lora is True, ('To use VLLM, you need to provide the complete weight parameters. '
-                                                 'Please set `--merge_lora true`.')
+                assert self.merge_lora, ('To use VLLM, you need to provide the complete weight parameters. '
+                                         'Please set `--merge_lora true`.')
         if (self.infer_backend == 'vllm' and self.vllm_enable_lora
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
             self.lora_request_list = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
-            logger.info(f'args.lora_request_list: {self.lora_request_list}')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
@@ -1236,7 +1237,7 @@ class InferArguments(ArgumentsBase):
         with open(sft_args_path, 'r', encoding='utf-8') as f:
             sft_args = json.load(f)
         imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quantization_bit',
+            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
         ]
         if self.load_dataset_config:
@@ -1248,7 +1249,7 @@ class InferArguments(ArgumentsBase):
             value = getattr(self, key)
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
-            if key in {'dataset_test_ratio', 'system'} and value is not None:
+            if key in {'dataset_test_ratio', 'system', 'quant_method'} and value is not None:
                 continue
             setattr(self, key, sft_args.get(key))
 
