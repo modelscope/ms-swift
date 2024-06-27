@@ -269,7 +269,6 @@ class LazyLLMDataset(Dataset):
         idx = np.random.permutation(len(self))[:self.try_fetch_time - 1]
         for i in [first_idx] + idx.tolist():
             data = self.dataset[i]
-            from PIL import UnidentifiedImageError
             try:
                 res = self.template.encode(data)
             except OSError:
