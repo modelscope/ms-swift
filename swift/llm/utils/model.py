@@ -2516,7 +2516,7 @@ def get_model_tokenizer_florence(model_dir: str,
     tokenizer.bos_token_id = 0
     tokenizer.eos_token_id = 2
     tokenizer.pad_token_id = 1
-    model.generation_config.max_new_tokens = 1024
+    model.generation_config = model.language_model.generation_config
     return model, tokenizer
 
 @register_model(

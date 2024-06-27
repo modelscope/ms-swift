@@ -1319,7 +1319,17 @@ class FlorenceTemplate(Template):
         
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         return []
-        
+
+    def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        objects = example['objects']
+        object_ = objects[index]
+        return [f'{object_[0]}']
+
+    def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        width, height = example['_image'].width, example['_image'].height
+        x1, y1, x2, y2 = [int(coord / dim * 999) for coord, dim in zip(example['objects'][index][1], [width, height, width, height])]
+        return [f'<loc_{x1}><loc_{y1}><loc_{x2}>,<loc_{y2}>']
+
     def _construct_prompts(self, text):
         # replace the task tokens with the task prompts if task token is in the text
         prompts = []
@@ -1339,25 +1349,26 @@ class FlorenceTemplate(Template):
         return prompts
     
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        example['query'] = self._construct_prompts([example.get('query')])[0]
-        # inputs, _ = super().encode(example)
-        # if len(inputs) == 0:
-        #     return inputs, {}
+        # read image
         processor = self.model.processor
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
-        # image_processor = self.model.processor.image_processor
-        # if images:
-        #     inputs['pixel_values'] = image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype).to(self.model.device)
+        assert len(images_path) == 1, "1 images only"
+        images =  _read_from_path(images_path[0])
+        example['_image'] = images
+        
+        # process bbox
+        if "objects" in example:
+            example['objects'] = json.loads(example["objects"])
+            example['query'] = f"<OPEN_VOCABULARY_DETECTION>{example['objects'][0][0]}"
+            example['response'] = self.replace_box(0, example)
             
-        
-        
+        # process query
+        example['query'] = self._construct_prompts([example.get('query')])[0]
+
         inputs = processor(
             text=example['query'], 
             images=images, 
+            # do_resize=False,
             return_tensors="pt"
         ).to(self.model.device)
 

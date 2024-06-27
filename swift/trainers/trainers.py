@@ -208,8 +208,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         if labels is None:
             labels = inputs['labels']
-        preds = outputs.logits.argmax(dim=2)[..., :-1]
-        labels = labels[..., 1:]
+        # preds = outputs.logits.argmax(dim=2)[..., :-1]
+        # labels = labels[..., 1:]
+        preds = outputs.logits.argmax(dim=2)[..., :]
+        labels = labels[..., :]
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
         acc: Optional[Tensor] = None
