@@ -795,6 +795,8 @@ def inference(model: PreTrainedModel,
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         print(response)
     response = template.generate_ids_to_response(generate_ids, tokenizer_kwargs=tokenizer_kwargs)
+    if hasattr(model, "post_process_generation_func"):
+        response = model.post_process_generation_func(response=response, example=example)
     if not is_observation:
         history.append([query, response])
     else:
@@ -899,8 +901,11 @@ def messages_join_observation(messages: Messages):
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
+    old_generation_priority_config = ['no_repeat_ngram_size']
     if old_generation_config is not None:
         for k, v in old_generation_config.__dict__.items():
+            if k in old_generation_priority_config:
+                setattr(generation_config, k, v)
             if k not in generation_config.__dict__:
                 setattr(generation_config, k, v)
     model.generation_config = generation_config

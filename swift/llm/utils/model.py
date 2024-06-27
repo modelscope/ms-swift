@@ -2492,6 +2492,7 @@ def fix_florence_forward(model) -> None:
     'AI-ModelScope/Florence-2-large-ft',
     LoRATM.llama,
     TemplateType.florence,
+    torch_dtype=torch.float32,
     support_vllm=False,
     support_flash_attn=True,
     hf_model_id='-')
@@ -2517,6 +2518,13 @@ def get_model_tokenizer_florence(model_dir: str,
     tokenizer.eos_token_id = 2
     tokenizer.pad_token_id = 1
     model.generation_config = model.language_model.generation_config
+    if not hasattr(model, "post_process_generation_func"):
+        post_process_generation = model.processor.post_process_generation
+        @wraps(post_process_generation)
+        def _post_process_generation(response, example):
+            image = example['_image']
+            return post_process_generation(response, task=example['query'], image_size=(image.width, image.height))
+        model.post_process_generation_func = _post_process_generation
     return model, tokenizer
 
 @register_model(

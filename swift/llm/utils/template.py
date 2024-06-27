@@ -1352,7 +1352,8 @@ class FlorenceTemplate(Template):
         # read image
         processor = self.model.processor
         images_path = example.get('images') or []
-        assert len(images_path) == 1, "1 images only"
+        assert len(images_path) == 1, "Florence only supports input with a single image."
+
         images =  _read_from_path(images_path[0])
         example['_image'] = images
         
@@ -1360,7 +1361,7 @@ class FlorenceTemplate(Template):
         if "objects" in example:
             example['objects'] = json.loads(example["objects"])
             example['query'] = f"<OPEN_VOCABULARY_DETECTION>{example['objects'][0][0]}"
-            example['response'] = self.replace_box(0, example)
+            example['response'] = example['objects'][0][0] + self.replace_box(0, example)[0]
             
         # process query
         example['query'] = self._construct_prompts([example.get('query')])[0]
@@ -1385,13 +1386,7 @@ class FlorenceTemplate(Template):
         
         inputs['input_ids'] = inputs['input_ids'][0]
         inputs['attention_mask'] = inputs['attention_mask'][0]
-        # inputs['pixel_values'] = inputs['pixel_values'][0]
         return inputs, {}
-
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        # assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
-        return res
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
