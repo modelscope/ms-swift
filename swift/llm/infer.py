@@ -243,7 +243,7 @@ def prepare_model_template(args: InferArguments,
 
 def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue']) -> None:
     text = 'Input a media path or URL <<< '
-    images = infer_kwargs.get('images', [])
+    images = infer_kwargs.get('images') or []
     if infer_media_type == 'none':
         return
     if infer_media_type == 'round' or len(images) == 0:
