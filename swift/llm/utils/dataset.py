@@ -661,7 +661,7 @@ def _preprocess_pixelprose(dataset: HfDataset):
         return {
             'response': vlm_caption,
             'images': row['url'],
-            'request': np.random.choice(caption_prompt),
+            'query': np.random.choice(caption_prompt),
         }
 
     return dataset.map(preprocess, load_from_cache_file=False)
@@ -1182,7 +1182,6 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcoco',
-    huge_dataset=True,
     tags=['multi-modal', 'en', 'caption'])
 
 
@@ -1193,7 +1192,6 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcocog',
-    huge_dataset=True,
     tags=['multi-modal', 'en', 'caption'])
 
 
@@ -1230,7 +1228,6 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcoco',
-    huge_dataset=True,
     tags=['multi-modal', 'en', 'grounding'])
 
 
@@ -1241,7 +1238,6 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcocog',
-    huge_dataset=True,
     tags=['multi-modal', 'en', 'grounding'])
 
 
