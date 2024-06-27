@@ -268,11 +268,8 @@ class Template:
                             h[0] = media_tag + h[0]
                     if example[media_key][-1]:
                         query = media_tag + query
-                    example[media_key] = [m for m in example[media_key] if m]
                 else:
-                    example[media_key] = [m for m in example[media_key] if m]
-                    media_len = len(example[media_key]) if isinstance(example[media_key],
-                                                                      (tuple, list)) else 1 if example[media_key] else 0
+                    media_len = len([m for m in example[media_key] if m])
                     if history:
                         history[0][0] = media_tag * media_len + history[0][0]
                     else:
@@ -883,7 +880,7 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
 def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]]) -> List['PIL.Image.Image']:
     res = []
     for path in path_list:
-        if path is None:
+        if path is None:  # ignore None
             continue
         res.append(_read_from_path(path))
     return res
