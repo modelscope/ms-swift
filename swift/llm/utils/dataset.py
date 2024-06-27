@@ -649,9 +649,7 @@ register_dataset(
 def _preprocess_pixelprose(dataset: HfDataset):
 
     caption_prompt = [
-        'Give the description of this image.',
-        "Describe this picture",
-        'What is the proper title of this image?'
+        'Give the description of this image.', 'Describe this picture', 'What is the proper title of this image?'
     ]
 
     def preprocess(row):
@@ -669,11 +667,12 @@ def _preprocess_pixelprose(dataset: HfDataset):
 
 register_dataset(
     DatasetName.pixelprose,
-    "swift/pixelprose", None,
+    'swift/pixelprose',
+    None,
     _preprocess_pixelprose,
     get_dataset_from_repo,
     split=['train', 'cc12m', 'commonpool', 'redcaps'],
-    hf_dataset_id="tomg-group-umd/pixelprose",
+    hf_dataset_id='tomg-group-umd/pixelprose',
     tags=['caption', 'multi-modal', 'vision'],
     huge_dataset=True,
     is_main=False)
@@ -1185,7 +1184,6 @@ register_dataset(
     hf_dataset_id='jxu124/refcoco',
     tags=['multi-modal', 'en', 'caption'])
 
-
 register_dataset(
     DatasetName.refcocog_unofficial_caption,
     'swift/refcocog', [],
@@ -1231,7 +1229,6 @@ register_dataset(
     hf_dataset_id='jxu124/refcoco',
     tags=['multi-modal', 'en', 'grounding'])
 
-
 register_dataset(
     DatasetName.refcocog_unofficial_grounding,
     'swift/refcocog', [],
@@ -1240,7 +1237,6 @@ register_dataset(
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcocog',
     tags=['multi-modal', 'en', 'grounding'])
-
 
 register_dataset(
     DatasetName.text_caps,
