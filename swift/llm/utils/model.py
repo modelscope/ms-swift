@@ -2156,7 +2156,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
     ModelType.yi_1_5_9b_chat_16k,
-    '01ai/Yi-1.5-9B-Chat',
+    '01ai/Yi-1.5-9B-Chat-16K',
     LoRATM.llama,
     TemplateType.yi1_5,
     support_flash_attn=True,
@@ -4004,7 +4004,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
-    TemplateType.qwenvl,
+    TemplateType.qwen_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen-VL-Chat')
@@ -4659,6 +4659,13 @@ def _patch_llava(model):
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 576,
+    },
     support_flash_attn=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],

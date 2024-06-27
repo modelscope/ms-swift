@@ -15,8 +15,8 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, Samplin
 
 from swift.utils import get_logger
 from .argument import InferArguments
-from .model import get_model_tokenizer
-from .template import Template, get_template
+from .model import MODEL_MAPPING, get_model_tokenizer
+from .template import Template, get_template, vllm_context
 
 try:
     from vllm.lora.request import LoRARequest
@@ -75,6 +75,7 @@ def get_vllm_engine(
     else:
         assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
 
+    vllm_config = MODEL_MAPPING[model_type].get('vllm_config') or {}
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
@@ -85,6 +86,7 @@ def get_vllm_engine(
         disable_log_stats=disable_log_stats,
         disable_custom_all_reduce=disable_custom_all_reduce,
         enforce_eager=enforce_eager,
+        **vllm_config,
         **engine_kwargs)
     try:
         from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
@@ -136,6 +138,8 @@ def get_vllm_engine(
         llm_engine.generation_config = VllmGenerationConfig(**kwargs)
     else:
         llm_engine.generation_config = VllmGenerationConfig()
+    llm_engine.dtype = torch_dtype
+    llm_engine.vllm_config = vllm_config
     return llm_engine
 
 
@@ -206,6 +210,19 @@ class VllmGenerationConfig(SamplingParams):
             super().__setattr__(key, value)
 
 
+def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_id: str,
+                      generation_config: VllmGenerationConfig, **kwargs) -> None:
+    input_ids = inputs['input_ids']
+    if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+        request_inputs = {'prompt_token_ids': input_ids}
+        if 'pixel_values' in inputs:
+            from vllm.multimodal.image import ImagePixelData
+            request_inputs['multi_modal_data'] = ImagePixelData(inputs['pixel_values'])
+        llm_engine.add_request(request_id, request_inputs, generation_config, **kwargs)
+    else:
+        llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
+
+
 @torch.inference_mode()
 def inference_stream_vllm(llm_engine: LLMEngine,
                           template: Template,
@@ -265,12 +282,16 @@ def inference_stream_vllm(llm_engine: LLMEngine,
         request_temp.append((is_observation, act_length))
 
         request['history'] = history
-        inputs = template.encode(request)[0]
+        with vllm_context(template):
+            inputs = template.encode(request)[0]
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': history}
             continue
+
+        _add_vllm_request(
+            llm_engine, inputs, request_id=str(i), generation_config=generation_config, **add_request_kwargs)
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):
             llm_engine.add_request(str(i), {'prompt_token_ids': input_ids}, generation_config, **add_request_kwargs)
@@ -356,17 +377,16 @@ def inference_vllm(llm_engine: LLMEngine,
             history[-1][-1] = history[-1][-1] + request['query']
             request['query'] = None
         request['history'] = history
-        inputs = template.encode(request)[0]
+        with vllm_context(template):
+            inputs = template.encode(request)[0]
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': history}
             continue
-        input_ids = inputs['input_ids']
-        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-            llm_engine.add_request(str(i), {'prompt_token_ids': input_ids}, generation_config, **add_request_kwargs)
-        else:
-            llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
+
+        _add_vllm_request(
+            llm_engine, inputs, request_id=str(i), generation_config=generation_config, **add_request_kwargs)
 
     if use_tqdm:
         assert verbose is False
@@ -447,6 +467,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         args.system,
         args.max_length,
         args.truncation_strategy,
+        model=llm_engine,
         tools_prompt=args.tools_prompt)
     args.system = template.default_system
     logger.info(f'system: {args.system}')

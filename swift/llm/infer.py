@@ -369,7 +369,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             if system is None and template.use_default_system:
                 system = template.default_system
             if args.infer_backend == 'vllm':
-                request_list = [{'query': query, 'history': history, 'system': system}]
+                request_list = [{'query': query, 'history': history, 'system': system, **infer_kwargs}]
                 if args.stream:
                     gen = inference_stream_vllm(llm_engine, template, request_list, lora_request=lora_request)
                     print_idx = 0
