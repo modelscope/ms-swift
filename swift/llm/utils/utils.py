@@ -555,10 +555,6 @@ def _prepare_inputs(model: PreTrainedModel,
                     **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
     if stop_words is None:
         stop_words = []
-    if history is None:
-        history = []
-    else:
-        history = deepcopy(history)
     if images is None:
         images = []
 
@@ -640,6 +636,10 @@ def inference_stream(model: PreTrainedModel,
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
+    if history is None:
+        history = []
+    else:
+        history = deepcopy(history)
     inputs, tokenizer_kwargs, token_len = _prepare_inputs(
         model,
         template,
@@ -730,6 +730,10 @@ def inference(model: PreTrainedModel,
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
+    if history is None:
+        history = []
+    else:
+        history = deepcopy(history)
     inputs, tokenizer_kwargs, token_len = _prepare_inputs(
         model,
         template,
