@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
+from contextlib import contextmanager
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -32,7 +33,7 @@ class TemplateType:
     # chat
     default = 'default'
     qwen = 'qwen'
-    qwenvl = 'qwenvl'
+    qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
@@ -282,6 +283,7 @@ class Template:
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
+        example = example.copy()
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
@@ -783,7 +785,7 @@ class QwenVLTemplate(QwenTemplate):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.qwenvl, QwenVLTemplate())
+register_template(TemplateType.qwen_vl, QwenVLTemplate())
 register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
@@ -878,6 +880,15 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
     return image
 
 
+def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]]) -> List['PIL.Image.Image']:
+    res = []
+    for path in path_list:
+        if path is None:
+            continue
+        res.append(_read_from_path(path))
+    return res
+
+
 class YiVLTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
@@ -895,12 +906,11 @@ class YiVLTemplate(Template):
             model = model.model
         image_processor = model.vision_tower.image_processor
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
+        images = _read_batch(images_path)
+        for i, image in enumerate(images):
             background_color = tuple(int(x * 255) for x in image_processor.image_mean)
             image = expand2square(image, background_color)
-            images.append(image)
+            images[i] = image
         if images:
             image_tensor = image_processor.preprocess(images, return_tensors='pt')['pixel_values']
             inputs['images'] = image_tensor.to(model.dtype)
@@ -1125,13 +1135,12 @@ class InternLMXComposer2(Template):
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '</s>')
         inputs, _ = super().encode(example)
-        images = []
         dtype = self.model.dtype
         images_path.extend(example.get('images') or [])
-        for image_path in images_path:
-            image = _read_from_path(image_path)
+        images = _read_batch(images_path)
+        for i, image in enumerate(images):
             image = self.model.vis_processor(image)
-            images.append(image.to(dtype))
+            images[i] = image.to(dtype)
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
@@ -1336,10 +1345,7 @@ class Llava1_5Template(Template):
         if len(inputs) == 0:
             return inputs, {}
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
+        images = _read_batch(images_path)
         image_processor = self.tokenizer.processor.image_processor
         if images:
             inputs['pixel_values'] = image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
@@ -1367,10 +1373,7 @@ class LLavaTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
+        images = _read_batch(images_path)
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images
         model = self.model.model
@@ -1505,10 +1508,7 @@ class Phi3VisionTemplate(Template):
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<s>')
         images_path.extend(example.get('images') or [])
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
+        images = _read_batch(images_path)
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1619,11 +1619,7 @@ class DeepseekVLTemplate(Template):
         images_path.extend(example.get('images') or [])
         if len(inputs) == 0:
             return inputs, {}
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
-
+        images = _read_batch(images_path)
         processor = self.tokenizer.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
         idx_list = _findall(input_ids, processor.image_id)
@@ -1921,13 +1917,12 @@ class mPlugOwl2Template(Template):
         from mplug_owl2.mm_utils import process_images
         processor = self.tokenizer.processor
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
+        images = _read_batch(images_path)
+        for i, image in enumerate(images):
             # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary
             max_edge = max(image.size)
             image = image.resize((max_edge, max_edge))
-            images.append(image)
+            images[i] = image
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
