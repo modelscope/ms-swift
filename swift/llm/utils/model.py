@@ -914,6 +914,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        if is_training:
+            model.train()
+            model.requires_grad_(True)
         model.is_gptq = is_gptq
         model.is_awq = is_awq
         model.is_aqlm = is_aqlm
@@ -2153,7 +2156,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
     ModelType.yi_1_5_9b_chat_16k,
-    '01ai/Yi-1.5-9B-Chat',
+    '01ai/Yi-1.5-9B-Chat-16K',
     LoRATM.llama,
     TemplateType.yi1_5,
     support_flash_attn=True,
@@ -3537,7 +3540,6 @@ def _patch_deepseek_vl(model) -> None:
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    requires=['attrdict'],
     hf_model_id='deepseek-ai/deepseek-vl-7b-chat')
 @register_model(
     ModelType.deepseek_vl_1_3b_chat,
@@ -3546,7 +3548,6 @@ def _patch_deepseek_vl(model) -> None:
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    requires=['attrdict'],
     hf_model_id='deepseek-ai/deepseek-vl-1.3b-chat')
 def get_model_tokenizer_deepseek_vl(model_dir: str,
                                     torch_dtype: Dtype,
@@ -4003,7 +4004,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
-    TemplateType.qwenvl,
+    TemplateType.qwen_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen-VL-Chat')
