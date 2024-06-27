@@ -594,7 +594,7 @@ def _prepare_inputs(model: PreTrainedModel,
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
     if generation_config is None:
-        generation_config = getattr(model, 'generation_config', None)
+        generation_config = getattr(model, 'generation_config')
     generation_config = deepcopy(generation_config)
 
     if tokenizer.eos_token_id is not None:
