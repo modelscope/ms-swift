@@ -292,11 +292,6 @@ def inference_stream_vllm(llm_engine: LLMEngine,
 
         _add_vllm_request(
             llm_engine, inputs, request_id=str(i), generation_config=generation_config, **add_request_kwargs)
-        input_ids = inputs['input_ids']
-        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-            llm_engine.add_request(str(i), {'prompt_token_ids': input_ids}, generation_config, **add_request_kwargs)
-        else:
-            llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     print_idx_list = [[0] for _ in range(len(request_list))]
     prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
