@@ -327,17 +327,17 @@ The eval parameters inherit from the infer parameters, and additionally include 
   ```text
   Currently supported datasets include: 'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'commonsenseqa', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'flores', 'TheoremQA', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
   ```
-- `--eval_few_shot`: Few-shot count for each subset of the evaluation dataset, default is `None`, which means using the default configuration of the dataset. **This parameter is currently deprecated.**
-- `--eval_limit`: Sample size for each subset of the evaluation dataset, default is `None`, which means full evaluation. **This parameter is currently deprecated.**
-- `--name`: Used to distinguish the result storage path of evaluations with the same configuration.
-- `--eval_url`: OpenAI standard model call interface, such as `http://127.0.0.1:8000/v1`. If using the deployment method for evaluation, this needs to be set, but usually doesn't need to be set. Default is `None`.
+- `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset. **This parameter is currently deprecated.**
+- `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation. **This parameter is currently deprecated.**
+- `--name`: Used to differentiate the result storage path for evaluating the same configuration.
+- `--eval_url`: The standard model invocation interface for OpenAI, for example, `http://127.0.0.1:8000/v1`. This needs to be set when evaluating in a deployed manner, usually not needed. Default is `None`.
   ```shell
   swift eval --eval_url http://127.0.0.1:8000/v1 --eval_is_chat_model true --model_type gpt4 --eval_token xxx
   ```
-- `--eval_token`: Token for OpenAI standard model call interface, default is `''`, which means no token.
-- `--eval_is_chat_model`: If `eval_url` is not empty, this value needs to be passed to determine whether it is a `chat` model. `False` means it is a `base` model. Default is `None`.
-- `--custom_eval_config`: Use a custom dataset for evaluation, needs to be a locally existing file path. The file format is detailed in [Custom Evaluation Set](./LLM-eval.md#custom-evaluation-set). Default is `None`.
-- `--eval_use_cache`: Whether to use already generated evaluation cache, making previously performed evaluations not rerun but only regenerate evaluation results. Default is `False`.
+- `--eval_token`: The token for the standard model invocation interface for OpenAI, with a default value of `'EMPTY'`, indicating no token.
+- `--eval_is_chat_model`: If `eval_url` is not empty, this value needs to be passed to determine if it is a "chat" model. False represents a "base" model. Default is `None`.
+- `--custom_eval_config`: Used for evaluating with custom datasets, and needs to be a locally existing file path. For details on file format, refer to [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set). Default is `None`.
+- `--eval_use_cache`: Whether to use already generated evaluation cache, so that previously evaluated results won't be rerun but only the evaluation results regenerated. Default is `False`.
 - `--eval_output_dir`: Output path for evaluation results, default is `eval_outputs` in the current folder.
 - `--eval_batch_size`: Input batch size for evaluation, default is 8.
 - `--deploy_timeout`: The timeout duration for waiting for model deployment before evaluation, default is 60, which means one minute.

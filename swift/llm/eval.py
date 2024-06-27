@@ -257,7 +257,7 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     model_name = args.model_type
-    tm = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+    tm = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
     model_name += f'-{args.name or tm}'
     custom_names = []
     if args.custom_eval_config is not None:
