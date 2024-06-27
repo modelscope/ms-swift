@@ -27,6 +27,8 @@ def safe_ddp_context():
     yield
     if is_dist() and is_local_master():
         dist.barrier()
+    if is_dist():  # sync
+        dist.barrier()
 
 
 def check_json_format(obj: Any) -> Any:

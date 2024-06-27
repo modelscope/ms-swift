@@ -2,10 +2,10 @@
 # 80GB GPU memory
 # Note: TorchAcc is currently only available internally.
 
-# MASTER_ADDR=127.0.0.1 \
+export USE_TORCH_XLA=0
 
-NPROC_PER_NODE=1 \
-CUDA_VISIBLE_DEVICES=7 \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
   --model_id_or_path qwen/Qwen-72B-Chat \
   --dataset codefuse-python-en \

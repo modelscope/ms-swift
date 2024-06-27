@@ -66,6 +66,10 @@ In the stillness of the night, a sense of peace,
 The boat, the river, the trees, all in their place.
 A moment frozen in time, a scene so serene,
 A journey through the night, a dream so unseen.
+--------------------------------------------------
+<<< clear
+<<< <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png</img>Perform OCR on the image.
+The image contains a text section with the heading 'Introduction'. It discusses the capabilities of SWIFT, which support training, inference, evaluation, and deployment of over 250 large language models (LLMs) and 35+ multimodal large models (MLLMs). It mentions that developers can apply this framework to their research and production environments, and that SWIFT supports lightweight training solutions provided by PEFT, as well as a complete Adapters library for various training techniques. It also highlights the availability of a Gradio web-ui for controlling training and inference, and the provision of deep learning courses and best practices for beginners. The text further states that SWIFT is expanding capabilities for other modalities, currently supporting full-parameter training and LoRA training for AnimateDiff. There are references to rich documentation and the availability of SWIFT web-ui on Huggingface space and ModelScope studio. The text is clear and fully visible in the image.
 """
 ```
 
@@ -87,6 +91,9 @@ poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
 
+ocr_en:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 

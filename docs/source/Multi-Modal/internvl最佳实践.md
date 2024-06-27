@@ -42,43 +42,58 @@ CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf1
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< Describe this image.
-Input a media path or URL <<<  http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
-This is a high-resolution image of a kitten. The kitten has striking blue eyes and a fluffy white and grey coat. The fur pattern suggests that it may be a Maine Coon or a similar breed. The kitten's ears are perked up, and it has a curious and innocent expression. The background is blurred, which brings the focus to the kitten's face.
+<<< 你是谁
+Input a media path or URL <<<
+我是一个人工智能助手，旨在通过自然语言处理和机器学习技术来帮助用户解决问题和完成任务。
 --------------------------------------------------
 <<< clear
-<<< How many sheep are in the picture?
+<<< 描述这张图片
+Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+这张图片是一只小猫咪的特写照片。这只小猫咪有着蓝灰色的眼睛和白色的毛发，上面有灰色和黑色的条纹。它的耳朵是尖的，眼睛睁得大大的，看起来非常可爱和好奇。背景是模糊的，无法分辨具体的环境，但看起来像是在室内，有柔和的光线。
+--------------------------------------------------
+<<< clear
+<<< 图中有几只羊
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
-There are four sheep in the picture.
+图中有四只羊。
 --------------------------------------------------
 <<< clear
-<<< What is the calculation result?
+<<< 计算结果是多少?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is 59,856.
+将两个数相加，得到：
+1452 + 45304 = 46766
+因此，1452 + 45304 = 46766。
 --------------------------------------------------
 <<< clear
-<<< Write a poem based on the content of the picture.
+<<< 根据图片中的内容写首诗
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
-Token indices sequence length is longer than the specified maximum sequence length for this model (5142 > 4096). Running this sequence through the model will result in indexing errors
-In the still of the night,
-A lone boat sails on the light.
-The stars above, a twinkling sight,
-Reflecting in the water's might.
+夜色笼罩水面，
+小舟轻摇入画帘。
+星辉闪烁如珠串，
+月色朦胧似轻烟。
 
-The trees stand tall, a silent guard,
-Their leaves rustling in the yard.
-The boatman's lantern, a beacon bright,
-Guiding him through the night.
-
-The river flows, a gentle stream,
-Carrying the boatman's dream.
-His journey long, his heart serene,
-In the beauty of the scene.
-
-The stars above, a guiding light,
-Leading him through the night.
-The boatman's journey, a tale to tell,
-Of courage, hope, and love as well.
+树影婆娑映水面，
+静谧宁和心自安。
+夜深人静思无限，
+唯有舟影伴我眠。
+--------------------------------------------------
+<<< clear
+<<< 对图片进行OCR
+Input a media path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png
+图中所有文字：
+简介
+SWIFT支持250＋LLM和35＋MLLM（多模态大模型）的训练、推
+理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和
+生产环境中，实现模型训练评测到应用的完整链路。我们除支持
+PEFT提供的轻量训练方案外，也提供了一个完整的Adapters库以支持
+最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配
+器库可以脱离训练脚本直接使用在自已的自定义流程中。
+为了方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui
+于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入
+此外，我们也正在拓展其他模态的能力，目前我们支持了AnimateDiff的全参
+数训练和LoRA训练。
+SWIFT具有丰富的文档体系，如有使用问题请查看这里：
+可以在Huggingface space和ModelScope创空间中体验SWIFT web-
+ui功能了。
 """
 ```
 
@@ -99,6 +114,10 @@ math:
 poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
+
+ocr:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 

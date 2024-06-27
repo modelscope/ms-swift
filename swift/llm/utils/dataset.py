@@ -21,7 +21,7 @@ from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
 from swift.utils.torch_utils import _find_local_mac
-from .media import MediaCache
+from .media import MediaCache, MediaTag
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
@@ -162,6 +162,8 @@ class DatasetName:
     midefics = 'midefics'
     gqa = 'gqa'
     text_caps = 'text-caps'
+    refcoco_unofficial_caption = 'refcoco-unofficial-caption'
+    refcoco_unofficial_grounding = 'refcoco-unofficial-grounding'
     a_okvqa = 'a-okvqa'
     okvqa = 'okvqa'
     ocr_vqa = 'ocr-vqa'
@@ -300,10 +302,12 @@ def load_ms_dataset(dataset_id: str,
         if use_hf:
             try:
                 dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
-            except Exception as e:
+            except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
                 continue
+            except Exception:
+                raise
         else:
             if is_dist() and not is_local_master():
                 force_redownload = False
@@ -312,10 +316,12 @@ def load_ms_dataset(dataset_id: str,
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
             try:
                 dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
-            except Exception as e:
+            except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
                 continue
+            except Exception:
+                raise
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
@@ -1107,6 +1113,79 @@ def preprocess_text_caps(dataset):
         preprocess,
         load_from_cache_file=False).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
 
+
+def preprocess_refcoco_unofficial_caption(dataset):
+
+    cache_dir = MediaCache.download(
+        'https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/'
+        'coco_res/repo?Revision=master&FilePath=coco_2014.zip', 'coco2014')
+
+    def preprocess(row):
+        caption = row['captions'][0]
+        bbox = row['bbox']
+        image_path = os.path.join(cache_dir, row['image_path'].replace('coco/train2014', 'train2014'))
+        media_tag = MediaTag(media_type='image', task_type='grounding_caption')
+        for i in range(len(bbox)):
+            bbox[i] = round(float(bbox[i]))
+        res = {}
+
+        objects = [[caption, bbox]]
+        media_tag(res, [image_path])
+        res['images'] = [image_path]
+        res['objects'] = json.dumps(objects)
+        if not os.path.exists(image_path):
+            res['response'] = ''
+        return res
+
+    return dataset.map(preprocess, load_from_cache_file=False).filter(lambda row: row.get('response'))
+
+
+register_dataset(
+    DatasetName.refcoco_unofficial_caption,
+    'swift/refcoco', [],
+    preprocess_func=preprocess_refcoco_unofficial_caption,
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='jxu124/refcoco',
+    huge_dataset=True,
+    tags=['multi-modal', 'en', 'caption'])
+
+
+def preprocess_refcoco_unofficial_grounding(dataset):
+
+    cache_dir = MediaCache.download(
+        'https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/'
+        'coco_res/repo?Revision=master&FilePath=coco_2014.zip', 'coco2014')
+
+    def preprocess(row):
+        caption = row['captions'][0]
+        bbox = row['bbox']
+        image_path = os.path.join(cache_dir, row['image_path'].replace('coco/train2014', 'train2014'))
+        media_tag = MediaTag(media_type='image', task_type='ref_grounding')
+        for i in range(len(bbox)):
+            bbox[i] = round(float(bbox[i]))
+        res = {}
+
+        objects = [[caption, bbox]]
+        media_tag(res, [image_path])
+        res['images'] = [image_path]
+        res['objects'] = json.dumps(objects)
+        if not os.path.exists(image_path):
+            res['response'] = ''
+        return res
+
+    return dataset.map(preprocess, load_from_cache_file=False).filter(lambda row: row.get('response'))
+
+
+register_dataset(
+    DatasetName.refcoco_unofficial_grounding,
+    'swift/refcoco', [],
+    preprocess_func=preprocess_refcoco_unofficial_grounding,
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='jxu124/refcoco',
+    huge_dataset=True,
+    tags=['multi-modal', 'en', 'grounding'])
 
 register_dataset(
     DatasetName.text_caps,
@@ -2252,7 +2331,7 @@ def get_dataset(
             assert model_name is not None and model_author is not None
             dataset = _preprocess_self_cognition_dataset(dataset, model_name, model_author)
 
-        def _reduce_column(row):
+        def _reduce_column(row: Dict[str, Any]) -> Dict[str, Any]:
             res = {}
             if 'query' in row and isinstance(row['query'], (list, tuple)):
                 res['query'] = np.random.choice(row['query'])

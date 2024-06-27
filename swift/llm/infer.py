@@ -16,8 +16,8 @@ from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
 from .utils import (DeployArguments, InferArguments, Template, get_additional_saved_files, get_dataset,
-                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, sample_dataset,
-                    set_generation_config)
+                    get_model_tokenizer, get_template, inference, inference_stream, is_adapter, is_quant_model,
+                    sample_dataset, set_generation_config)
 
 logger = get_logger()
 
@@ -29,6 +29,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     target_dir: str,
                     *,
                     save_safetensors: bool = True,
+                    sft_args_kwargs: Dict[str, Any],
                     **kwargs) -> None:
     if model is not None:
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
@@ -75,9 +76,10 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             with open(old_sft_args_path, 'r', encoding='utf-8') as f:
                 res = json.load(f)
             res['sft_type'] = 'full'
-            dtype = kwargs.get('dtype')
-            if dtype is not None:
-                res['dtype'] = dtype
+            for k in ['dtype', 'quant_method']:
+                v = sft_args_kwargs.get(k)
+                if v is not None:
+                    res[k] = v
             with open(new_sft_args_path, 'w', encoding='utf-8') as f:
                 json.dump(res, f, ensure_ascii=False, indent=2)
 
@@ -89,8 +91,8 @@ def merge_lora(args: InferArguments,
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
     assert args.sft_type in ('lora', 'adalora', 'longlora'), 'Only supports lora series models'
-    for s in ['int4', 'int8', 'awq']:
-        assert s not in args.model_type, f'{s} model is not supported'
+    assert not is_quant_model(
+        args.model_type), f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
@@ -117,7 +119,7 @@ def merge_lora(args: InferArguments,
             args.ckpt_dir,
             merged_lora_path,
             save_safetensors=args.save_safetensors,
-            dtype=args.dtype)
+            sft_args_kwargs={'dtype': args.dtype})
         logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
     logger.info("Setting args.sft_type: 'full'")
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
@@ -180,6 +182,7 @@ def prepare_model_template(args: InferArguments,
         model_kwargs,
         model_id_or_path=model_id_or_path,
         revision=args.model_revision,
+        quant_method=args.quant_method,
         **kwargs)
     if verbose:
         logger.info(f'model_config: {model.config}')
@@ -207,7 +210,13 @@ def prepare_model_template(args: InferArguments,
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
+        if is_quant_model(args.model_type, model):
+            # gptq awq does not support lora switching
+            args.lora_request_list = None
+            logger.warning('The current model does not support LoRA switching. '
+                           f'Setting args.lora_request_list: {args.lora_request_list}')
         if isinstance(args, DeployArguments) and args.lora_request_list is not None:
+            logger.info(f'args.lora_request_list: {args.lora_request_list}')
             for lora_request in args.lora_request_list:
                 model = Swift.from_pretrained(
                     model, lora_request.lora_local_path, lora_request.lora_name, inference_mode=True)
@@ -356,8 +365,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 infer_kwargs = {}
 
             read_media_file(infer_kwargs, args.infer_media_type)
-            if args.truncation_strategy:
-                infer_kwargs['truncation_strategy'] = args.truncation_strategy
+            infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:
                 system = template.default_system
             if args.infer_backend == 'vllm':
@@ -456,8 +464,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 request['system'] = system
                 if images is not None:
                     request['images'] = images
-                if args.truncation_strategy:
-                    request['truncation_strategy'] = args.truncation_strategy
+                request['truncation_strategy'] = args.truncation_strategy
                 request_list.append(request)
             resp_list = inference_vllm(llm_engine, template, request_list, use_tqdm=True)
             result = []
@@ -499,10 +506,9 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     kwargs['images'] = images
                 if tools is not None:
                     kwargs['tools'] = tools
-                if args.truncation_strategy:
-                    kwargs['truncation_strategy'] = args.truncation_strategy
+                kwargs['truncation_strategy'] = args.truncation_strategy
                 if args.infer_backend == 'vllm':
-                    assert args.stream is True
+                    assert args.stream
                     if args.verbose:
                         print(f"[QUERY]{data['query']}\n[RESPONSE]", end='')
                     gen = inference_stream_vllm(llm_engine, template, [kwargs], lora_request=lora_request)

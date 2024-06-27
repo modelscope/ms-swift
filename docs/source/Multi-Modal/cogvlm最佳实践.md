@@ -48,6 +48,11 @@ In a world where night and day intertwine,
 A boat floats gently, reflecting the moon's shine.
 Fireflies dance, their glow a mesmerizing trance,
 As the boat sails through a tranquil, enchanted expanse.
+--------------------------------------------------
+<<< clear
+<<< Perform OCR on the image.
+Input a media path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png
+The image contains textual content that describes the capabilities and features of the SWIFT framework. It mentions support for training, inference, and deployment of 250+ LLMs and 35+ MLMs, and how developers can apply this framework to their research and production environments. It also mentions lightweight training solutions provided by PEFT and an adapter library to support the latest training techniques. Additionally, the text highlights that SWIFT offers capabilities for other modalities and supports full-parameter training and LLaMA training for AnimateDiff. There's also a mention of rich documentation available on Huggingface space and ModelScope studio.
 """
 ```
 
@@ -68,6 +73,10 @@ math:
 poem:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png" width="250" style="display: inline-block;">
+
+ocr_en:
+
+<img src="https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png" width="250" style="display: inline-block;">
 
 **单样本推理**
 
