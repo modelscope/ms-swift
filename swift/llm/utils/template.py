@@ -32,7 +32,7 @@ class TemplateType:
     # chat
     default = 'default'
     qwen = 'qwen'
-    qwenvl = 'qwenvl'
+    qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
@@ -267,11 +267,8 @@ class Template:
                             h[0] = media_tag + h[0]
                     if example[media_key][-1]:
                         query = media_tag + query
-                    example[media_key] = [m for m in example[media_key] if m]
                 else:
-                    example[media_key] = [m for m in example[media_key] if m]
-                    media_len = len(example[media_key]) if isinstance(example[media_key],
-                                                                      (tuple, list)) else 1 if example[media_key] else 0
+                    media_len = len([m for m in example[media_key] if m])
                     if history:
                         history[0][0] = media_tag * media_len + history[0][0]
                     else:
@@ -282,6 +279,7 @@ class Template:
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
+        example = example.copy()
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
@@ -783,7 +781,7 @@ class QwenVLTemplate(QwenTemplate):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.qwenvl, QwenVLTemplate())
+register_template(TemplateType.qwen_vl, QwenVLTemplate())
 register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
@@ -878,6 +876,15 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
     return image
 
 
+def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]]) -> List['PIL.Image.Image']:
+    res = []
+    for path in path_list:
+        if path is None:  # ignore None
+            continue
+        res.append(_read_from_path(path))
+    return res
+
+
 class YiVLTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
@@ -895,12 +902,11 @@ class YiVLTemplate(Template):
             model = model.model
         image_processor = model.vision_tower.image_processor
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
+        images = _read_batch(images_path)
+        for i, image in enumerate(images):
             background_color = tuple(int(x * 255) for x in image_processor.image_mean)
             image = expand2square(image, background_color)
-            images.append(image)
+            images[i] = image
         if images:
             image_tensor = image_processor.preprocess(images, return_tensors='pt')['pixel_values']
             inputs['images'] = image_tensor.to(model.dtype)
@@ -1125,13 +1131,12 @@ class InternLMXComposer2(Template):
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '</s>')
         inputs, _ = super().encode(example)
-        images = []
         dtype = self.model.dtype
         images_path.extend(example.get('images') or [])
-        for image_path in images_path:
-            image = _read_from_path(image_path)
+        images = _read_batch(images_path)
+        for i, image in enumerate(images):
             image = self.model.vis_processor(image)
-            images.append(image.to(dtype))
+            images[i] = image.to(dtype)
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
@@ -1208,11 +1213,7 @@ class InternvlTemplate(Template):
 
     def __init__(self):
         super().__init__(['<s>'], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
-
-    def check_example(self, example):
-        images = example.get('images') or []
-        assert len(images) <= 1
+                         ['<|im_end|>'], self.system, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1237,12 +1238,12 @@ class InternvlTemplate(Template):
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
 
-            idx = idx_list[0]
+            idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
             img_tokens: List[int] = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs
                                                           + '</img>\n')
-            input_ids = input_ids[:idx] + img_tokens + input_ids[idx + 1:]
+            input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
-                labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx + 1:]
+                labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
 
@@ -1336,10 +1337,7 @@ class Llava1_5Template(Template):
         if len(inputs) == 0:
             return inputs, {}
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
+        images = _read_batch(images_path)
         image_processor = self.tokenizer.processor.image_processor
         if images:
             inputs['pixel_values'] = image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
@@ -1367,10 +1365,7 @@ class LLavaTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
+        images = _read_batch(images_path)
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images
         model = self.model.model
@@ -1505,10 +1500,7 @@ class Phi3VisionTemplate(Template):
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<s>')
         images_path.extend(example.get('images') or [])
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
+        images = _read_batch(images_path)
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1619,11 +1611,7 @@ class DeepseekVLTemplate(Template):
         images_path.extend(example.get('images') or [])
         if len(inputs) == 0:
             return inputs, {}
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
-            images.append(image)
-
+        images = _read_batch(images_path)
         processor = self.tokenizer.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
         idx_list = _findall(input_ids, processor.image_id)
@@ -1921,13 +1909,12 @@ class mPlugOwl2Template(Template):
         from mplug_owl2.mm_utils import process_images
         processor = self.tokenizer.processor
         images_path = example.get('images') or []
-        images = []
-        for image_path in images_path:
-            image = _read_from_path(image_path)
+        images = _read_batch(images_path)
+        for i, image in enumerate(images):
             # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary
             max_edge = max(image.size)
             image = image.resize((max_edge, max_edge))
-            images.append(image)
+            images[i] = image
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
