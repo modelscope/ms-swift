@@ -14,7 +14,6 @@ import torch
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
-from llmuses.backend.opencompass import OpenCompassBackendManager
 from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
@@ -1306,8 +1305,7 @@ class DeployArguments(InferArguments):
 @dataclass
 class EvalArguments(InferArguments):
 
-    eval_dataset: List[str] = field(
-        default_factory=lambda: [], metadata={'help': f'dataset choices: {OpenCompassBackendManager.list_datasets()}'})
+    eval_dataset: List[str] = field(default_factory=list)
     eval_few_shot: Optional[int] = None
     eval_limit: Optional[int] = None
 
@@ -1317,8 +1315,8 @@ class EvalArguments(InferArguments):
     eval_is_chat_model: Optional[bool] = None
     custom_eval_config: Optional[str] = None  # path
     eval_use_cache: bool = False
-    eval_output_dir: Optional[str] = 'eval_outputs'
-    eval_backend: str = 'OpenCompass'
+    eval_output_dir: str = 'eval_outputs'
+    eval_backend: Literal['Native', 'OpenCompass'] = 'OpenCompass'
     eval_batch_size: int = 8
     deploy_timeout: int = 60
 

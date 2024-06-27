@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import json
 from llmuses.models.custom import CustomModel
 from llmuses.summarizer import Summarizer
+from llmuses.utils import EvalBackend
 from modelscope import GenerationConfig
 from openai import APIConnectionError
 from tqdm import tqdm
@@ -306,11 +307,11 @@ def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
         raise ValueError('Please specify either --eval_dataset or --custom_eval_config')
     args.eval_output_dir = os.path.join(args.eval_output_dir, args.name or 'default')
     if args.custom_eval_config:
-        args.eval_backend = 'llmuses'
+        args.eval_backend = EvalBackend.NATIVE
         if args.eval_dataset:
             logger.warn('--custom_eval_config cannot use together with --eval_dataset')
             args.eval_dataset = []
-    if args.eval_backend == 'OpenCompass':
+    if args.eval_backend == EvalBackend.OPEN_COMPASS:
         return eval_opencompass(args)
     else:
         return eval_llmuses(args)
