@@ -1217,11 +1217,7 @@ class InternvlTemplate(Template):
 
     def __init__(self):
         super().__init__(['<s>'], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
-
-    def check_example(self, example):
-        images = example.get('images') or []
-        assert len(images) <= 1
+                         ['<|im_end|>'], self.system, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1246,12 +1242,12 @@ class InternvlTemplate(Template):
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
 
-            idx = idx_list[0]
+            idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
             img_tokens: List[int] = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs
                                                           + '</img>\n')
-            input_ids = input_ids[:idx] + img_tokens + input_ids[idx + 1:]
+            input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
-                labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx + 1:]
+                labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
 
