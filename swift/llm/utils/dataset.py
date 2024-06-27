@@ -675,6 +675,7 @@ register_dataset(
     split=['train', 'cc12m', 'commonpool', 'redcaps'],
     hf_dataset_id="tomg-group-umd/pixelprose",
     tags=['caption', 'multi-modal', 'vision'],
+    huge_dataset=True,
     is_main=False)
 
 
@@ -2092,6 +2093,7 @@ register_dataset(
     _preprocess_toolbench,
     get_dataset_from_repo,
     remove_useless_columns=False,
+    huge_dataset=True,
     tags=['chat', 'agent', 'multi-round'])
 
 
