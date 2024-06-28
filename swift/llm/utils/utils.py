@@ -545,7 +545,7 @@ class TokenListIteratorStreamer(BaseStreamer):
 def _prepare_inputs(model: PreTrainedModel,
                     template: Template,
                     query: str,
-                    history: Optional[History] = None,
+                    history: History,
                     system: Optional[str] = None,
                     images: Optional[List[str]] = None,
                     *,
