@@ -1318,6 +1318,8 @@ class EvalArguments(InferArguments):
     eval_is_chat_model: Optional[bool] = None
     custom_eval_config: Optional[str] = None  # path
     eval_use_cache: bool = False
+    # compat
+    eval_backend: Literal['Native'] = 'Native'
 
     def __post_init__(self):
         super().__post_init__()
@@ -1380,22 +1382,24 @@ class ExportArguments(InferArguments):
 
     def __post_init__(self):
         if self.merge_device_map is None:
-            self.merge_device_map = 'cpu' if self.quant_bits != 0 else 'auto'
+            self.merge_device_map = 'cpu' if self.quant_bits > 0 else 'auto'
         if self.quant_bits > 0 and self.dtype == 'AUTO':
             self.dtype = 'fp16'
             logger.info(f'Setting args.dtype: {self.dtype}')
         super().__post_init__()
-        if len(self.dataset) == 0 and self.quant_bits > 0:
-            self.dataset = ['alpaca-zh#10000', 'alpaca-en#10000']
-            logger.info(f'Setting args.dataset: {self.dataset}')
-        if self.quant_output_dir is None:
-            if self.ckpt_dir is None:
-                self.quant_output_dir = f'{self.model_type}-{self.quant_method}-int{self.quant_bits}'
-            else:
-                ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
-                self.quant_output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
-            logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
-        assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
+        if self.quant_bits > 0:
+            if len(self.dataset) == 0:
+                self.dataset = ['alpaca-zh#10000', 'alpaca-en#10000']
+                logger.info(f'Setting args.dataset: {self.dataset}')
+            if self.quant_output_dir is None:
+                if self.ckpt_dir is None:
+                    self.quant_output_dir = f'{self.model_type}-{self.quant_method}-int{self.quant_bits}'
+                else:
+                    ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
+                    self.quant_output_dir = os.path.join(ckpt_dir,
+                                                         f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
+                logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
+            assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
 
 
 @dataclass
