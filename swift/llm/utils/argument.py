@@ -1318,6 +1318,8 @@ class EvalArguments(InferArguments):
     eval_is_chat_model: Optional[bool] = None
     custom_eval_config: Optional[str] = None  # path
     eval_use_cache: bool = False
+    # compat
+    eval_backend: Literal['Native'] = 'Native'
 
     def __post_init__(self):
         super().__post_init__()
@@ -1388,7 +1390,7 @@ class ExportArguments(InferArguments):
         if len(self.dataset) == 0 and self.quant_bits > 0:
             self.dataset = ['alpaca-zh#10000', 'alpaca-en#10000']
             logger.info(f'Setting args.dataset: {self.dataset}')
-        if self.quant_output_dir is None:
+        if self.quant_output_dir is None and self.quant_bits > 0:
             if self.ckpt_dir is None:
                 self.quant_output_dir = f'{self.model_type}-{self.quant_method}-int{self.quant_bits}'
             else:
