@@ -719,6 +719,9 @@ class Template:
             assert is_finished and not return_delta
         return response
 
+    def post_process_generate_response(self, response: str, example: dict)-> str:
+        return response
+    
 
 def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
     if not exist_ok and template_type in TEMPLATE_MAPPING:
@@ -1321,22 +1324,15 @@ class FlorenceTemplate(Template):
             '<REGION_TO_OCR>': 'What text is in the region {input}?',
         }
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        return []
-
-    def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
-        objects = example['objects']
-        object_ = objects[index]
-        return [f'{object_[0]}']
-
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
         width, height = example['_image'].width, example['_image'].height
         x1, y1, x2, y2 = [
             int(coord / dim * 999) for coord, dim in zip(example['objects'][index][1], [width, height, width, height])
         ]
-        return [f'<loc_{x1}><loc_{y1}><loc_{x2}>,<loc_{y2}>']
+        return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
 
     def _construct_prompts(self, text):
+        # from processing_florence2.py
         # replace the task tokens with the task prompts if task token is in the text
         prompts = []
         for _text in text:
@@ -1356,26 +1352,35 @@ class FlorenceTemplate(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         # read image
-        processor = self.model.processor
+        processor = self.tokenizer.processor
         images_path = example.get('images') or []
-        assert len(images_path) == 1, 'Florence only supports input with a single image.'
+        assert len(images_path) == 1, 'Florence series models only supports input with a single image.'
 
         images = _read_from_path(images_path[0])
         example['_image'] = images
 
         # process bbox
-        if 'objects' in example:
-            example['objects'] = json.loads(example['objects'])
-            example['query'] = f"<OPEN_VOCABULARY_DETECTION>{example['objects'][0][0]}"
-            example['response'] = example['objects'][0][0] + self.replace_box(0, example)[0]
-
-        # process query
+        if example.get('objects') is not None:
+            if '<ref-object>' in example['query']:
+                example['objects'] = json.loads(example['objects'])
+                example['query'] = "<OPEN_VOCABULARY_DETECTION>"
+                example['response'] = ""
+                for idx in range(len(example['objects'])):
+                    example['query'] += example['objects'][idx][0] + ','
+                    example['response'] += example['objects'][idx][0] + self.replace_box(idx, example)[0]
+            elif '<bbox>' in example['query']:
+                example['objects'] = json.loads(example['objects'])
+                example['query'] = "<REGION_TO_DESCRIPTION>"
+                example['response'] = ""
+                for idx in range(len(example['objects'])):
+                    bbox = self.replace_box(idx, example)[0]
+                    example['query'] += bbox
+                    example['response'] += example['objects'][idx][0]
         example['query'] = self._construct_prompts([example.get('query')])[0]
 
         inputs = processor(
             text=example['query'],
             images=images,
-            # do_resize=False,
             return_tensors='pt').to(self.model.device)
 
         labels = None
@@ -1388,12 +1393,16 @@ class FlorenceTemplate(Template):
 
         inputs['input_ids'] = inputs['input_ids'][0]
         inputs['attention_mask'] = inputs['attention_mask'][0]
+        inputs['pixel_values'] = inputs['pixel_values'].to(self.model.dtype)
         return inputs, {}
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
 
+    def post_process_generate_response(self, response, example):
+        image = _read_from_path(example['images'][0])
+        return self.tokenizer.processor.post_process_generation(response, task=example['query'], image_size=(image.width, image.height))
 
 register_template(
     TemplateType.florence,

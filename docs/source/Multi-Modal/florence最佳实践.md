@@ -31,11 +31,11 @@ pip install -e '.[llm]'
 - 如果要使用本地模型文件，加上参数 `--model_id_or_path /path/to/model`
 - florence系列模型内置了一些视觉任务的prompt, 对应的映射可以查看`swift.llm.utils.template.FlorenceTemplate`, 更多prompt可以查看 Modelscope/Hugging Face 的模型详情页
 - Florence模型不具备中文能力
-- Florence模型暂时不支持流式输出
+- Florence模型不支持system prompt和history
 
 ```shell
-# 4.4GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type florence-2-large-ft  --dtype fp32 --max_new_tokens 1024 --stream False
+# 2.4GB GPU memory
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type florence-2-large-ft --max_new_tokens 1024 --stream false
 ```
 
 输出: (支持传入本地路径或URL)
@@ -151,18 +151,22 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 (只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
 
+**caption/VQA** 类任务
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "images": ["image_path"]}
 {"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```
 
+**grounding**
+
+
+
 ## 微调后推理
 直接推理:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/florence-2-large-ft/vx-xxx/checkpoint-xxx \
-    --dtype fp32 \
     --stream false \
     --max_new_tokens 1024
 ```
@@ -171,13 +175,11 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir "output/florence-2-large-ft/vx-xxx/checkpoint-xxx" \
-    --dtype fp32 \
     --stream false \
     --max_new_tokens 1024 \
     --merge_lora true
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir "output/florence-2-large-ft/vx-xxx/checkpoint-xxx-merged" \
-    --dtype fp32 \
     --stream false \
     --max_new_tokens 1024 \

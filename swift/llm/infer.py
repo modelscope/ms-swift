@@ -287,6 +287,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             from transformers import EetqConfig
             args.quant_config = EetqConfig('int8')
         model, template = prepare_model_template(args, device_map=device_map)
+        model.requires_grad_(False)
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)
@@ -494,6 +495,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 system = data.get('system')
                 images = data.get('images')
                 tools = data.get('tools')
+                objects = data.get('objects')
                 if args.verbose and system is not None:
                     print(f'[SYSTEM]{system}')
                 if history is None:
@@ -506,6 +508,8 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     kwargs['images'] = images
                 if tools is not None:
                     kwargs['tools'] = tools
+                if objects is not None:
+                    kwargs['objects'] = objects
                 kwargs['truncation_strategy'] = args.truncation_strategy
                 if args.infer_backend == 'vllm':
                     assert args.stream

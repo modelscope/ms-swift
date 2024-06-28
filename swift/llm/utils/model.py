@@ -2538,7 +2538,22 @@ def fix_florence_generate(model):
         model._old_generate = old_generate
         model.generate = generate.__get__(model, type(model))
 
-
+@register_model(
+    ModelType.florence_2_base_ft,
+    'AI-ModelScope/Florence-2-base-ft',
+    LoRATM.llama,
+    TemplateType.florence,
+    support_vllm=False,
+    support_flash_attn=True,
+    hf_model_id='-')
+@register_model(
+    ModelType.florence_2_base,
+    'AI-ModelScope/Florence-2-base',
+    LoRATM.llama,
+    TemplateType.florence,
+    support_vllm=False,
+    support_flash_attn=True,
+    hf_model_id='-')
 @register_model(
     ModelType.florence_2_large_ft,
     'AI-ModelScope/Florence-2-large-ft',
@@ -2546,16 +2561,15 @@ def fix_florence_generate(model):
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='-')
+    hf_model_id='microsoft/Florence-2-large-ft')
 @register_model(
     ModelType.florence_2_large,
-    'AI-ModelScope/Florence-2-large-ft',
+    'AI-ModelScope/Florence-2-large',
     LoRATM.llama,
     TemplateType.florence,
-    torch_dtype=torch.float32,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='-')
+    hf_model_id='microsoft/Florence-2-large')
 def get_model_tokenizer_florence(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -2577,24 +2591,13 @@ def get_model_tokenizer_florence(model_dir: str,
         model_config=model_config,
         tokenizer=processor.tokenizer,
         **kwargs)
-    model.processor = processor
+    tokenizer.processor = processor
     fix_florence_forward(model)
-
-    # fix stream infer
-    # fix_florence_generate(model)
-
     tokenizer.bos_token_id = 0
     tokenizer.eos_token_id = 2
     tokenizer.pad_token_id = 1
     model.generation_config = model.language_model.generation_config
-    if not hasattr(model, 'post_process_generation_func'):
-        post_process_generation = model.processor.post_process_generation
-
-        @wraps(post_process_generation)
-        def _post_process_generation(response, query, image):
-            return post_process_generation(response, task=query, image_size=(image.width, image.height))
-
-        model.post_process_generation_func = _post_process_generation
+    model.vision_tower.to(model.dtype)
     return model, tokenizer
 
 
