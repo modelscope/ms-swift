@@ -280,13 +280,13 @@ class Template:
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
-        example = example.copy()
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
         if example.get('images') and not isinstance(example['images'], (tuple, list)):
             # change images field to list
             example['images'] = [example['images']]
+        example = example.copy()
         self.add_default_tags(example)
         self.check_example(example)
         if example.get('objects') and isinstance(example['objects'], str):
