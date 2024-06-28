@@ -2573,10 +2573,13 @@ def get_model_tokenizer_florence(model_dir: str,
     if version.parse(transformers.__version__) >= version.parse('4.36'):
         if use_flash_attn:
             model_config.text_config._attn_implementation = 'flash_attention_2'
+            model_config._attn_implementation = 'flash_attention_2'
         else:
-            model_config.text_config._attn_implementation = 'eager'
+            model_config.text_config._attn_implementation = 'sdpa'
+            model_config._attn_implementation = 'sdpa'
     else:
         model_config.text_config._flash_attn_2_enabled = use_flash_attn
+        model_config._flash_attn_2_enabled = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
