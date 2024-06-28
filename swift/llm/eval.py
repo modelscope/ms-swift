@@ -238,6 +238,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
                     'path': model_type,
                     'openai_api_base': url,
                     'is_chat': is_chat,
+                    'key': args.eval_token,
                 },
             ]
         },
