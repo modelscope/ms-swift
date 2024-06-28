@@ -291,6 +291,10 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
+    gemma2_9b = 'gemma2-9b'
+    gemma2_27b = 'gemma2-27b'
+    gemma2_9b_instruct = 'gemma2-9b-instruct'
+    gemma2_27b_instruct = 'gemma2-27b-instruct'
     # paligemma
     paligemma_3b_pt_224 = 'paligemma-3b-pt-224'
     paligemma_3b_pt_448 = 'paligemma-3b-pt-448'
@@ -1532,6 +1536,42 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.gemma2_9b,
+    'LLM-Research/gemma-2-9b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-9b')
+@register_model(
+    ModelType.gemma2_27b,
+    'LLM-Research/gemma-2-27b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-27b')
+@register_model(
+    ModelType.gemma2_9b_instruct,
+    'LLM-Research/gemma-2-9b-it',
+    LoRATM.llama,
+    TemplateType.gemma,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-9b-it')
+@register_model(
+    ModelType.gemma2_27b_instruct,
+    'LLM-Research/gemma-2-27b-it',
+    LoRATM.llama,
+    TemplateType.gemma,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-27b-it')
 @register_model(
     ModelType.qwen2_57b_a14b,
     'qwen/Qwen2-57B-A14B',

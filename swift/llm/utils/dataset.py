@@ -129,6 +129,7 @@ class DatasetName:
     webnovel_zh = 'webnovel-zh'
     generated_chat_zh = 'generated-chat-zh'
     self_cognition = 'self-cognition'
+    swift_mix = 'swift-mix'
 
     # example dataset for specific model
     cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m

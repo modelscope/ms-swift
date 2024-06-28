@@ -726,5 +726,11 @@
         "hf_dataset_id": "modelscope/self-cognition",
         "remove_useless_columns": false,
         "tags": ["chat", "self-cognition", "🔥"]
+    },
+    "swift-mix": {
+        "dataset_id": "swift/swift-sft-mixture",
+        "subsets": ["sharegpt", "firefly", "codefuse", "metamathqa"],
+        "tags": ["chat", "sft", "general", "🔥"],
+        "huge_dataset": true
     }
 }
