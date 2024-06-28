@@ -431,10 +431,10 @@ class ModelType:
     # codestral
     codestral_22b = 'codestral-22b'
     # florence
-    florence_2_large = 'florence-2-large'
-    florence_2_large_ft = 'florence-2-large-ft'
     florence_2_base = 'florence-2-base'
     florence_2_base_ft = 'florence-2-base-ft'
+    florence_2_large = 'florence-2-large'
+    florence_2_large_ft = 'florence-2-large-ft'
 
     @classmethod
     def get_model_name_list(cls) -> List[str]:
@@ -2525,29 +2525,21 @@ def fix_florence_forward(model) -> None:
 
 
 @register_model(
-    ModelType.florence_2_base_ft,
-    'AI-ModelScope/Florence-2-base-ft',
-    LoRATM.llama,
-    TemplateType.florence,
-    support_vllm=False,
-    support_flash_attn=True,
-    hf_model_id='-')
-@register_model(
     ModelType.florence_2_base,
     'AI-ModelScope/Florence-2-base',
     LoRATM.llama,
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='-')
+    hf_model_id='microsoft/Florence-2-base')
 @register_model(
-    ModelType.florence_2_large_ft,
-    'AI-ModelScope/Florence-2-large-ft',
+    ModelType.florence_2_base_ft,
+    'AI-ModelScope/Florence-2-base-ft',
     LoRATM.llama,
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-large-ft')
+    hf_model_id='microsoft/Florence-2-base-ft')
 @register_model(
     ModelType.florence_2_large,
     'AI-ModelScope/Florence-2-large',
@@ -2556,6 +2548,14 @@ def fix_florence_forward(model) -> None:
     support_vllm=False,
     support_flash_attn=True,
     hf_model_id='microsoft/Florence-2-large')
+@register_model(
+    ModelType.florence_2_large_ft,
+    'AI-ModelScope/Florence-2-large-ft',
+    LoRATM.llama,
+    TemplateType.florence,
+    support_vllm=False,
+    support_flash_attn=True,
+    hf_model_id='microsoft/Florence-2-large-ft')
 def get_model_tokenizer_florence(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
