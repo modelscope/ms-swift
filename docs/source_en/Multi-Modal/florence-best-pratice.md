@@ -1,7 +1,7 @@
 
-# Florence 最佳实践
+# Florence Best Practice
 
-本篇文档对应的模型
+The document corresponds to the following models
 
 | model | model_type |
 |-------|------------|
@@ -10,35 +10,35 @@
 | [Florence-2-large](https://www.modelscope.cn/models/AI-ModelScope/Florence-2-large) | florence-2-large |
 | [Florence-2-large-ft](https://www.modelscope.cn/models/AI-ModelScope/Florence-2-large-ft) | florence-2-large-ft |
 
+The following practices take `florence-2-large-ft` as an example. You can also switch to other models by specifying the `--model_type`.
 
-## 目录
-- [环境准备](#环境准备)
-- [推理](#推理)
-- [微调](#微调)
-- [微调后推理](#微调后推理)
+## Table of Contents
+- [Environment Setup](#environment-setup)
+- [Inference](#inference)
+- [Fine-tuning](#fine-tuning)
+- [Inference after Fine-tuning](#inference-after-fine-tuning)
 
-## 环境准备
+## Environment Setup
 ```shell
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 ```
 
-## 推理
-下面的教程以[Florence-2-large-ft](https://www.modelscope.cn/models/AI-ModelScope/Florence-2-large-ft)为例, 你可以通过切换model_type使用其他florence系列模型
-
-**注意**
-- 如果要使用本地模型文件，加上参数 `--model_id_or_path /path/to/model`
-- Florence系列模型内置了一些视觉任务的prompt, 对应的映射可以查看`swift.llm.utils.template.FlorenceTemplate`, 更多prompt可以查看 Modelscope/Hugging Face 的模型详情页
-- Florence系列模型不具备中文能力
-- Florence系列模型不支持system prompt和history
-
 ```shell
 # 2.4GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type florence-2-large-ft --max_new_tokens 1024 --stream false
 ```
 
-输出: (支持传入本地路径或URL)
+**Note**
+
+- If you want to use local model files, add the parameter `--model_id_or_path /path/to/model`
+- The Florence series models have built-in prompts for some vision tasks. You can check the corresponding mappings in `swift.llm.utils.template.FlorenceTemplate`. More prompts can be found on the Modelscope/Hugging Face model detail pages.
+- The Florence series models do not support Chinese.
+- The Florence series models do not support system prompts and history.
+
+
+Output: (supports passing in local path or URL)
 ```python
 """
 <<< Describe the image
@@ -72,7 +72,8 @@ Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.co
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 {'Locate the phrases in the caption: the sheeps': 'thethe sheeps<loc_45><loc_175><loc_967><loc_764><loc_266><loc_176><loc_572><loc_749><loc_756><loc_275><loc_965><loc_739><loc_46><loc_335><loc_261><loc_765><loc_557><loc_361><loc_760><loc_758>'}
 ```
-示例图片如下:
+
+Example images are as follows:
 
 cat:
 
@@ -82,7 +83,7 @@ animal:
 
 <img src="http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png" width="250" style="display: inline-block;">
 
-**Python 推理**
+**Python Inference**
 
 ```python
 import os
@@ -114,10 +115,9 @@ response: {'Describe the image': 'Four sheep standing in a field with mountains 
 '''
 ```
 
-## 微调
-多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
+Multimodal large model fine-tuning usually uses **custom datasets** for fine-tuning. Here is a demo that can be run directly:
 
-LoRA微调:
+LoRA fine-tuning:
 ```shell
 # Experimental environment: 4090
 # 6.6GB GPU memory
@@ -135,7 +135,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --lora_target_modules ALL
 ```
 
-全参数微调:
+Full parameter fine-tuning:
 ```bash
 # Experimental environment: 4090
 # 11 GPU memory
@@ -146,11 +146,10 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 ```
 
-[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl formats. Here is an example of a custom dataset:
 
-(只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
 
-**caption/VQA** 类任务
+**caption/VQA** task
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "images": ["image_path"]}
@@ -158,17 +157,17 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```
 
 **grounding**
-目前支持两种自定义grounding任务
-1. 对于给定bounding box询问目标的任务, 在query中指定`<bbox>`, 在response中指定`<ref-object>`, 在`objects`提供目标和bounding box具体信息
-2. 对于给定目标询问bounding box的任务,在query中指定`<ref-object>`, 在response中指定`<bbox>`, 在`objects`提供目标和bounding box具体信息
+Currently, two types of custom grounding tasks are supported:
+
+1. For tasks asking about the target for a given bounding box, specify `<bbox>` in the query, `<ref-object>` in the response, and provide the target and bounding box details in objects.
+2. For tasks asking about the bounding box for a given target, specify `<ref-object>` in the query, `<bbox>` in the response, and provide the target and bounding box details in objects.
 ```jsonl
 {"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[[\"bottom right sandwich\", [331, 266, 612, 530]]]" }
 {"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[[\"bottom right sandwich\", [331, 266, 612, 530]]]" }
 ```
 
-
-## 微调后推理
-直接推理:
+## Inference after Fine-tuning
+Direct inference:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/florence-2-large-ft/vx-xxx/checkpoint-xxx \
@@ -176,7 +175,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --max_new_tokens 1024
 ```
 
-**merge-lora**并推理:
+**merge-lora** and inference:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir "output/florence-2-large-ft/vx-xxx/checkpoint-xxx" \
