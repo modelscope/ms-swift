@@ -298,7 +298,7 @@ class Template:
         history_roles: Optional[History] = example.get('history_roles')
         system: Optional[str] = example.get('system', None)
         template_type: Optional[str] = getattr(self, 'template_type', None)
-        tools: List[Any] = example.get('tools') or []
+        tools: Union[List[Any], str] = example.get('tools') or []
         is_multi_modal: bool = any([example.get(key) for key in Template.special_keys])
 
         if len(history) > 0:
@@ -313,6 +313,8 @@ class Template:
             assert self.system_prefix is not None, (
                 f'The template does not support `system`, template_type: {template_type}')
         if tools:
+            if isinstance(tools, str):
+                tools = json.loads(tools)
             if system is None:
                 system = ''
             system += get_tools_prompt(tools, self.tools_prompt)
