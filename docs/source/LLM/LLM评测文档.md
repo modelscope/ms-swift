@@ -118,13 +118,13 @@ default.jsonl
     {
         "name": "custom_general_qa", # 评测项名称，可以随意指定
         "pattern": "general_qa", # 该评测集的pattern
-        "dataset": "eval_example/custom_general_qa", # 该评测集的目录
+        "dataset": "eval_example/custom_general_qa", # 该评测集的目录，强烈建议使用绝对路径防止读取失败
         "subset_list": ["default"] # 需要评测的子数据集，即上面的`default_x`文件名
     },
     {
         "name": "custom_ceval",
         "pattern": "ceval",
-        "dataset": "eval_example/custom_ceval",
+        "dataset": "eval_example/custom_ceval", # 该评测集的目录，强烈建议使用绝对路径防止读取失败
         "subset_list": ["default"]
     }
 ]
