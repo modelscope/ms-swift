@@ -47,6 +47,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 🔥2024.06.28: Support for **Florence** series model! See [document](docs/source_en/Multi-Modal/florence-best-pratice.md)
 - 🔥2024.06.28: Support for Gemma2 series models: gemma2-9b, gemma2-9b-instruct, gemma2-27b, gemma2-27b-instruct.
 - 🔥2024.06.18: Supports **DeepSeek-Coder-v2** series model! Use model_type `deepseek-coder-v2-instruct` and `deepseek-coder-v2-lite-instruct` to begin.
 - 🔥2024.06.16: Supports **KTO** and **CPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md) to start training!
@@ -556,6 +557,8 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English            | 8B                                 | chat model |
 | Phi3-Vision                                      | Microsoft                        | English            | 4B              | chat model |
 | PaliGemma                                  | Google              | English | 3B              | chat model |
+| Florence                                  | Microsoft              | English | 0.23B-0.77B             | chat model |
+
 
 #### Diffusion Models
 
