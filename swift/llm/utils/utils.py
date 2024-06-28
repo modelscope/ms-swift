@@ -785,7 +785,6 @@ def inference(model: PreTrainedModel,
         inputs.pop('input_ids', None)
     if adapter_names is not None:
         inputs['adapter_names'] = adapter_names
-    generation_config.max_new_tokens = 1024 # just for debug
     generate_ids = model.generate(
         streamer=streamer, generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs)
     generate_ids = template.get_generate_ids(generate_ids, token_len)

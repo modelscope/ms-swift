@@ -1362,7 +1362,7 @@ class FlorenceTemplate(Template):
             example['objects'] = json.loads(example["objects"])
             example['query'] = f"<OPEN_VOCABULARY_DETECTION>{example['objects'][0][0]}"
             example['response'] = example['objects'][0][0] + self.replace_box(0, example)[0]
-            
+        
         # process query
         example['query'] = self._construct_prompts([example.get('query')])[0]
 

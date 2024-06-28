@@ -1,5 +1,5 @@
 
-# InternVL 最佳实践
+# Florence 最佳实践
 
 本篇文档对应的模型
 
@@ -114,3 +114,70 @@ query: Describe the image
 response: {'Describe the image': 'Four sheep standing in a field with mountains in the background.'}
 '''
 ```
+
+## 微调
+多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
+
+LoRA微调:
+```shell
+# Experimental environment: 4090
+# 6.6GB GPU memory
+
+# caption task
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type florence-2-large-ft \
+    --dataset coco-en-2-mini \
+    --lora_target_modules ALL
+
+# grounding task
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type florence-2-large-ft \
+    --dataset refcoco-unofficial-grounding \
+    --lora_target_modules ALL
+```
+
+全参数微调:
+```bash
+# Experimental environment: 4090
+# 11 GPU memory
+CUDA_VISIBLE_DEVICES=0 swift sft \
+    --model_type florence-2-large-ft \
+    --dataset coco-en-2-mini \
+    --sft_type full
+
+```
+
+[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
+
+(只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+
+```jsonl
+{"query": "55555", "response": "66666", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+```
+
+## 微调后推理
+直接推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir output/florence-2-large-ft/vx-xxx/checkpoint-xxx \
+    --dtype fp32 \
+    --stream false \
+    --max_new_tokens 1024
+```
+
+**merge-lora**并推理:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift export \
+    --ckpt_dir "output/florence-2-large-ft/vx-xxx/checkpoint-xxx" \
+    --dtype fp32 \
+    --stream false \
+    --max_new_tokens 1024 \
+    --merge_lora true
+
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir "output/florence-2-large-ft/vx-xxx/checkpoint-xxx-merged" \
+    --dtype fp32 \
+    --stream false \
+    --max_new_tokens 1024 \
