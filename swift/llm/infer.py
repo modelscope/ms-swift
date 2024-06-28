@@ -243,7 +243,7 @@ def prepare_model_template(args: InferArguments,
 
 def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue']) -> None:
     text = 'Input a media path or URL <<< '
-    images = infer_kwargs.get('images', [])
+    images = infer_kwargs.get('images') or []
     if infer_media_type == 'none':
         return
     if infer_media_type == 'round' or len(images) == 0:
@@ -369,7 +369,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             if system is None and template.use_default_system:
                 system = template.default_system
             if args.infer_backend == 'vllm':
-                request_list = [{'query': query, 'history': history, 'system': system}]
+                request_list = [{'query': query, 'history': history, 'system': system, **infer_kwargs}]
                 if args.stream:
                     gen = inference_stream_vllm(llm_engine, template, request_list, lora_request=lora_request)
                     print_idx = 0

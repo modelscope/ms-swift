@@ -197,7 +197,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             response = conversations[-1][self.value_key]
             system = sys
             history = h
-            tools = d.get('tools', [])
+            tools = d.get('tools') or []
             row = {'system': system, 'history': history, 'history_roles': hr}
             row.update({
                 'query': query,

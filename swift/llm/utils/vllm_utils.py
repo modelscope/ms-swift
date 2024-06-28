@@ -206,6 +206,69 @@ class VllmGenerationConfig(SamplingParams):
             super().__setattr__(key, value)
 
 
+def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_id: str,
+                      generation_config: VllmGenerationConfig, **kwargs) -> None:
+    input_ids = inputs['input_ids']
+    if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+        llm_engine.add_request(request_id, {'prompt_token_ids': input_ids}, generation_config, **kwargs)
+    else:
+        llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
+
+
+def _prepare_vllm_request(llm_engine: LLMEngine,
+                          template: Template,
+                          request_list: List[Dict[str, Any]],
+                          *,
+                          generation_config: VllmGenerationConfig,
+                          lora_request: Optional['LoRARequest'] = None,
+                          **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
+    tokenizer = template.tokenizer
+    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
+        generation_config.stop.append(tokenizer.eos_token)
+    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
+        generation_config.stop.append(template.suffix[-1])
+    if isinstance(template.suffix[-1], list):
+        token_str = tokenizer.decode(template.suffix[-1])
+        if token_str not in generation_config.stop:
+            generation_config.stop.append(token_str)
+
+    parameters = inspect.signature(llm_engine.add_request).parameters
+    add_request_kwargs = {}
+    if 'lora_request' in parameters:
+        add_request_kwargs['lora_request'] = lora_request
+    else:
+        assert lora_request is None, (
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
+
+    resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
+    agent_state = []
+    for i, request in enumerate(request_list):
+        history = request.get('history', None)
+        if history is None:
+            history = []
+
+        # agent support
+        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
+        act_length = None
+        if is_observation:
+            history[-1][-1] = history[-1][-1] + request['query']
+            act_length = len(history[-1][-1])
+            request['query'] = None
+        agent_state.append((is_observation, act_length))
+
+        request['history'] = history
+        inputs = template.encode(request)[0]
+        truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
+        if len(inputs) == 0 and truncation_strategy == 'delete':
+            # input_ids exceeds `max_length`. Please increase the value of `max_length`.
+            resp_list[i] = {'response': '', 'history': history}
+            continue
+
+        _add_vllm_request(
+            llm_engine, inputs, request_id=str(i), generation_config=generation_config, **add_request_kwargs)
+    return resp_list, agent_state
+
+
 @torch.inference_mode()
 def inference_stream_vllm(llm_engine: LLMEngine,
                           template: Template,
@@ -227,55 +290,12 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
+    resp_list, agent_state = _prepare_vllm_request(
+        llm_engine, template, request_list, generation_config=generation_config, lora_request=lora_request, **kwargs)
+
     if generation_config.use_beam_search:
         error_msg = 'Streaming generation does not support beam search.'
         raise ValueError(error_msg)
-
-    tokenizer = template.tokenizer
-    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
-        generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
-        generation_config.stop.append(template.suffix[-1])
-    if isinstance(template.suffix[-1], list):
-        token_str = tokenizer.decode(template.suffix[-1])
-        if token_str not in generation_config.stop:
-            generation_config.stop.append(token_str)
-
-    parameters = inspect.signature(llm_engine.add_request).parameters
-    add_request_kwargs = {}
-    if 'lora_request' in parameters:
-        add_request_kwargs['lora_request'] = lora_request
-    else:
-        assert lora_request is None, (
-            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
-    request_temp = []
-    resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
-    for i, request in enumerate(request_list):
-        history = request.get('history', None)
-        if history is None:
-            history = []
-
-        # agent support
-        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
-        act_length = None
-        if is_observation:
-            history[-1][-1] = history[-1][-1] + request['query']
-            act_length = len(history[-1][-1])
-            request['query'] = None
-        request_temp.append((is_observation, act_length))
-
-        request['history'] = history
-        inputs = template.encode(request)[0]
-        truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
-        if len(inputs) == 0 and truncation_strategy == 'delete':
-            # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': history}
-            continue
-        input_ids = inputs['input_ids']
-        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-            llm_engine.add_request(str(i), {'prompt_token_ids': input_ids}, generation_config, **add_request_kwargs)
-        else:
-            llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
 
     print_idx_list = [[0] for _ in range(len(request_list))]
     prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
@@ -289,12 +309,12 @@ def inference_stream_vllm(llm_engine: LLMEngine,
                 generate_ids, output.finished, print_idx=print_idx_list[i])
             query = request['query']
             history = request['history']
-            if resp_list[i] is None and not request_temp[i][0]:
+            if resp_list[i] is None and not agent_state[i][0]:
                 history.append(None)
-            if not request_temp[i][0]:
+            if not agent_state[i][0]:
                 history[-1] = [query, safe_response]
             else:
-                history[-1][-1] = history[-1][-1][:request_temp[i][1]] + safe_response
+                history[-1][-1] = history[-1][-1][:agent_state[i][1]] + safe_response
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()
@@ -326,48 +346,10 @@ def inference_vllm(llm_engine: LLMEngine,
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
+    resp_list, agent_state = _prepare_vllm_request(
+        llm_engine, template, request_list, generation_config=generation_config, lora_request=lora_request, **kwargs)
 
     tokenizer = template.tokenizer
-    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
-        generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
-        generation_config.stop.append(template.suffix[-1])
-    if isinstance(template.suffix[-1], list):
-        token_str = tokenizer.decode(template.suffix[-1])
-        if token_str not in generation_config.stop:
-            generation_config.stop.append(token_str)
-
-    parameters = inspect.signature(llm_engine.add_request).parameters
-    add_request_kwargs = {}
-    if 'lora_request' in parameters:
-        add_request_kwargs['lora_request'] = lora_request
-    else:
-        assert lora_request is None, (
-            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
-
-    resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
-    for i, request in enumerate(request_list):
-        history = request.get('history', None)
-        if history is None:
-            history = []
-
-        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
-        if is_observation:
-            history[-1][-1] = history[-1][-1] + request['query']
-            request['query'] = None
-        request['history'] = history
-        inputs = template.encode(request)[0]
-        truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
-        if len(inputs) == 0 and truncation_strategy == 'delete':
-            # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': history}
-            continue
-        input_ids = inputs['input_ids']
-        if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-            llm_engine.add_request(str(i), {'prompt_token_ids': input_ids}, generation_config, **add_request_kwargs)
-        else:
-            llm_engine.add_request(str(i), None, generation_config, input_ids, **add_request_kwargs)
-
     if use_tqdm:
         assert verbose is False
     prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
@@ -386,7 +368,7 @@ def inference_vllm(llm_engine: LLMEngine,
         response = template.generate_ids_to_response(generate_ids)
         query = request['query']
         history = request['history']
-        if not is_observation:
+        if not agent_state[i][0]:
             history.append([query, response])
         else:
             history[-1][-1] = history[-1][-1] + response

@@ -190,10 +190,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}
-    template_info = TEMPLATE_MAPPING[args.template_type]
-    use_model = template_info.get('use_model', False)
-    if use_model:
-        template_kwargs['model'] = model
     template_kwargs['use_loss_scale'] = args.use_loss_scale
     if args.loss_scale_config_path is not None:
         cwd = os.getcwd()
@@ -204,8 +200,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     template_kwargs['tools_prompt'] = args.tools_prompt
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
-    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
-                                      args.truncation_strategy, **template_kwargs)
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=model,
+        **template_kwargs)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
