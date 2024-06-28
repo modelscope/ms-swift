@@ -149,14 +149,15 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl formats. Here is an example of a custom dataset:
 
 
-**caption/VQA** task
+**Caption/VQA** task
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "images": ["image_path"]}
 {"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```
 
-**grounding**
+**grounding** task
+
 Currently, two types of custom grounding tasks are supported:
 
 1. For tasks asking about the target for a given bounding box, specify `<bbox>` in the query, `<ref-object>` in the response, and provide the target and bounding box details in objects.

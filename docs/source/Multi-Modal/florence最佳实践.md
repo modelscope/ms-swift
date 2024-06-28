@@ -151,14 +151,15 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 (只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
 
-**caption/VQA** 类任务
+**Caption/VQA** 类任务
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "images": ["image_path"]}
 {"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```
 
-**grounding**
+**grounding**任务
+
 目前支持两种自定义grounding任务
 1. 对于给定bounding box询问目标的任务, 在query中指定`<bbox>`, 在response中指定`<ref-object>`, 在`objects`提供目标和bounding box具体信息
 2. 对于给定目标询问bounding box的任务,在query中指定`<ref-object>`, 在response中指定`<bbox>`, 在`objects`提供目标和bounding box具体信息
