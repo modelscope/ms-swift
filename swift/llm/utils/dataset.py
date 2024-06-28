@@ -129,6 +129,7 @@ class DatasetName:
     webnovel_zh = 'webnovel-zh'
     generated_chat_zh = 'generated-chat-zh'
     self_cognition = 'self-cognition'
+    swift_mix = 'swift-mix'
 
     # example dataset for specific model
     cls_fudan_news_zh = 'cls-fudan-news-zh'  # seqgpt-560m
@@ -164,6 +165,8 @@ class DatasetName:
     text_caps = 'text-caps'
     refcoco_unofficial_caption = 'refcoco-unofficial-caption'
     refcoco_unofficial_grounding = 'refcoco-unofficial-grounding'
+    refcocog_unofficial_caption = 'refcocog-unofficial-caption'
+    refcocog_unofficial_grounding = 'refcocog-unofficial-grounding'
     a_okvqa = 'a-okvqa'
     okvqa = 'okvqa'
     ocr_vqa = 'ocr-vqa'
@@ -174,6 +177,7 @@ class DatasetName:
     guanaco = 'guanaco'
     mind2web = 'mind2web'
     sharegpt_4o_image = 'sharegpt-4o-image'
+    pixelprose = 'pixelprose'
 
     m3it = 'm3it'
     # additional images
@@ -640,6 +644,38 @@ register_dataset(
     get_dataset_from_repo,
     split=['validation'],
     tags=['chat', 'multi-modal', 'vision', '🔥'],
+    is_main=False)
+
+
+def _preprocess_pixelprose(dataset: HfDataset):
+
+    caption_prompt = [
+        'Give the description of this image.', 'Describe this picture', 'What is the proper title of this image?'
+    ]
+
+    def preprocess(row):
+        vlm_caption = row['vlm_caption']
+        if vlm_caption.startswith('This image displays:'):
+            vlm_caption = vlm_caption[len('This image displays:'):].strip()
+        return {
+            'response': vlm_caption,
+            'images': row['url'],
+            'query': np.random.choice(caption_prompt),
+        }
+
+    return dataset.map(preprocess, load_from_cache_file=False)
+
+
+register_dataset(
+    DatasetName.pixelprose,
+    'swift/pixelprose',
+    None,
+    _preprocess_pixelprose,
+    get_dataset_from_repo,
+    split=['train', 'cc12m', 'commonpool', 'redcaps'],
+    hf_dataset_id='tomg-group-umd/pixelprose',
+    tags=['caption', 'multi-modal', 'vision'],
+    huge_dataset=True,
     is_main=False)
 
 
@@ -1147,7 +1183,15 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcoco',
-    huge_dataset=True,
+    tags=['multi-modal', 'en', 'caption'])
+
+register_dataset(
+    DatasetName.refcocog_unofficial_caption,
+    'swift/refcocog', [],
+    preprocess_func=preprocess_refcoco_unofficial_caption,
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='jxu124/refcocog',
     tags=['multi-modal', 'en', 'caption'])
 
 
@@ -1184,7 +1228,15 @@ register_dataset(
     get_function=get_dataset_from_repo,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcoco',
-    huge_dataset=True,
+    tags=['multi-modal', 'en', 'grounding'])
+
+register_dataset(
+    DatasetName.refcocog_unofficial_grounding,
+    'swift/refcocog', [],
+    preprocess_func=preprocess_refcoco_unofficial_grounding,
+    get_function=get_dataset_from_repo,
+    split=['train', 'validation'],
+    hf_dataset_id='jxu124/refcocog',
     tags=['multi-modal', 'en', 'grounding'])
 
 register_dataset(

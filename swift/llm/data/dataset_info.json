@@ -376,6 +376,35 @@
         "tags": ["pretrain", "quality"],
         "huge_dataset": true
     },
+    "gen-qa": {
+        "dataset_id": "swift/GenQA",
+        "hf_dataset_id": "tomg-group-umd/GenQA",
+        "conversations": {
+            "user_role": "user",
+            "assistant_role": "assistant",
+            "conversations_key": "text",
+            "from_key": "role",
+            "value_key": "content",
+            "error_strategy": "delete"
+        },
+        "split": ["code", "dialog", "general", "math", "mmlu", "multiple_choice", "writing", "academic", "task"],
+        "tags": ["qa", "quality", "multi-task"],
+        "huge_dataset": true
+    },
+    "infinity-instruct": {
+        "dataset_id": "swift/Infinity-Instruct",
+        "hf_dataset_id": "BAAI/Infinity-Instruct",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "tags": ["qa", "quality", "multi-task"],
+        "huge_dataset": true
+    },
     "wikipedia": {
         "dataset_id": "swift/wikipedia",
         "hf_dataset_id": "wikipedia",
@@ -697,5 +726,11 @@
         "hf_dataset_id": "modelscope/self-cognition",
         "remove_useless_columns": false,
         "tags": ["chat", "self-cognition", "🔥"]
+    },
+    "swift-mix": {
+        "dataset_id": "swift/swift-sft-mixture",
+        "subsets": ["sharegpt", "firefly", "codefuse", "metamathqa"],
+        "tags": ["chat", "sft", "general", "🔥"],
+        "huge_dataset": true
     }
 }

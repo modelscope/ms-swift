@@ -1299,7 +1299,7 @@ class DeployArguments(InferArguments):
     def __post_init__(self):
         super().__post_init__()
         model_info = MODEL_MAPPING[self.model_type]
-        tags = model_info.get('tags', [])
+        tags = model_info.get('tags') or []
         self.is_multimodal = 'multi-modal' in tags
 
 

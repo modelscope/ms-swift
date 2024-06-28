@@ -9,6 +9,7 @@ import platform
 import re
 import shutil
 import tempfile
+import time
 import uuid
 from http import HTTPStatus
 from http.cookiejar import CookieJar
@@ -142,7 +143,7 @@ class HubApi:
             'Visibility': visibility,  # server check
             'License': license,
             'OriginalModelId': original_model_id,
-            'TrainId': os.environ.get('MODELSCOPE_TRAIN_ID', ''),
+            'TrainId': os.environ.get('MODELSCOPE_TRAIN_ID') or f'swift-{time.time()}',
         }
         r = self.session.post(
             path, json=body, cookies=cookies, headers=self.headers)

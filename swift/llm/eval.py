@@ -7,6 +7,9 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import json
+from llmuses.run import run_task
+from llmuses.config import TaskConfig
+from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
 from llmuses.summarizer import Summarizer
 from llmuses.utils import EvalBackend
@@ -255,9 +258,6 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
 
 
 def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
-    from llmuses.run import run_task
-    from llmuses.config import TaskConfig
-    from llmuses.summarizer import Summarizer
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     model_name = args.model_type
@@ -275,6 +275,7 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
 
     task_configs = TaskConfig.load(custom_model=eval_model, tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
+        task_config.dataset_dir = DEFAULT_ROOT_CACHE_DIR
         task_config.use_cache = args.eval_use_cache
         if args.eval_limit is not None:
             task_config.limit = args.eval_limit
