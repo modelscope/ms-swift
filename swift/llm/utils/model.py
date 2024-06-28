@@ -2569,7 +2569,15 @@ def get_model_tokenizer_florence(model_dir: str,
     model_config.bos_token_id = 0
     model_config.eos_token_id = 2
     model_config.pad_token_id = 1
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if version.parse(transformers.__version__) >= version.parse('4.36'):
+        if use_flash_attn:
+            model_config.text_config._attn_implementation = 'flash_attention_2'
+        else:
+            model_config.text_config._attn_implementation = 'eager'
+    else:
+        model_config.text_config._flash_attn_2_enabled = use_flash_attn
+    model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
         model_kwargs,
@@ -2577,6 +2585,7 @@ def get_model_tokenizer_florence(model_dir: str,
         model_config=model_config,
         tokenizer=processor.tokenizer,
         **kwargs)
+
     tokenizer.processor = processor
     fix_florence_forward(model)
     tokenizer.bos_token_id = 0

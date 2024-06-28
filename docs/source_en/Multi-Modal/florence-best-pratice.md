@@ -31,8 +31,8 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type florence-2-large-ft --max_new_to
 ```
 
 **Note**
-
 - If you want to use local model files, add the parameter `--model_id_or_path /path/to/model`
+- To use Flash Attention, include the parameter `--use_flash_attn true`, and specify `--dtype` as fp16 or bf16 (the model defaults to fp32).
 - The Florence series models have built-in prompts for some vision tasks. You can check the corresponding mappings in `swift.llm.utils.template.FlorenceTemplate`. More prompts can be found on the Modelscope/Hugging Face model detail pages.
 - The Florence series models do not support Chinese.
 - The Florence series models do not support system prompts and history.

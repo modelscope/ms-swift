@@ -309,6 +309,10 @@ The table below introcudes all models supported by SWIFT:
 |c4ai-command-r-v01|[AI-ModelScope/c4ai-command-r-v01](https://modelscope.cn/models/AI-ModelScope/c4ai-command-r-v01/summary)|q_proj, k_proj, v_proj|c4ai|&#x2714;|&#x2718;|transformers>=4.39.1|-|[CohereForAI/c4ai-command-r-v01](https://huggingface.co/CohereForAI/c4ai-command-r-v01)|
 |c4ai-command-r-plus|[AI-ModelScope/c4ai-command-r-plus](https://modelscope.cn/models/AI-ModelScope/c4ai-command-r-plus/summary)|q_proj, k_proj, v_proj|c4ai|&#x2714;|&#x2718;|transformers>4.39|-|[CohereForAI/c4ai-command-r-plus](https://huggingface.co/CohereForAI/c4ai-command-r-plus)|
 |codestral-22b|[huangjintao/Codestral-22B-v0.1](https://modelscope.cn/models/huangjintao/Codestral-22B-v0.1/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|transformers>=4.34|-|[mistralai/Codestral-22B-v0.1](https://huggingface.co/mistralai/Codestral-22B-v0.1)|
+|florence-2-base|[AI-ModelScope/Florence-2-base](https://modelscope.cn/models/AI-ModelScope/Florence-2-base/summary)|q_proj, k_proj, v_proj|florence|&#x2714;|&#x2718;||-|[microsoft/Florence-2-base](https://huggingface.co/microsoft/Florence-2-base)|
+|florence-2-base-ft|[AI-ModelScope/Florence-2-base-ft](https://modelscope.cn/models/AI-ModelScope/Florence-2-base-ft/summary)|q_proj, k_proj, v_proj|florence|&#x2714;|&#x2718;||-|[microsoft/Florence-2-base-ft](https://huggingface.co/microsoft/Florence-2-base-ft)|
+|florence-2-large|[AI-ModelScope/Florence-2-large](https://modelscope.cn/models/AI-ModelScope/Florence-2-large/summary)|q_proj, k_proj, v_proj|florence|&#x2714;|&#x2718;||-|[microsoft/Florence-2-large](https://huggingface.co/microsoft/Florence-2-large)|
+|florence-2-large-ft|[AI-ModelScope/Florence-2-large-ft](https://modelscope.cn/models/AI-ModelScope/Florence-2-large-ft/summary)|q_proj, k_proj, v_proj|florence|&#x2714;|&#x2718;||-|[microsoft/Florence-2-large-ft](https://huggingface.co/microsoft/Florence-2-large-ft)|
 
 
 ### MLLM
