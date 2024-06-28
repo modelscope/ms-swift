@@ -1366,7 +1366,9 @@ class FlorenceTemplate(Template):
                 example['query'] = '<OPEN_VOCABULARY_DETECTION>'
                 example['response'] = ''
                 for idx in range(len(example['objects'])):
-                    example['query'] += example['objects'][idx][0] + ','
+                    if idx != 0:
+                        example['query'] += ','
+                    example['query'] += example['objects'][idx][0]
                     example['response'] += example['objects'][idx][0] + self.replace_box(idx, example)[0]
             elif '<bbox>' in example['query']:
                 example['objects'] = json.loads(example['objects'])

@@ -159,7 +159,14 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```
 
 **grounding**
-
+目前支持两种自定义grounding任务
+1. 对于给定bounding box询问目标的任务, 在query中指定`<bbox>`, 在`objects`提供目标和bounding box具体信息
+2. 对于给定目标询问bounding box的任务,在query中指定`<ref-object>`, 在`objects`提供目标和bounding box具体信息
+```jsonl
+{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/home/lab304/.cache/modelscope/hub/media_resources/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[["bottom right sandwich", [331, 266, 612, 530]]]"}
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/home/lab304/.cache/modelscope/hub/media_resources/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects":"[["bottom right sandwich", [331, 266, 612, 530]]]"}
+{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+```
 
 
 ## 微调后推理
