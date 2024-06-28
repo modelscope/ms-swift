@@ -730,6 +730,7 @@
     "swift-mix": {
         "dataset_id": "swift/swift-sft-mixture",
         "subsets": ["sharegpt", "firefly", "codefuse", "metamathqa"],
-        "tags": ["chat", "sft", "general", "🔥"]
+        "tags": ["chat", "sft", "general", "🔥"],
+        "huge_dataset": true
     }
 }
