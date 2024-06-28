@@ -435,7 +435,7 @@ class ModelType:
     florence_2_large_ft = 'florence-2-large-ft'
     florence_2_base = 'florence-2-base'
     florence_2_base_ft = 'florence-2-base-ft'
-    
+
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -2421,7 +2421,8 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    
+
+
 def fix_florence_forward(model) -> None:
     from transformers.utils import ModelOutput
     from dataclasses import dataclass
@@ -2439,7 +2440,7 @@ def fix_florence_forward(model) -> None:
         encoder_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
         encoder_attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
         image_hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
-        
+
     if not hasattr(model, '__old_forward'):  # Avoid double patching
         old_forward = model.forward
 
@@ -2466,8 +2467,7 @@ def fix_florence_forward(model) -> None:
         ):
             output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
             output_hidden_states = (
-                output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-            )
+                output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states)
             return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
             image_features = None
@@ -2479,7 +2479,8 @@ def fix_florence_forward(model) -> None:
                 if pixel_values is not None:
                     # (batch_size, num_image_tokens, hidden_size)
                     image_features = self._encode_image(pixel_values)
-                    inputs_embeds, attention_mask = self._merge_input_ids_with_image_features(image_features, inputs_embeds)
+                    inputs_embeds, attention_mask = self._merge_input_ids_with_image_features(
+                        image_features, inputs_embeds)
             if inputs_embeds is not None:
                 attention_mask = attention_mask.to(inputs_embeds.dtype)
             outputs = self.language_model(
@@ -2504,8 +2505,8 @@ def fix_florence_forward(model) -> None:
             logits = logits.float()
             loss = outputs.loss
             if not return_dict:
-                output = (logits,) + outputs[1:]
-                return (loss,) + output if loss is not None else output
+                output = (logits, ) + outputs[1:]
+                return (loss, ) + output if loss is not None else output
 
             return Florence2Seq2SeqLMOutput(
                 loss=loss,
@@ -2517,10 +2518,26 @@ def fix_florence_forward(model) -> None:
                 encoder_last_hidden_state=outputs.encoder_last_hidden_state,
                 encoder_hidden_states=outputs.encoder_hidden_states,
                 encoder_attentions=outputs.encoder_attentions,
-                image_hidden_states=image_features
-            )
+                image_hidden_states=image_features)
+
     model._old_forward = old_forward
     model.forward = _new_forward.__get__(model, type(model))
+
+
+def fix_florence_generate(model):
+    if not hasattr(model, '_old_generate'):
+        old_generate = model.generate
+
+        def generate(self, input_ids, inputs_embeds=None, pixel_values=None, **kwargs):
+            if input_ids is not None and not model.training:
+                input_ids = input_ids.clone().detach()
+                input_ids.requires_grad = False
+
+            return model._old_generate(input_ids, inputs_embeds=inputs_embeds, pixel_values=pixel_values, **kwargs)
+
+        model._old_generate = old_generate
+        model.generate = generate.__get__(model, type(model))
+
 
 @register_model(
     ModelType.florence_2_large_ft,
@@ -2540,35 +2557,46 @@ def fix_florence_forward(model) -> None:
     support_flash_attn=True,
     hf_model_id='-')
 def get_model_tokenizer_florence(model_dir: str,
-                                torch_dtype: Dtype,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                model_config=None,
-                                **kwargs):
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 model_config=None,
+                                 **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_config.bos_token_id=0
-    model_config.eos_token_id=2
-    model_config.pad_token_id=1
+    model_config.bos_token_id = 0
+    model_config.eos_token_id = 2
+    model_config.pad_token_id = 1
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config,tokenizer=processor.tokenizer,**kwargs)
+        model_dir,
+        torch_dtype,
+        model_kwargs,
+        load_model,
+        model_config=model_config,
+        tokenizer=processor.tokenizer,
+        **kwargs)
     model.processor = processor
     fix_florence_forward(model)
-    # fix_internvl_inplace_bug(model)
+
+    # fix stream infer
+    # fix_florence_generate(model)
+
     tokenizer.bos_token_id = 0
     tokenizer.eos_token_id = 2
     tokenizer.pad_token_id = 1
     model.generation_config = model.language_model.generation_config
-    if not hasattr(model, "post_process_generation_func"):
+    if not hasattr(model, 'post_process_generation_func'):
         post_process_generation = model.processor.post_process_generation
+
         @wraps(post_process_generation)
-        def _post_process_generation(response, example):
-            image = example['_image']
-            return post_process_generation(response, task=example['query'], image_size=(image.width, image.height))
+        def _post_process_generation(response, query, image):
+            return post_process_generation(response, task=query, image_size=(image.width, image.height))
+
         model.post_process_generation_func = _post_process_generation
     return model, tokenizer
+
 
 @register_model(
     ModelType.phi3_small_128k_instruct,

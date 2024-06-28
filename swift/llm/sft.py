@@ -282,8 +282,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         trainer_kwargs['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
     if args.check_model_is_latest is False:
         trainer_kwargs['check_model'] = False
-    
-    trainer_kwargs['is_encoder_decoder'] = model.config.is_encoder_decoder if hasattr(model.config, 'is_encoder_decoder') else False
+
+    trainer_kwargs['is_encoder_decoder'] = model.config.is_encoder_decoder if hasattr(
+        model.config, 'is_encoder_decoder') else False
     trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,

@@ -781,8 +781,8 @@ def inference(model: PreTrainedModel,
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         print(response)
     response = template.generate_ids_to_response(generate_ids, tokenizer_kwargs=tokenizer_kwargs)
-    if hasattr(model, "post_process_generation_func"):
-        response = model.post_process_generation_func(response=response, example=example)
+    # if hasattr(model, "post_process_generation_func"):
+    #     response = model.post_process_generation_func(response=response, query=query, image=images)
     if not is_observation:
         history.append([query, response])
     else:
