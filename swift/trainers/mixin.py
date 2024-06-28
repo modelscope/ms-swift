@@ -41,16 +41,6 @@ from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms
 logger = get_logger()
 
 
-def _push_to_hub(self: Repository, commit_message: str = 'Commit files to Modelscope Hub', **kwargs):
-    blocking = kwargs.get('blocking', True)
-    self.push(commit_message)
-    if not blocking:
-        # Compatible with transformers
-        return None, None
-    else:
-        return None
-
-
 class PushToMsHubMixin:
     repo: Repository
 
@@ -114,6 +104,16 @@ class PushToMsHubMixin:
             commit_message = f'Add `{patterns[0]}` patterns to {file_name}'
         self._add_patterns_to_file(file_name, new_patterns, commit_message)
 
+    @staticmethod
+    def _push_to_hub(repo: Repository, commit_message: str = 'Commit files to Modelscope Hub', **kwargs):
+        blocking = kwargs.get('blocking', True)
+        repo.push(commit_message)
+        if not blocking:
+            # Compatible with transformers
+            return None, None
+        else:
+            return None
+
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
             return
@@ -124,7 +124,7 @@ class PushToMsHubMixin:
         self.args.hub_model_id = create_ms_repo(self.args.hub_model_id, self.args.hub_token, self.args.hub_private_repo)
         self.repo = Repository(self.args.output_dir, self.args.hub_model_id)
         self._add_patterns_to_gitattributes(['*.safetensors', '*.bin', '*.pt'])
-        self.repo.push_to_hub = MethodType(_push_to_hub, self.repo)
+        self.repo.push_to_hub = MethodType(self._push_to_hub, self.repo)
         self.repo.local_dir = self.repo.model_dir  # hf compatibility
 
         # By default, ignore the checkpoint folders
