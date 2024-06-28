@@ -29,9 +29,9 @@ pip install -e '.[llm]'
 
 **注意**
 - 如果要使用本地模型文件，加上参数 `--model_id_or_path /path/to/model`
-- florence系列模型内置了一些视觉任务的prompt, 对应的映射可以查看`swift.llm.utils.template.FlorenceTemplate`, 更多prompt可以查看 Modelscope/Hugging Face 的模型详情页
-- Florence模型不具备中文能力
-- Florence模型不支持system prompt和history
+- Florence系列模型内置了一些视觉任务的prompt, 对应的映射可以查看`swift.llm.utils.template.FlorenceTemplate`, 更多prompt可以查看 Modelscope/Hugging Face 的模型详情页
+- Florence系列模型不具备中文能力
+- Florence系列模型不支持system prompt和history
 
 ```shell
 # 2.4GB GPU memory

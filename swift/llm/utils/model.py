@@ -2538,6 +2538,7 @@ def fix_florence_generate(model):
         model._old_generate = old_generate
         model.generate = generate.__get__(model, type(model))
 
+
 @register_model(
     ModelType.florence_2_base_ft,
     'AI-ModelScope/Florence-2-base-ft',

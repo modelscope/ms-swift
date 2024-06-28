@@ -719,9 +719,9 @@ class Template:
             assert is_finished and not return_delta
         return response
 
-    def post_process_generate_response(self, response: str, example: dict)-> str:
+    def post_process_generate_response(self, response: str, example: dict) -> str:
         return response
-    
+
 
 def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
     if not exist_ok and template_type in TEMPLATE_MAPPING:
@@ -1363,25 +1363,22 @@ class FlorenceTemplate(Template):
         if example.get('objects') is not None:
             if '<ref-object>' in example['query']:
                 example['objects'] = json.loads(example['objects'])
-                example['query'] = "<OPEN_VOCABULARY_DETECTION>"
-                example['response'] = ""
+                example['query'] = '<OPEN_VOCABULARY_DETECTION>'
+                example['response'] = ''
                 for idx in range(len(example['objects'])):
                     example['query'] += example['objects'][idx][0] + ','
                     example['response'] += example['objects'][idx][0] + self.replace_box(idx, example)[0]
             elif '<bbox>' in example['query']:
                 example['objects'] = json.loads(example['objects'])
-                example['query'] = "<REGION_TO_DESCRIPTION>"
-                example['response'] = ""
+                example['query'] = '<REGION_TO_DESCRIPTION>'
+                example['response'] = ''
                 for idx in range(len(example['objects'])):
                     bbox = self.replace_box(idx, example)[0]
                     example['query'] += bbox
                     example['response'] += example['objects'][idx][0]
         example['query'] = self._construct_prompts([example.get('query')])[0]
 
-        inputs = processor(
-            text=example['query'],
-            images=images,
-            return_tensors='pt').to(self.model.device)
+        inputs = processor(text=example['query'], images=images, return_tensors='pt').to(self.model.device)
 
         labels = None
         if example.get('response') is not None:
@@ -1402,7 +1399,9 @@ class FlorenceTemplate(Template):
 
     def post_process_generate_response(self, response, example):
         image = _read_from_path(example['images'][0])
-        return self.tokenizer.processor.post_process_generation(response, task=example['query'], image_size=(image.width, image.height))
+        return self.tokenizer.processor.post_process_generation(
+            response, task=example['query'], image_size=(image.width, image.height))
+
 
 register_template(
     TemplateType.florence,
