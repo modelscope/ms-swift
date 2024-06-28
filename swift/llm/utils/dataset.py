@@ -2089,7 +2089,6 @@ register_dataset(
     _preprocess_toolbench,
     get_dataset_from_repo,
     remove_useless_columns=False,
-    huge_dataset=True,
     tags=['chat', 'agent', 'multi-round'])
 
 

@@ -387,7 +387,7 @@ The table below introduces the datasets supported by SWIFT:
 |damo-agent-zh-mini|[damo/MSAgent-Bench](https://modelscope.cn/datasets/damo/MSAgent-Bench/summary)||20845|1326.4±329.6, min=571, max=4304|chat, agent, multi-round|-|
 |agent-instruct-all-en|[huangjintao/AgentInstruct_copy](https://modelscope.cn/datasets/huangjintao/AgentInstruct_copy/summary)|alfworld<br>db<br>kg<br>mind2web<br>os<br>webshop|1866|1144.3±635.5, min=206, max=6412|chat, agent, multi-round|-|
 |🔥msagent-pro|[iic/MSAgent-Pro](https://modelscope.cn/datasets/iic/MSAgent-Pro/summary)||21905|1524.5±921.3, min=64, max=16770|chat, agent, multi-round|-|
-|toolbench|[swift/ToolBench](https://modelscope.cn/datasets/swift/ToolBench/summary)||-|Dataset is too huge, please click the original link to view the dataset stat.|chat, agent, multi-round|-|
+|toolbench|[swift/ToolBench](https://modelscope.cn/datasets/swift/ToolBench/summary)||124345|3669.5±1600.9, min=1047, max=22581|chat, agent, multi-round|-|
 |code-alpaca-en|[wyj123456/code_alpaca_en](https://modelscope.cn/datasets/wyj123456/code_alpaca_en/summary)||20016|100.2±60.1, min=29, max=1776|-|[sahil2801/CodeAlpaca-20k](https://huggingface.co/datasets/sahil2801/CodeAlpaca-20k)|
 |🔥leetcode-python-en|[AI-ModelScope/leetcode-solutions-python](https://modelscope.cn/datasets/AI-ModelScope/leetcode-solutions-python/summary)||2359|727.1±235.9, min=259, max=2146|chat, coding|-|
 |🔥codefuse-python-en|[codefuse-ai/CodeExercise-Python-27k](https://modelscope.cn/datasets/codefuse-ai/CodeExercise-Python-27k/summary)||27224|483.6±193.9, min=45, max=3082|chat, coding|-|
