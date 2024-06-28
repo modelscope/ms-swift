@@ -48,6 +48,11 @@ CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint
 
 评测的参数列表可以参考[这里](./命令行参数.md#eval参数)。
 
+请注意：评测结果会存储在{--eval_output_dir}/{--name}/{时间戳}下, 如果用户没有改变存储配置，则默认路径在:
+```text
+当前目录(`pwd`路径)/eval_outputs/default/20240628_190000/xxx
+```
+
 
 ### 使用部署的方式评测
 
