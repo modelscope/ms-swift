@@ -7,10 +7,10 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import json
-from llmuses.run import run_task
 from llmuses.config import TaskConfig
 from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
 from llmuses.models.custom import CustomModel
+from llmuses.run import run_task
 from llmuses.summarizer import Summarizer
 from llmuses.utils import EvalBackend
 from modelscope import GenerationConfig
