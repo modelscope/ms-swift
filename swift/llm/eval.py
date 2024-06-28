@@ -215,6 +215,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             url = f'http://127.0.0.1:{port}/v1/completions'
         else:
             url = f'http://127.0.0.1:{port}/v1/chat/completions'
+        is_chat = not is_generation_template(args.template_type)
     else:
         url = args.eval_url
         url = url.rstrip('/')
@@ -223,6 +224,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
         else:
             url += '/completions'
         model_type = args.model_type
+        is_chat = args.eval_is_chat_model
 
     task_cfg = dict(
         eval_backend='OpenCompass',
@@ -235,6 +237,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
                 {
                     'path': model_type,
                     'openai_api_base': url,
+                    'is_chat': is_chat,
                 },
             ]
         },
@@ -307,11 +310,11 @@ def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
         raise ValueError('Please specify either --eval_dataset or --custom_eval_config')
     args.eval_output_dir = os.path.join(args.eval_output_dir, args.name or 'default')
     if args.custom_eval_config:
-        args.eval_backend = EvalBackend.NATIVE
+        args.eval_backend = EvalBackend.NATIVE.value
         if args.eval_dataset:
             logger.warn('--custom_eval_config cannot use together with --eval_dataset')
             args.eval_dataset = []
-    if args.eval_backend == EvalBackend.OPEN_COMPASS:
+    if args.eval_backend == EvalBackend.OPEN_COMPASS.value:
         return eval_opencompass(args)
     else:
         return eval_llmuses(args)
