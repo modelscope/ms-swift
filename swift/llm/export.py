@@ -99,6 +99,7 @@ def llm_export(args: ExportArguments) -> None:
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.quant_bits > 0:
+        assert args.quant_output_dir is not None
         _args = args
         assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
         assert args.sft_type == 'full', 'you need to merge lora'
