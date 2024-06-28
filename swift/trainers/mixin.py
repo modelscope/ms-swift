@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import time
+from distutils.util import strtobool
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -23,16 +24,16 @@ from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
                                   PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
                                   WEIGHTS_NAME, IntervalStrategy, Trainer, TrainerCallback, is_peft_available)
-from transformers.trainer_utils import EvalPrediction
+from transformers.trainer_utils import EvalPrediction, HubStrategy
 from transformers.training_args import TrainingArguments
-from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
+from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available, PushInProgress
 
 from swift.hub import Repository
 from swift.hub.check_model import check_local_model_is_latest
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_load_optimizer_and_scheduler,
                                   ta_save_optimizer_and_scheduler, ta_trim_graph)
 from swift.tuners import SwiftModel
-from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc
+from swift.utils import check_json_format, create_ms_repo, get_logger, use_torchacc, push_to_ms_hub
 from swift.utils.constants import Invoke
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
@@ -40,18 +41,21 @@ from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms
 logger = get_logger()
 
 
-def _push_to_hub(self: Repository, commit_message: str = 'Commit files to Modelscope Hub', **kwargs):
-    blocking = kwargs.get('blocking', True)
-    self.push(commit_message)
-    if not blocking:
-        # Compatible with transformers
-        return None, None
-    else:
-        return None
-
-
 class PushToMsHubMixin:
     repo: Repository
+
+    _hub_type = 'hf' if strtobool(os.environ.get('USE_HF', 'False')) else 'ms'
+
+    if _hub_type == 'ms':
+        import transformers.trainer
+        transformers.trainer.create_repo = create_ms_repo
+        transformers.trainer.upload_folder = push_to_ms_hub
+
+    def init_hf_repo(self) -> None:
+        if self._hub_type == 'hf':
+            return super().init_hf_repo()
+        else:
+            self.init_git_repo(at_init=True)
 
     def _add_patterns_to_file(self, file_name: str, patterns: List[str], commit_message: Optional[str] = None) -> None:
         # Make sure we only do this on the main process
@@ -100,9 +104,15 @@ class PushToMsHubMixin:
             commit_message = f'Add `{patterns[0]}` patterns to {file_name}'
         self._add_patterns_to_file(file_name, new_patterns, commit_message)
 
-    def init_hf_repo(self) -> None:
-        """init ms repo. Compatible with transformers>=4.34"""
-        self.init_git_repo(at_init=True)
+    @staticmethod
+    def _push_to_hub(repo: Repository, commit_message: str = 'Commit files to Modelscope Hub', **kwargs):
+        blocking = kwargs.get('blocking', True)
+        repo.push(commit_message)
+        if not blocking:
+            # Compatible with transformers
+            return None, None
+        else:
+            return None
 
     def init_git_repo(self, at_init: bool = False) -> None:
         if not self.is_world_process_zero():
@@ -114,7 +124,7 @@ class PushToMsHubMixin:
         self.args.hub_model_id = create_ms_repo(self.args.hub_model_id, self.args.hub_token, self.args.hub_private_repo)
         self.repo = Repository(self.args.output_dir, self.args.hub_model_id)
         self._add_patterns_to_gitattributes(['*.safetensors', '*.bin', '*.pt'])
-        self.repo.push_to_hub = MethodType(_push_to_hub, self.repo)
+        self.repo.push_to_hub = MethodType(self._push_to_hub, self.repo)
         self.repo.local_dir = self.repo.model_dir  # hf compatibility
 
         # By default, ignore the checkpoint folders
@@ -128,81 +138,7 @@ class PushToMsHubMixin:
         if os.environ.get('SM_TRAINING_ENV'):
             self._add_patterns_to_gitignore(['*.sagemaker-uploading', '*.sagemaker-uploaded'],
                                             'Add `*.sagemaker` patterns to .gitignore')
-
         self.push_in_progress = None
-
-    def push_to_hub(self, commit_message: str = 'End of training', **kwargs) -> None:
-        # user calls manually `push_to_hub` with `self.args.push_to_hub = False`
-        create_model_card = kwargs.pop('create_model_card', None)
-        if not hasattr(self, 'repo'):
-            self.init_git_repo()
-        self.save_model(_internal_call=True)
-
-        if not self.is_world_process_zero():
-            return
-
-        self.repo.push_to_hub(commit_message, **kwargs)
-        # push separately the model card to be independent from the rest of the model
-        readme_path = os.path.join(self.args.output_dir, 'README.md')
-        if create_model_card is None:
-            create_model_card = not os.path.exists(readme_path)
-        if create_model_card and self.args.should_save:
-            model_name = kwargs.pop('model_name', None)
-            if model_name is None and self.args.should_save:
-                if self.args.hub_model_id is not None:
-                    model_name = self.args.hub_model_id.split('/')[-1]
-                else:
-                    model_name = os.path.basename(self.args.output_dir)
-            self.create_model_card(model_name=model_name, **kwargs)
-            self.repo.push_to_hub('update model card README.md', **kwargs)
-
-    def _push_from_checkpoint(self, checkpoint_folder: str) -> None:
-        """Compatible with transformers>=4.32"""
-        # Only push from one node.
-        if not self.is_world_process_zero() or self.args.push_hub_strategy == 'end':
-            return
-        output_dir = self.args.output_dir
-        # To avoid a new synchronization of all model weights, we just copy the file from the checkpoint folder
-        modeling_files = [CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME]
-        if is_peft_available():
-            modeling_files.extend([ADAPTER_CONFIG_NAME, ADAPTER_WEIGHTS_NAME, ADAPTER_SAFE_WEIGHTS_NAME])
-        for modeling_file in modeling_files:
-            if os.path.isfile(os.path.join(checkpoint_folder, modeling_file)):
-                shutil.copy(os.path.join(checkpoint_folder, modeling_file), os.path.join(output_dir, modeling_file))
-        # Saving the tokenizer is fast and we don't know how many files it may have spawned, so we resave it to be sure.
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(output_dir)
-        # Same for the training arguments
-        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-
-        try:
-            if self.args.push_hub_strategy == 'checkpoint':
-                # Temporarily move the checkpoint just saved for the push
-                tmp_checkpoint = os.path.join(output_dir, 'last-checkpoint')
-                # We have to remove the "last-checkpoint" dir if it exists, otherwise the checkpoint is moved as a
-                # subfolder.
-                if os.path.isdir(tmp_checkpoint):
-                    shutil.rmtree(tmp_checkpoint)
-                shutil.move(checkpoint_folder, tmp_checkpoint)
-
-            if self.args.save_strategy == IntervalStrategy.STEPS:
-                commit_message = f'Training in progress, step {self.state.global_step}'
-            else:
-                commit_message = f'Training in progress, epoch {int(self.state.epoch)}'
-            if self.args.push_hub_strategy == 'push_best':
-                folder, checkpoint_name = os.path.split(checkpoint_folder)
-                checkpoint_name = checkpoint_name.replace('tmp-checkpoint-', 'checkpoint-')
-                last_model_checkpoint = os.path.join(folder, checkpoint_name)
-                if last_model_checkpoint == self.state.best_model_checkpoint:
-                    self.repo.push_to_hub(commit_message=commit_message, blocking=False, auto_lfs_prune=True)
-            else:
-                self.repo.push_to_hub(commit_message=commit_message, blocking=False, auto_lfs_prune=True)
-        except Exception as e:
-            logger.error(f'Error when pushing to hub: {e}')
-        finally:
-            if self.args.push_hub_strategy == 'checkpoint':
-                # Move back the checkpoint to its place
-                shutil.move(tmp_checkpoint, checkpoint_folder)
 
 
 class SwiftMixin:

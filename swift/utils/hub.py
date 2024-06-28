@@ -3,7 +3,8 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union, List
 
 from requests.exceptions import HTTPError
 
@@ -15,63 +16,73 @@ from .utils import subprocess_run
 logger = get_logger()
 
 
-def create_ms_repo(hub_model_id: str, hub_token: Optional[str] = None, hub_private_repo: bool = False) -> str:
-    assert hub_model_id is not None, 'Please enter a valid hub_model_id'
+def create_ms_repo(
+        repo_id: str,
+        *,
+        token: Optional[str] = None,
+        private: bool = False,
+        **kwargs) -> str:
+    assert repo_id is not None, 'Please enter a valid hub_model_id'
 
     api = HubApi()
-    if hub_token is None:
+    if token is None:
         hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-    if hub_token is not None:
-        api.login(hub_token)
-    visibility = ModelVisibility.PRIVATE if hub_private_repo else ModelVisibility.PUBLIC
+    if token is not None:
+        api.login(token)
+    visibility = ModelVisibility.PRIVATE if private else ModelVisibility.PUBLIC
 
-    if '/' not in hub_model_id:
+    if '/' not in repo_id:
         user_name = ModelScopeConfig.get_user_info()[0]
         assert isinstance(user_name, str)
-        hub_model_id = f'{user_name}/{hub_model_id}'
-        logger.info(f"'/' not in hub_model_id, setting hub_model_id: {hub_model_id}")
+        repo_id = f'{user_name}/{repo_id}'
+        logger.info(f"'/' not in hub_model_id, setting hub_model_id: {repo_id}")
     try:
-        api.create_model(hub_model_id, visibility)
+        api.create_model(repo_id, visibility)
     except HTTPError:
         # The remote repository has been created
         pass
-    return hub_model_id
+    return repo_id
 
 
-def push_to_ms_hub(ckpt_dir: str,
-                   hub_model_id: str,
-                   hub_token: Optional[str] = None,
-                   hub_private_repo: bool = False,
-                   commit_message: str = 'update files'):
-    logger.info(f'Starting push to hub. ckpt_dir: {ckpt_dir}.')
+def push_to_ms_hub(self,
+                    *,
+                    repo_id: str,
+                    folder_path: Union[str, Path],
+                    path_in_repo: Optional[str] = None,
+                    commit_message: Optional[str] = None,
+                    token: Union[str, bool, None] = None):
+    logger.info(f'Starting push to hub. ckpt_dir: {folder_path}.')
     tmp_file_name = tempfile.TemporaryDirectory().name
     subprocess_run(['git', 'lfs', 'env'], stdout=subprocess.PIPE)  # check git-lfs install
 
-    hub_model_id = create_ms_repo(hub_model_id, hub_token, hub_private_repo)
+    path_in_repo = path_in_repo or ''
+    if not folder_path.endswith(path_in_repo):
+        folder_path = os.path.join(folder_path, path_in_repo)
+
     git_token = ModelScopeConfig.get_token()
-    ms_url = f'https://oauth2:{git_token}@www.modelscope.cn/{hub_model_id}.git'
-    subprocess_run(['git', '-C', ckpt_dir, 'clone', ms_url, tmp_file_name], env={'GIT_LFS_SKIP_SMUDGE': '1'})
-    tmp_dir = os.path.join(ckpt_dir, tmp_file_name)
+    ms_url = f'https://oauth2:{git_token}@www.modelscope.cn/{repo_id}.git'
+    subprocess_run(['git', '-C', folder_path, 'clone', ms_url, tmp_file_name], env={'GIT_LFS_SKIP_SMUDGE': '1'})
+    tmp_dir = os.path.join(folder_path, tmp_file_name)
     subprocess_run(['git', '-C', tmp_dir, 'lfs', 'pull'])
     logger.info('Git clone the repo successfully.')
     # mv .git
-    dst_git_path = os.path.join(ckpt_dir, '.git')
+    dst_git_path = os.path.join(folder_path, '.git')
     if os.path.exists(dst_git_path):
         shutil.rmtree(dst_git_path)
     shutil.copytree(os.path.join(tmp_dir, '.git'), dst_git_path)
-    shutil.copy(os.path.join(tmp_dir, '.gitattributes'), os.path.join(ckpt_dir, '.gitattributes'))
+    shutil.copy(os.path.join(tmp_dir, '.gitattributes'), os.path.join(folder_path, '.gitattributes'))
     shutil.rmtree(tmp_dir)
     # add commit push
-    subprocess_run(['git', '-C', ckpt_dir, 'lfs', 'install'])
+    subprocess_run(['git', '-C', folder_path, 'lfs', 'install'])
     time.sleep(0.5)
     logger.info('Start `git add .`')
-    subprocess_run(['git', '-C', ckpt_dir, 'add', '.'])
-    if is_repo_clean(ckpt_dir):
+    subprocess_run(['git', '-C', folder_path, 'add', '.'])
+    if is_repo_clean(folder_path):
         logger.info('Repo currently clean. Ignoring commit and push_to_hub')
     else:
-        subprocess_run(['git', '-C', ckpt_dir, 'commit', '-m', commit_message])
-        subprocess_run(['git', '-C', ckpt_dir, 'push'])
-        url = f'https://www.modelscope.cn/models/{hub_model_id}/summary'
+        subprocess_run(['git', '-C', folder_path, 'commit', '-m', commit_message])
+        subprocess_run(['git', '-C', folder_path, 'push'])
+        url = f'https://www.modelscope.cn/models/{repo_id}/summary'
         logger.info(f'Push to Modelscope successful. url: `{url}`.')
 
 
