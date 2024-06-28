@@ -3,7 +3,7 @@ import re
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
+import ast
 import json
 import requests
 import torch
@@ -316,7 +316,7 @@ class Template:
                 f'The template does not support `system`, template_type: {template_type}')
         if tools:
             if isinstance(tools, str):
-                tools = json.loads(tools)
+                tools = ast.literal_eval(tools)
             if system is None:
                 system = ''
             system += get_tools_prompt(tools, self.tools_prompt)
