@@ -94,13 +94,13 @@ def llm_export(args: ExportArguments) -> None:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     if args.to_peft_format:
-        assert args.sft_type == 'lora'
+        assert args.sft_type == 'lora', f'args.sft_type: {args.sft_type}'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.quant_bits > 0:
         _args = args
-        assert args.quantization_bit == 0
+        assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
         assert args.sft_type == 'full', 'you need to merge lora'
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
@@ -108,18 +108,28 @@ def llm_export(args: ExportArguments) -> None:
                 args, device_map=args.quant_device_map, verbose=False, automodel_class=AutoAWQForCausalLM)
             awq_model_quantize(model, template.tokenizer)
             model.save_quantized(args.quant_output_dir)
-        else:  # gptq
+        elif args.quant_method == 'gptq':
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
+        else:
+            raise ValueError(f'args.quant_method: {args.quant_method}')
 
         logger.info(get_model_info(model))
         show_layers(model)
         logger.info('Saving quantized weights...')
         model_cache_dir = model.model_dir
         save_checkpoint(
-            None, template.tokenizer, model_cache_dir, args.ckpt_dir, args.quant_output_dir, dtype=args.dtype)
+            None,
+            template.tokenizer,
+            model_cache_dir,
+            args.ckpt_dir,
+            args.quant_output_dir,
+            sft_args_kwargs={
+                'dtype': args.dtype,
+                'quant_method': args.quant_method
+            })
         logger.info(f'Successfully quantized the model and saved in {args.quant_output_dir}.')
         args.ckpt_dir = args.quant_output_dir
 

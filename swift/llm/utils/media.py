@@ -1,7 +1,6 @@
 import os
 import shutil
-import time
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 
@@ -25,7 +24,7 @@ class MediaTag:
                 ('<bbox>', '<ref-object>'),
                 ('The object at position <bbox>', '<ref-object>'),
                 ('This <bbox> is', '<ref-object>'),
-                ('What is the thing at <bbox>', '<ref-object>'),
+                ('What is the object at <bbox>', '<ref-object>'),
                 ('Describe <bbox>', '<ref-object>'),
                 ('<bbox> is', '<ref-object>'),
                 ('The bounding box coordinate <bbox> contains', '<ref-object>'),
@@ -63,14 +62,13 @@ class MediaTag:
         self.task_type = task_type
         self.media_tag = media_tag or '<unused_tag>'
 
-    def __call__(self, d: dict, medias: Union[tuple, list], objects: List = None):
+    def __call__(self, d: Dict[str, Any], medias: Union[tuple, list]) -> None:
         """Format the query/response/history with medias
 
         Args:
             d: A dict contains history/query/response
             medias: A list of medias(one round, multiple medias),
                     a single media(one round, one media), or a tuple of media list(multiple rounds)
-            objects: A list of object-bbox pairs(one round), or a tuple of object-bbox lists(multiple rounds)
         """
         if not self.media_type:
             return
@@ -84,7 +82,8 @@ class MediaTag:
             pass
         elif self.task_type in ('ref_grounding', 'grounding_caption'):
             lang = np.random.choice(['en', 'zh'], p=[0.8, 0.2])
-            query, response = np.random.choice(self.task_prompts[self.task_type][lang])
+            prompts = self.task_prompts[self.task_type][lang]
+            query, response = prompts[np.random.choice(range(len(prompts)))]
         elif self.task_type == 'ocr':
             raise NotImplementedError
         else:
@@ -102,8 +101,7 @@ class MediaTag:
         if 'history' in d:
             d['history'] = history
         d['query'] = query
-        if 'response' in d:
-            d['response'] = response
+        d['response'] = response
 
 
 class MediaCache:

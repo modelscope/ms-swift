@@ -6,7 +6,7 @@ import sys
 from contextlib import nullcontext
 from functools import partial, update_wrapper, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
 import torch.distributed as dist
@@ -189,6 +189,7 @@ class ModelType:
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
+    llava1_5_7b_chat = 'llava1_5-7b-chat'
     llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
     llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
@@ -290,6 +291,10 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
+    gemma2_9b = 'gemma2-9b'
+    gemma2_27b = 'gemma2-27b'
+    gemma2_9b_instruct = 'gemma2-9b-instruct'
+    gemma2_27b_instruct = 'gemma2-27b-instruct'
     # paligemma
     paligemma_3b_pt_224 = 'paligemma-3b-pt-224'
     paligemma_3b_pt_448 = 'paligemma-3b-pt-448'
@@ -909,9 +914,18 @@ def get_model_tokenizer_from_repo(model_dir: str,
                 trust_remote_code=True,
             )
         else:
+            logger.info(f'model_kwargs: {model_kwargs}')
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        if is_training:
+            model.train()
+            model.requires_grad_(True)
+        model.is_gptq = is_gptq
+        model.is_awq = is_awq
+        model.is_aqlm = is_aqlm
+        if hasattr(model, 'hf_device_map'):
+            logger.debug(f'Model hf_device_map: {model.hf_device_map}')
     return model, tokenizer
 
 
@@ -1103,7 +1117,7 @@ def get_model_tokenizer_cogagent(model_dir: str,
                                  load_model: bool = True,
                                  **kwargs):
     tokenizer = AutoTokenizer.from_pretrained('AI-ModelScope/vicuna-7b-v1.5', revision='master', trust_remote_code=True)
-    if load_model is True:
+    if load_model:
         logger.warning('CogAgent with FusedLayerNorm will cause an training loss of NAN, '
                        'to avoid this, please uninstall apex.')
     model, tokenizer = get_model_tokenizer_from_repo(
@@ -1522,6 +1536,42 @@ def get_model_tokenizer_chatglm(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.gemma2_9b,
+    'LLM-Research/gemma-2-9b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-9b')
+@register_model(
+    ModelType.gemma2_27b,
+    'LLM-Research/gemma-2-27b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-27b')
+@register_model(
+    ModelType.gemma2_9b_instruct,
+    'LLM-Research/gemma-2-9b-it',
+    LoRATM.llama,
+    TemplateType.gemma,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-9b-it')
+@register_model(
+    ModelType.gemma2_27b_instruct,
+    'LLM-Research/gemma-2-27b-it',
+    LoRATM.llama,
+    TemplateType.gemma,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-27b-it')
 @register_model(
     ModelType.qwen2_57b_a14b,
     'qwen/Qwen2-57B-A14B',
@@ -2146,7 +2196,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
     ModelType.yi_1_5_9b_chat_16k,
-    '01ai/Yi-1.5-9B-Chat',
+    '01ai/Yi-1.5-9B-Chat-16K',
     LoRATM.llama,
     TemplateType.yi1_5,
     support_flash_attn=True,
@@ -2360,6 +2410,8 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     if version.parse(transformers.__version__) >= version.parse('4.36'):
         if use_flash_attn:
             model_config._attn_implementation = 'flash_attention_2'
+        else:
+            model_config._attn_implementation = 'eager'
     else:
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
@@ -3528,7 +3580,6 @@ def _patch_deepseek_vl(model) -> None:
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    requires=['attrdict'],
     hf_model_id='deepseek-ai/deepseek-vl-7b-chat')
 @register_model(
     ModelType.deepseek_vl_1_3b_chat,
@@ -3537,7 +3588,6 @@ def _patch_deepseek_vl(model) -> None:
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
-    requires=['attrdict'],
     hf_model_id='deepseek-ai/deepseek-vl-1.3b-chat')
 def get_model_tokenizer_deepseek_vl(model_dir: str,
                                     torch_dtype: Dtype,
@@ -3994,7 +4044,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
     LoRATM.qwen,
-    TemplateType.qwenvl,
+    TemplateType.qwen_vl,
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen-VL-Chat')
@@ -4644,6 +4694,25 @@ def _patch_llava(model):
 
 
 @register_model(
+    ModelType.llava1_5_7b_chat,
+    'huangjintao/llava-1.5-7b-hf',
+    LoRATM.llama,
+    TemplateType.llava1_5,
+    eos_token='</s>',
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-1.5-7b-hf')
+def get_model_tokenizer_llava1_5(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, LlavaForConditionalGeneration
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, *args, automodel_class=LlavaForConditionalGeneration, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
+
+
+@register_model(
     ModelType.llava1_6_yi_34b_instruct,
     'AI-ModelScope/llava-v1.6-34b',
     LoRATM.llama,
@@ -4905,6 +4974,7 @@ def get_model_tokenizer(model_type: str,
                         *,
                         model_id_or_path: Optional[str] = None,
                         revision: Optional[str] = None,
+                        quant_method: Literal['gptq', 'awq', 'aqlm', None] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
@@ -4922,10 +4992,14 @@ def get_model_tokenizer(model_type: str,
     get_function = model_info['get_function']
     if model_kwargs is None:
         model_kwargs = {}
-    if 'device_map' not in model_kwargs and not use_torchacc():
-        model_kwargs['device_map'] = 'auto'
 
     if load_model:
+        if 'device_map' not in model_kwargs and not use_torchacc():
+            model_kwargs['device_map'] = 'auto'
+        for k in ['gptq', 'awq', 'aqlm']:
+            if quant_method == k:
+                kwargs[f'is_{k}'] = True
+                break
         if model_info.get('torch_dtype') is not None:
             model_torch_dtype = model_info['torch_dtype']
             if torch_dtype is None:
@@ -4942,6 +5016,7 @@ def get_model_tokenizer(model_type: str,
                         and quantization_config.bnb_4bit_compute_dtype is None):
                     quantization_config.bnb_4bit_compute_dtype = torch_dtype
                     logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
+
     kwargs['eos_token'] = model_info['eos_token']
     pad_token = model_info.get('pad_token')
     if pad_token is not None:

@@ -100,16 +100,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
-    if args.quant_method == 'awq':
-        kwargs['is_awq'] = True
-    elif args.quant_method == 'aqlm':
-        kwargs['is_aqlm'] = True
-    elif args.quant_method == 'gptq':
-        kwargs['is_gptq'] = True
 
     if args.rope_scaling:
         kwargs['rope_scaling'] = args.rope_scaling
-        kwargs['max_length'] = args.max_length
 
     model, tokenizer = get_model_tokenizer(
         args.model_type,
@@ -117,8 +110,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
+        quant_method=args.quant_method,
         is_training=True,
         **kwargs)
+    for k in ['gptq', 'awq', 'aqlm']:
+        if getattr(model, f'is_{k}', None):
+            args.quant_method = k
+            logger.info(f'Setting args.quant_method: {args.quant_method}')
+            break
     logger.info(f'model_config: {model.config}')
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
@@ -191,10 +190,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     template_kwargs = {}
-    template_info = TEMPLATE_MAPPING[args.template_type]
-    use_model = template_info.get('use_model', False)
-    if use_model:
-        template_kwargs['model'] = model
     template_kwargs['use_loss_scale'] = args.use_loss_scale
     if args.loss_scale_config_path is not None:
         cwd = os.getcwd()
@@ -205,8 +200,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     template_kwargs['tools_prompt'] = args.tools_prompt
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
-    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
-                                      args.truncation_strategy, **template_kwargs)
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=model,
+        **template_kwargs)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')

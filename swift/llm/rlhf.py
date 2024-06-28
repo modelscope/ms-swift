@@ -94,12 +94,6 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         kwargs['use_flash_attn'] = args.use_flash_attn
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
-    if args.quant_method == 'awq':
-        kwargs['is_awq'] = True
-    elif args.quant_method == 'aqlm':
-        kwargs['is_aqlm'] = True
-    elif args.quant_method == 'gptq':
-        kwargs['is_gptq'] = True
 
     if args.rope_scaling:
         kwargs['rope_scaling'] = args.rope_scaling
@@ -111,6 +105,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         model_kwargs,
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
+        quant_method=args.quant_method,
         is_training=True,
         **kwargs)
     logger.info(f'model_config: {model.config}')
@@ -155,6 +150,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
                 model_kwargs,
                 model_id_or_path=args.ref_model_id_or_path,
                 revision=args.model_revision,
+                quant_method=args.quant_method,
                 **kwargs)
     else:
         ref_model = None
