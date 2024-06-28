@@ -271,7 +271,8 @@ class LazyLLMDataset(Dataset):
             data = self.dataset[i]
             try:
                 res = self.template.encode(data)
-            except OSError:
+            except OSError as e:
+                logger.error('Error occurs in lazy tokenize:', e)
                 continue
             if len(res[0]) > 0:
                 return res
@@ -545,7 +546,7 @@ class TokenListIteratorStreamer(BaseStreamer):
 def _prepare_inputs(model: PreTrainedModel,
                     template: Template,
                     query: str,
-                    history: Optional[History] = None,
+                    history: History,
                     system: Optional[str] = None,
                     images: Optional[List[str]] = None,
                     *,
@@ -555,10 +556,6 @@ def _prepare_inputs(model: PreTrainedModel,
                     **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
     if stop_words is None:
         stop_words = []
-    if history is None:
-        history = []
-    else:
-        history = deepcopy(history)
     if images is None:
         images = []
 
@@ -567,7 +564,8 @@ def _prepare_inputs(model: PreTrainedModel,
         'history': history,
         'system': system,
         'images': images,  # for vl. str.
-        'tools': kwargs.pop('tools', None)
+        'tools': kwargs.pop('tools', None),
+        'objects': kwargs.pop('objects', None),
     }
     template.model = model
     inputs, tokenizer_kwargs = template.encode(example)
@@ -594,7 +592,7 @@ def _prepare_inputs(model: PreTrainedModel,
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
     if generation_config is None:
-        generation_config = getattr(model, 'generation_config', None)
+        generation_config = getattr(model, 'generation_config')
     generation_config = deepcopy(generation_config)
 
     if tokenizer.eos_token_id is not None:
@@ -621,7 +619,7 @@ def _prepare_inputs(model: PreTrainedModel,
     stopping_criteria = StoppingCriteriaList([StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs['stopping_criteria'] = stopping_criteria
     inputs['generation_config'] = generation_config
-    return inputs, tokenizer_kwargs, token_len
+    return inputs, tokenizer_kwargs, token_len, example
 
 
 @torch.inference_mode()
@@ -640,7 +638,11 @@ def inference_stream(model: PreTrainedModel,
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
-    inputs, tokenizer_kwargs, token_len = _prepare_inputs(
+    if history is None:
+        history = []
+    else:
+        history = deepcopy(history)
+    inputs, tokenizer_kwargs, token_len, example = _prepare_inputs(
         model,
         template,
         query,
@@ -730,7 +732,11 @@ def inference(model: PreTrainedModel,
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
-    inputs, tokenizer_kwargs, token_len = _prepare_inputs(
+    if history is None:
+        history = []
+    else:
+        history = deepcopy(history)
+    inputs, tokenizer_kwargs, token_len, example = _prepare_inputs(
         model,
         template,
         query,
@@ -776,6 +782,7 @@ def inference(model: PreTrainedModel,
         response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
         print(response)
     response = template.generate_ids_to_response(generate_ids, tokenizer_kwargs=tokenizer_kwargs)
+    response = template.post_process_generate_response(response=response, example=example)
     if not is_observation:
         history.append([query, response])
     else:
@@ -880,8 +887,11 @@ def messages_join_observation(messages: Messages):
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
+    old_generation_priority_config = ['no_repeat_ngram_size']
     if old_generation_config is not None:
         for k, v in old_generation_config.__dict__.items():
+            if k in old_generation_priority_config:
+                setattr(generation_config, k, v)
             if k not in generation_config.__dict__:
                 setattr(generation_config, k, v)
     model.generation_config = generation_config

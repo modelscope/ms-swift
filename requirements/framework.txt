@@ -15,6 +15,6 @@ rouge
 safetensors
 tensorboard
 tqdm
-transformers>=4.33,<4.42
+transformers>=4.33,<4.43
 transformers_stream_generator
 trl>=0.9.4

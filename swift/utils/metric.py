@@ -51,9 +51,14 @@ def compute_nlg_metrics(prediction, tokenizer):
 
 
 def compute_acc_metrics(eval_prediction: EvalPrediction,
-                        acc_strategy: Literal['token', 'sentence'] = 'token') -> Dict[str, Tensor]:
-    labels = eval_prediction.label_ids[..., 1:]
-    predictions = eval_prediction.predictions[..., :-1]
+                        acc_strategy: Literal['token', 'sentence'] = 'token',
+                        is_encoder_decoder: bool = False) -> Dict[str, Tensor]:
+    if is_encoder_decoder:
+        labels = eval_prediction.label_ids[..., :]
+        predictions = eval_prediction.predictions[..., :]
+    else:
+        labels = eval_prediction.label_ids[..., 1:]
+        predictions = eval_prediction.predictions[..., :-1]
     if predictions.shape != labels.shape:
         return {}
     masks = labels != -100

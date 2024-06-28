@@ -274,10 +274,16 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     logger.info(f'training_args: {training_args}')
 
     trainer_kwargs = {}
+    if not hasattr(model.config, 'is_encoder_decoder'):
+        model.config.is_encoder_decoder = False
+    is_encoder_decoder = model.config.is_encoder_decoder
+    trainer_kwargs['is_encoder_decoder'] = is_encoder_decoder
+
     if args.predict_with_generate:
         trainer_kwargs['compute_metrics'] = partial(compute_nlg_metrics, tokenizer=tokenizer)
     else:
-        compute_metrics = partial(compute_acc_metrics, acc_strategy=args.acc_strategy)
+        compute_metrics = partial(
+            compute_acc_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=is_encoder_decoder)
         trainer_kwargs['compute_metrics'] = compute_metrics
         trainer_kwargs['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
     if args.check_model_is_latest is False:
