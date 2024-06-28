@@ -61,6 +61,12 @@ class PushToMsHubMixin:
         transformers.trainer.create_repo = create_ms_repo
         transformers.trainer.upload_folder = push_to_ms_hub
 
+    def init_hf_repo(self) -> None:
+        if self._hub_type == 'hf':
+            return super().init_hf_repo()
+        else:
+            self.init_git_repo(at_init=True)
+
     def _add_patterns_to_file(self, file_name: str, patterns: List[str], commit_message: Optional[str] = None) -> None:
         # Make sure we only do this on the main process
         if not self.is_world_process_zero():
@@ -132,7 +138,6 @@ class PushToMsHubMixin:
         if os.environ.get('SM_TRAINING_ENV'):
             self._add_patterns_to_gitignore(['*.sagemaker-uploading', '*.sagemaker-uploaded'],
                                             'Add `*.sagemaker` patterns to .gitignore')
-
         self.push_in_progress = None
 
 
