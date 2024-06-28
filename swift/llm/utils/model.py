@@ -2524,21 +2524,6 @@ def fix_florence_forward(model) -> None:
     model.forward = _new_forward.__get__(model, type(model))
 
 
-def fix_florence_generate(model):
-    if not hasattr(model, '_old_generate'):
-        old_generate = model.generate
-
-        def generate(self, input_ids, inputs_embeds=None, pixel_values=None, **kwargs):
-            if input_ids is not None and not model.training:
-                input_ids = input_ids.clone().detach()
-                input_ids.requires_grad = False
-
-            return model._old_generate(input_ids, inputs_embeds=inputs_embeds, pixel_values=pixel_values, **kwargs)
-
-        model._old_generate = old_generate
-        model.generate = generate.__get__(model, type(model))
-
-
 @register_model(
     ModelType.florence_2_base_ft,
     'AI-ModelScope/Florence-2-base-ft',

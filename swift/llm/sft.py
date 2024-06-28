@@ -283,8 +283,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
     if args.check_model_is_latest is False:
         trainer_kwargs['check_model'] = False
 
-    trainer_kwargs['is_encoder_decoder'] = model.config.is_encoder_decoder if hasattr(
-        model.config, 'is_encoder_decoder') else False
+    if not hasattr(model.config, 'is_encoder_decoder'):
+        model.config.is_encoder_decoder = False
+    trainer_kwargs['is_encoder_decoder'] = model.config.is_encoder_decoder
+
     trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
