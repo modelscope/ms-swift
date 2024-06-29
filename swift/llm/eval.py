@@ -228,7 +228,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             url += '/completions'
         model_type = args.model_type
         is_chat = args.eval_is_chat_model
-
+    limit_config = {'limit': args.eval_limit} if args.eval_limit else {}
     task_cfg = dict(
         eval_backend='OpenCompass',
         eval_config={
@@ -243,7 +243,8 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
                     'is_chat': is_chat,
                     'key': args.eval_token,
                 },
-            ]
+            ],
+            **limit_config
         },
     )
 
