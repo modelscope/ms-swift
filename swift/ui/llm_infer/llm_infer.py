@@ -11,9 +11,8 @@ import gradio as gr
 import json
 import torch
 from gradio import Accordion, Tab
-from modelscope import GenerationConfig
+from modelscope import GenerationConfig, snapshot_download
 
-from swift import snapshot_download
 from swift.llm import (DeployArguments, InferArguments, XRequestConfig, inference_client, inference_stream,
                        limit_history_length, prepare_model_template)
 from swift.ui.base import BaseUI
