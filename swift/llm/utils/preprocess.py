@@ -192,7 +192,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __call__(self, dataset: HfDataset, features=None) -> HfDataset:
         dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False, features=None).filter(lambda row: row.get('response'))
+            self.preprocess, load_from_cache_file=False, features=features).filter(lambda row: row.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -287,7 +287,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __call__(self, dataset: HfDataset, features=None) -> HfDataset:
         dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False, features=None).filter(lambda row: row.get('response'))
+            self.preprocess, load_from_cache_file=False, features=features).filter(lambda row: row.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -343,7 +343,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __call__(self, dataset: HfDataset, features=None):
         dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False, features=None).filter(lambda d: d.get('response'))
+            self.preprocess, load_from_cache_file=False, features=features).filter(lambda d: d.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
