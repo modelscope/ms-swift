@@ -5,6 +5,9 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import numpy as np
 
 from swift.hub.utils.utils import get_cache_dir
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class MediaTag:
@@ -137,9 +140,18 @@ class MediaCache:
         final_folder = os.path.join(MediaCache.cache_dir, media_name)
         if os.path.exists(final_folder):
             return final_folder
+
+        logger.info('# #################Resource downloading#################')
+        logger.info('Downloading necessary resources...')
+        logger.info(f'Resource package: {media_type}')
+        logger.info(f'Extracting to local dir: {final_folder}')
+        logger.info('If the downloading fails or lasts a long time, '
+                    'you can manually download the resources and extracting to the local dir.')
+        logger.info('Now begin.')
         local_dirs = DownloadManager(download_config=DownloadConfig(
             cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
         shutil.move(str(local_dirs), final_folder)
+        logger.info('# #################Resource downloading finished#################')
         return final_folder
 
     @staticmethod

@@ -1168,7 +1168,7 @@ def preprocess_refcoco_unofficial_caption(dataset):
         objects = [[caption, bbox]]
         media_tag(res, [image_path])
         res['images'] = [image_path]
-        res['objects'] = json.dumps(objects)
+        res['objects'] = json.dumps(objects, ensure_ascii=False)
         if not os.path.exists(image_path):
             res['response'] = ''
         return res
@@ -1213,7 +1213,7 @@ def preprocess_refcoco_unofficial_grounding(dataset):
         objects = [[caption, bbox]]
         media_tag(res, [image_path])
         res['images'] = [image_path]
-        res['objects'] = json.dumps(objects)
+        res['objects'] = json.dumps(objects, ensure_ascii=False)
         if not os.path.exists(image_path):
             res['response'] = ''
         return res
@@ -1622,7 +1622,7 @@ def preprocess_grit(dataset):
 
         response = replace_intervals_with_tags(caption, start_end_pairs)
 
-        return {'images': images, 'response': response, 'objects': json.dumps(objects or [])}
+        return {'images': images, 'response': response, 'objects': json.dumps(objects or [], ensure_ascii=False)}
 
     return dataset.map(preprocess_row, load_from_cache_file=False).filter(lambda row: row['objects'])
 
