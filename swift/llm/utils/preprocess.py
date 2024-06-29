@@ -12,12 +12,12 @@ PreprocessFunc = Callable[[HfDataset], HfDataset]
 
 
 def _reduce_dataset(cls: type) -> type:
-    if getattr(cls, '_is_patching', False):
+    if getattr(cls, '_patching', False):
         return cls
 
     call_func = cls.__call__
     preprocess = cls.preprocess
-    cls._is_patching = True
+    cls._patching = True
 
     def new_call_func(self, dataset: HfDataset) -> HfDataset:
         self.column_state = set()
