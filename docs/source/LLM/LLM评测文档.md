@@ -11,11 +11,13 @@ SWIFT支持了eval（评测）能力，用于对原始模型和训练后的模�
 
 ## 能力介绍
 
-SWIFT的eval能力使用了魔搭社区[评测框架EvalScope](https://github.com/modelscope/eval-scope)，并进行了高级封装以支持各类模型的评测需求。目前我们支持了**标准评测集**的评测流程，以及**用户自定义**评测集的评测流程。其中**标准评测集**包含：
+SWIFT的eval能力使用了魔搭社区[评测框架EvalScope](https://github.com/modelscope/eval-scope)，以及[Open-Compass](https://hub.opencompass.org.cn/home)，并进行了高级封装以支持各类模型的评测需求。目前我们支持了**标准评测集**的评测流程，以及**用户自定义**评测集的评测流程。其中**标准评测集**包含：
 
 ```text
 'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
 ```
+
+数据集的具体介绍可以查看：https://hub.opencompass.org.cn/home
 
 ## 环境准备
 
