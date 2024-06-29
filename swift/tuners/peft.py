@@ -9,6 +9,7 @@ import json
 import peft
 import torch
 import torch.nn
+from modelscope import snapshot_download
 from peft import (AdaLoraConfig, BOFTConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
                   PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                   PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
@@ -19,7 +20,6 @@ from peft.tuners.lora import Embedding
 from transformers import Trainer
 
 from swift import get_logger
-from swift.hub.snapshot_download import snapshot_download
 
 logger = get_logger()
 dispatchers = []

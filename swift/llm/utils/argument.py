@@ -1306,20 +1306,20 @@ class DeployArguments(InferArguments):
 @dataclass
 class EvalArguments(InferArguments):
 
-    eval_dataset: List[str] = field(
-        default_factory=lambda: ['ceval', 'gsm8k', 'arc'],
-        metadata={'help': f"dataset choices: {['arc', 'gsm8k', 'mmlu', 'cmmlu', 'ceval', 'bbh', 'general_qa']}"})
+    eval_dataset: List[str] = field(default_factory=list)
     eval_few_shot: Optional[int] = None
-    eval_limit: Optional[int] = None
+    eval_limit: Optional[str] = None
 
-    name: str = field(default_factory=lambda: dt.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    name: str = ''
     eval_url: Optional[str] = None
     eval_token: str = 'EMPTY'
     eval_is_chat_model: Optional[bool] = None
     custom_eval_config: Optional[str] = None  # path
     eval_use_cache: bool = False
-    # compat
-    eval_backend: Literal['Native'] = 'Native'
+    eval_output_dir: str = 'eval_outputs'
+    eval_backend: Literal['Native', 'OpenCompass'] = 'OpenCompass'
+    eval_batch_size: int = 8
+    deploy_timeout: int = 60
 
     def __post_init__(self):
         super().__post_init__()

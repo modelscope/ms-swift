@@ -11,37 +11,16 @@ SWIFT supports the eval (evaluation) capability to provide standardized evaluati
 
 ## Introduction
 
-SWIFT's eval capability utilizes the [EvalScope evaluation framework](https://github.com/modelscope/eval-scope) from the ModelScope community and provides advanced encapsulation to support evaluation needs for various models. Currently, we support the evaluation process for **standard evaluation sets** and **user-defined evaluation sets**. The **standard evaluation sets** include:
+SWIFT's eval capability utilizes the [EvalScope evaluation framework](https://github.com/modelscope/eval-scope) from the ModelScope community and [Open-Compass](https://hub.opencompass.org.cn/home) and provides advanced encapsulation to support evaluation needs for various models. Currently, we support the evaluation process for **standard evaluation sets** and **user-defined evaluation sets**. The **standard evaluation sets** include:
 
-- MMLU
+```text
+'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
+```
 
-> MMLU (Massive Multitask Language Understanding) aims to measure the knowledge gained during pretraining by specifically evaluating models in zero-shot and few-shot settings. This makes the benchmark more challenging and more similar to how we evaluate humans. The benchmark covers 57 subjects across STEM, humanities, and social sciences. Its difficulty ranges from elementary to advanced professional levels, testing world knowledge and problem-solving abilities. The subject range spans traditional fields such as mathematics and history to more specialized domains like law and ethics. The granularity and breadth of topics make the benchmark an ideal choice for identifying model blindspots.
->
-> MMLU is an **English evaluation dataset** containing **57 multiple-choice question-answering tasks** [Diversity Benchmark], covering elementary mathematics, American history, computer science, law, etc., covering human knowledge from high school level to expert level. It is currently the mainstream LLM evaluation dataset.
+Check out the detail descriptions of these datasets: https://hub.opencompass.org.cn/home
 
-- CEVAL
-
-> C-EVAL is the first comprehensive Chinese evaluation suite, aiming to evaluate the advanced knowledge and reasoning abilities of foundation models in the Chinese context. C-EVAL includes multiple-choice questions at four difficulty levels: middle school, high school, university, and professional. The questions cover 52 different subject areas, ranging from humanities to science and engineering subjects. C-EVAL also comes with C-EVAL HARD, which is a particularly challenging subset of topics from C-EVAL that requires advanced reasoning abilities to solve.
-
-- GSM8K
-
-> GSM8K (Grade School Math 8K) is a dataset containing 8.5K high-quality linguistically diverse elementary school math word problems. The dataset was created to support the task of question-answering on multi-step reasoning problems in elementary mathematics.
->
-> GSM8K is a high-quality English elementary math problem test set, containing 7.5K training data and 1K test data. These problems typically require 2-8 steps to solve, effectively evaluating mathematical and logical abilities.
-
-- ARC
-
-> The AI2 Reasoning Challeng(**arc**) dataset is a multiple-choice question-answering dataset containing questions from 3rd to 9th-grade science exams. The dataset is split into two partitions: Easy and Challenge, with the latter containing harder questions requiring reasoning. Most questions have 4 answer choices, with <1% of questions having 3 or 5 answer choices. ARC includes a supporting corpus of 14.3 million KB of unstructured text passages.
-
-- BBH
-
-> BBH (BIG-Bench Hard) is a dataset composed of 23 challenging tasks selected from the BIG-Bench evaluation suite.
->
-> BIG-Bench is a diverse test suite aimed at evaluating language model capabilities, including tasks considered to be beyond the current abilities of language models. In the initial BIG-Bench paper, researchers found that the most advanced language models at the time could only outperform the average human rater on 65% of the tasks with a few example prompts.
->
-> Therefore, the researchers filtered out the 23 particularly challenging tasks from BIG-Bench where language models failed to surpass human performance, constructing the BBH dataset. These 23 tasks are considered representative challenges that language models still struggle with. Researchers evaluated the effect of thought-chain prompts on improving language model performance on BBH.
->
-> Overall, the BBH dataset contains the 23 most challenging tasks from BIG-Bench, aiming to test the limits of language models' capabilities on complex multi-step reasoning problems. Through experiments on BBH, researchers can uncover the benefits of prompting strategies like thought-chains in enhancing language model performance.
+> At the first time of running eval, a resource dataset will be downloaded: https://www.modelscope.cn/datasets/swift/evalscope_resource/files
+> If downloading fails, you can manually download the dataset to your local disk, please pay attention to the log of the `eval` command.
 
 ## Environment Setup
 
@@ -64,15 +43,21 @@ Evaluation supports the use of vLLM for acceleration. Here we demonstrate the ev
 ```shell
 # Original model (approximately half an hour on a single A100)
 CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
-    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm
+    --eval_dataset ARC_e --infer_backend vllm
 
 # After LoRA fine-tuning
 CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint-xxx \
-    --eval_dataset ceval mmlu arc gsm8k --infer_backend vllm \
+    --eval_dataset ARC_e --infer_backend vllm \
     --merge_lora true \
 ```
 
 You can refer to [here](./Command-line-parameters.md#eval-parameters) for the list of evaluation parameters.
+
+Please pay attention: The eval result will be saved in {--eval_output_dir}/{--name}/{some-timestamp}, if you changed nothing, the default dir will be:
+```text
+the current folder(`pwd` folder)/eval_outputs/default/20240628_190000/xxx
+```
+
 
 ### Evaluation using the deployed method
 
@@ -82,40 +67,113 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
 
 # Evaluate using the API
 # If it is not a Swift deployment, you need to additionally pass in `--eval_is_chat_model true --model_type qwen2-7b-instruct`.
-swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ceval mmlu arc gsm8k
+swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ARC_e
 
 # The same applies to the model after LoRA fine-tuning.
 ```
 
-## Custom Evaluation Set
+## Custom Evaluation Sets
 
-In addition, we support users to define their own evaluation sets for evaluation. The custom evaluation set must be consistent with the data format (pattern) of an official evaluation set. Below, we will explain step by step how to use your own evaluation set for evaluation.
+In addition, we support users in customizing their own evaluation sets. Custom evaluation sets must be consistent with the data format (pattern) of an official evaluation set. Below, we explain step-by-step how to use your own evaluation set for evaluation.
 
-### Prepare Your Own Evaluation Set
+### Preparing Your Own Evaluation Set
 
-Currently, we support two patterns of evaluation sets: multiple-choice format of CEval and question-answering format of General-QA.
+Currently, we support two patterns of evaluation sets: multiple-choice format (CEval) and question-answer format (General-QA).
 
 #### Multiple-choice: CEval Format
 
-The CEval format is suitable for scenarios where users have multiple-choice questions. That is, select one correct answer from four options, and the evaluation metric is `accuracy`. It is recommended to **directly modify** the [CEval scaffold directory](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_ceval). This directory contains two files:
+The CEval format is suitable for multiple-choice scenarios, where you select the correct answer from four options, and the evaluation metric is `accuracy`. It is recommended to **directly modify** the [CEval scaffold directory](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_ceval). This directory contains two files:
 
 ```text
-default_dev.csv # Used for few-shot evaluation, at least eval_few_shot number of data is required, i.e., this csv can be empty for 0-shot evaluation
-default_val.csv # Data used for actual evaluation
+default_dev.csv # Used for few-shot evaluation, must contain at least the number of entries specified by eval_few_shot. If it is 0-shot evaluation, this CSV can be empty.
+default_val.csv # Data used for actual evaluation.
 ```
 
-The CEval csv file needs to be in the following format:
+The CEval CSV file should be in the following format:
 
 ```csv
 id,question,A,B,C,D,answer,explanation
-1,通常来说，组成动物蛋白质的氨基酸有____,4种,22种,20种,19种,C,1. 目前已知构成动物蛋白质的的氨基酸有20种。
-2,血液内存在的下列物质中，不属于代谢终产物的是____。,尿素,尿酸,丙酮酸,二氧化碳,C,"代谢终产物是指在生物体内代谢过程中产生的无法再被利用的物质，需要通过排泄等方式从体内排出。丙酮酸是糖类代谢的产物，可以被进一步代谢为能量或者合成其他物质，并非代谢终产物。"
+1,Typically, how many amino acids make up animal proteins? ,4,22,20,19,C,1. Currently, it is known that 20 amino acids make up animal proteins.
+2,Among the following substances present in blood, which one is not a metabolic end product? ,urea,uric acid,pyruvic acid,carbon dioxide,C,"A metabolic end product is a substance that cannot be further utilized in the body's metabolism and needs to be excreted. Pyruvic acid is a product of carbohydrate metabolism and can be further metabolized for energy or synthesis of other substances, so it is not a metabolic end product."
 ```
 
-Here, id is the evaluation sequence number, question is the question, ABCD are the options (leave blank if there are fewer than four options), answer is the correct option, and explanation is the explanation.
+In this format, `id` is the evaluation sequence number, `question` is the question, `A`, `B`, `C`, `D` are options (if there are fewer than four options, leave the corresponding fields empty), `answer` is the correct option, and `explanation` is the explanation.
 
-The `default` filename is the subset name of the CEval evaluation, which can be changed and will be used in the configuration below.
+The `default` file name is the sub-dataset name for the CEval evaluation, which can be changed and will be used in the configuration below.
 
-#### Question-Answering: General-QA
+#### Question-Answer: General-QA
 
-General-QA is suitable for scenarios where users have question-answering tasks, and the evaluation metrics are `rouge` and `bleu`. It is recommended to **directly modify** the [General-QA scaffold directory](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_general_qa). This directory contains
+The General-QA format is suitable for question-answer scenarios, and the evaluation metrics are `rouge` and `bleu`. It is recommended to **directly modify** the [General-QA scaffold directory](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_general_qa). This directory contains one file:
+
+```text
+default.jsonl
+```
+
+This JSONL file should be in the following format:
+
+```jsonl
+{"history": [], "query": "What is the capital of China?", "response": "The capital of China is Beijing."}
+{"history": [], "query": "What is the highest mountain in the world?", "response": "It is Mount Everest."}
+{"history": [], "query": "Why can't you see penguins in the Arctic?", "response": "Because most penguins live in the Antarctic."}
+```
+
+Note that `history` is currently a reserved field and is not yet supported.
+
+### Defining a Configuration File for the Evaluation Command
+
+After preparing the files above, you need to write a JSON file to pass into the evaluation command. It is recommended to directly modify the [official configuration scaffold file](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/eval_example/custom_config.json). The content of this file is as follows:
+
+```json
+[
+    {
+        "name": "custom_general_qa", # Name of the evaluation item, can be freely specified
+        "pattern": "general_qa", # Pattern of this evaluation set
+        "dataset": "eval_example/custom_general_qa", # Directory of this evaluation set, it is strongly recommended to use an absolute path to prevent read failures
+        "subset_list": ["default"] # Sub-datasets to be evaluated, i.e., the `default_x` file name above
+    },
+    {
+        "name": "custom_ceval",
+        "pattern": "ceval",
+        "dataset": "eval_example/custom_ceval", # Directory of this evaluation set, it is strongly recommended to use an absolute path to prevent read failures
+        "subset_list": ["default"]
+    }
+]
+```
+
+You can then pass this configuration file for evaluation:
+
+```shell
+# Use arc evaluation, limit evaluation to 10 entries per sub-dataset, inference backend using pt
+# cd examples/pytorch/llm
+# eval_dataset can also be set, running both official and custom datasets together
+swift eval \
+    --model_type "qwen-7b-chat" \
+    --eval_dataset no \
+    --```shell
+    --infer_backend pt \
+    --custom_eval_config eval_example/custom_config.json
+```
+
+The results will be output as follows:
+
+```text
+2024-04-10 17:21:33,275 - llmuses - INFO - *** Report table ***
++------------------------------+----------------+---------------------------------+
+| Model                        | custom_ceval   | custom_general_qa               |
++==============================+================+=================================+
+| qa-custom_ceval_qwen-7b-chat | 1.0 (acc)      | 0.8888888888888888 (rouge-1-r)  |
+|                              |                | 0.33607503607503614 (rouge-1-p) |
+|                              |                | 0.40616618868713145 (rouge-1-f) |
+|                              |                | 0.39999999999999997 (rouge-2-r) |
+|                              |                | 0.27261904761904765 (rouge-2-p) |
+|                              |                | 0.30722525589718247 (rouge-2-f) |
+|                              |                | 0.8333333333333334 (rouge-l-r)  |
+|                              |                | 0.30742204655248134 (rouge-l-p) |
+|                              |                | 0.3586824745225346 (rouge-l-f)  |
+|                              |                | 0.3122529644268775 (bleu-1)     |
+|                              |                | 0.27156862745098037 (bleu-2)    |
+|                              |                | 0.25 (bleu-3)                   |
+|                              |                | 0.2222222222222222 (bleu-4)     |
++------------------------------+----------------+---------------------------------+
+Final report: {'report': [{'name': 'custom_general_qa', 'metric': 'WeightedAverageBLEU', 'score': {'rouge-1-r': 0.8888888888888888, 'rouge-1-p': 0.33607503607503614, 'rouge-1-f': 0.40616618868713145, 'rouge-2-r': 0.39999999999999997, 'rouge-2-p': 0.27261904761904765, 'rouge-2-f': 0.30722525589718247, 'rouge-l-r': 0.8333333333333334, 'rouge-l-p': 0.30742204655248134, 'rouge-l-f': 0.3586824745225346, 'bleu-1': 0.3122529644268775, 'bleu-2': 0.27156862745098037, 'bleu-3': 0.25, 'bleu-4': 0.2222222222222222}, 'category': [{'name': 'DEFAULT', 'score': {'rouge-1-r': 0.8888888888888888, 'rouge-1-p': 0.33607503607503614, 'rouge-1-f': 0.40616618868713145, 'rouge-2-r': 0.39999999999999997, 'rouge-2-p': 0.27261904761904765, 'rouge-2-f': 0.30722525589718247, 'rouge-l-r': 0.8333333333333334, 'rouge-l-p': 0.30742204655248134, 'rouge-l-f': 0.3586824745225346, 'bleu-1': 0.3122529644268775, 'bleu-2': 0.27156862745098037, 'bleu-3': 0.25, 'bleu-4': 0.2222222222222222}, 'subset': [{'name': 'default', 'score': {'rouge-1-r': 0.8888888888888888, 'rouge-1-p': 0.33607503607503614, 'rouge-1-f': 0.40616618868713145, 'rouge-2-r': 0.39999999999999997, 'rouge-2-p': 0.27261904761904765, 'rouge-2-f': 0.30722525589718247, 'rouge-l-r': 0.8333333333333334, 'rouge-l-p': 0.30742204655248134, 'rouge-l-f': 0.3586824745225346, 'bleu-1': 0
+```
