@@ -1,11 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import inspect
-from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
-import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import Sequence, Value
 from tqdm import tqdm
 
 from .media import MediaTag
@@ -264,7 +261,6 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         return dataset
 
 
-@_reduce_dataset
 class ListPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
