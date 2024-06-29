@@ -5,8 +5,9 @@ import tempfile
 import unittest
 
 import torch
+from modelscope import snapshot_download
 
-from swift import ResTuningConfig, Swift, SwiftModel, snapshot_download
+from swift import ResTuningConfig, Swift, SwiftModel
 
 
 class TestSwiftResTuning(unittest.TestCase):
