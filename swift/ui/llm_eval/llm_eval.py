@@ -10,8 +10,8 @@ import gradio as gr
 import json
 import torch
 from gradio import Accordion, Tab
+from modelscope import snapshot_download
 
-from swift import snapshot_download
 from swift.llm import EvalArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_eval.eval import Eval

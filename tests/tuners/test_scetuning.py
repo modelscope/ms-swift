@@ -5,8 +5,9 @@ import tempfile
 import unittest
 
 import torch
+from modelscope import snapshot_download
 
-from swift import SCETuningConfig, Swift, snapshot_download
+from swift import SCETuningConfig, Swift
 
 
 class TestSCETuning(unittest.TestCase):
