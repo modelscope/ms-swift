@@ -1,14 +1,79 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-from typing import Any, Callable, Dict, List, Literal, Optional, Union
+import inspect
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
 
+import numpy as np
 from datasets import Dataset as HfDataset
+from datasets import Sequence, Value
 from tqdm import tqdm
 
 from .media import MediaTag
 from .template import History
 
 PreprocessFunc = Callable[[HfDataset], HfDataset]
+
+
+def _reduce_dataset(cls: type) -> type:
+
+    call_func = cls.__call__
+    preprocess = cls.preprocess
+
+    def new_call_func(self, dataset: HfDataset) -> HfDataset:
+        features = dataset.features.copy()
+        if 'history' in dataset.features:
+            features['_history'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
+        if 'history_roles' in dataset.features:
+            features['_history_roles'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
+        if 'system' in dataset.features:
+            features['_system'] = Value(dtype='string')
+        self.column_state = set()
+        dataset = call_func(self, dataset)
+        for k in ['history', 'history_roles', 'system']:
+            if k in dataset.features:
+                dataset = dataset.remove_columns([k]).rename_column(f'_{k}', k)
+        for k in dataset.features.keys():
+            if k not in self.column_state:
+                dataset = dataset.remove_columns([k])
+        return dataset
+
+    def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row = preprocess(self, row)
+        for k, v in row.items():
+            if k == 'query_role':
+                if k not in self.column_state and v and v != 'user':
+                    self.column_state.add(k)
+            elif k == 'history_roles':
+                if k not in self.column_state and v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
+                    self.column_state.add(k)
+            else:
+                if v:
+                    self.column_state.add(k)
+        res = {}
+        if 'query' in row and isinstance(row['query'], (list, tuple)):
+            res['query'] = np.random.choice(row['query'])
+        if 'response' in row and isinstance(row['response'], (list, tuple)):
+            res['response'] = np.random.choice(row['response'])
+        if 'rejected_response' in row and isinstance(row['rejected_response'], (list, tuple)):
+            res['rejected_response'] = np.random.choice(row['rejected_response'])
+        if 'history' in row:
+            if not row['history']:
+                res['_history'] = None
+            else:
+                res['_history'] = row['history']
+        if 'history_roles' in row:
+            if not row['history_roles']:
+                res['_history_roles'] = None
+            else:
+                res['_history_roles'] = row['history_roles']
+        if 'system' in row:
+            res['_system'] = row['system']
+        return res
+
+    cls.__call__ = new_call_func
+    cls.preprocess = new_preprocess
+
+    return cls
 
 
 def parse_medias(d: Dict[str, Any], media_key=None):
@@ -90,6 +155,7 @@ class SwiftPreprocessor:
         return dataset
 
 
+@_reduce_dataset
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
@@ -124,8 +190,9 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
                 row[self.media_name] = medias
         return row
 
-    def __call__(self, dataset: HfDataset) -> HfDataset:
-        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('response'))
+    def __call__(self, dataset: HfDataset, features=None) -> HfDataset:
+        dataset = dataset.map(
+            self.preprocess, load_from_cache_file=False, features=None).filter(lambda row: row.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -137,6 +204,7 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
+@_reduce_dataset
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
@@ -217,13 +285,15 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             else:
                 return self.empty_row
 
-    def __call__(self, dataset: HfDataset) -> HfDataset:
-        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('response'))
+    def __call__(self, dataset: HfDataset, features=None) -> HfDataset:
+        dataset = dataset.map(
+            self.preprocess, load_from_cache_file=False, features=None).filter(lambda row: row.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
 
 
+@_reduce_dataset
 class ListPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
@@ -271,8 +341,9 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 return self.empty_row
         return row
 
-    def __call__(self, dataset: HfDataset):
-        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('response'))
+    def __call__(self, dataset: HfDataset, features=None):
+        dataset = dataset.map(
+            self.preprocess, load_from_cache_file=False, features=None).filter(lambda d: d.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
