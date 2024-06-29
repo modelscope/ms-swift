@@ -19,6 +19,9 @@ SWIFT's eval capability utilizes the [EvalScope evaluation framework](https://gi
 
 Check out the detail descriptions of these datasets: https://hub.opencompass.org.cn/home
 
+> At the first time of running eval, a resource dataset will be downloaded: https://www.modelscope.cn/datasets/swift/evalscope_resource/files
+> If downloading fails, you can manually download the dataset to your local disk, please pay attention to the log of the `eval` command.
+
 ## Environment Setup
 
 ```shell
