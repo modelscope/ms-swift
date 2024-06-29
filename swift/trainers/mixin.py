@@ -236,6 +236,7 @@ class SwiftMixin:
         use_swift = isinstance(model, SwiftModel)
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
+        self.is_encoder_decoder = kwargs.pop('is_encoder_decoder', False)
         # mro
         super().__init__(
             model=model,

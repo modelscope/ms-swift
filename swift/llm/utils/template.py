@@ -53,6 +53,7 @@ class TemplateType:
     internlm_xcomposer2 = 'internlm-xcomposer2'
     internvl = 'internvl'
     internvl_phi3 = 'internvl-phi3'
+    florence = 'florence'
     yi = 'yi'
     yi1_5 = 'yi1_5'
     yi_vl = 'yi-vl'
@@ -718,6 +719,9 @@ class Template:
             assert is_finished and not return_delta
         return response
 
+    def post_process_generate_response(self, response: str, example: dict) -> str:
+        return response
+
 
 def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
     if not exist_ok and template_type in TEMPLATE_MAPPING:
@@ -1288,6 +1292,122 @@ register_template(
 register_template(
     TemplateType.internvl_phi3,
     InternvlPhi3Template(),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+
+class FlorenceTemplate(Template):
+
+    def __init__(self):
+        super().__init__(['<s>'], ['{{QUERY}}</s><s>'], None, ['</s>'])
+        self.task_prompts_without_inputs = {
+            '<OCR>': 'What is the text in the image?',
+            '<OCR_WITH_REGION>': 'What is the text in the image, with regions?',
+            '<CAPTION>': 'What does the image describe?',
+            '<DETAILED_CAPTION>': 'Describe in detail what is shown in the image.',
+            '<MORE_DETAILED_CAPTION>': 'Describe with a paragraph what is shown in the image.',
+            '<OD>': 'Locate the objects with category name in the image.',
+            '<DENSE_REGION_CAPTION>': 'Locate the objects in the image, with their descriptions.',
+            '<REGION_PROPOSAL>': 'Locate the region proposals in the image.'
+        }
+
+        self.task_prompts_with_input = {
+            '<CAPTION_TO_PHRASE_GROUNDING>': 'Locate the phrases in the caption: {input}',
+            '<REFERRING_EXPRESSION_SEGMENTATION>': 'Locate {input} in the image with mask',
+            '<REGION_TO_SEGMENTATION>': 'What is the polygon mask of region {input}',
+            '<OPEN_VOCABULARY_DETECTION>': 'Locate {input} in the image.',
+            '<REGION_TO_CATEGORY>': 'What is the region {input}?',
+            '<REGION_TO_DESCRIPTION>': 'What does the region {input} describe?',
+            '<REGION_TO_OCR>': 'What text is in the region {input}?',
+        }
+
+    def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        width, height = example['_image'].width, example['_image'].height
+        x1, y1, x2, y2 = [
+            int(coord / dim * 999) for coord, dim in zip(example['objects'][index][1], [width, height, width, height])
+        ]
+        return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
+
+    def _construct_prompts(self, text):
+        # from processing_florence2.py
+        # replace the task tokens with the task prompts if task token is in the text
+        prompts = []
+        for _text in text:
+            # 1. fixed task prompts without additional inputs
+            for task_token, task_prompt in self.task_prompts_without_inputs.items():
+                if task_token in _text:
+                    assert _text == task_token, f'Task token {task_token} should be the only token in the text.'
+                    _text = task_prompt
+                    break
+            # 2. task prompts with additional inputs
+            for task_token, task_prompt in self.task_prompts_with_input.items():
+                if task_token in _text:
+                    _text = task_prompt.format(input=_text.replace(task_token, ''))
+                    break
+            prompts.append(_text)
+        return prompts
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        # read image
+        processor = self.tokenizer.processor
+        images_path = example.get('images') or []
+        assert len(images_path) == 1, 'Florence series models only supports input with a single image.'
+
+        images = _read_from_path(images_path[0])
+        example['_image'] = images
+
+        # process bbox
+        if example.get('objects') is not None:
+            if '<ref-object>' in example['query']:
+                example['objects'] = json.loads(example['objects'])
+                example['query'] = '<OPEN_VOCABULARY_DETECTION>'
+                example['response'] = ''
+                for idx in range(len(example['objects'])):
+                    if idx != 0:
+                        example['query'] += ','
+                    example['query'] += example['objects'][idx][0]
+                    example['response'] += example['objects'][idx][0] + self.replace_box(idx, example)[0]
+            elif '<bbox>' in example['query']:
+                example['objects'] = json.loads(example['objects'])
+                example['query'] = '<REGION_TO_DESCRIPTION>'
+                example['response'] = ''
+                for idx in range(len(example['objects'])):
+                    bbox = self.replace_box(idx, example)[0]
+                    example['query'] += bbox
+                    example['response'] += example['objects'][idx][0]
+        example['query'] = self._construct_prompts([example.get('query')])[0]
+
+        inputs = processor(text=example['query'], images=images, return_tensors='pt').to(self.model.device)
+
+        labels = None
+        if example.get('response') is not None:
+            labels = processor.tokenizer(
+                text=example['response'], return_tensors='pt', padding=True,
+                return_token_type_ids=False).input_ids.to(self.model.device)
+        if labels is not None:
+            inputs['labels'] = labels[0]
+
+        inputs['input_ids'] = inputs['input_ids'][0]
+        inputs['attention_mask'] = inputs['attention_mask'][0]
+        inputs['pixel_values'] = inputs['pixel_values'].to(self.model.dtype)
+        return inputs, {}
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+    def post_process_generate_response(self, response, example):
+        image = _read_from_path(example['images'][0])
+        return self.tokenizer.processor.post_process_generation(
+            response, task=example['query'], image_size=(image.width, image.height))
+
+
+register_template(
+    TemplateType.florence,
+    FlorenceTemplate(),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
