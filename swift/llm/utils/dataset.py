@@ -5,14 +5,14 @@ import os
 import re
 from copy import deepcopy
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import datasets.fingerprint
 import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import Sequence, Value, concatenate_datasets
+from datasets import concatenate_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
 from pandas import DataFrame
