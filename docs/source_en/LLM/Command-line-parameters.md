@@ -325,10 +325,10 @@ The eval parameters inherit from the infer parameters, and additionally include 
 
 - `--eval_dataset`: The official evaluation dataset, default is empty.
   ```text
-  Currently supported datasets include: 'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'commonsenseqa', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'flores', 'TheoremQA', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
+  Currently supported datasets include: 'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
   ```
 - `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset. **This parameter is currently deprecated.**
-- `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation. **This parameter is currently deprecated.**
+- `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation. You can pass integer(number of samples from each eval dataset) or str(`[10:20]`, slice).
 - `--name`: Used to differentiate the result storage path for evaluating the same configuration. Like: `{eval_output_dir}/{name}`, default will be `eval_outputs/defaults`, in which a timestamp named folder will hold each eval result.
 - `--eval_url`: The standard model invocation interface for OpenAI, for example, `http://127.0.0.1:8000/v1`. This needs to be set when evaluating in a deployed manner, usually not needed. Default is `None`.
   ```shell

@@ -199,8 +199,8 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
     from llmuses.run import run_task
     from swift.utils.torch_utils import _find_free_port
     logger.info(f'args: {args}')
-    if args.eval_few_shot or args.eval_limit:
-        logger.warn('OpenCompass does not support `eval_limit` and `eval_few_shot`')
+    if args.eval_few_shot:
+        logger.warn('OpenCompass does not support `eval_few_shot`')
     process = None
     if not args.eval_url:
         seed_everything(args.seed)
@@ -228,7 +228,10 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             url += '/completions'
         model_type = args.model_type
         is_chat = args.eval_is_chat_model
-    limit_config = {'limit': args.eval_limit} if args.eval_limit else {}
+    eval_limit = args.eval_limit
+    if eval_limit is not None and '[' not in eval_limit:
+        eval_limit = int(eval_limit)
+    limit_config = {'limit': eval_limit} if eval_limit else {}
     task_cfg = dict(
         eval_backend='OpenCompass',
         eval_config={
@@ -279,7 +282,7 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
         task_config.dataset_dir = DEFAULT_ROOT_CACHE_DIR
         task_config.use_cache = args.eval_use_cache
         if args.eval_limit is not None:
-            task_config.limit = args.eval_limit
+            task_config.limit = int(args.eval_limit)
         if args.eval_few_shot is not None:
             for dataset in task_config.datasets:
                 if not task_config.dataset_args.get(dataset):

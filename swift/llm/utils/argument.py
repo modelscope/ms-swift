@@ -1308,7 +1308,7 @@ class EvalArguments(InferArguments):
 
     eval_dataset: List[str] = field(default_factory=list)
     eval_few_shot: Optional[int] = None
-    eval_limit: Optional[int] = None
+    eval_limit: Optional[str] = None
 
     name: str = ''
     eval_url: Optional[str] = None
