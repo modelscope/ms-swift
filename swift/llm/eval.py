@@ -315,8 +315,6 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
 
 
 def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
-    if not args.eval_dataset and not args.custom_eval_config:
-        raise ValueError('Please specify either --eval_dataset or --custom_eval_config')
     args.eval_output_dir = os.path.join(args.eval_output_dir, args.name or 'default')
     if args.custom_eval_config:
         args.eval_backend = EvalBackend.NATIVE.value
