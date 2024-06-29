@@ -20,18 +20,8 @@ def _reduce_dataset(cls: type) -> type:
     preprocess = cls.preprocess
 
     def new_call_func(self, dataset: HfDataset) -> HfDataset:
-        features = dataset.features.copy()
-        if 'history' in dataset.features:
-            features['_history'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
-        if 'history_roles' in dataset.features:
-            features['_history_roles'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
-        if 'system' in dataset.features:
-            features['_system'] = Value(dtype='string')
         self.column_state = set()
         dataset = call_func(self, dataset)
-        for k in ['history', 'history_roles', 'system']:
-            if k in dataset.features:
-                dataset = dataset.remove_columns([k]).rename_column(f'_{k}', k)
         for k in dataset.features.keys():
             if k not in self.column_state:
                 dataset = dataset.remove_columns([k])
@@ -49,26 +39,7 @@ def _reduce_dataset(cls: type) -> type:
             else:
                 if v:
                     self.column_state.add(k)
-        res = {}
-        if 'query' in row and isinstance(row['query'], (list, tuple)):
-            res['query'] = np.random.choice(row['query'])
-        if 'response' in row and isinstance(row['response'], (list, tuple)):
-            res['response'] = np.random.choice(row['response'])
-        if 'rejected_response' in row and isinstance(row['rejected_response'], (list, tuple)):
-            res['rejected_response'] = np.random.choice(row['rejected_response'])
-        if 'history' in row:
-            if not row['history']:
-                res['_history'] = None
-            else:
-                res['_history'] = row['history']
-        if 'history_roles' in row:
-            if not row['history_roles']:
-                res['_history_roles'] = None
-            else:
-                res['_history_roles'] = row['history_roles']
-        if 'system' in row:
-            res['_system'] = row['system']
-        return res
+        return row
 
     cls.__call__ = new_call_func
     cls.preprocess = new_preprocess
@@ -190,9 +161,8 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
                 row[self.media_name] = medias
         return row
 
-    def __call__(self, dataset: HfDataset, features=None) -> HfDataset:
-        dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False, features=features).filter(lambda row: row.get('response'))
+    def __call__(self, dataset: HfDataset) -> HfDataset:
+        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -285,9 +255,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             else:
                 return self.empty_row
 
-    def __call__(self, dataset: HfDataset, features=None) -> HfDataset:
-        dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False, features=features).filter(lambda row: row.get('response'))
+    def __call__(self, dataset: HfDataset) -> HfDataset:
+        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -341,9 +310,8 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 return self.empty_row
         return row
 
-    def __call__(self, dataset: HfDataset, features=None):
-        dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False, features=features).filter(lambda d: d.get('response'))
+    def __call__(self, dataset: HfDataset):
+        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
