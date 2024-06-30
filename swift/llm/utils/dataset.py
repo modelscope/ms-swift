@@ -12,7 +12,7 @@ import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import Sequence, Value, concatenate_datasets
+from datasets import concatenate_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
 from pandas import DataFrame
@@ -2383,55 +2383,11 @@ def get_dataset(
             assert model_name is not None and model_author is not None
             dataset = _preprocess_self_cognition_dataset(dataset, model_name, model_author)
 
-        def _reduce_column(row: Dict[str, Any]) -> Dict[str, Any]:
-            res = {}
-            if 'query' in row and isinstance(row['query'], (list, tuple)):
-                res['query'] = np.random.choice(row['query'])
-            if 'response' in row and isinstance(row['response'], (list, tuple)):
-                res['response'] = np.random.choice(row['response'])
-            if 'rejected_response' in row and isinstance(row['rejected_response'], (list, tuple)):
-                res['rejected_response'] = np.random.choice(row['rejected_response'])
-            if 'history' in row:
-                if not row['history']:
-                    res['_history'] = None
-                else:
-                    res['_history'] = row['history']
-            if 'history_roles' in row:
-                if not row['history_roles']:
-                    res['_history_roles'] = None
-                else:
-                    res['_history_roles'] = row['history_roles']
-            if 'system' in row:
-                res['_system'] = row['system']
-            return res
-
-        def _reduce_dataset(ds: HfDataset):
-            features = ds.features.copy()
-            if 'history' in ds.features:
-                features['_history'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
-            if 'history_roles' in ds.features:
-                features['_history_roles'] = Sequence(feature=Sequence(feature=Value(dtype='string')))
-            if 'system' in ds.features:
-                features['_system'] = Value(dtype='string')
-            ds = ds.map(_reduce_column, load_from_cache_file=False, features=features)
-            if 'history' in ds.features:
-                ds = ds.remove_columns(['history']).rename_column('_history', 'history')
-            if 'history_roles' in ds.features:
-                ds = ds.remove_columns(['history_roles']).rename_column('_history_roles', 'history_roles')
-            if 'system' in ds.features:
-                ds = ds.remove_columns(['system']).rename_column('_system', 'system')
-            return ds
-
         train_d: HfDataset
         if isinstance(dataset, (list, tuple)):
             train_d, val_d = dataset
         else:
             train_d, val_d = dataset, None
-
-        if train_d:
-            train_d = _reduce_dataset(train_d)
-        if val_d:
-            val_d = _reduce_dataset(val_d)
 
         assert train_d is not None or val_d is not None
         if train_d is not None:

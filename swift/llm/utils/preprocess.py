@@ -11,6 +11,42 @@ from .template import History
 PreprocessFunc = Callable[[HfDataset], HfDataset]
 
 
+def _reduce_dataset(cls: type) -> type:
+    if getattr(cls, '_patching', False):
+        return cls
+
+    call_func = cls.__call__
+    preprocess = cls.preprocess
+    cls._patching = True
+
+    def new_call_func(self, dataset: HfDataset) -> HfDataset:
+        self.column_state = set()
+        dataset = call_func(self, dataset)
+        for k in dataset.features.keys():
+            if k not in self.column_state:
+                dataset = dataset.remove_columns([k])
+        return dataset
+
+    def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row = preprocess(self, row)
+        for k, v in row.items():
+            if k == 'query_role':
+                if k not in self.column_state and v and v != 'user':
+                    self.column_state.add(k)
+            elif k == 'history_roles':
+                if k not in self.column_state and v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
+                    self.column_state.add(k)
+            else:
+                if v:
+                    self.column_state.add(k)
+        return row
+
+    cls.__call__ = new_call_func
+    cls.preprocess = new_preprocess
+
+    return cls
+
+
 def parse_medias(d: Dict[str, Any], media_key=None):
     if isinstance(media_key, str):
         if media_key in d:
@@ -90,6 +126,7 @@ class SwiftPreprocessor:
         return dataset
 
 
+@_reduce_dataset
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
@@ -138,6 +175,7 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
+@_reduce_dataset
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
