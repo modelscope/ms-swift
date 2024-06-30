@@ -11,7 +11,8 @@ from .template import History
 PreprocessFunc = Callable[[HfDataset], HfDataset]
 
 
-def _reduce_dataset(cls: type) -> type:
+def _reduce_columns(cls: type) -> type:
+    # Remove unnecessary columns from the output dataset.
     if getattr(cls, '_patching', False):
         return cls
 
@@ -126,7 +127,7 @@ class SwiftPreprocessor:
         return dataset
 
 
-@_reduce_dataset
+@_reduce_columns
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
@@ -175,7 +176,7 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
-@_reduce_dataset
+@_reduce_columns
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
