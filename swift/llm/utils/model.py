@@ -396,6 +396,8 @@ class ModelType:
     phi2_3b = 'phi2-3b'
     phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
     phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
+    phi3_small_8k_instruct = 'phi3-small-8k-instruct'
+    phi3_medium_4k_instruct = 'phi3-medium-4k-instruct'
     phi3_small_128k_instruct = 'phi3-small-128k-instruct'
     phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
 
@@ -1668,6 +1670,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
 @register_model(
+    ModelType.phi3_medium_4k_instruct,
+    'LLM-Research/Phi-3-medium-4k-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-medium-4k-instruct')
+@register_model(
     ModelType.phi3_medium_128k_instruct,
     'LLM-Research/Phi-3-medium-128k-instruct',
     LoRATM.phi3,
@@ -2599,6 +2611,17 @@ def get_model_tokenizer_florence(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.phi3_small_8k_instruct,
+    'LLM-Research/Phi-3-small-8k-instruct',
+    LoRATM.phi3_small,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_gradient_checkpointing=False,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3-small-8k-instruct')
 @register_model(
     ModelType.phi3_small_128k_instruct,
     'LLM-Research/Phi-3-small-128k-instruct',
