@@ -1383,8 +1383,8 @@ def process_ultrafeedback_kto(dataset: HfDataset):
 
     def reorganize_row(row):
         return {
-            'prompt': row['prompt'],
-            'completion': row['completion'],
+            'query': row['prompt'],
+            'response': row['completion'],
             'label': row['label'],
         }
 

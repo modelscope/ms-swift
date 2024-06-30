@@ -12,6 +12,7 @@ import json
 import numpy as np
 import torch
 import transformers
+import trl
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
 from packaging import version
@@ -1450,6 +1451,8 @@ class RLHFArguments(SftArguments):
             'cpo': 'trl.trainer.cpo_config.CPOConfig',
             'dpo': 'trl.trainer.dpo_config.DPOConfig'
         }
+        if version.parse(trl.__version__) <= version.parse('0.9.4'):
+            CONFIG_MAPPING['simpo'] = 'trl.trainer.dpo_config.DPOConfig'
 
         if self.rlhf_type in CONFIG_MAPPING:
             config_path = CONFIG_MAPPING[self.rlhf_type]

@@ -450,7 +450,7 @@ class Template:
     def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                      **kwargs) -> Tuple[List[Context], List[float]]:
         # replace tag/object/box
-        example = kwargs['example']  # get x_index
+        example = kwargs.get('example')  # get x_index
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
