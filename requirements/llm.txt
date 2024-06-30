@@ -3,6 +3,7 @@ charset_normalizer
 cpm_kernels
 fastapi
 gradio>=3.40.0
+openai
 sentencepiece
 tiktoken
 uvicorn

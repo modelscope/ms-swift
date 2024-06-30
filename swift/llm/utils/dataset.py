@@ -12,7 +12,7 @@ import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import Sequence, Value, concatenate_datasets
+from datasets import concatenate_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
 from pandas import DataFrame

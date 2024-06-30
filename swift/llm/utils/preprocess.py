@@ -1,11 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import inspect
-from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
-import numpy as np
 from datasets import Dataset as HfDataset
-from datasets import Sequence, Value
 from tqdm import tqdm
 
 from .media import MediaTag
@@ -14,10 +11,14 @@ from .template import History
 PreprocessFunc = Callable[[HfDataset], HfDataset]
 
 
-def _reduce_dataset(cls: type) -> type:
+def _reduce_columns(cls: type) -> type:
+    # Remove unnecessary columns from the output dataset.
+    if getattr(cls, '_patching', False):
+        return cls
 
     call_func = cls.__call__
     preprocess = cls.preprocess
+    cls._patching = True
 
     def new_call_func(self, dataset: HfDataset) -> HfDataset:
         self.column_state = set()
@@ -126,7 +127,7 @@ class SwiftPreprocessor:
         return dataset
 
 
-@_reduce_dataset
+@_reduce_columns
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
@@ -175,7 +176,7 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
-@_reduce_dataset
+@_reduce_columns
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
@@ -264,7 +265,6 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
         return dataset
 
 
-@_reduce_dataset
 class ListPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
