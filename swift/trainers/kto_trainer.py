@@ -32,7 +32,7 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
     A dictionary with encoded prompt, completion, and label.
     """
 
-    query: Optional[str] = batch.get('prompt', None)
+    query: Optional[str] = batch.get('query', None)
     history: Optional[History] = batch.get('history', None)
     system: Optional[str] = batch.get('system', None)
     if history is None:
@@ -65,7 +65,7 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
     res_context_list, compute_loss_idx = template._simplify_context_list(res_context_list, compute_loss_idx)
     prompt = ''.join(res_context_list)
 
-    return {'prompt': prompt, 'completion': batch['completion'], 'label': batch['label']}
+    return {'prompt': prompt, 'completion': batch['response'], 'label': batch['label']}
 
 
 class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
