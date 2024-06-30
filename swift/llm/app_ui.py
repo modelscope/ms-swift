@@ -76,10 +76,11 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
         gr.Markdown(f'<center><font size=8>{model_name} Bot</center>')
 
         chatbot = gr.Chatbot(label=f'{model_name}')
-        message = gr.Textbox(lines=2, label='Input')
+        message = gr.Textbox(lines=1, label='Input')
         with gr.Row():
             clear_history = gr.Button('🧹 清除历史对话')
             send = gr.Button('🚀 发送')
+        message.submit(model_chat, inputs=[message, chatbot], outputs=[message, chatbot])
         send.click(model_chat, inputs=[message, chatbot], outputs=[message, chatbot])
         clear_history.click(fn=clear_session, inputs=[], outputs=[chatbot], queue=False)
     # Compatible with InferArguments
