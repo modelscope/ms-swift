@@ -453,8 +453,6 @@ class Template:
                      **kwargs) -> Tuple[List[Context], List[float]]:
         # replace tag/object/box
         example = kwargs.get('example')  # get x_index
-        if example is None:
-            return context_list, loss_scale_list
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
