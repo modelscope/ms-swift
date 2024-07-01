@@ -190,6 +190,7 @@ class ModelType:
     atom_7b_chat = 'atom-7b-chat'
     # llava
     llava1_5_7b_chat = 'llava1_5-7b-chat'
+    llava1_5_13b_chat = 'llava1_5-13b-chat'
     llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
     llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
@@ -4897,6 +4898,23 @@ def _patch_llava(model):
     model.generate = _new_generate
 
 
+@register_model(
+    ModelType.llava1_5_13b_chat,
+    'huangjintao/llava-1.5-13b-hf',
+    LoRATM.llama,
+    TemplateType.llava1_5,
+    eos_token='</s>',
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 576,
+    },
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-1.5-13b-hf')
 @register_model(
     ModelType.llava1_5_7b_chat,
     'huangjintao/llava-1.5-7b-hf',
