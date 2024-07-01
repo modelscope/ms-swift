@@ -5017,6 +5017,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     kwargs['automodel_class'] = LlavaNextForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
+
 @register_model(
     ModelType.llava1_6_yi_34b_chat,
     'huangjintao/llava-v1.6-34b-hf',
@@ -5034,11 +5035,12 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-34b-hf')
-def get_model_tokenizer_llava_next(*args, **kwargs):
+def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_llava_next(*args, **kwargs)
     if model is not None:
         model.config.image_token_index = 64003
     return model, tokenizer
+
 
 @register_model(
     ModelType.llama3_llava_next_8b,
