@@ -1588,10 +1588,11 @@ register_template(
 
 
 class LLavaYiTemplate(LlavaHfTemplate):
-    llavayi_query_template = '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'
 
     def __init__(self):
-        Template.__init__(self, [], [self.llavayi_query_template], None, ['<|im_end|>'])
+        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'],
+                         system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
 
 register_template(
@@ -2092,7 +2093,7 @@ class mPlugOwl2Template(Template):
         images_path = example.get('images') or []
         images = _read_batch(images_path)
         for i, image in enumerate(images):
-            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary
+            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1
             max_edge = max(image.size)
             image = image.resize((max_edge, max_edge))
             images[i] = image

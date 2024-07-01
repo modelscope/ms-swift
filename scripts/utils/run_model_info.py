@@ -50,7 +50,7 @@ def get_model_info_table():
     text = ['', '']  # llm, mllm
     for i, res in enumerate([res_llm, res_mllm]):
         for r in res:
-            ms_url = f'https://modelscope.cn/models/{r[1]}/summary'
+            ms_url = f'https://modelscope.cn/models/{r[1]}'
             if r[8] != '-':
                 hf_url = f'https://huggingface.co/{r[8]}'
                 hf_model_id_str = f'[{r[8]}]({hf_url})'

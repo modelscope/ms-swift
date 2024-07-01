@@ -56,6 +56,12 @@ class ArgumentsBase:
             value = res
         return value
 
+    @staticmethod
+    def _is_multimodal(model_type: str) -> bool:
+        model_info = MODEL_MAPPING[model_type]
+        tags = model_info.get('tags') or []
+        return 'multi-modal' in tags
+
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = ['ckpt_dir', 'resume_from_checkpoint', 'custom_register_path']
         maybe_check_exist_path = ['model_id_or_path', 'custom_dataset_info']
@@ -777,6 +783,7 @@ class SftArguments(ArgumentsBase):
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
+        self.is_multimodal = self._is_multimodal(self.model_type)
 
         self.lora_use_embedding = False
         self.lora_use_all = False
@@ -1159,6 +1166,7 @@ class InferArguments(ArgumentsBase):
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
+        self.is_multimodal = self._is_multimodal(self.model_type)
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
@@ -1203,7 +1211,7 @@ class InferArguments(ArgumentsBase):
         self.lora_request_list = None
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
-            if is_vllm_available() and support_vllm:
+            if is_vllm_available() and support_vllm and not self.is_multimodal:
                 if ((self.sft_type == 'full' or self.sft_type == 'lora' and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
@@ -1300,9 +1308,6 @@ class DeployArguments(InferArguments):
 
     def __post_init__(self):
         super().__post_init__()
-        model_info = MODEL_MAPPING[self.model_type]
-        tags = model_info.get('tags') or []
-        self.is_multimodal = 'multi-modal' in tags
 
 
 @dataclass

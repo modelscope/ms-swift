@@ -32,7 +32,7 @@ from .utils import get_max_model_len, is_unsloth_available
 
 logger = get_logger()
 
-# Model Home: 'https://modelscope.cn/models/{model_id_or_path}/summary'
+# Model Home: 'https://modelscope.cn/models/{model_id_or_path}'
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
@@ -929,9 +929,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-        if is_training:
-            model.train()
-            model.requires_grad_(True)
+        # if is_training:
+        #     model.train()
+        #     model.requires_grad_(True)
         model.is_gptq = is_gptq
         model.is_awq = is_awq
         model.is_aqlm = is_aqlm
@@ -4962,23 +4962,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 
 @register_model(
-    ModelType.llava1_6_yi_34b_chat,
-    'huangjintao/llava-v1.6-34b-hf',
-    LoRATM.llama,
-    TemplateType.llava_yi,
-    support_vllm=True,
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 64000,
-        'image_input_shape': '1,3,672,672',
-        'image_feature_size': 2928,
-    },
-    support_flash_attn=True,
-    eos_token='<|im_end|>',
-    requires=['transformers>=4.36'],
-    tags=['multi-modal', 'vision'],
-    hf_model_id='llava-hf/llava-v1.6-34b-hf')
-@register_model(
     ModelType.llava1_6_vicuna_7b_chat,
     'huangjintao/llava-v1.6-vicuna-7b-hf',
     LoRATM.llama,
@@ -5034,6 +5017,28 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     kwargs['automodel_class'] = LlavaNextForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
+@register_model(
+    ModelType.llava1_6_yi_34b_chat,
+    'huangjintao/llava-v1.6-34b-hf',
+    LoRATM.llama,
+    TemplateType.llava_yi,
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 64003,
+        'image_input_shape': '1,3,672,672',
+        'image_feature_size': 2928,
+    },
+    support_flash_attn=True,
+    eos_token='<|im_end|>',
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-34b-hf')
+def get_model_tokenizer_llava_next(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_llava_next(*args, **kwargs)
+    if model is not None:
+        model.config.image_token_index = 64003
+    return model, tokenizer
 
 @register_model(
     ModelType.llama3_llava_next_8b,
