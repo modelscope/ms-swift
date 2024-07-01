@@ -138,7 +138,7 @@ def get_vllm_engine(
         llm_engine.generation_config = VllmGenerationConfig(**kwargs)
     else:
         llm_engine.generation_config = VllmGenerationConfig()
-    llm_engine.dtype = torch_dtype
+    llm_engine.dtype = llm_engine.model_config.dtype  # compat with pt
     llm_engine.vllm_config = vllm_config
     return llm_engine
 
@@ -210,6 +210,27 @@ class VllmGenerationConfig(SamplingParams):
             super().__setattr__(key, value)
 
 
+def _patch_vllm_multimodal(image_sizes: torch.Tensor) -> None:
+    from vllm.multimodal import MultiModalPlugin
+
+    if hasattr(MultiModalPlugin, '_old_map_input'):
+        map_input = MultiModalPlugin._old_map_input
+    else:
+        map_input = MultiModalPlugin.map_input
+        if map_input is None:
+            map_input = MultiModalPlugin.process_input
+
+    def new_map_input(*args, **kwargs):
+        res = map_input(*args, **kwargs)
+        if 'image_sizes' in res:
+            res['image_sizes'] = image_sizes
+        return res
+
+    MultiModalPlugin.map_input = new_map_input
+    MultiModalPlugin.process_input = new_map_input
+    MultiModalPlugin._old_map_input = map_input
+
+
 def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_id: str,
                       generation_config: VllmGenerationConfig, **kwargs) -> None:
     input_ids = inputs['input_ids']
@@ -218,6 +239,8 @@ def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_
         if 'pixel_values' in inputs:
             from vllm.multimodal.image import ImagePixelData
             request_inputs['multi_modal_data'] = ImagePixelData(inputs['pixel_values'])
+        if 'image_sizes' in inputs:
+            _patch_vllm_multimodal(inputs['image_sizes'])
         llm_engine.add_request(request_id, request_inputs, generation_config, **kwargs)
     else:
         llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)

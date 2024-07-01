@@ -42,7 +42,8 @@ class TemplateType:
     llama = 'llama'  # llama2
     llama3 = 'llama3'
     llava1_5 = 'llava1_5'
-    llava_mistral_instruct = 'llava-mistral-instruct'
+    llava_mistral = 'llava-mistral'
+    llava_vicuna = 'llava-vicuna'
     llava_yi_instruct = 'llava-yi-instruct'
     llava_llama_instruct = 'llava-llama-instruct'
     llava_qwen_instruct = 'llava-qwen-instruct'
@@ -642,8 +643,12 @@ class Template:
             res['input_ids'] = input_ids
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
+        image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
+
         if len(pixel_values) > 0:
             res['pixel_values'] = torch.concat(pixel_values)
+        if len(image_sizes) > 0:
+            res['image_sizes'] = torch.concat(image_sizes)
 
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
@@ -1454,10 +1459,7 @@ def vllm_context(self: Template):
     self._is_vllm = False
 
 
-class Llava1_5Template(Template):
-
-    def __init__(self):
-        super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['\n'], ['</s>'])
+class LlavaHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1467,6 +1469,28 @@ class Llava1_5Template(Template):
         else:
             return ['<image>\n']
 
+    def _prepare_vllm_images(self, images: List['PIL.Image.Image']) -> List['PIL.Image.Image']:
+
+        from PIL import Image
+        target_h, target_w = [int(x) for x in self.model.vllm_config['image_input_shape'].split(',')[-2:]]
+        new_images = []
+        for image in images:
+            # resize
+            ori_w, ori_h = image.size
+            scale = min(target_h / ori_h, target_w / ori_w)
+            if scale != 1:
+                image = image.resize((int(round(scale * ori_w)), int(round(scale * ori_h))), resample=Image.BICUBIC)
+            # pad
+            w, h = image.size
+            if w != h:
+                bg_color = tuple(int(v * 255) for v in self.tokenizer.processor.image_processor.image_mean)
+                new_image = Image.new(image.mode, (target_w, target_h), bg_color)
+                new_image.paste(image, ((target_w - w) // 2, (target_h - h) // 2))
+                image = new_image
+            new_images.append(image)
+
+        return new_images
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
@@ -1474,9 +1498,20 @@ class Llava1_5Template(Template):
         images_path = example.get('images') or []
         images = _read_batch(images_path)
         image_processor = self.tokenizer.processor.image_processor
+        if self._is_vllm:
+            images = self._prepare_vllm_images(images)
         if images:
-            inputs['pixel_values'] = image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+            inputs['pixel_values'] = image_inputs['pixel_values']
+            if 'image_sizes' in image_inputs:
+                inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
+
+
+class Llava1_5Template(LlavaHfTemplate):
+
+    def __init__(self):
+        super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
 
 
 register_template(
@@ -1531,8 +1566,33 @@ class LLavaTemplate(Template):
         return generate_ids[0].tolist()
 
 
+class Llava1_6MistralTemplate(LlavaHfTemplate):
+
+    def __init__(self):
+        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+                         system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
+
+class Llava1_6VicunaTemplate(LlavaHfTemplate):
+    system = ('A chat between a curious human and an artificial intelligence assistant. '
+             "The assistant gives helpful, detailed, and polite answers to the human's questions.")
+    def __init__(self):
+        super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'], self.system,
+                         system_prefix=['<s>{{SYSTEM}} '])
+
+
 register_template(
-    TemplateType.llava_mistral_instruct, LLavaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+    TemplateType.llava_mistral,
+    Llava1_6MistralTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
+
+register_template(
+    TemplateType.llava_vicuna,
+    Llava1_6VicunaTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    lazy_tokenize=True)
 
 
 class LLavaYiTemplate(LLavaTemplate):
@@ -1663,12 +1723,6 @@ class Phi3VisionTemplate(Template):
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         return inputs, {}
-
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        if 'pixel_values' in res:
-            res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch if 'image_sizes' in b])
-        return res
 
 
 register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)

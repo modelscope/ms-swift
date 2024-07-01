@@ -191,8 +191,10 @@ class ModelType:
     # llava
     llava1_5_7b_chat = 'llava1_5-7b-chat'
     llava1_5_13b_chat = 'llava1_5-13b-chat'
-    llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
-    llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
+    llava1_6_mistral_7b_chat= 'llava1_6-mistral-7b-chat'
+    llava1_6_vicuna_7b_chat = 'llava1_6-vicuna-7b-chat'
+    llava1_6_vicuna_13b_chat = 'llava1_6-vicuna-13b-chat'
+    llava1_6_yi_34b_chat = 'llava1_6-yi-34b-chat'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
@@ -4898,6 +4900,14 @@ def _patch_llava(model):
     model.generate = _new_generate
 
 
+def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
+
+
 @register_model(
     ModelType.llava1_5_13b_chat,
     'huangjintao/llava-1.5-13b-hf',
@@ -4922,6 +4932,8 @@ def _patch_llava(model):
     TemplateType.llava1_5,
     eos_token='</s>',
     support_vllm=True,
+    # https://github.com/vllm-project/vllm/blob/main/examples/llava_example.py
+    # https://github.com/vllm-project/vllm/blob/main/tests/models/test_llava_next.py
     vllm_config={
         'image_input_type': 'pixel_values',
         'image_token_id': 32000,
@@ -4932,17 +4944,71 @@ def _patch_llava(model):
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-7b-hf')
-def get_model_tokenizer_llava1_5(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor, LlavaForConditionalGeneration
-    processor = AutoProcessor.from_pretrained(model_dir)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, *args, automodel_class=LlavaForConditionalGeneration, **kwargs)
-    tokenizer.processor = processor
-    return model, tokenizer
+def get_model_tokenizer_llava_1_5(*args, **kwargs):
+    from transformers import LlavaForConditionalGeneration
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
 @register_model(
-    ModelType.llava1_6_yi_34b_instruct,
+    ModelType.llava1_6_vicuna_7b_chat,
+    'huangjintao/llava-v1.6-vicuna-7b-hf',
+    LoRATM.llama,
+    TemplateType.llava_vicuna,
+    support_vllm=True,
+    # https://github.com/vllm-project/vllm/blob/main/examples/llava_next_example.py
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,672,672',
+        'image_feature_size': 2928,
+    },
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
+@register_model(
+    ModelType.llava1_6_vicuna_13b_chat,
+    'huangjintao/llava-v1.6-vicuna-13b-hf',
+    LoRATM.llama,
+    TemplateType.llava_vicuna,
+    support_vllm=True,
+    # https://github.com/vllm-project/vllm/blob/main/examples/llava_next_example.py
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,672,672',
+        'image_feature_size': 2928,
+    },
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
+@register_model(
+    ModelType.llava1_6_mistral_7b_chat,
+    'huangjintao/llava-v1.6-mistral-7b-hf',
+    LoRATM.llama,
+    TemplateType.llava_mistral,
+    support_vllm=True,
+    # https://github.com/vllm-project/vllm/blob/main/examples/llava_next_example.py
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,672,672',
+        'image_feature_size': 2928,
+    },
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
+def get_model_tokenizer_llava_next(*args, **kwargs):
+    from transformers import LlavaNextForConditionalGeneration
+    kwargs['automodel_class'] = LlavaNextForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
+
+
+@register_model(
+    ModelType.llava1_6_yi_34b_chat,
     'AI-ModelScope/llava-v1.6-34b',
     LoRATM.llama,
     TemplateType.llava_yi_instruct,
@@ -4951,16 +5017,6 @@ def get_model_tokenizer_llava1_5(model_dir: str, *args, **kwargs):
     function_kwargs={'llm_model_type': 'llama'},
     tags=['multi-modal', 'vision'],
     hf_model_id='liuhaotian/llava-v1.6-34b')
-@register_model(
-    ModelType.llava1_6_mistral_7b_instruct,
-    'AI-ModelScope/llava-v1.6-mistral-7b',
-    LoRATM.llama,
-    TemplateType.llava_mistral_instruct,
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    function_kwargs={'llm_model_type': 'mistral'},
-    tags=['multi-modal', 'vision'],
-    hf_model_id='liuhaotian/llava-v1.6-mistral-7b')
 @register_model(
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
