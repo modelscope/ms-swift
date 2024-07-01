@@ -84,8 +84,8 @@ class MediaMixin:
     @property
     def empty_row(self):
         empty_row = {
-            'query': '',
-            'response': '',
+            'query': None,
+            'response': None,
             'tools': None,
             'system': None,
             'history': None,
@@ -251,7 +251,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 if not isinstance(self.media_key, str):
                     row[self.media_name] = medias
             return row
-        except (AssertionError, SyntaxError):
+        except (AssertionError, SyntaxError) as e:
+            print(e)
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
