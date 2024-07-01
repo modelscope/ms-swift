@@ -44,7 +44,7 @@ class TemplateType:
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava-mistral'
     llava_vicuna = 'llava-vicuna'
-    llava_yi_instruct = 'llava-yi-instruct'
+    llava_yi = 'llava-yi'
     llava_llama_instruct = 'llava-llama-instruct'
     llava_qwen_instruct = 'llava-qwen-instruct'
     llama_llava_next = 'llama-llava-next'
@@ -980,10 +980,7 @@ class GLM4VTemplate(GLMTemplate):
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                image_size: int = self.model.config.vision_config['image_size']
-                patch_size: int = self.model.config.vision_config['patch_size']
-                num_patches = (image_size // patch_size // 2)**2
-                labels = (labels[:idx] + [-100] * (len(placeholder_id) + num_patches - 1) + labels[idx + 1:])
+                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             messages = history_to_messages(example.get('history') or [], example['query'], example.get('system'))
             messages[0]['image'] = image
             inputs2: Dict[str, Any] = self.tokenizer.apply_chat_template(messages, return_dict=True)
@@ -1572,30 +1569,25 @@ class Llava1_6MistralTemplate(LlavaHfTemplate):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
+
 class Llava1_6VicunaTemplate(LlavaHfTemplate):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
-             "The assistant gives helpful, detailed, and polite answers to the human's questions.")
+              "The assistant gives helpful, detailed, and polite answers to the human's questions.")
+
     def __init__(self):
-        super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'], self.system,
+        super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
+                         self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
 
 
 register_template(
-    TemplateType.llava_mistral,
-    Llava1_6MistralTemplate(),
-    use_model=True,
-    infer_media_type='round',
-    lazy_tokenize=True)
+    TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 register_template(
-    TemplateType.llava_vicuna,
-    Llava1_6VicunaTemplate(),
-    use_model=True,
-    infer_media_type='round',
-    lazy_tokenize=True)
+    TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
-class LLavaYiTemplate(LLavaTemplate):
+class LLavaYiTemplate(LlavaHfTemplate):
     llavayi_query_template = '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'
 
     def __init__(self):
@@ -1603,7 +1595,7 @@ class LLavaYiTemplate(LLavaTemplate):
 
 
 register_template(
-    TemplateType.llava_yi_instruct, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+    TemplateType.llava_yi, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Template):

@@ -191,7 +191,7 @@ class ModelType:
     # llava
     llava1_5_7b_chat = 'llava1_5-7b-chat'
     llava1_5_13b_chat = 'llava1_5-13b-chat'
-    llava1_6_mistral_7b_chat= 'llava1_6-mistral-7b-chat'
+    llava1_6_mistral_7b_chat = 'llava1_6-mistral-7b-chat'
     llava1_6_vicuna_7b_chat = 'llava1_6-vicuna-7b-chat'
     llava1_6_vicuna_13b_chat = 'llava1_6-vicuna-13b-chat'
     llava1_6_yi_34b_chat = 'llava1_6-yi-34b-chat'
@@ -4962,6 +4962,23 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 
 @register_model(
+    ModelType.llava1_6_yi_34b_chat,
+    'huangjintao/llava-v1.6-34b-hf',
+    LoRATM.llama,
+    TemplateType.llava_yi,
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 64000,
+        'image_input_shape': '1,3,672,672',
+        'image_feature_size': 2928,
+    },
+    support_flash_attn=True,
+    eos_token='<|im_end|>',
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-34b-hf')
+@register_model(
     ModelType.llava1_6_vicuna_7b_chat,
     'huangjintao/llava-v1.6-vicuna-7b-hf',
     LoRATM.llama,
@@ -5018,16 +5035,6 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
-@register_model(
-    ModelType.llava1_6_yi_34b_chat,
-    'AI-ModelScope/llava-v1.6-34b',
-    LoRATM.llama,
-    TemplateType.llava_yi_instruct,
-    eos_token='<|im_end|>',
-    support_flash_attn=True,
-    function_kwargs={'llm_model_type': 'llama'},
-    tags=['multi-modal', 'vision'],
-    hf_model_id='liuhaotian/llava-v1.6-34b')
 @register_model(
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
