@@ -329,6 +329,7 @@ class ModelType:
     mistral_7b_v2 = 'mistral-7b-v2'
     mistral_7b_instruct = 'mistral-7b-instruct'
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
+    mistral_7b_instruct_v3 = 'mistral-7b-instruct-v3'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
@@ -2339,6 +2340,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-7B-Instruct-v0.2')
+@register_model(
+    ModelType.mistral_7b_instruct_v3,
+    'LLM-Research/Mistral-7B-Instruct-v0.3',
+    LoRATM.llama,
+    TemplateType.llama,
+    ignore_file_pattern=['consolidated.safetensors'],
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-7B-Instruct-v0.3')
 @register_model(
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',

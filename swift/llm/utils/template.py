@@ -643,12 +643,12 @@ class Template:
             res['input_ids'] = input_ids
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
-        image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
-
         if len(pixel_values) > 0:
             res['pixel_values'] = torch.concat(pixel_values)
-        if len(image_sizes) > 0:
-            res['image_sizes'] = torch.concat(image_sizes)
+
+            image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
+            if len(image_sizes) > 0:
+                res['image_sizes'] = torch.concat(image_sizes)
 
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
