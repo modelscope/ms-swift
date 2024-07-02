@@ -17,7 +17,7 @@ cd swift
 pip install -e '.[llm]'
 
 # vllm version corresponds to cuda version, please select version according to `https://docs.vllm.ai/en/latest/getting_started/installation.html`
-pip install vllm
+pip install "vllm>=0.5"
 pip install openai -U
 ```
 
@@ -164,7 +164,7 @@ print(f'response: {response}')
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
 query = 'How many sheep are in the picture?'
 messages = [{
-    'role': 'user', 
+    'role': 'user',
     'content': query
 }]
 stream_resp = client.chat.completions.create(
