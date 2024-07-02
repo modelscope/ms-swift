@@ -1,15 +1,16 @@
 # Llava Best Practice
-The document corresponds to the following models
+The document corresponds to the following models:
 
-| model | model_type |
-|-------|------------|
-| [llava-v1.6-mistral-7b](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary) | llava1_6-mistral-7b-instruct |
-| [llava-v1.6-34b](https://www.modelscope.cn/models/AI-ModelScope/llava-v1.6-34b/summary) | llava1_6-yi-34b-instruct |
-|[llama3-llava-next-8b](https://modelscope.cn/models/AI-ModelScope/llama3-llava-next-8b/summary)|llama3-llava-next-8b|
-|[llava-next-72b](https://modelscope.cn/models/AI-ModelScope/llava-next-72b/summary)|llava-next-72b|
-|[llava-next-110b](https://modelscope.cn/models/AI-ModelScope/llava-next-110b/summary)|llava-next-110b|
+- [llava1_5-7b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-7b-hf)
+- [llava1_5-13b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-13b-hf)
+- [llava1_6-mistral-7b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-mistral-7b-hf)
+- [llava1_6-vicuna-7b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-7b-hf)
+- [llava1_6-vicuna-13b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-13b-hf)
+- [llava1_6-yi-34b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
+- [llava-next-72b](https://modelscope.cn/models/AI-Modelscope/llava-next-72b)
+- [llava-next-110b](https://modelscope.cn/models/AI-Modelscope/llava-next-110b)
 
-The following practices take `llava-v1.6-mistral-7b` as an example. You can also switch to other models by specifying the `--model_type`.
+The following practice takes `llava1_6-mistral-7b-chat` as an example, and you can also switch to other models by specifying `--model_type`.
 
 
 ## Table of Contents
@@ -29,13 +30,13 @@ pip install -e '.[llm]'
 ```shell
 # Experimental environment: A100
 # 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-mistral-7b-instruct
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-mistral-7b-chat
 
 # 70GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-yi-34b-instruct
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-yi-34b-chat
 
 # 4*20GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-instruct
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-chat
 ```
 
 Output: (supports passing in local path or URL)
@@ -49,9 +50,10 @@ The image shows a close-up of a kitten with a soft, blurred background that sugg
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 --------------------------------------------------
+<<< clear
 <<< What is the calculation result?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is 14352 + 45304 = 145304.
+The calculation result is 1452 + 453004 = 453006.
 --------------------------------------------------
 <<< Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
@@ -84,6 +86,20 @@ The boat, a symbol of solitude,
 In the vast expanse of the universe's beauty,
 A lone journey, a solitary quest,
 In the quiet of the night, it finds its rest.
+--------------------------------------------------
+<<< Perform OCR on the image.
+Input a media path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png
+The text in the image is as follows:
+
+INTRODUCTION
+
+SWIFT supports training, inference, evaluation and deployment of 250+ LLMs (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition, SWIFT provides a complete Adapters library to support the latest training techniques such as NLP, Vision, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
+
+To facilitate use by users unfamiliar with deep learning, we provide a Grado web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
+
+SWIFT has rich documentation for users, please check here.
+
+SWIFT is web-ui available both on Huggingface space and ModelScope studio, please feel free to try!
 """
 ```
 
@@ -118,7 +134,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = 'llava1_6-mistral-7b-instruct'
+model_type = 'llava1_6-mistral-7b-chat'
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -175,12 +191,12 @@ LoRA fine-tuning:
 # Experimental environment: A10, 3090, V100...
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type llava1_6-mistral-7b-instruct \
+    --model_type llava1_6-mistral-7b-chat \
     --dataset coco-en-2-mini \
 
 # 2*45GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
-    --model_type llava1_6-yi-34b-instruct \
+    --model_type llava1_6-yi-34b-chat \
     --dataset coco-en-2-mini \
 ```
 
@@ -189,14 +205,14 @@ Full parameter fine-tuning:
 # Experimental environment: 4 * A100
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1_6-mistral-7b-instruct \
+    --model_type llava1_6-mistral-7b-chat \
     --dataset coco-en-2-mini \
     --sft_type full \
     --deepspeed default-zero2
 
 # 8 * 50 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
-    --model_type llava1_6-yi-34b-instruct \
+    --model_type llava1_6-yi-34b-chat \
     --dataset coco-en-2-mini \
     --sft_type full \
 ```
@@ -215,7 +231,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 ## Inference after Fine-tuning
 Direct inference:
 ```shell
-model_type="llava1_6-mistral-7b-instruct"
+model_type="llava1_6-mistral-7b-chat"
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
     --load_dataset_config true
@@ -223,7 +239,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 **merge-lora** and inference:
 ```shell
-model_type="llava1_6-mistral-7b-instruct"
+model_type="llava1_6-mistral-7b-chat"
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
     --merge_lora true

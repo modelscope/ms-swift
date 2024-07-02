@@ -102,6 +102,7 @@ def get_vllm_engine(
         _engine = llm_engine.engine
     else:
         _engine = llm_engine
+    llm_engine.dtype = _engine.model_config.dtype  # compat with pt
     # compatible with vllm==0.3.*
     if version.parse(vllm.__version__) >= version.parse('0.3'):
         assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)

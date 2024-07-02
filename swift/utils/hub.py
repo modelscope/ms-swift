@@ -71,7 +71,7 @@ def push_to_ms_hub(ckpt_dir: str,
     else:
         subprocess_run(['git', '-C', ckpt_dir, 'commit', '-m', commit_message])
         subprocess_run(['git', '-C', ckpt_dir, 'push'])
-        url = f'https://www.modelscope.cn/models/{hub_model_id}/summary'
+        url = f'https://www.modelscope.cn/models/{hub_model_id}'
         logger.info(f'Push to Modelscope successful. url: `{url}`.')
 
 

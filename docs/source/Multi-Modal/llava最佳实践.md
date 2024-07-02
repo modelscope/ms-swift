@@ -1,16 +1,17 @@
-
 # Llava 最佳实践
-本篇文档对应的模型
+本篇文档涉及的模型如下:
 
-| model | model_type |
-|-------|------------|
-| [llava-v1.6-mistral-7b](https://modelscope.cn/models/AI-ModelScope/llava-v1.6-mistral-7b/summary) | llava1_6-mistral-7b-instruct |
-| [llava-v1.6-34b](https://www.modelscope.cn/models/AI-ModelScope/llava-v1.6-34b/summary) | llava1_6-yi-34b-instruct |
-|[llama3-llava-next-8b](https://modelscope.cn/models/AI-ModelScope/llama3-llava-next-8b/summary)|llama3-llava-next-8b|
-|[llava-next-72b](https://modelscope.cn/models/AI-ModelScope/llava-next-72b/summary)|llava-next-72b|
-|[llava-next-110b](https://modelscope.cn/models/AI-ModelScope/llava-next-110b/summary)|llava-next-110b|
+- [llava1_5-7b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-7b-hf)
+- [llava1_5-13b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-13b-hf)
+- [llava1_6-mistral-7b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-mistral-7b-hf)
+- [llava1_6-vicuna-7b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-7b-hf)
+- [llava1_6-vicuna-13b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-13b-hf)
+- [llava1_6-yi-34b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
+- [llava-next-72b](https://modelscope.cn/models/AI-Modelscope/llava-next-72b)
+- [llava-next-110b](https://modelscope.cn/models/AI-Modelscope/llava-next-110b)
 
-以下实践以`llava-v1.6-mistral-7b`为例，你也可以通过指定`--model_type`切换为其他模型
+
+以下实践以`llava1_6-mistral-7b-chat`为例，你也可以通过指定`--model_type`切换为其他模型.
 
 ## 目录
 - [环境准备](#环境准备)
@@ -30,13 +31,13 @@ pip install -e '.[llm]'
 ```shell
 # Experimental environment: A100
 # 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-mistral-7b-instruct
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-mistral-7b-chat
 
 # 70GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-yi-34b-instruct
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-yi-34b-chat
 
 # 4*20GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-instruct
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-chat
 ```
 
 输出: (支持传入本地路径或URL)
@@ -54,9 +55,10 @@ The image shows a close-up of a kitten with a soft, blurred background that sugg
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 --------------------------------------------------
+<<< clear
 <<< What is the calculation result?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
-The calculation result is 14352 + 45304 = 145304.
+The calculation result is 1452 + 453004 = 453006.
 --------------------------------------------------
 <<< Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
@@ -141,7 +143,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = 'llava1_6-mistral-7b-instruct'
+model_type = 'llava1_6-mistral-7b-chat'
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -198,13 +200,13 @@ LoRA微调:
 # Experimental environment: A10, 3090, V100...
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type llava1_6-mistral-7b-instruct \
+    --model_type llava1_6-mistral-7b-chat\
     --dataset coco-en-2-mini \
 
 # Experimental environment: 2*A100...
 # 2*45GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
-    --model_type llava1_6-yi-34b-instruct \
+    --model_type llava1_6-yi-34b-chat \
     --dataset coco-en-2-mini \
 ```
 
@@ -213,14 +215,14 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 # Experimental environment: 4 * A100
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1_6-mistral-7b-instruct \
+    --model_type llava1_6-mistral-7b-chat\
     --dataset coco-en-2-mini \
     --sft_type full \
     --deepspeed default-zero2
 
 # 8 * 50 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
-    --model_type llava1_6-yi-34b-instruct \
+    --model_type llava1_6-yi-34b-chat \
     --dataset coco-en-2-mini \
     --sft_type full \
 ```
@@ -239,7 +241,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 ## 微调后推理
 直接推理:
 ```shell
-model_type="llava1_6-mistral-7b-instruct"
+model_type="llava1_6-mistral-7b-chat"
 
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
@@ -248,7 +250,8 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 **merge-lora**并推理:
 ```shell
-model_type="llava1_6-mistral-7b-instruct"
+model_type="llava1_6-mistral-7b-chat"
+
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
     --merge_lora true
