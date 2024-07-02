@@ -242,6 +242,9 @@ def prepare_model(model, args: SftArguments):
                     is_logging = True
                 p.data = p.data.to(dtype=torch.float32)
     elif args.sft_type == 'full':
+        model.train()
+        model.requires_grad_(True)
+
         if args.freeze_parameters > 0:
             freeze_model_parameters(model, args.freeze_parameters)
         if len(args.additional_trainable_parameters) > 0:

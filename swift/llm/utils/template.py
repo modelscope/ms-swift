@@ -41,8 +41,9 @@ class TemplateType:
     llama = 'llama'  # llama2
     llama3 = 'llama3'
     llava1_5 = 'llava1_5'
-    llava_mistral_instruct = 'llava-mistral-instruct'
-    llava_yi_instruct = 'llava-yi-instruct'
+    llava_mistral = 'llava-mistral'
+    llava_vicuna = 'llava-vicuna'
+    llava_yi = 'llava-yi'
     llava_llama_instruct = 'llava-llama-instruct'
     llava_qwen_instruct = 'llava-qwen-instruct'
     llama_llava_next = 'llama-llava-next'
@@ -643,6 +644,10 @@ class Template:
         if len(pixel_values) > 0:
             res['pixel_values'] = torch.concat(pixel_values)
 
+            image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
+            if len(image_sizes) > 0:
+                res['image_sizes'] = torch.concat(image_sizes)
+
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
@@ -973,10 +978,7 @@ class GLM4VTemplate(GLMTemplate):
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
-                image_size: int = self.model.config.vision_config['image_size']
-                patch_size: int = self.model.config.vision_config['patch_size']
-                num_patches = (image_size // patch_size // 2)**2
-                labels = (labels[:idx] + [-100] * (len(placeholder_id) + num_patches - 1) + labels[idx + 1:])
+                labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             messages = history_to_messages(example.get('history') or [], example['query'], example.get('system'))
             messages[0]['image'] = image
             inputs2: Dict[str, Any] = self.tokenizer.apply_chat_template(messages, return_dict=True)
@@ -1445,10 +1447,7 @@ register_template(
               'and other non-computer science questions, you will refuse to answer\n')))
 
 
-class Llava1_5Template(Template):
-
-    def __init__(self):
-        super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['\n'], ['</s>'])
+class LlavaHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1462,8 +1461,17 @@ class Llava1_5Template(Template):
         images = _read_batch(images_path)
         image_processor = self.tokenizer.processor.image_processor
         if images:
-            inputs['pixel_values'] = image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+            inputs['pixel_values'] = image_inputs['pixel_values']
+            if 'image_sizes' in image_inputs:
+                inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
+
+
+class Llava1_5Template(LlavaHfTemplate):
+
+    def __init__(self):
+        super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
 
 
 register_template(
@@ -1518,19 +1526,40 @@ class LLavaTemplate(Template):
         return generate_ids[0].tolist()
 
 
-register_template(
-    TemplateType.llava_mistral_instruct, LLavaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
-
-
-class LLavaYiTemplate(LLavaTemplate):
-    llavayi_query_template = '\n<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'
+class Llava1_6MistralTemplate(LlavaHfTemplate):
 
     def __init__(self):
-        Template.__init__(self, [], [self.llavayi_query_template], None, ['<|im_end|>'])
+        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+                         system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
+
+
+class Llava1_6VicunaTemplate(LlavaHfTemplate):
+    system = ('A chat between a curious human and an artificial intelligence assistant. '
+              "The assistant gives helpful, detailed, and polite answers to the human's questions.")
+
+    def __init__(self):
+        super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
+                         self.system,
+                         system_prefix=['<s>{{SYSTEM}} '])
 
 
 register_template(
-    TemplateType.llava_yi_instruct, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+    TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+
+register_template(
+    TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+
+
+class LLavaYiTemplate(LlavaHfTemplate):
+
+    def __init__(self):
+        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'],
+                         system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+
+
+register_template(
+    TemplateType.llava_yi, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Template):
@@ -1650,12 +1679,6 @@ class Phi3VisionTemplate(Template):
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         return inputs, {}
-
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        if 'pixel_values' in res:
-            res['image_sizes'] = torch.concat([b['image_sizes'] for b in batch if 'image_sizes' in b])
-        return res
 
 
 register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
@@ -2033,7 +2056,7 @@ class mPlugOwl2Template(Template):
         images_path = example.get('images') or []
         images = _read_batch(images_path)
         for i, image in enumerate(images):
-            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1/summary
+            # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1
             max_edge = max(image.size)
             image = image.resize((max_edge, max_edge))
             images[i] = image
