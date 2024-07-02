@@ -149,6 +149,18 @@
         "tags": ["vqa", "en", "youtube", "video"],
         "huge_dataset": true
     },
+    "classical-chinese-translate": {
+        "dataset_id": "swift/classical_chinese_translate",
+        "conversations": {
+            "user_role": "user",
+            "assistant_role": "assistant",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "tags": ["chat", "play-ground"]
+    },
     "tagengo-gpt4": {
         "dataset_id": "swift/tagengo-gpt4",
         "hf_dataset_id": "lightblue/tagengo-gpt4",

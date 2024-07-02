@@ -84,8 +84,8 @@ class MediaMixin:
     @property
     def empty_row(self):
         empty_row = {
-            'query': '',
-            'response': '',
+            'query': None,
+            'response': None,
             'tools': None,
             'system': None,
             'history': None,
