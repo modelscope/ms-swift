@@ -136,6 +136,7 @@ def get_vllm_engine(
         llm_engine.generation_config = VllmGenerationConfig(**kwargs)
     else:
         llm_engine.generation_config = VllmGenerationConfig()
+    llm_engine.dtype = llm_engine.model_config.dtype  # compat with pt
     return llm_engine
 
 

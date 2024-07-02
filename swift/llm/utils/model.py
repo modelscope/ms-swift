@@ -32,7 +32,7 @@ from .utils import get_max_model_len, is_unsloth_available
 
 logger = get_logger()
 
-# Model Home: 'https://modelscope.cn/models/{model_id_or_path}/summary'
+# Model Home: 'https://modelscope.cn/models/{model_id_or_path}'
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
@@ -190,8 +190,11 @@ class ModelType:
     atom_7b_chat = 'atom-7b-chat'
     # llava
     llava1_5_7b_chat = 'llava1_5-7b-chat'
-    llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
-    llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
+    llava1_5_13b_chat = 'llava1_5-13b-chat'
+    llava1_6_mistral_7b_chat = 'llava1_6-mistral-7b-chat'
+    llava1_6_vicuna_7b_chat = 'llava1_6-vicuna-7b-chat'
+    llava1_6_vicuna_13b_chat = 'llava1_6-vicuna-13b-chat'
+    llava1_6_yi_34b_chat = 'llava1_6-yi-34b-chat'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
@@ -326,6 +329,7 @@ class ModelType:
     mistral_7b_v2 = 'mistral-7b-v2'
     mistral_7b_instruct = 'mistral-7b-instruct'
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
+    mistral_7b_instruct_v3 = 'mistral-7b-instruct-v3'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
@@ -925,9 +929,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-        if is_training:
-            model.train()
-            model.requires_grad_(True)
         model.is_gptq = is_gptq
         model.is_awq = is_awq
         model.is_aqlm = is_aqlm
@@ -2336,6 +2337,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-7B-Instruct-v0.2')
+@register_model(
+    ModelType.mistral_7b_instruct_v3,
+    'LLM-Research/Mistral-7B-Instruct-v0.3',
+    LoRATM.llama,
+    TemplateType.llama,
+    ignore_file_pattern=['consolidated.safetensors'],
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-7B-Instruct-v0.3')
 @register_model(
     ModelType.mistral_7b,
     'AI-ModelScope/Mistral-7B-v0.1',
@@ -4897,6 +4908,24 @@ def _patch_llava(model):
     model.generate = _new_generate
 
 
+def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.llava1_5_13b_chat,
+    'huangjintao/llava-1.5-13b-hf',
+    LoRATM.llama,
+    TemplateType.llava1_5,
+    eos_token='</s>',
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-1.5-13b-hf')
 @register_model(
     ModelType.llava1_5_7b_chat,
     'huangjintao/llava-1.5-7b-hf',
@@ -4907,35 +4936,62 @@ def _patch_llava(model):
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-7b-hf')
-def get_model_tokenizer_llava1_5(model_dir: str, *args, **kwargs):
-    from transformers import AutoProcessor, LlavaForConditionalGeneration
-    processor = AutoProcessor.from_pretrained(model_dir)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, *args, automodel_class=LlavaForConditionalGeneration, **kwargs)
-    tokenizer.processor = processor
+def get_model_tokenizer_llava_1_5(*args, **kwargs):
+    from transformers import LlavaForConditionalGeneration
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
+
+
+@register_model(
+    ModelType.llava1_6_vicuna_7b_chat,
+    'huangjintao/llava-v1.6-vicuna-7b-hf',
+    LoRATM.llama,
+    TemplateType.llava_vicuna,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
+@register_model(
+    ModelType.llava1_6_vicuna_13b_chat,
+    'huangjintao/llava-v1.6-vicuna-13b-hf',
+    LoRATM.llama,
+    TemplateType.llava_vicuna,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
+@register_model(
+    ModelType.llava1_6_mistral_7b_chat,
+    'huangjintao/llava-v1.6-mistral-7b-hf',
+    LoRATM.llama,
+    TemplateType.llava_mistral,
+    support_flash_attn=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
+def get_model_tokenizer_llava_next(*args, **kwargs):
+    from transformers import LlavaNextForConditionalGeneration
+    kwargs['automodel_class'] = LlavaNextForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
+
+
+@register_model(
+    ModelType.llava1_6_yi_34b_chat,
+    'huangjintao/llava-v1.6-34b-hf',
+    LoRATM.llama,
+    TemplateType.llava_yi,
+    support_flash_attn=True,
+    eos_token='<|im_end|>',
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-v1.6-34b-hf')
+def get_model_tokenizer_llava_next_yi(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_llava_next(*args, **kwargs)
+    if model is not None:
+        model.config.image_token_index = 64003
     return model, tokenizer
 
 
-@register_model(
-    ModelType.llava1_6_yi_34b_instruct,
-    'AI-ModelScope/llava-v1.6-34b',
-    LoRATM.llama,
-    TemplateType.llava_yi_instruct,
-    eos_token='<|im_end|>',
-    support_flash_attn=True,
-    function_kwargs={'llm_model_type': 'llama'},
-    tags=['multi-modal', 'vision'],
-    hf_model_id='liuhaotian/llava-v1.6-34b')
-@register_model(
-    ModelType.llava1_6_mistral_7b_instruct,
-    'AI-ModelScope/llava-v1.6-mistral-7b',
-    LoRATM.llama,
-    TemplateType.llava_mistral_instruct,
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    function_kwargs={'llm_model_type': 'mistral'},
-    tags=['multi-modal', 'vision'],
-    hf_model_id='liuhaotian/llava-v1.6-mistral-7b')
 @register_model(
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
