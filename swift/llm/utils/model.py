@@ -5027,8 +5027,8 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     vllm_config={
         'image_input_type': 'pixel_values',
         'image_token_id': 64003,
-        'image_input_shape': '1,3,672,672',
-        'image_feature_size': 2928,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 1176,
     },
     support_flash_attn=True,
     eos_token='<|im_end|>',
