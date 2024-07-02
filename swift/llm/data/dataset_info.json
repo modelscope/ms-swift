@@ -159,7 +159,7 @@
             "value_key": "value",
             "error_strategy": "delete"
         },
-        "tags": ["chat"]
+        "tags": ["chat", "play-ground"]
     },
     "tagengo-gpt4": {
         "dataset_id": "swift/tagengo-gpt4",
