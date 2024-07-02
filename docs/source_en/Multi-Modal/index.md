@@ -3,6 +3,7 @@
 ### 📚 Tutorial
 
 1. [MLLM Deployment Documentation](mutlimodal-deployment.md)
+2. [vLLM Inference Acceleration](vllm-inference-acceleration.md)
 
 ### Multi-Modal Best Practice
 
