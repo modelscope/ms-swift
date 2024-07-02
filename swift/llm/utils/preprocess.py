@@ -251,8 +251,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 if not isinstance(self.media_key, str):
                     row[self.media_name] = medias
             return row
-        except (AssertionError, SyntaxError) as e:
-            print(e)
+        except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:
