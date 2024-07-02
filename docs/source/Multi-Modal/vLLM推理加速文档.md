@@ -1,29 +1,30 @@
-# vLLM Inference Acceleration Documentation
+# vLLM推理加速文档
+ms-swift已接入了vLLM对多模态模型进行推理加速. 支持的模型可以查看[支持的模型和数据集](../LLM/支持的模型和数据集.md#多模态大模型). 需要注意点是，使用vLLM进行加速会对推理效果产生略微影响, 请确保可以忍受这种损失来提升推理速度.
 
-ms-swift has integrated vLLM for accelerating inference of multimodal models. Check out the supported models in [Supported Models and Datasets Documentation](../LLM/Supported-models-datasets.md). It's worth noting that using vLLM for acceleration may have a slight impact on the inference quality, so please ensure you can tolerate this loss in order to boost the inference speed.
+## 目录
+- [环境准备](#环境准备)
+- [推理加速](#推理加速)
+- [部署](#部署)
 
-## Table of Contents
-- [Environment Setup](#environment-setup)
-- [Inference Acceleration](#inference-acceleration)
-- [Deployment](#deployment)
 
-## Environment Setup
+## 环境准备
 ```bash
-# Set pip global mirror (speeds up downloads)
+# 设置pip全局镜像 (加速下载)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-# Install ms-swift
+# 安装ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 
-# vllm version corresponds to cuda version, please select version according to `https://docs.vllm.ai/en/latest/getting_started/installation.html`
+# vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
 pip install vllm
 pip install openai -U
 ```
 
-## Inference Acceleration
 
-Using python:
+## 推理加速
+
+使用python:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -37,7 +38,7 @@ model_type = ModelType.llava1_6_mistral_7b_chat
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer, model=llm_engine)
-# Interface similar to `transformers.GenerationConfig`
+# 与`transformers.GenerationConfig`类似的接口
 llm_engine.generation_config.max_new_tokens = 1024
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
@@ -67,9 +68,9 @@ history: [['Describe this image.', "The image features a close-up of a kitten's 
 """
 ```
 
-Using CLI:
+使用CLI:
 ```shell
-# Multimodal models must explicitly specify `--infer_backend vllm`.
+# 多模态模型必须显式指定`--infer_backend vllm`
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-chat --infer_backend vllm
 ```
 
@@ -101,16 +102,16 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 ```
 
 
-## Deployment
+## 部署
 
-**Server**:
+**服务端:**
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-chat --infer_backend vllm
 ```
 
-**Client**:
+**客户端:**
 
-Test:
+测试:
 ```bash
 curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
@@ -122,7 +123,7 @@ curl http://localhost:8000/v1/chat/completions \
 }'
 ```
 
-Using OpenAI
+使用openai:
 ```python
 from openai import OpenAI
 client = OpenAI(
@@ -160,7 +161,7 @@ response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
 
-# Streaming
+# 流式
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
 query = 'How many sheep are in the picture?'
 messages = [{
@@ -188,4 +189,4 @@ response: There are two sheep in the picture.
 """
 ```
 
-You can check out more client usage methods in the [MLLM Deployment Documentation](mutlimodal-deployment.md#yi-vl-6b-chat).
+更多客户端使用方法可以查看[MLLM部署文档](MLLM部署文档.md#yi-vl-6b-chat)

@@ -4968,8 +4968,8 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     vllm_config={
         'image_input_type': 'pixel_values',
         'image_token_id': 32000,
-        'image_input_shape': '1,3,672,672',
-        'image_feature_size': 2928,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 1176,
     },
     support_flash_attn=True,
     requires=['transformers>=4.36'],
@@ -4985,8 +4985,8 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     vllm_config={
         'image_input_type': 'pixel_values',
         'image_token_id': 32000,
-        'image_input_shape': '1,3,672,672',
-        'image_feature_size': 2928,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 1176,
     },
     support_flash_attn=True,
     requires=['transformers>=4.36'],

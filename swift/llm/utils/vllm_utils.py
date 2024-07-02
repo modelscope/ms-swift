@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import os
+from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -16,7 +17,7 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, Samplin
 from swift.utils import get_logger
 from .argument import InferArguments
 from .model import MODEL_MAPPING, get_model_tokenizer
-from .template import Template, get_template, vllm_context
+from .template import Template, get_template
 
 try:
     from vllm.lora.request import LoRARequest
@@ -24,6 +25,15 @@ except ImportError:
     pass
 
 logger = get_logger()
+
+
+@contextmanager
+def vllm_context(self: Template):
+    assert isinstance(self.model,
+                      (AsyncLLMEngine, LLMEngine)), 'Please pass `model=vllm_engine` when calling get_template.'
+    self._is_vllm = True
+    yield
+    self._is_vllm = False
 
 
 def get_vllm_engine(
@@ -216,7 +226,7 @@ def _patch_vllm_multimodal(image_sizes: torch.Tensor) -> None:
     if hasattr(MultiModalPlugin, '_old_map_input'):
         map_input = MultiModalPlugin._old_map_input
     else:
-        map_input = MultiModalPlugin.map_input
+        map_input = getattr(MultiModalPlugin, 'map_input', None)
         if map_input is None:
             map_input = MultiModalPlugin.process_input
 

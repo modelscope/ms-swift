@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from contextlib import contextmanager
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -224,6 +223,7 @@ class Template:
                        default_system: Optional[str] = None,
                        max_length: Optional[int] = None,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                       model=None,
                        **kwargs) -> None:
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
@@ -237,7 +237,7 @@ class Template:
             self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.model = kwargs.get('model', None)
+        self.model = model
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
         self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
         self.query_loss_scale_map = None
@@ -1449,13 +1449,6 @@ register_template(
               'and other non-computer science questions, you will refuse to answer\n')))
 
 
-@contextmanager
-def vllm_context(self: Template):
-    self._is_vllm = True
-    yield
-    self._is_vllm = False
-
-
 class LlavaHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
@@ -2146,9 +2139,10 @@ def get_template(
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+    model=None,
     **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])
-    template._init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
+    template._init_template(tokenizer, default_system, max_length, truncation_strategy, model=model, **kwargs)
     return template
