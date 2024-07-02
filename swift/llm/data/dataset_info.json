@@ -164,6 +164,14 @@
     "tagengo-gpt4": {
         "dataset_id": "swift/tagengo-gpt4",
         "hf_dataset_id": "lightblue/tagengo-gpt4",
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
         "tags": ["chat", "multi-lingual", "quality"]
     },
     "fineweb": {
