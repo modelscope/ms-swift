@@ -282,7 +282,7 @@ class Template:
         example['history'] = history
 
     def _prepare_vllm_images(self, images: List['PIL.Image.Image']) -> List['PIL.Image.Image']:
-
+        # Resize the image to fit the proper size.
         from PIL import Image
         target_h, target_w = [int(x) for x in self.model.vllm_config['image_input_shape'].split(',')[-2:]]
         new_images = []
