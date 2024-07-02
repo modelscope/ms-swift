@@ -1263,6 +1263,14 @@ def _clone_hook(module, input, output):
     'LLM-Research/Phi-3-vision-128k-instruct',
     LoRATM.phi3,
     TemplateType.phi3_vl,
+    # https://github.com/vllm-project/vllm/blob/main/examples/phi3v_example.py
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32044,
+        'image_input_shape': '1,3,1008,1344',
+        'image_feature_size': 1921,
+    },
     support_flash_attn=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
