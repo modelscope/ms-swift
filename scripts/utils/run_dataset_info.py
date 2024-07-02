@@ -94,7 +94,7 @@ def write_dataset_info() -> None:
                     stat = stat_array(_token_len)[0]
                     stat_str = f"{stat['mean']:.1f}±{stat['std']:.1f}, min={stat['min']}, max={stat['max']}"
 
-            ms_url = f"https://modelscope.cn/datasets/{dataset_info['dataset_id_or_path']}"
+            ms_url = f"https://modelscope.cn/datasets/{dataset_info['dataset_id_or_path']}/summary"
 
             if '🔥' in tags:
                 tags.remove('🔥')
