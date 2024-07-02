@@ -48,6 +48,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
+- 2024.07.02: 支持`llava1_6-vicuna-7b-chat`, `llava1_6-vicuna-13b-chat`等llava-hf模型. 最佳实践可以查看[这里](docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.06.29: 支持[eval-scope](https://github.com/modelscope/eval-scope)&[open-compass](https://github.com/open-compass/opencompass)评测! 我们支持了包含`BoolQ, ocnli, humaneval, math, ceval, mmlu, gsk8k, ARC_e`等50+标准数据集在内的评测流程, 请查看我们的[评测文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM评测文档.md)来使用。下个迭代我们会支持多模态评测和Agent评测，记得持续关注我们: )
 - 🔥2024.06.28: 支持**Florence**系列模型: 可以查看[Florence最佳实践](docs/source/Multi-Modal/florence最佳实践.md).
 - 🔥2024.06.28: 支持**Gemma2**系列模型: gemma2-9b, gemma2-9b-instruct, gemma2-27b, gemma2-27b-instruct.
