@@ -102,6 +102,7 @@ def get_vllm_engine(
         _engine = llm_engine.engine
     else:
         _engine = llm_engine
+    llm_engine.dtype = _engine.model_config.dtype  # compat with pt
     # compatible with vllm==0.3.*
     if version.parse(vllm.__version__) >= version.parse('0.3'):
         assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)
@@ -136,7 +137,6 @@ def get_vllm_engine(
         llm_engine.generation_config = VllmGenerationConfig(**kwargs)
     else:
         llm_engine.generation_config = VllmGenerationConfig()
-    llm_engine.dtype = llm_engine.model_config.dtype  # compat with pt
     return llm_engine
 
 
