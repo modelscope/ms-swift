@@ -1,5 +1,5 @@
 # Llava Best Practice
-The document corresponds to the following models
+The document corresponds to the following models:
 
 - [llava1_5-7b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-7b-hf)
 - [llava1_5-13b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-13b-hf)
@@ -7,12 +7,10 @@ The document corresponds to the following models
 - [llava1_6-vicuna-7b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-7b-hf)
 - [llava1_6-vicuna-13b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-13b-hf)
 - [llava1_6-yi-34b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
-- [llava1_6-yi-34b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
-- [llava1_6-yi-34b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
 - [llava-next-72b](https://modelscope.cn/models/AI-Modelscope/llava-next-72b)
 - [llava-next-110b](https://modelscope.cn/models/AI-Modelscope/llava-next-110b)
 
-Here, the first 8 llava-hf models support vllm inference acceleration, you can refer to [vLLM Inference Acceleration Document](vllm-inference-acceleration.md) for specific details. The following practice takes `llava1_6-mistral-7b-chat` as an example, and you can also switch to other models by specifying `--model_type`.
+Here, the first 6 llava-hf models support vllm inference acceleration, you can refer to [vLLM Inference Acceleration Document](vllm-inference-acceleration.md) for specific details. The following practice takes `llava1_6-mistral-7b-chat` as an example, and you can also switch to other models by specifying `--model_type`.
 
 
 ## Table of Contents
