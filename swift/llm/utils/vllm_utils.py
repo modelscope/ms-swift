@@ -232,8 +232,7 @@ def _patch_vllm_multimodal(image_sizes: torch.Tensor) -> None:
 
     def new_map_input(*args, **kwargs):
         res = map_input(*args, **kwargs)
-        if 'image_sizes' in res:
-            res['image_sizes'] = image_sizes
+        res['image_sizes'] = image_sizes
         return res
 
     MultiModalPlugin.map_input = new_map_input

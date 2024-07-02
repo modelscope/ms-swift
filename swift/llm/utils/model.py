@@ -189,12 +189,12 @@ class ModelType:
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
-    llava1_5_7b_chat = 'llava1_5-7b-chat'
-    llava1_5_13b_chat = 'llava1_5-13b-chat'
-    llava1_6_mistral_7b_chat = 'llava1_6-mistral-7b-chat'
-    llava1_6_vicuna_7b_chat = 'llava1_6-vicuna-7b-chat'
-    llava1_6_vicuna_13b_chat = 'llava1_6-vicuna-13b-chat'
-    llava1_6_yi_34b_chat = 'llava1_6-yi-34b-chat'
+    llava1_5_7b_instruct = 'llava1_5-7b-instruct'
+    llava1_5_13b_instruct = 'llava1_5-13b-instruct'
+    llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
+    llava1_6_vicuna_7b_instruct = 'llava1_6-vicuna-7b-instruct'
+    llava1_6_vicuna_13b_instruct = 'llava1_6-vicuna-13b-instruct'
+    llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
@@ -4925,7 +4925,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 
 
 @register_model(
-    ModelType.llava1_5_13b_chat,
+    ModelType.llava1_5_13b_instruct,
     'huangjintao/llava-1.5-13b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
@@ -4942,7 +4942,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-13b-hf')
 @register_model(
-    ModelType.llava1_5_7b_chat,
+    ModelType.llava1_5_7b_instruct,
     'huangjintao/llava-1.5-7b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
@@ -4967,7 +4967,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 
 @register_model(
-    ModelType.llava1_6_vicuna_7b_chat,
+    ModelType.llava1_6_vicuna_7b_instruct,
     'huangjintao/llava-v1.6-vicuna-7b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
@@ -4984,7 +4984,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
 @register_model(
-    ModelType.llava1_6_vicuna_13b_chat,
+    ModelType.llava1_6_vicuna_13b_instruct,
     'huangjintao/llava-v1.6-vicuna-13b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
@@ -5001,7 +5001,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
 @register_model(
-    ModelType.llava1_6_mistral_7b_chat,
+    ModelType.llava1_6_mistral_7b_instruct,
     'huangjintao/llava-v1.6-mistral-7b-hf',
     LoRATM.llama,
     TemplateType.llava_mistral,
@@ -5024,7 +5024,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 
 
 @register_model(
-    ModelType.llava1_6_yi_34b_chat,
+    ModelType.llava1_6_yi_34b_instruct,
     'huangjintao/llava-v1.6-34b-hf',
     LoRATM.llama,
     TemplateType.llava_yi,

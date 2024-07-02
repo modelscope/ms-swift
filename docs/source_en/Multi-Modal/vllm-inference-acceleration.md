@@ -33,7 +33,7 @@ from swift.llm import (
     get_template, inference_vllm
 )
 
-model_type = ModelType.llava1_6_mistral_7b_chat
+model_type = ModelType.llava1_6_mistral_7b_instruct
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer, model=llm_engine)
@@ -70,7 +70,7 @@ history: [['Describe this image.', "The image features a close-up of a kitten's 
 Using CLI:
 ```shell
 # Multimodal models must explicitly specify `--infer_backend vllm`.
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-chat --infer_backend vllm
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --infer_backend vllm
 ```
 
 ```python
@@ -105,7 +105,7 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 
 **Server**:
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-chat --infer_backend vllm
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-instruct --infer_backend vllm
 ```
 
 **Client**:
@@ -115,7 +115,7 @@ Test:
 curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
-"model": "llava1_6-vicuna-13b-chat",
+"model": "llava1_6-vicuna-13b-instruct",
 "messages": [{"role": "user", "content": "Describe this image."}],
 "temperature": 0,
 "images": ["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"]
@@ -180,7 +180,7 @@ for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
 print()
 """
-model_type: llava1_6-vicuna-13b-chat
+model_type: llava1_6-vicuna-13b-instruct
 query: Describe this image.
 response: The image shows a close-up of a person's hands playing a guitar. The hands are positioned on the neck of the guitar, with the fingers pressing down on the strings to produce music. The guitar has a wooden body and a glossy finish, and the strings are clearly visible. The background is blurred, but it appears to be an indoor setting with warm lighting. The focus of the image is on the hands and the guitar, with the background serving to highlight the subject. There are no visible texts or distinctive brands in the image. The style of the image is a realistic photograph with a shallow depth of field, which is a common technique in portrait photography to draw attention to the subject.
 query: How many sheep are in the picture?
