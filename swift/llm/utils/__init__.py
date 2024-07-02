@@ -28,7 +28,7 @@ from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, f
 try:
     if is_vllm_available():
         from .vllm_utils import (VllmGenerationConfig, get_vllm_engine, inference_stream_vllm, inference_vllm,
-                                 prepare_vllm_engine_template)
+                                 prepare_vllm_engine_template, vllm_context)
         try:
             from .vllm_utils import LoRARequest
         except ImportError:
