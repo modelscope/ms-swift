@@ -4949,7 +4949,6 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     eos_token='</s>',
     support_vllm=True,
     # https://github.com/vllm-project/vllm/blob/main/examples/llava_example.py
-    # https://github.com/vllm-project/vllm/blob/main/tests/models/test_llava_next.py
     vllm_config={
         'image_input_type': 'pixel_values',
         'image_token_id': 32000,
@@ -4972,7 +4971,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
-    # https://github.com/vllm-project/vllm/blob/main/examples/llava_next_example.py
     vllm_config={
         'image_input_type': 'pixel_values',
         'image_token_id': 32000,
@@ -4989,7 +4987,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
-    # https://github.com/vllm-project/vllm/blob/main/examples/llava_next_example.py
     vllm_config={
         'image_input_type': 'pixel_values',
         'image_token_id': 32000,
