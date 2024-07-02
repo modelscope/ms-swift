@@ -1447,7 +1447,6 @@ register_template(
               'and other non-computer science questions, you will refuse to answer\n')))
 
 
-
 class LlavaHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
