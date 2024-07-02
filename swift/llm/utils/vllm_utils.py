@@ -261,6 +261,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
                           *,
                           generation_config: VllmGenerationConfig,
                           lora_request: Optional['LoRARequest'] = None,
+                          use_tqdm: bool = False,
                           **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -282,7 +283,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
-    for i, request in enumerate(request_list):
+    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
         history = request.get('history', None)
         if history is None:
             history = []
@@ -332,7 +333,13 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
     resp_list, agent_state = _prepare_vllm_request(
-        llm_engine, template, request_list, generation_config=generation_config, lora_request=lora_request, **kwargs)
+        llm_engine,
+        template,
+        request_list,
+        generation_config=generation_config,
+        lora_request=lora_request,
+        use_tqdm=use_tqdm,
+        **kwargs)
 
     if generation_config.use_beam_search:
         error_msg = 'Streaming generation does not support beam search.'
@@ -388,7 +395,13 @@ def inference_vllm(llm_engine: LLMEngine,
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
     resp_list, agent_state = _prepare_vllm_request(
-        llm_engine, template, request_list, generation_config=generation_config, lora_request=lora_request, **kwargs)
+        llm_engine,
+        template,
+        request_list,
+        generation_config=generation_config,
+        lora_request=lora_request,
+        use_tqdm=use_tqdm,
+        **kwargs)
 
     tokenizer = template.tokenizer
     if use_tqdm:

@@ -71,6 +71,10 @@ Using CLI:
 ```shell
 # Multimodal models must explicitly specify `--infer_backend vllm`.
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --infer_backend vllm
+
+# Batch inference on the dataset
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --infer_backend vllm \
+    --val_dataset coco-en-2-mini#100
 ```
 
 ```python
@@ -106,6 +110,9 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 **Server**:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-instruct --infer_backend vllm
+
+# or phi3-vision (vllm>=0.5.1)
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type phi3-vision-128k-instruct --infer_backend vllm --max_model_len 8192
 ```
 
 **Client**:

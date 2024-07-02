@@ -72,6 +72,10 @@ history: [['Describe this image.', "The image features a close-up of a kitten's 
 ```shell
 # 多模态模型必须显式指定`--infer_backend vllm`
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --infer_backend vllm
+
+# 对数据集进行批量推理
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --infer_backend vllm \
+    --val_dataset coco-en-2-mini#100
 ```
 
 ```python
@@ -107,6 +111,9 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 **服务端:**
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type phi3-vision-128k-instruct --infer_backend vllm
+
+# or phi3-vision (vllm>=0.5.1)
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type phi3-vision-128k-instruct --infer_backend vllm --max_model_len 8192
 ```
 
 **客户端:**
