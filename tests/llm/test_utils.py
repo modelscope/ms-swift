@@ -17,27 +17,27 @@ class TestLlmUtils(unittest.TestCase):
         self.assertTrue(lower_bound(0, len(arr), lambda i: arr[i] == -100) == 1000)
 
     def test_inference(self):
-        model_type = ModelType.chatglm2_6b
+        model_type = ModelType.qwen2_7b_instruct
         model, tokenizer = get_model_tokenizer(model_type)
         template_type = get_default_template_type(model_type)
         template = get_template(template_type, tokenizer)
         model.generation_config.max_length = 128
         model.generation_config.do_sample = True
         for query in ['你好', 'hello']:
-            seed_everything(42, True)
+            seed_everything(42)
             print('stream=True')
             gen_text_stream, history = inference(model, template, query, stream=True, verbose=True)
             print(f'[GEN]: {gen_text_stream}')
             print(f'[HISTORY]: {history}')
             #
-            seed_everything(42, True)
+            seed_everything(42)
             gen = inference_stream(model, template, query)
             for gen_text_stream2, history2 in gen:
                 pass
             print(f'[GEN]: {gen_text_stream2}')
             print(f'[HISTORY]: {history2}')
             #
-            seed_everything(42, True)
+            seed_everything(42)
             print('stream=False')
             gen_text, history3 = inference(model, template, query, stream=False, verbose=True)
             print(f'[GEN]: {gen_text}')

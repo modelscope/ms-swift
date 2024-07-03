@@ -1428,6 +1428,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/glm-4-9b')
 @register_model(
     ModelType.glm4_9b_chat,
@@ -1436,6 +1437,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     TemplateType.chatglm3,
     support_vllm=True,
     function_kwargs={'kv_cache_patch': True},
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/glm-4-9b-chat')
 @register_model(
     ModelType.glm4_9b_chat_1m,
@@ -1444,6 +1446,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     TemplateType.chatglm3,
     support_vllm=True,
     function_kwargs={'kv_cache_patch': True},
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/glm-4-9b-chat-1m')
 @register_model(
     ModelType.glm4v_9b_chat,
@@ -1469,6 +1472,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b-32k')
 @register_model(
     ModelType.chatglm3_6b_128k,
@@ -1476,6 +1480,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b-128k')
 @register_model(
     ModelType.chatglm3_6b,
@@ -1483,6 +1488,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b')
 @register_model(
     ModelType.chatglm3_6b_base,
@@ -1490,6 +1496,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b-base')
 @register_model(
     ModelType.chatglm2_6b_32k,
@@ -1497,6 +1504,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm2,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm2-6b-32k')
 @register_model(
     ModelType.chatglm2_6b,
@@ -1504,6 +1512,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm2,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm2-6b')
 @register_model(
     ModelType.codegeex2_6b,
