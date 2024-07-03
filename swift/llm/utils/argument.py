@@ -621,7 +621,7 @@ class SftArguments(ArgumentsBase):
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
     evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
-    save_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
+    save_strategy: Literal['steps', 'epoch', 'no', None] = None
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
@@ -857,6 +857,8 @@ class SftArguments(ArgumentsBase):
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
+        if self.save_strategy is None:
+            self.save_strategy = self.evaluation_strategy
 
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
