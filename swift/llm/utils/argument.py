@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import datetime as dt
 import inspect
 import math
 import os
@@ -187,10 +186,8 @@ class ArgumentsBase:
             'cogvlm-17b-instruct': 'cogvlm-17b-chat',
             'minicpm-v-v2': 'minicpm-v-v2-chat',
             'mplug-owl2d1-chat': 'mplug-owl2_1-chat',
-            'llava1d6-mistral-7b-instruct': 'llava1_6-mistral-7b-chat',
-            'llava1d6-yi-34b-instruct': 'llava1_6-yi-34b-chat',
-            'llava1_6-mistral-7b-instruct': 'llava1_6-mistral-7b-chat',
-            'llava1_6-yi-34b-instruct': 'llava1_6-yi-34b-chat',
+            'llava1d6-mistral-7b-instruct': 'llava1_6-mistral-7b-instruct',
+            'llava1d6-yi-34b-instruct': 'llava1_6-yi-34b-instruct',
         }
         dataset_name_mapping = {
             'ms-bench-mini': 'ms-bench#20000',
@@ -623,7 +620,7 @@ class SftArguments(ArgumentsBase):
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = True
     evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
-    save_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
+    save_strategy: Literal['steps', 'epoch', 'no', None] = None
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
@@ -859,6 +856,8 @@ class SftArguments(ArgumentsBase):
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
+        if self.save_strategy is None:
+            self.save_strategy = self.evaluation_strategy
 
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
@@ -1130,6 +1129,8 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
+    image_input_shape: Optional[str] = None
+    image_feature_size: Optional[int] = None
 
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
@@ -1211,7 +1212,7 @@ class InferArguments(ArgumentsBase):
         self.lora_request_list = None
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
-            if is_vllm_available() and support_vllm:
+            if is_vllm_available() and support_vllm and not self.is_multimodal:
                 if ((self.sft_type == 'full' or self.sft_type == 'lora' and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'

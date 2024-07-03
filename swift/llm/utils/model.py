@@ -189,12 +189,12 @@ class ModelType:
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
     # llava
-    llava1_5_7b_chat = 'llava1_5-7b-chat'
-    llava1_5_13b_chat = 'llava1_5-13b-chat'
-    llava1_6_mistral_7b_chat = 'llava1_6-mistral-7b-chat'
-    llava1_6_vicuna_7b_chat = 'llava1_6-vicuna-7b-chat'
-    llava1_6_vicuna_13b_chat = 'llava1_6-vicuna-13b-chat'
-    llava1_6_yi_34b_chat = 'llava1_6-yi-34b-chat'
+    llava1_5_7b_instruct = 'llava1_5-7b-instruct'
+    llava1_5_13b_instruct = 'llava1_5-13b-instruct'
+    llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
+    llava1_6_vicuna_7b_instruct = 'llava1_6-vicuna-7b-instruct'
+    llava1_6_vicuna_13b_instruct = 'llava1_6-vicuna-13b-instruct'
+    llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
@@ -943,6 +943,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
+    requires=['transformers<4.42'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
@@ -952,6 +953,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
+    requires=['transformers<4.42'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
@@ -1099,6 +1101,7 @@ def get_model_tokenizer_mamba(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
+    requires=['transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm-chat-hf')
 @register_model(
@@ -1263,6 +1266,14 @@ def _clone_hook(module, input, output):
     'LLM-Research/Phi-3-vision-128k-instruct',
     LoRATM.phi3,
     TemplateType.phi3_vl,
+    # https://github.com/vllm-project/vllm/blob/main/examples/phi3v_example.py
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32044,
+        'image_input_shape': '1,3,1008,1344',
+        'image_feature_size': 1921,
+    },
     support_flash_attn=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
@@ -1440,6 +1451,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.glm4v,
     TemplateType.glm4v,
     eos_token='<|endoftext|>',
+    requires=['transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/glm-4v-9b')
 @register_model(
@@ -4917,21 +4929,36 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 
 
 @register_model(
-    ModelType.llava1_5_13b_chat,
+    ModelType.llava1_5_13b_instruct,
     'huangjintao/llava-1.5-13b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 576,
+    },
     support_flash_attn=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-13b-hf')
 @register_model(
-    ModelType.llava1_5_7b_chat,
+    ModelType.llava1_5_7b_instruct,
     'huangjintao/llava-1.5-7b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
+    support_vllm=True,
+    # https://github.com/vllm-project/vllm/blob/main/examples/llava_example.py
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 576,
+    },
     support_flash_attn=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
@@ -4943,30 +4970,52 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 
 @register_model(
-    ModelType.llava1_6_vicuna_7b_chat,
+    ModelType.llava1_6_vicuna_7b_instruct,
     'huangjintao/llava-v1.6-vicuna-7b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 1176,
+    },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
 @register_model(
-    ModelType.llava1_6_vicuna_13b_chat,
+    ModelType.llava1_6_vicuna_13b_instruct,
     'huangjintao/llava-v1.6-vicuna-13b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 1176,
+    },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
 @register_model(
-    ModelType.llava1_6_mistral_7b_chat,
+    ModelType.llava1_6_mistral_7b_instruct,
     'huangjintao/llava-v1.6-mistral-7b-hf',
     LoRATM.llama,
     TemplateType.llava_mistral,
+    support_vllm=True,
+    # https://github.com/vllm-project/vllm/blob/main/examples/llava_next_example.py
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,672,672',
+        'image_feature_size': 2928,
+    },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
 def get_model_tokenizer_llava_next(*args, **kwargs):
@@ -4976,13 +5025,20 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 
 
 @register_model(
-    ModelType.llava1_6_yi_34b_chat,
+    ModelType.llava1_6_yi_34b_instruct,
     'huangjintao/llava-v1.6-34b-hf',
     LoRATM.llama,
     TemplateType.llava_yi,
+    support_vllm=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 64003,
+        'image_input_shape': '1,3,336,336',
+        'image_feature_size': 1176,
+    },
     support_flash_attn=True,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-34b-hf')
 def get_model_tokenizer_llava_next_yi(*args, **kwargs):
