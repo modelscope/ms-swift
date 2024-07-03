@@ -154,7 +154,6 @@ QWEN_KEYS = ModelKeys(
         'output': 'lm_head',
     })
 
-
 PHI3_KEYS = ModelKeys(
     **{
         'module_list': 'model.layers',
@@ -167,7 +166,6 @@ PHI3_KEYS = ModelKeys(
         'output': 'lm_head',
     })
 
-
 PHI3_SMALL_KEYS = ModelKeys(
     **{
         'module_list': 'model.layers',
@@ -179,7 +177,6 @@ PHI3_SMALL_KEYS = ModelKeys(
         'embedding': 'model.embed_tokens',
         'output': 'lm_head',
     })
-
 
 DEEPSEEK_V2_KEYS = ModelKeys(
     **{
@@ -195,7 +192,6 @@ DEEPSEEK_V2_KEYS = ModelKeys(
         'embedding': 'model.embed_tokens',
         'output': 'lm_head',
     })
-
 
 MODEL_KEYS_MAPPING = OrderedDict([
     ('llama', LLAMA_KEYS),

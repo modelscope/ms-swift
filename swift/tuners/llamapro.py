@@ -91,7 +91,7 @@ class LLaMAPro(SwiftAdapter):
                 parameter: nn.Parameter
                 if any([m_part in name for m_part in new_module_list]):
                     parameter.requires_grad = True
-        s = str(model)
+
         return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
 
     @staticmethod
@@ -119,7 +119,7 @@ class LLaMAPro(SwiftAdapter):
         attention = model_key_mapping.attention
         attention = attention.split('{}.')[1]
         if model_type == 'phi3-small':
-            raise ValueError(f'phi3-small does not support llamapro currently')
+            raise ValueError('phi3-small does not support llamapro currently')
         if model_type in ('llama', 'mistral', 'qwen2', 'yi', 'gemma', 'deepseek', 'openbuddy', 'xverse', 'orion',
                           'bluelm', 'ziya', 'skywork', 'deepseek-v2', 'minicpm', 'phi3'):
             for idx, module in enumerate(module_list):
