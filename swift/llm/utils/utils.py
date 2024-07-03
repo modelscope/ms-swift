@@ -457,10 +457,10 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str, quan
             linear_cls = [Linear8bitLt]
     elif quant_method == 'hqq':
         from hqq.core.quantize import HQQLinear
-        linear_cls = HQQLinear
+        linear_cls = [HQQLinear]
     elif quant_method == 'eetq':
         from eetq import EetqLinear
-        linear_cls = EetqLinear
+        linear_cls = [EetqLinear]
     else:
         linear_cls = [Linear]
     if 'int4' in model_type or 'int8' in model_type:
