@@ -1,16 +1,16 @@
 # Llava Best Practice
 The document corresponds to the following models:
 
-- [llava1_5-7b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-7b-hf)
-- [llava1_5-13b-chat](https://modelscope.cn/models/huangjintao/llava-1.5-13b-hf)
-- [llava1_6-mistral-7b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-mistral-7b-hf)
-- [llava1_6-vicuna-7b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-7b-hf)
-- [llava1_6-vicuna-13b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-13b-hf)
-- [llava1_6-yi-34b-chat](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
+- [llava1_5-7b-instruct](https://modelscope.cn/models/huangjintao/llava-1.5-7b-hf)
+- [llava1_5-13b-instruct](https://modelscope.cn/models/huangjintao/llava-1.5-13b-hf)
+- [llava1_6-mistral-7b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-mistral-7b-hf)
+- [llava1_6-vicuna-7b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-7b-hf)
+- [llava1_6-vicuna-13b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-13b-hf)
+- [llava1_6-yi-34b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
 - [llava-next-72b](https://modelscope.cn/models/AI-Modelscope/llava-next-72b)
 - [llava-next-110b](https://modelscope.cn/models/AI-Modelscope/llava-next-110b)
 
-The following practice takes `llava1_6-mistral-7b-chat` as an example, and you can also switch to other models by specifying `--model_type`.
+Here, the first 6 llava-hf models support vllm inference acceleration, you can refer to [vLLM Inference Acceleration Document](vllm-inference-acceleration.md) for specific details. The following practice takes `llava1_6-mistral-7b-instruct` as an example, and you can also switch to other models by specifying `--model_type`.
 
 
 ## Table of Contents
@@ -30,13 +30,13 @@ pip install -e '.[llm]'
 ```shell
 # Experimental environment: A100
 # 20GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-mistral-7b-chat
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-mistral-7b-instruct
 
 # 70GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-yi-34b-chat
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-yi-34b-instruct
 
 # 4*20GB GPU memory
-CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-chat
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-instruct
 ```
 
 Output: (supports passing in local path or URL)
@@ -134,7 +134,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = 'llava1_6-mistral-7b-chat'
+model_type = 'llava1_6-mistral-7b-instruct'
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -191,12 +191,12 @@ LoRA fine-tuning:
 # Experimental environment: A10, 3090, V100...
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type llava1_6-mistral-7b-chat \
+    --model_type llava1_6-mistral-7b-instruct \
     --dataset coco-en-2-mini \
 
 # 2*45GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
-    --model_type llava1_6-yi-34b-chat \
+    --model_type llava1_6-yi-34b-instruct \
     --dataset coco-en-2-mini \
 ```
 
@@ -205,14 +205,14 @@ Full parameter fine-tuning:
 # Experimental environment: 4 * A100
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1_6-mistral-7b-chat \
+    --model_type llava1_6-mistral-7b-instruct \
     --dataset coco-en-2-mini \
     --sft_type full \
     --deepspeed default-zero2
 
 # 8 * 50 GPU memory
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
-    --model_type llava1_6-yi-34b-chat \
+    --model_type llava1_6-yi-34b-instruct \
     --dataset coco-en-2-mini \
     --sft_type full \
 ```
@@ -231,7 +231,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 ## Inference after Fine-tuning
 Direct inference:
 ```shell
-model_type="llava1_6-mistral-7b-chat"
+model_type="llava1_6-mistral-7b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/${model_type}/vx-xxx/checkpoint-xxx \
     --load_dataset_config true
@@ -239,7 +239,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 **merge-lora** and inference:
 ```shell
-model_type="llava1_6-mistral-7b-chat"
+model_type="llava1_6-mistral-7b-instruct"
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir "output/${model_type}/vx-xxx/checkpoint-xxx" \
     --merge_lora true

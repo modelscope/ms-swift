@@ -188,6 +188,7 @@ class Template:
         self._is_init = False
         self.tools_prompt = tools_prompt
         self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
+        self._is_vllm = False
 
     @staticmethod
     def _replace_system(prefix: Prompt) -> Prompt:
@@ -222,6 +223,7 @@ class Template:
                        default_system: Optional[str] = None,
                        max_length: Optional[int] = None,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                       model=None,
                        **kwargs) -> None:
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
@@ -235,7 +237,7 @@ class Template:
             self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.model = kwargs.get('model', None)
+        self.model = model
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
         self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
         self.query_loss_scale_map = None
@@ -278,6 +280,28 @@ class Template:
 
         example['query'] = query
         example['history'] = history
+
+    def _prepare_vllm_images(self, images: List['PIL.Image.Image']) -> List['PIL.Image.Image']:
+        # Resize the image to fit the proper size.
+        from PIL import Image
+        target_h, target_w = [int(x) for x in self.model.vllm_config['image_input_shape'].split(',')[-2:]]
+        new_images = []
+        for image in images:
+            # resize
+            ori_w, ori_h = image.size
+            scale = min(target_h / ori_h, target_w / ori_w)
+            if scale != 1:
+                image = image.resize((int(round(scale * ori_w)), int(round(scale * ori_h))), resample=Image.BICUBIC)
+            # pad
+            w, h = image.size
+            if target_w != w or target_h != h:
+                bg_color = tuple(int(v * 255) for v in self.tokenizer.processor.image_processor.image_mean)
+                new_image = Image.new(image.mode, (target_w, target_h), bg_color)
+                new_image.paste(image, ((target_w - w) // 2, (target_h - h) // 2))
+                image = new_image
+            new_images.append(image)
+
+        return new_images
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
@@ -1451,7 +1475,11 @@ class LlavaHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
-        return ['<image>\n']
+        if self._is_vllm:
+            image_feature_size = self.model.vllm_config['image_feature_size']
+            return ['<image>' * image_feature_size + '\n']
+        else:
+            return ['<image>\n']
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
@@ -1460,6 +1488,8 @@ class LlavaHfTemplate(Template):
         images_path = example.get('images') or []
         images = _read_batch(images_path)
         image_processor = self.tokenizer.processor.image_processor
+        if self._is_vllm:
+            images = self._prepare_vllm_images(images)
         if images:
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values'] = image_inputs['pixel_values']
@@ -1642,14 +1672,14 @@ class Phi3VisionTemplate(Template):
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        return ['<s>']
+        return ['<|image|>']
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         history = example.pop('history', None)
         if history is None:
             history = []
-        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<s>')
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<|image|>')
         images_path.extend(example.get('images') or [])
         images = _read_batch(images_path)
         inputs, _ = super().encode(example)
@@ -1657,7 +1687,10 @@ class Phi3VisionTemplate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        idx_list = _findall(input_ids, 1)[1:]  # 1: <s>
+        idx_list = _findall(input_ids, 32044)  # '<|image|>'
+
+        if self._is_vllm:
+            images = self._prepare_vllm_images(images)
         if len(images) > 0:
             processor = self.tokenizer.processor
             inputs.update(processor.image_processor(images, return_tensors='pt'))
@@ -1667,7 +1700,11 @@ class Phi3VisionTemplate(Template):
             num_img_tokens = inputs.pop('num_img_tokens').tolist()
             idx_list.insert(0, -1)
             for i in range(len(idx_list) - 1):
-                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [-1] * num_img_tokens[i] + [1]
+                if self._is_vllm:
+                    image_token_id = self.model.vllm_config['image_token_id']
+                else:
+                    image_token_id = -1
+                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [image_token_id] * num_img_tokens[i] + [1]
                 if labels is not None:
                     res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
             res_input_ids += input_ids[idx_list[-1] + 1:]
@@ -2109,9 +2146,10 @@ def get_template(
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+    model=None,
     **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])
-    template._init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
+    template._init_template(tokenizer, default_system, max_length, truncation_strategy, model=model, **kwargs)
     return template

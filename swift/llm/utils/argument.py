@@ -187,10 +187,8 @@ class ArgumentsBase:
             'cogvlm-17b-instruct': 'cogvlm-17b-chat',
             'minicpm-v-v2': 'minicpm-v-v2-chat',
             'mplug-owl2d1-chat': 'mplug-owl2_1-chat',
-            'llava1d6-mistral-7b-instruct': 'llava1_6-mistral-7b-chat',
-            'llava1d6-yi-34b-instruct': 'llava1_6-yi-34b-chat',
-            'llava1_6-mistral-7b-instruct': 'llava1_6-mistral-7b-chat',
-            'llava1_6-yi-34b-instruct': 'llava1_6-yi-34b-chat',
+            'llava1d6-mistral-7b-instruct': 'llava1_6-mistral-7b-instruct',
+            'llava1d6-yi-34b-instruct': 'llava1_6-yi-34b-instruct',
         }
         dataset_name_mapping = {
             'ms-bench-mini': 'ms-bench#20000',
@@ -1130,6 +1128,8 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
+    image_input_shape: Optional[str] = None
+    image_feature_size: Optional[int] = None
 
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
@@ -1211,7 +1211,7 @@ class InferArguments(ArgumentsBase):
         self.lora_request_list = None
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
-            if is_vllm_available() and support_vllm:
+            if is_vllm_available() and support_vllm and not self.is_multimodal:
                 if ((self.sft_type == 'full' or self.sft_type == 'lora' and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
@@ -1238,6 +1238,13 @@ class InferArguments(ArgumentsBase):
         self.infer_media_type = template_info.get('infer_media_type', 'none')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
+
+        vllm_config = model_info.get('vllm_config')
+        if support_vllm and vllm_config is not None:
+            if self.image_input_shape is not None:
+                vllm_config['image_input_shape'] = self.image_input_shape
+            if self.image_feature_size is not None:
+                vllm_config['image_feature_size'] = self.image_feature_size
 
     def load_from_ckpt_dir(self) -> None:
         sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')

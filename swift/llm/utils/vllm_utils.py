@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import os
+from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -15,7 +16,7 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, Samplin
 
 from swift.utils import get_logger
 from .argument import InferArguments
-from .model import get_model_tokenizer
+from .model import MODEL_MAPPING, get_model_tokenizer
 from .template import Template, get_template
 
 try:
@@ -24,6 +25,15 @@ except ImportError:
     pass
 
 logger = get_logger()
+
+
+@contextmanager
+def vllm_context(self: Template):
+    assert isinstance(self.model,
+                      (AsyncLLMEngine, LLMEngine)), 'Please pass `model=vllm_engine` when calling get_template.'
+    self._is_vllm = True
+    yield
+    self._is_vllm = False
 
 
 def get_vllm_engine(
@@ -75,6 +85,7 @@ def get_vllm_engine(
     else:
         assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
 
+    vllm_config = MODEL_MAPPING[model_type].get('vllm_config') or {}
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
@@ -85,6 +96,7 @@ def get_vllm_engine(
         disable_log_stats=disable_log_stats,
         disable_custom_all_reduce=disable_custom_all_reduce,
         enforce_eager=enforce_eager,
+        **vllm_config,
         **engine_kwargs)
     try:
         from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
@@ -103,6 +115,7 @@ def get_vllm_engine(
     else:
         _engine = llm_engine
     llm_engine.dtype = _engine.model_config.dtype  # compat with pt
+    llm_engine.vllm_config = vllm_config
     # compatible with vllm==0.3.*
     if version.parse(vllm.__version__) >= version.parse('0.3'):
         assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)
@@ -207,12 +220,44 @@ class VllmGenerationConfig(SamplingParams):
             super().__setattr__(key, value)
 
 
+def _patch_vllm_multimodal(image_sizes: torch.Tensor) -> None:
+    from vllm.multimodal import MultiModalPlugin
+
+    if hasattr(MultiModalPlugin, '_old_map_input'):
+        map_input = MultiModalPlugin._old_map_input
+    else:
+        map_input = getattr(MultiModalPlugin, 'map_input', None)
+        if map_input is None:
+            map_input = MultiModalPlugin.process_input
+
+    def new_map_input(*args, **kwargs):
+        res = map_input(*args, **kwargs)
+        res['image_sizes'] = image_sizes
+        return res
+
+    MultiModalPlugin.map_input = new_map_input
+    MultiModalPlugin.process_input = new_map_input
+    MultiModalPlugin._old_map_input = map_input
+
+
+def _prepare_request_inputs(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    input_ids = inputs['input_ids']
+    request_inputs = {'prompt_token_ids': input_ids}
+    if 'pixel_values' in inputs:
+        from vllm.multimodal.image import ImagePixelData
+        request_inputs['multi_modal_data'] = ImagePixelData(inputs['pixel_values'])
+    if 'image_sizes' in inputs:
+        _patch_vllm_multimodal(inputs['image_sizes'])
+    return request_inputs
+
+
 def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_id: str,
                       generation_config: VllmGenerationConfig, **kwargs) -> None:
-    input_ids = inputs['input_ids']
     if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-        llm_engine.add_request(request_id, {'prompt_token_ids': input_ids}, generation_config, **kwargs)
+        request_inputs = _prepare_request_inputs(inputs)
+        llm_engine.add_request(request_id, request_inputs, generation_config, **kwargs)
     else:
+        input_ids = inputs['input_ids']
         llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
 
 
@@ -222,6 +267,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
                           *,
                           generation_config: VllmGenerationConfig,
                           lora_request: Optional['LoRARequest'] = None,
+                          use_tqdm: bool = False,
                           **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -243,7 +289,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
-    for i, request in enumerate(request_list):
+    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
         history = request.get('history', None)
         if history is None:
             history = []
@@ -258,7 +304,8 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
         agent_state.append((is_observation, act_length))
 
         request['history'] = history
-        inputs = template.encode(request)[0]
+        with vllm_context(template):
+            inputs = template.encode(request)[0]
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
@@ -292,7 +339,13 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
     resp_list, agent_state = _prepare_vllm_request(
-        llm_engine, template, request_list, generation_config=generation_config, lora_request=lora_request, **kwargs)
+        llm_engine,
+        template,
+        request_list,
+        generation_config=generation_config,
+        lora_request=lora_request,
+        use_tqdm=use_tqdm,
+        **kwargs)
 
     if generation_config.use_beam_search:
         error_msg = 'Streaming generation does not support beam search.'
@@ -348,7 +401,13 @@ def inference_vllm(llm_engine: LLMEngine,
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
     resp_list, agent_state = _prepare_vllm_request(
-        llm_engine, template, request_list, generation_config=generation_config, lora_request=lora_request, **kwargs)
+        llm_engine,
+        template,
+        request_list,
+        generation_config=generation_config,
+        lora_request=lora_request,
+        use_tqdm=use_tqdm,
+        **kwargs)
 
     tokenizer = template.tokenizer
     if use_tqdm:
@@ -430,6 +489,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         args.system,
         args.max_length,
         args.truncation_strategy,
+        model=llm_engine,
         tools_prompt=args.tools_prompt)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
