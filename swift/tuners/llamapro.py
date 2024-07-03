@@ -135,7 +135,7 @@ class LLaMAPro(SwiftAdapter):
     def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):
         model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
         o_proj = model_key_mapping.o_proj.split('{}.')[1]
-        down_proj = model_key_mapping.o_proj.split('{}.')[1]
+        down_proj = model_key_mapping.down_proj.split('{}.')[1]
 
         for idx, module in enumerate(module_list):
             if idx not in new_module_idx:
