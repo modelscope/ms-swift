@@ -1216,7 +1216,7 @@ class InternLMXComposer2(Template):
             res_labels = None
         res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
         wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool)[None]
-        return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
+        return {'inputs_embeds': res_inputs_embeds,'input_ids':res_input_ids, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
