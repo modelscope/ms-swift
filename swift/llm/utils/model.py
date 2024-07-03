@@ -4978,7 +4978,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
         'image_feature_size': 1176,
     },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
 @register_model(
@@ -4994,7 +4994,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
         'image_feature_size': 1176,
     },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
 @register_model(
@@ -5011,7 +5011,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
         'image_feature_size': 2928,
     },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
 def get_model_tokenizer_llava_next(*args, **kwargs):
@@ -5034,7 +5034,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     },
     support_flash_attn=True,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-34b-hf')
 def get_model_tokenizer_llava_next_yi(*args, **kwargs):
