@@ -943,6 +943,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
+    requires=['transformers<4.42'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chat-19B')
@@ -952,6 +953,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
+    requires=['transformers<4.42'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm2-llama3-chinese-chat-19B')
@@ -1099,6 +1101,7 @@ def get_model_tokenizer_mamba(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
+    requires=['transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/cogvlm-chat-hf')
 @register_model(
@@ -1448,6 +1451,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.glm4v,
     TemplateType.glm4v,
     eos_token='<|endoftext|>',
+    requires=['transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/glm-4v-9b')
 @register_model(
@@ -4978,7 +4982,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
         'image_feature_size': 1176,
     },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
 @register_model(
@@ -4994,7 +4998,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
         'image_feature_size': 1176,
     },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
 @register_model(
@@ -5011,7 +5015,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
         'image_feature_size': 2928,
     },
     support_flash_attn=True,
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
 def get_model_tokenizer_llava_next(*args, **kwargs):
@@ -5034,7 +5038,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     },
     support_flash_attn=True,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.36'],
+    requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-34b-hf')
 def get_model_tokenizer_llava_next_yi(*args, **kwargs):

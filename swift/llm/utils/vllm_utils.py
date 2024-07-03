@@ -12,6 +12,7 @@ from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
+from transformers.utils.versions import require_version
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
@@ -49,9 +50,13 @@ def get_vllm_engine(
         enforce_eager: bool = False,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         use_async: bool = False,
+        # lora
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
+        # multimodal
+        image_input_shape: Optional[str] = None,
+        image_feature_size: Optional[int] = None,
         **kwargs) -> LLMEngine:
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
@@ -86,6 +91,12 @@ def get_vllm_engine(
         assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
 
     vllm_config = MODEL_MAPPING[model_type].get('vllm_config') or {}
+    if len(vllm_config) > 0:
+        require_version('vllm>=0.5')
+        if image_input_shape is not None:
+            vllm_config['image_input_shape'] = image_input_shape
+        if image_feature_size is not None:
+            vllm_config['image_feature_size'] = image_feature_size
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
@@ -462,7 +473,9 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
         max_loras=min(len(args.lora_modules), 1),
-        max_lora_rank=args.vllm_max_lora_rank)
+        max_lora_rank=args.vllm_max_lora_rank,
+        image_input_shape=args.image_input_shape,
+        image_feature_size=args.image_feature_size)
     tokenizer = llm_engine.hf_tokenizer
     if use_async:
         model_config = asyncio.run(llm_engine.get_model_config())

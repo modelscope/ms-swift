@@ -97,7 +97,11 @@ def llm_export(args: ExportArguments) -> None:
         assert args.sft_type == 'lora', f'args.sft_type: {args.sft_type}'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
     if args.merge_lora:
+        # fix parameter conflict
+        quant_method = args.quant_method
+        args.quant_method = None
         merge_lora(args, device_map=args.merge_device_map)
+        args.quant_method = quant_method
     if args.quant_bits > 0:
         assert args.quant_output_dir is not None
         _args = args
