@@ -5059,8 +5059,8 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     tags=['multi-modal', 'video'],
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-hf')
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
-    from transformers import LlavaForConditionalGeneration
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    from transformers import LlavaNextVideoForConditionalGeneration
+    kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 

@@ -2,9 +2,10 @@
 import re
 from copy import deepcopy
 from io import BytesIO
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
+import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
@@ -272,8 +273,10 @@ class Template:
                             h[0] = media_tag + h[0]
                     if example[media_key][-1]:
                         query = media_tag + query
+                    example[media_key] = [m for m in example[media_key] if m]
                 else:
-                    media_len = len([m for m in example[media_key] if m])
+                    example[media_key] = [m for m in example[media_key] if m]
+                    media_len = len(example[media_key])
                     if history:
                         history[0][0] = media_tag * media_len + history[0][0]
                     else:
@@ -887,7 +890,7 @@ yi_vl_default_system = (
     '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
 
 
-def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
+def _load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     from PIL import Image, UnidentifiedImageError
     import os
     import base64
@@ -912,12 +915,33 @@ def _read_from_path(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image
     return image
 
 
-def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]]) -> List['PIL.Image.Image']:
+def _load_video(video_path: str) -> np.ndarray:
+    import av
+    container = av.open(video_path)
+    total_frames = container.streams.video[0].frames
+    indices = np.arange(0, total_frames, total_frames / 8).astype(int)
+    frames = []
+    container.seek(0)
+    start_index = indices[0]
+    end_index = indices[-1]
+    for i, frame in enumerate(container.decode(video=0)):
+        if i > end_index:
+            break
+        if i >= start_index and i in indices:
+            frames.append(frame)
+    return np.stack([x.to_ndarray(format='rgb24') for x in frames])
+
+
+_T = TypeVar('_T')
+
+
+def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
+                load_func: Callable[[str], _T] = _load_image) -> List[_T]:
     res = []
     for path in path_list:
         if path is None:  # ignore None
             continue
-        res.append(_read_from_path(path))
+        res.append(load_func(path))
     return res
 
 
@@ -998,7 +1022,7 @@ class GLM4VTemplate(GLMTemplate):
         if idx_list:
             idx = idx_list[0]
             images_path = example.get('images') or []
-            image = _read_from_path(images_path[0])
+            image = _load_image(images_path[0])
             placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -1383,7 +1407,7 @@ class FlorenceTemplate(Template):
         images_path = example.get('images') or []
         assert len(images_path) == 1, 'Florence series models only supports input with a single image.'
 
-        images = _read_from_path(images_path[0])
+        images = _load_image(images_path[0])
         example['_image'] = images
 
         # process bbox
@@ -1427,7 +1451,7 @@ class FlorenceTemplate(Template):
         return generate_ids[0].tolist()
 
     def post_process_generate_response(self, response, example):
-        image = _read_from_path(example['images'][0])
+        image = _load_image(example['images'][0])
         return self.tokenizer.processor.post_process_generation(
             response, task=example['query'], image_size=(image.width, image.height))
 
@@ -1506,22 +1530,36 @@ class LlavaVideoTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'video'
-        return ['<video>\n']
+        media_file = example['videos'][index]
+        if media_file.rsplit('.', 1)[1] in {'jpg', 'png'}:
+            return ['<image>\n']
+        else:
+            return ['<video>\n']
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        images_path = example.get('video') or []
-        images = _read_batch(images_path)
-        image_processor = self.tokenizer.processor.image_processor
-        if self._is_vllm:
-            images = self._prepare_vllm_images(images)
-        if images:
+        media_files = example.get('videos') or []
+        images_path, videos_path = [], []
+        for media_file in media_files:
+            if media_file is None:
+                continue
+            if media_file.rsplit('.', 1)[1] in {'jpg', 'png'}:
+                images_path.append(media_file)
+            else:
+                videos_path.append(media_file)
+        if len(videos_path) > 0:
+            videos = _read_batch(videos_path, _load_video)
+            video_processor = self.tokenizer.processor.video_processor
+            video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
+            inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
+        if len(images_path) > 0:
+            images = _read_batch(images_path)
+            image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values'] = image_inputs['pixel_values']
-            if 'image_sizes' in image_inputs:
-                inputs['image_sizes'] = image_inputs['image_sizes']
+            inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
 
 
@@ -1644,7 +1682,7 @@ class LLavaLlamaTemplate(Template):
             return inputs, {}
         image_path = example.get('images') or []
         if image_path:
-            raw_image = _read_from_path(image_path[0])
+            raw_image = _load_image(image_path[0])
             pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
@@ -1684,7 +1722,7 @@ class PaliGemmaTemplate(Template):
         else:
             inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
         if image_path:
-            raw_image = _read_from_path(image_path[0])
+            raw_image = _load_image(image_path[0])
             model_inputs = processor(text=example['query'], images=raw_image, return_tensors='pt')
             inputs['pixel_values'] = model_inputs['pixel_values']
         return inputs, {}
@@ -1902,7 +1940,7 @@ class CogTemplate(Template):
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         images_path = example.get('images') or []
-        image = _read_from_path(images_path[0]) if len(images_path) >= 1 else []
+        image = _load_image(images_path[0]) if len(images_path) >= 1 else []
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
@@ -1985,7 +2023,7 @@ class MiniCPMVTemplate(Template):
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         images_path = example['images']
-        image = _read_from_path(images_path[0])
+        image = _load_image(images_path[0])
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
