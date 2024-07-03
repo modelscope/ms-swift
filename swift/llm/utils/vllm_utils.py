@@ -12,6 +12,7 @@ from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
+from transformers.utils.versions import require_version
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
@@ -86,6 +87,8 @@ def get_vllm_engine(
         assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
 
     vllm_config = MODEL_MAPPING[model_type].get('vllm_config') or {}
+    if len(vllm_config) > 0:
+        require_version('vllm>=0.5')
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
