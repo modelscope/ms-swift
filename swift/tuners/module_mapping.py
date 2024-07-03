@@ -221,7 +221,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('codefuse', CODEFUSE_KEYS),
     ('phi2', PHI2_KEYS),
     ('qwen', QWEN_KEYS),
-    ('phi3_small', PHI3_SMALL_KEYS),
+    ('phi3-small', PHI3_SMALL_KEYS),
     ('phi3', PHI3_KEYS),
     ('minicpm', MINICPM_KEYS),
 ])
