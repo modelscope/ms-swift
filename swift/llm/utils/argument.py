@@ -26,6 +26,7 @@ from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, 
 from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
+from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -577,7 +578,7 @@ class SftArguments(ArgumentsBase):
     gradient_accumulation_steps: Optional[int] = None
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
-    lr_scheduler_type: str = 'linear'
+    lr_scheduler_type: str = 'cosine'
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50
@@ -1237,6 +1238,8 @@ class InferArguments(ArgumentsBase):
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        self.media_type = template_info.get('media_type', 'image')
+        self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 

@@ -47,6 +47,7 @@ class TemplateType:
     llava_llama_instruct = 'llava-llama-instruct'
     llava_qwen_instruct = 'llava-qwen-instruct'
     llama_llava_next = 'llama-llava-next'
+    llava_next_video = 'llava-next-video'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -864,7 +865,7 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
     pass
 
 
-register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
+register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True, media_type='audio')
 register_template(
     TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
@@ -1496,6 +1497,41 @@ class LlavaHfTemplate(Template):
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
+
+
+class LlavaVideoTemplate(Template):
+
+    def __init__(self):
+        super().__init__(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>'])
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type == 'video'
+        return ['<video>\n']
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images_path = example.get('video') or []
+        images = _read_batch(images_path)
+        image_processor = self.tokenizer.processor.image_processor
+        if self._is_vllm:
+            images = self._prepare_vllm_images(images)
+        if images:
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+            inputs['pixel_values'] = image_inputs['pixel_values']
+            if 'image_sizes' in image_inputs:
+                inputs['image_sizes'] = image_inputs['image_sizes']
+        return inputs, {}
+
+
+register_template(
+    TemplateType.llava_next_video,
+    LlavaVideoTemplate(),
+    use_model=True,
+    infer_media_type='round',
+    media_type='video',
+    lazy_tokenize=True)
 
 
 class Llava1_5Template(LlavaHfTemplate):

@@ -86,7 +86,7 @@
 - `--gradient_accumulation_steps`: Gradient accumulation, default is `None`, set to `math.ceil(16 / self.batch_size / world_size)`. `total_batch_size =  batch_size * gradient_accumulation_steps * world_size`.
 - `--max_grad_norm`: Gradient clipping, default is `0.5`.
 - `--predict_with_generate`: Whether to use generation for evaluation, default is `False`. If set to False, evaluate using `loss`. If set to True, evaluate using `ROUGE-L` and other metrics. Generative evaluation takes a long time, choose carefully.
-- `--lr_scheduler_type`: Default is `'linear'`, options: 'linear', 'cosine', 'constant', etc.
+- `--lr_scheduler_type`: Default is `'cosine'`, options: 'linear', 'cosine', 'constant', etc.
 - `--warmup_ratio`: Proportion of warmup in total training steps, default is `0.05`.
 - `--eval_steps`: Evaluate every this many steps, default is `50`.
 - `--save_steps`: Save every this many steps, default is `None`, i.e. set to `eval_steps`.

@@ -198,6 +198,7 @@ class ModelType:
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
+    llava_next_video_7b_instruct = 'llava-next-video-7b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -5046,6 +5047,21 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     if model is not None:
         model.config.image_token_index = 64003
     return model, tokenizer
+
+
+@register_model(
+    ModelType.llava_next_video_7b_instruct,
+    'huangjintao/LLaVA-NeXT-Video-7B-hf',
+    LoRATM.llama,
+    TemplateType.llava_next_video,
+    support_flash_attn=True,
+    requires=['transformers>=4.42'],
+    tags=['multi-modal', 'video'],
+    hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-hf')
+def get_model_tokenizer_llava_next_video(*args, **kwargs):
+    from transformers import LlavaForConditionalGeneration
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
 @register_model(
