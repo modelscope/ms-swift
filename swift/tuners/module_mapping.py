@@ -146,7 +146,7 @@ QWEN_KEYS = ModelKeys(
     **{
         'module_list': 'transformer.h',
         'mlp': 'transformer.h.{}.mlp',
-        'down_proj': 'transformer.h.{}.mlp.fc2',
+        'down_proj': 'transformer.h.{}.mlp.c_proj',
         'attention': 'transformer.h.{}.attn',
         'o_proj': 'transformer.h.{}.attn.c_proj',
         'qkv_proj': 'transformer.h.{}.attn.c_attn',
