@@ -741,13 +741,6 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
-
-    # agent support
-    is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
-    if is_observation:
-        history[-1][-1] = history[-1][-1] + query
-        query = None
-        
     inputs, tokenizer_kwargs, token_len, example = _prepare_inputs(
         model,
         template,
@@ -764,6 +757,12 @@ def inference(model: PreTrainedModel,
     if generation_info is None:
         generation_info = {}
     generation_info['num_prompt_tokens'] = token_len
+
+    # agent support
+    is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
+    if is_observation:
+        history[-1][-1] = history[-1][-1] + query
+        query = None
 
     if stream and not verbose:
         logger.warning('Please set verbose to True to support TextStreamer, or use `inference_stream.`')
