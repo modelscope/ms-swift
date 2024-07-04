@@ -2628,6 +2628,7 @@ def get_model_tokenizer_florence(model_dir: str,
     else:
         model_config.text_config._flash_attn_2_enabled = use_flash_attn
         model_config._flash_attn_2_enabled = use_flash_attn
+    model_config.vision_config.model_type = 'davit'
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir,
         torch_dtype,
