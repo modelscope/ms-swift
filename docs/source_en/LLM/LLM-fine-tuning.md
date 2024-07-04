@@ -96,6 +96,7 @@ swift sft \
     --output_dir output \
 
 # Multi-machine multi-card
+# If multiple machines share a disk, please additionally specify `--save_on_each_node false`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NNODES=2 \
