@@ -1273,8 +1273,8 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
-            img_tokens: List[int] = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs
-                                                          + '</img>\n')
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n', add_special_tokens=False)
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
