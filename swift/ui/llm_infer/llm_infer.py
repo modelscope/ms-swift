@@ -393,15 +393,15 @@ class LLMInfer(BaseUI):
         request_config.stop = ['Observation:']
         stream_resp_with_history = ''
         medias = [m for h in old_history for m in h[2]]
-        media_infer_type = TEMPLATE_MAPPING[template.template_type].get('media_infer_type', 'round')
+        media_infer_type = TEMPLATE_MAPPING[template].get('infer_media_type', 'round')
         image_interactive = media_infer_type != 'dialogue'
 
         history_roles = ['user'] * (len(old_history) + 1)
         if old_history:
-            last_response = old_history[-1][1]
-            observation_end = last_response.endswith('Observation:')
+            last_response = old_history[-1][1] if old_history and old_history[-1][1] else ''
+            observation_end = last_response.lower().endswith('observation:')
             action_input_end = False
-            if not observation_end:
+            if 'observation:' not in last_response.lower():
                 action_input_end = 'action input' in last_response.lower()
             if observation_end or action_input_end:
                 history_roles[-1] = 'tool'
