@@ -22,7 +22,7 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
                     Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream,
-                    messages_join_observation, messages_to_history, random_uuid)
+                    messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
 
@@ -342,7 +342,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             elif request.tool_choice == 'auto':
                 example['tools'] = request.tools
 
-        input_ids = template.encode(example)[0]['input_ids']
+        inputs = template.encode(example)[0]
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = messages
     else:
@@ -359,16 +359,18 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         example = {'query': prompt}
         if len(images) > 0:
             example['images'] = images
-        input_ids = template.encode(example)[0]['input_ids']
+        inputs = template.encode(example)[0]
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = prompt
 
     request_info = {'request_id': request_id}
     request_info.update(_request)
 
-    error_msg = await check_length(request, input_ids)
-    if error_msg is not None:
-        return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+    if 'input_ids' in inputs:
+        input_ids = inputs['input_ids']
+        error_msg = await check_length(request, input_ids)
+        if error_msg is not None:
+            return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
 
     kwargs = {'max_new_tokens': request.max_tokens}
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
@@ -389,6 +391,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         kwargs['do_sample'] = True
 
     generation_config = _GenerationConfig(**kwargs)
+    _old_generation_config = model.generation_config
+    set_generation_config(model, generation_config)  # inplace
+    model.generation_config = _old_generation_config
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
     logger.info(request_info)

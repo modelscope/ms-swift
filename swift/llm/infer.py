@@ -90,7 +90,7 @@ def merge_lora(args: InferArguments,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
-    assert args.sft_type in ('lora', 'adalora', 'longlora'), 'Only supports lora series models'
+    assert args.sft_type in ('lora', 'adalora', 'longlora', 'llamapro'), 'Only supports lora & llamapro series models'
     assert not is_quant_model(
         args.model_type), f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
@@ -223,6 +223,7 @@ def prepare_model_template(args: InferArguments,
         else:
             model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
         model = model.to(model.dtype)
+    model.requires_grad_(False)
 
     if verbose:
         show_layers(model)
@@ -287,7 +288,6 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             from transformers import EetqConfig
             args.quant_config = EetqConfig('int8')
         model, template = prepare_model_template(args, device_map=device_map)
-        model.requires_grad_(False)
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)

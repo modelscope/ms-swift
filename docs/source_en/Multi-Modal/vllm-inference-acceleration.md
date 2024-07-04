@@ -36,7 +36,7 @@ from swift.llm import (
 model_type = ModelType.llava1_6_mistral_7b_instruct
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)
-template = get_template(template_type, llm_engine.hf_tokenizer, model=llm_engine)
+template = get_template(template_type, llm_engine.hf_tokenizer)
 # Interface similar to `transformers.GenerationConfig`
 llm_engine.generation_config.max_new_tokens = 1024
 

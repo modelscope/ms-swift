@@ -29,6 +29,14 @@ class ModelKeys:
 
     qk_proj: str = None
 
+    qa_proj: str = None
+
+    qb_proj: str = None
+
+    kva_proj: str = None
+
+    kvb_proj: str = None
+
     output: str = None
 
 
@@ -58,6 +66,7 @@ ORION_KEYS = LLAMA_KEYS
 BLUELM_KEYS = LLAMA_KEYS
 ZIYA_KEYS = LLAMA_KEYS
 SKYWORK_KEYS = LLAMA_KEYS
+MINICPM_KEYS = LLAMA_KEYS
 
 INTERNLM2_KEYS = ModelKeys(
     **{
@@ -137,7 +146,7 @@ QWEN_KEYS = ModelKeys(
     **{
         'module_list': 'transformer.h',
         'mlp': 'transformer.h.{}.mlp',
-        'down_proj': 'transformer.h.{}.mlp.fc2',
+        'down_proj': 'transformer.h.{}.mlp.c_proj',
         'attention': 'transformer.h.{}.attn',
         'o_proj': 'transformer.h.{}.attn.c_proj',
         'qkv_proj': 'transformer.h.{}.attn.c_attn',
@@ -145,14 +154,55 @@ QWEN_KEYS = ModelKeys(
         'output': 'lm_head',
     })
 
+PHI3_KEYS = ModelKeys(
+    **{
+        'module_list': 'model.layers',
+        'mlp': 'model.layers.{}.mlp',
+        'down_proj': 'model.layers.{}.mlp.down_proj',
+        'attention': 'model.layers.{}.self_attn',
+        'o_proj': 'model.layers.{}.self_attn.o_proj',
+        'qkv_proj': 'model.layers.{}.self_attn.qkv_proj',
+        'embedding': 'model.embed_tokens',
+        'output': 'lm_head',
+    })
+
+PHI3_SMALL_KEYS = ModelKeys(
+    **{
+        'module_list': 'model.layers',
+        'mlp': 'model.layers.{}.mlp',
+        'down_proj': 'model.layers.{}.mlp.down_proj',
+        'attention': 'model.layers.{}.self_attn',
+        'o_proj': 'model.layers.{}.self_attn.dense',
+        'qkv_proj': 'model.layers.{}.self_attn.query_key_value',
+        'embedding': 'model.embed_tokens',
+        'output': 'lm_head',
+    })
+
+DEEPSEEK_V2_KEYS = ModelKeys(
+    **{
+        'module_list': 'model.layers',
+        'mlp': 'model.layers.{}.mlp',
+        'down_proj': 'model.layers.{}.mlp.down_proj',
+        'attention': 'model.layers.{}.self_attn',
+        'o_proj': 'model.layers.{}.self_attn.o_proj',
+        'qa_proj': 'model.layers.{}.self_attn.q_a_proj',
+        'qb_proj': 'model.layers.{}.self_attn.q_b_proj',
+        'kva_proj': 'model.layers.{}.self_attn.kv_a_proj_with_mqa',
+        'kvb_proj': 'model.layers.{}.self_attn.kv_b_proj',
+        'embedding': 'model.embed_tokens',
+        'output': 'lm_head',
+    })
+
 MODEL_KEYS_MAPPING = OrderedDict([
     ('llama', LLAMA_KEYS),
     ('mistral', MISTRAL_KEYS),
     ('qwen1half', QWEN2_KEYS),
+    ('qwen2', QWEN2_KEYS),
     ('yi', YI_KEYS),
     ('gemma', GEMMA_KEYS),
     ('internlm2', INTERNLM2_KEYS),
     ('internlm', INTERNLM_KEYS),
+    ('deepseek-v2', DEEPSEEK_V2_KEYS),
     ('deepseek', DEEPSEEK_KEYS),
     ('openbuddy', OPENBUDDY_KEYS),
     ('xverse', XVERSE_KEYS),
@@ -161,9 +211,13 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('ziya', ZIYA_KEYS),
     ('skywork', SKYWORK_KEYS),
     ('chatglm', CHATGLM_KEYS),
+    ('glm4', CHATGLM_KEYS),
     ('baichuan', BAICHUAN_KEYS),
     ('yuan', YUAN_KEYS),
     ('codefuse', CODEFUSE_KEYS),
     ('phi2', PHI2_KEYS),
     ('qwen', QWEN_KEYS),
+    ('phi3-small', PHI3_SMALL_KEYS),
+    ('phi3', PHI3_KEYS),
+    ('minicpm', MINICPM_KEYS),
 ])

@@ -118,11 +118,13 @@ class LLaMAPro(SwiftAdapter):
         model_key_mapping = LLaMAPro._get_model_key_mapping(model_type, config)
         attention = model_key_mapping.attention
         attention = attention.split('{}.')[1]
+        if model_type == 'phi3-small':
+            raise ValueError('phi3-small does not support llamapro currently')
         if model_type in ('llama', 'mistral', 'qwen2', 'yi', 'gemma', 'deepseek', 'openbuddy', 'xverse', 'orion',
-                          'bluelm', 'ziya', 'skywork'):
+                          'bluelm', 'ziya', 'skywork', 'deepseek-v2', 'minicpm', 'phi3'):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).layer_idx = idx
-        elif model_type in ('chatglm', ):
+        elif model_type in ('chatglm', 'glm4'):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).layer_number = idx
         elif model_type in ('phi2', ):
@@ -133,7 +135,7 @@ class LLaMAPro(SwiftAdapter):
     def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):
         model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
         o_proj = model_key_mapping.o_proj.split('{}.')[1]
-        down_proj = model_key_mapping.o_proj.split('{}.')[1]
+        down_proj = model_key_mapping.down_proj.split('{}.')[1]
 
         for idx, module in enumerate(module_list):
             if idx not in new_module_idx:
@@ -142,10 +144,10 @@ class LLaMAPro(SwiftAdapter):
             _down_proj: nn.Linear = module.get_submodule(down_proj)
             _o_proj.weight.data = torch.zeros_like(_o_proj.weight.data)
             _down_proj.weight.data = torch.zeros_like(_down_proj.weight.data)
-            if hasattr(_o_proj, 'bias') and _o_proj.bias:
-                _o_proj.bias = torch.zeros_like(_o_proj.bias)
-            if hasattr(_down_proj, 'bias') and _down_proj.bias:
-                _down_proj.bias = torch.zeros_like(_down_proj.bias)
+            if hasattr(_o_proj, 'bias') and _o_proj.bias is not None:
+                _o_proj.bias.data = torch.zeros_like(_o_proj.bias)
+            if hasattr(_down_proj, 'bias') and _down_proj.bias is not None:
+                _down_proj.bias.data = torch.zeros_like(_down_proj.bias)
 
     @staticmethod
     def _set_module_list(config, module: nn.Module, module_list: nn.ModuleList):

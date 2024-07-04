@@ -249,6 +249,10 @@ class ModelType:
     internlm2_20b = 'internlm2-20b'
     internlm2_20b_sft_chat = 'internlm2-20b-sft-chat'
     internlm2_20b_chat = 'internlm2-20b-chat'
+    # internlm2.5
+    internlm2_5_7b = 'internlm2_5-7b'
+    internlm2_5_7b_chat = 'internlm2_5-7b-chat'
+    internlm2_5_7b_chat_1m = 'internlm2_5-7b-chat-1m'
     # internlm2-math
     internlm2_math_7b = 'internlm2-math-7b'
     internlm2_math_7b_chat = 'internlm2-math-7b-chat'
@@ -1428,6 +1432,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/glm-4-9b')
 @register_model(
     ModelType.glm4_9b_chat,
@@ -1436,6 +1441,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     TemplateType.chatglm3,
     support_vllm=True,
     function_kwargs={'kv_cache_patch': True},
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/glm-4-9b-chat')
 @register_model(
     ModelType.glm4_9b_chat_1m,
@@ -1444,6 +1450,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     TemplateType.chatglm3,
     support_vllm=True,
     function_kwargs={'kv_cache_patch': True},
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/glm-4-9b-chat-1m')
 @register_model(
     ModelType.glm4v_9b_chat,
@@ -1469,6 +1476,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b-32k')
 @register_model(
     ModelType.chatglm3_6b_128k,
@@ -1476,6 +1484,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b-128k')
 @register_model(
     ModelType.chatglm3_6b,
@@ -1483,6 +1492,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm3,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b')
 @register_model(
     ModelType.chatglm3_6b_base,
@@ -1490,6 +1500,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm3-6b-base')
 @register_model(
     ModelType.chatglm2_6b_32k,
@@ -1497,6 +1508,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm2,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm2-6b-32k')
 @register_model(
     ModelType.chatglm2_6b,
@@ -1504,6 +1516,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     LoRATM.chatglm,
     TemplateType.chatglm2,
     support_vllm=True,
+    requires=['transformers<4.42'],
     hf_model_id='THUDM/chatglm2-6b')
 @register_model(
     ModelType.codegeex2_6b,
@@ -3250,11 +3263,40 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
 
 
 @register_model(
+    ModelType.internlm2_5_7b,
+    'Shanghai_AI_Laboratory/internlm2_5-7b',
+    LoRATM.internlm2,
+    TemplateType.default_generation,
+    requires=['transformers>=4.38'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='internlm/internlm2_5-7b')
+@register_model(
+    ModelType.internlm2_5_7b_chat,
+    'Shanghai_AI_Laboratory/internlm2_5-7b-chat',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    requires=['transformers>=4.38'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='internlm/internlm2_5-7b-chat')
+@register_model(
+    ModelType.internlm2_5_7b_chat_1m,
+    'Shanghai_AI_Laboratory/internlm2_5-7b-chat-1m',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    requires=['transformers>=4.38'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='internlm/internlm2_5-7b-chat-1m')
+@register_model(
     ModelType.internlm2_1_8b,
     'Shanghai_AI_Laboratory/internlm2-1_8b',
     LoRATM.internlm2,
     TemplateType.default_generation,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-1_8b')
@@ -3264,7 +3306,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-1_8b-sft')
@@ -3274,7 +3316,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-1_8b')
@@ -3283,7 +3325,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-math-base-7b',
     LoRATM.internlm2,
     TemplateType.default_generation,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -3293,7 +3335,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-math-base-20b',
     LoRATM.internlm2,
     TemplateType.default_generation,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -3304,7 +3346,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -3315,7 +3357,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     tags=['math'],
@@ -3326,7 +3368,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-7b-sft')
@@ -3336,7 +3378,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-7b')
@@ -3346,7 +3388,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-20b-sft')
@@ -3356,7 +3398,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm2,
     eos_token='<|im_end|>',
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-chat-20b')
@@ -3365,7 +3407,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-7b',
     LoRATM.internlm2,
     TemplateType.default_generation,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-7b')
@@ -3374,7 +3416,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-base-7b',
     LoRATM.internlm2,
     TemplateType.default_generation,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-base-7b')
@@ -3383,7 +3425,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-20b',
     LoRATM.internlm2,
     TemplateType.default_generation,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-20b')
@@ -3392,7 +3434,7 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     'Shanghai_AI_Laboratory/internlm2-base-20b',
     LoRATM.internlm2,
     TemplateType.default_generation,
-    requires=['transformers>=4.35'],
+    requires=['transformers>=4.38'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='internlm/internlm2-base-20b')
