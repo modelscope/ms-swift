@@ -392,7 +392,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     generation_config = _GenerationConfig(**kwargs)
     _old_generation_config = model.generation_config
-    set_generation_config(model, generation_config)
+    set_generation_config(model, generation_config)  # inplace
     model.generation_config = _old_generation_config
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
