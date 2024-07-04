@@ -16,26 +16,6 @@ class Save(BaseUI):
                 'en': 'Saving settings'
             },
         },
-        'save_steps': {
-            'label': {
-                'zh': '存储步数',
-                'en': 'save steps',
-            },
-            'info': {
-                'zh': '设置每个多少步数进行存储',
-                'en': 'Set the save steps',
-            }
-        },
-        'output_dir': {
-            'label': {
-                'zh': '存储目录',
-                'en': 'The output dir',
-            },
-            'info': {
-                'zh': '设置输出模型存储在哪个文件夹下',
-                'en': 'Set the output folder',
-            }
-        },
         'push_to_hub': {
             'label': {
                 'zh': '推送魔搭Hub',
@@ -90,11 +70,8 @@ class Save(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Accordion(elem_id='save_param', open=True):
+        with gr.Accordion(elem_id='save_param', open=False):
             with gr.Blocks():
-                with gr.Row():
-                    gr.Textbox(elem_id='save_steps', value='500', lines=1, scale=5)
-                    gr.Textbox(elem_id='output_dir', scale=20)
                 with gr.Row():
                     gr.Checkbox(elem_id='push_to_hub', scale=20)
                     gr.Textbox(elem_id='hub_model_id', lines=1, scale=20)

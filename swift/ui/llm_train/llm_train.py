@@ -12,7 +12,7 @@ import json
 import torch
 from gradio import Accordion, Tab
 
-from swift.llm import RLHFArguments, SftArguments
+from swift.llm import RLHFArguments
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.advanced import Advanced
 from swift.ui.llm_train.dataset import Dataset
@@ -115,16 +115,6 @@ class LLMTrain(BaseUI):
                 'en': 'Select GPU to train'
             }
         },
-        'gpu_memory_fraction': {
-            'label': {
-                'zh': 'GPU显存限制',
-                'en': 'GPU memory fraction'
-            },
-            'info': {
-                'zh': '设置使用显存的比例，一般用于显存测试',
-                'en': 'Set the memory fraction ratio of GPU, usually used in memory test'
-            }
-        },
         'sft_type': {
             'label': {
                 'zh': '训练方式',
@@ -195,6 +185,12 @@ class LLMTrain(BaseUI):
                 'en': 'Sequence parallel when ddp, need to install ms-swift[seq_parallel]'
             }
         },
+        'train_param': {
+            'label': {
+                'zh': '训练参数设置',
+                'en': 'Train settings'
+            },
+        },
     }
 
     choice_dict = BaseUI.get_choices_from_dataclass(RLHFArguments)
@@ -212,18 +208,19 @@ class LLMTrain(BaseUI):
             with gr.Blocks():
                 Model.build_ui(base_tab)
                 Dataset.build_ui(base_tab)
-                with gr.Row():
-                    gr.Dropdown(elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
-                    gr.Dropdown(elem_id='sft_type', scale=2)
-                    gr.Dropdown(elem_id='tuner_backend', scale=2)
-                    gr.Textbox(elem_id='sequence_parallel_size', scale=3)
-                with gr.Row():
-                    gr.Textbox(elem_id='seed', scale=4)
-                    gr.Dropdown(elem_id='dtype', scale=4)
-                    gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
-                    gr.Textbox(elem_id='ddp_num', value='2', scale=4)
+                with gr.Accordion(elem_id='train_param', open=True):
+                    with gr.Row():
+                        gr.Dropdown(
+                            elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
+                        gr.Dropdown(elem_id='sft_type', scale=2)
+                        gr.Dropdown(elem_id='tuner_backend', scale=2)
+                        gr.Textbox(elem_id='sequence_parallel_size', scale=3)
+                    with gr.Row():
+                        gr.Textbox(elem_id='seed', scale=4)
+                        gr.Dropdown(elem_id='dtype', scale=4)
+                        gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
+                        gr.Textbox(elem_id='ddp_num', value='2', scale=4)
                 Hyper.build_ui(base_tab)
-                Save.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 with gr.Row():
                     gr.Dropdown(
@@ -232,7 +229,6 @@ class LLMTrain(BaseUI):
                         choices=[str(i) for i in range(gpu_count)] + ['cpu'],
                         value=default_device,
                         scale=8)
-                    gr.Textbox(elem_id='gpu_memory_fraction', scale=4)
                     if is_shared_ui:
                         gr.Checkbox(elem_id='dry_run', value=True, interactive=False, scale=4)
                     else:
@@ -240,12 +236,13 @@ class LLMTrain(BaseUI):
                     submit = gr.Button(elem_id='submit', scale=4, variant='primary')
 
                 LoRA.build_ui(base_tab)
+                RLHF.build_ui(base_tab)
+                Quantization.build_ui(base_tab)
                 Galore.build_ui(base_tab)
                 Lisa.build_ui(base_tab)
                 LlamaPro.build_ui(base_tab)
-                Quantization.build_ui(base_tab)
-                RLHF.build_ui(base_tab)
                 SelfCog.build_ui(base_tab)
+                Save.build_ui(base_tab)
                 Advanced.build_ui(base_tab)
 
                 cls.element('sft_type').change(
@@ -280,7 +277,7 @@ class LLMTrain(BaseUI):
                         [Runtime.element('running_tasks')],
                         [Runtime.element('running_tasks')] + [Runtime.element('log')] + Runtime.all_plots,
                         cancels=[Runtime.log_event],
-                    ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Save.element('output_dir')])
+                    ).then(Runtime.reset, [], [Runtime.element('logging_dir')] + [Hyper.element('output_dir')])
 
     @classmethod
     def update_runtime(cls):

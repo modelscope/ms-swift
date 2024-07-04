@@ -13,8 +13,8 @@ import torch
 from gradio import Accordion, Tab
 from modelscope import GenerationConfig, snapshot_download
 
-from swift.llm import (DeployArguments, InferArguments, XRequestConfig, inference_client, inference_stream,
-                       limit_history_length, prepare_model_template)
+from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, XRequestConfig, inference_client,
+                       inference_stream, limit_history_length, prepare_model_template)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
@@ -349,7 +349,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def clear_session(cls):
-        return '', [], None, []
+        return '', [], gr.update(value=None, interactive=True), []
 
     @classmethod
     def change_interactive(cls):
@@ -364,6 +364,14 @@ class LLMInfer(BaseUI):
             if h[0] and h[0].strip():
                 total_history.append(h[:2])
         return total_history
+
+    @classmethod
+    def agent_type(cls, response):
+        if response.lower().endswith('observation:'):
+            return 'react'
+        if 'observation:' not in response.lower() and 'action input:' in response.lower():
+            return 'toolbench'
+        return None
 
     @classmethod
     def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history, system,
@@ -393,20 +401,38 @@ class LLMInfer(BaseUI):
         request_config.stop = ['Observation:']
         stream_resp_with_history = ''
         medias = [m for h in old_history for m in h[2]]
+        media_infer_type = TEMPLATE_MAPPING[template].get('infer_media_type', 'round')
+        image_interactive = media_infer_type != 'dialogue'
+
+        text_history = [h for h in old_history if h[0]]
+        roles = []
+        for i in range(len(text_history) + 1):
+            roles.append(['user', 'assistant'])
+
+        for i, h in enumerate(text_history):
+            agent_type = cls.agent_type(h[1])
+            if i < len(text_history) - 1 and agent_type == 'toolbench':
+                roles[i + 1][0] = 'tool'
+            if i == len(text_history) - 1 and agent_type in ('toolbench', 'react'):
+                roles[i + 1][0] = 'tool'
+
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
                 model_type,
                 prompt,
                 images=medias,
-                history=[h[:2] for h in old_history if h[0]],
+                history=[h[:2] for h in text_history],
                 system=system,
                 port=args['port'],
-                request_config=request_config)
+                request_config=request_config,
+                roles=roles,
+            )
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
                 old_history[-1][0] = prompt
                 old_history[-1][1] = stream_resp_with_history
-                yield '', cls._replace_tag_with_media(old_history), None, old_history
+                yield ('', cls._replace_tag_with_media(old_history),
+                       gr.update(value=None, interactive=image_interactive), old_history)
         else:
             request_config.max_tokens = max_new_tokens
             stream_resp = inference_client(
@@ -415,7 +441,8 @@ class LLMInfer(BaseUI):
                 stream_resp_with_history += chunk.choices[0].text
                 old_history[-1][0] = prompt
                 old_history[-1][1] = stream_resp_with_history
-                yield '', cls._replace_tag_with_media(old_history), None, old_history
+                yield ('', cls._replace_tag_with_media(old_history),
+                       gr.update(value=None, interactive=image_interactive), old_history)
 
     @classmethod
     def generate_chat(cls, model_and_template, template_type, prompt: str, image, history, system, max_new_tokens,

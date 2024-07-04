@@ -169,7 +169,7 @@ def _pre_inference_client(model_type: str,
         url = f'http://{host}:{port}/v1'
     url = url.rstrip('/')
     if is_chat_request:
-        messages = history_to_messages(history, query, system)
+        messages = history_to_messages(history, query, system, kwargs.get('roles'))
         if is_multimodal:
             messages = convert_to_base64(messages=messages)['messages']
             images = convert_to_base64(images=images)['images']

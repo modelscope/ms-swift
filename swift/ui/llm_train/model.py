@@ -56,20 +56,29 @@ class Model(BaseUI):
                 'en': 'Reset to default'
             },
         },
+        'model_param': {
+            'label': {
+                'zh': '模型设置',
+                'en': 'Model settings'
+            },
+        },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Row():
-            model_type = gr.Dropdown(
-                elem_id='model_type', choices=ModelType.get_model_name_list() + cls.get_custom_name_list(), scale=20)
-            model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
-            template_type = gr.Dropdown(
-                elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
-            reset_btn = gr.Button(elem_id='reset', scale=2)
-            model_state = gr.State({})
-        with gr.Row():
-            system = gr.Textbox(elem_id='system', lines=1, scale=20)
+        with gr.Accordion(elem_id='model_param', open=True):
+            with gr.Row():
+                model_type = gr.Dropdown(
+                    elem_id='model_type',
+                    choices=ModelType.get_model_name_list() + cls.get_custom_name_list(),
+                    scale=20)
+                model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
+                template_type = gr.Dropdown(
+                    elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
+                reset_btn = gr.Button(elem_id='reset', scale=2)
+                model_state = gr.State({})
+            with gr.Row():
+                system = gr.Textbox(elem_id='system', lines=1, scale=20)
 
         def update_input_model(choice, model_state=None):
             if choice is None:
