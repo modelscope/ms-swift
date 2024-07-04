@@ -30,8 +30,6 @@ logger = get_logger()
 
 @contextmanager
 def vllm_context(self: Template):
-    assert isinstance(self.model,
-                      (AsyncLLMEngine, LLMEngine)), 'Please pass `model=vllm_engine` when calling get_template.'
     self._is_vllm = True
     yield
     self._is_vllm = False
@@ -280,6 +278,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
                           lora_request: Optional['LoRARequest'] = None,
                           use_tqdm: bool = False,
                           **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
+    template.model = llm_engine
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)

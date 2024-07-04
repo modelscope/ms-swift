@@ -22,7 +22,7 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
                     Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream,
-                    messages_join_observation, messages_to_history, random_uuid)
+                    messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
 
@@ -391,6 +391,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         kwargs['do_sample'] = True
 
     generation_config = _GenerationConfig(**kwargs)
+    _old_generation_config = model.generation_config
+    set_generation_config(model, generation_config)  # inplace
+    model.generation_config = _old_generation_config
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
     logger.info(request_info)

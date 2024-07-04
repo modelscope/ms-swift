@@ -1402,6 +1402,7 @@ class FlorenceTemplate(Template):
         return prompts
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
         # read image
         processor = self.tokenizer.processor
         images_path = example.get('images') or []
@@ -1452,8 +1453,9 @@ class FlorenceTemplate(Template):
 
     def post_process_generate_response(self, response, example):
         image = _load_image(example['images'][0])
-        return self.tokenizer.processor.post_process_generation(
-            response, task=example['query'], image_size=(image.width, image.height))
+        return str(
+            self.tokenizer.processor.post_process_generation(
+                response, task=example['query'], image_size=(image.width, image.height)))
 
 
 register_template(
