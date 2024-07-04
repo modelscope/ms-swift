@@ -14,7 +14,7 @@ from gradio import Accordion, Tab
 from modelscope import GenerationConfig, snapshot_download
 
 from swift.llm import (DeployArguments, InferArguments, XRequestConfig, inference_client, inference_stream,
-                       limit_history_length, prepare_model_template)
+                       limit_history_length, prepare_model_template, TEMPLATE_MAPPING)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
@@ -393,6 +393,18 @@ class LLMInfer(BaseUI):
         request_config.stop = ['Observation:']
         stream_resp_with_history = ''
         medias = [m for h in old_history for m in h[2]]
+        media_infer_type = TEMPLATE_MAPPING[template.template_type].get('media_infer_type', 'round')
+        image_interactive = media_infer_type != 'dialogue'
+
+        history_roles = ['user'] * (len(old_history) + 1)
+        if old_history:
+            last_response = old_history[-1][1]
+            observation_end = last_response.endswith('Observation:')
+            action_input_end = False
+            if not observation_end:
+                action_input_end = 'action input' in last_response.lower()
+            if observation_end or action_input_end:
+                history_roles[-1] = 'tool'
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
                 model_type,
@@ -401,12 +413,15 @@ class LLMInfer(BaseUI):
                 history=[h[:2] for h in old_history if h[0]],
                 system=system,
                 port=args['port'],
-                request_config=request_config)
+                request_config=request_config,
+                history_roles=history_roles,
+            )
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
                 old_history[-1][0] = prompt
                 old_history[-1][1] = stream_resp_with_history
-                yield '', cls._replace_tag_with_media(old_history), None, old_history
+                yield ('', cls._replace_tag_with_media(old_history),
+                       gr.update(value=None, interactive=image_interactive), old_history)
         else:
             request_config.max_tokens = max_new_tokens
             stream_resp = inference_client(
@@ -415,7 +430,8 @@ class LLMInfer(BaseUI):
                 stream_resp_with_history += chunk.choices[0].text
                 old_history[-1][0] = prompt
                 old_history[-1][1] = stream_resp_with_history
-                yield '', cls._replace_tag_with_media(old_history), None, old_history
+                yield ('', cls._replace_tag_with_media(old_history),
+                       gr.update(value=None, interactive=image_interactive), old_history)
 
     @classmethod
     def generate_chat(cls, model_and_template, template_type, prompt: str, image, history, system, max_new_tokens,
