@@ -1,5 +1,4 @@
 import collections
-import json
 import os
 import re
 import sys
@@ -9,6 +8,7 @@ from subprocess import PIPE, STDOUT, Popen
 from typing import Dict, Type
 
 import gradio as gr
+import json
 import torch
 from gradio import Accordion, Tab
 
@@ -210,7 +210,8 @@ class LLMTrain(BaseUI):
                 Dataset.build_ui(base_tab)
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
-                        gr.Dropdown(elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
+                        gr.Dropdown(
+                            elem_id='train_type', choices=['pretrain/sft', 'rlhf'], value='pretrain/sft', scale=3)
                         gr.Dropdown(elem_id='sft_type', scale=2)
                         gr.Dropdown(elem_id='tuner_backend', scale=2)
                         gr.Textbox(elem_id='sequence_parallel_size', scale=3)

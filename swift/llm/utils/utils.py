@@ -821,7 +821,7 @@ Messages = List[Dict[str, str]]
 def history_to_messages(history: Optional[History],
                         query: Optional[str] = None,
                         system: Optional[str] = None,
-                        roles: Optional[List[str]] = None) -> Messages:
+                        roles: Optional[List[List[str]]] = None) -> Messages:
     if history is None:
         history = []
     messages = []

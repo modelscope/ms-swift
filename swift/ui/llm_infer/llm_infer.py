@@ -13,8 +13,8 @@ import torch
 from gradio import Accordion, Tab
 from modelscope import GenerationConfig, snapshot_download
 
-from swift.llm import (DeployArguments, InferArguments, XRequestConfig, inference_client, inference_stream,
-                       limit_history_length, prepare_model_template, TEMPLATE_MAPPING)
+from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, XRequestConfig, inference_client,
+                       inference_stream, limit_history_length, prepare_model_template)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
@@ -366,6 +366,14 @@ class LLMInfer(BaseUI):
         return total_history
 
     @classmethod
+    def agent_type(cls, response):
+        if response.lower().endswith('observation:'):
+            return 'react'
+        if 'observation:' not in response.lower() and 'action input:' in response.lower():
+            return 'toolbench'
+        return None
+
+    @classmethod
     def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history, system,
                      max_new_tokens, temperature, top_k, top_p, repetition_penalty):
         if not model_and_template:
@@ -400,14 +408,14 @@ class LLMInfer(BaseUI):
         roles = []
         for i in range(len(text_history) + 1):
             roles.append(['user', 'assistant'])
-        if text_history:
-            last_response = text_history[-1][1] if text_history and text_history[-1][1] else ''
-            observation_end = last_response.lower().endswith('observation:')
-            action_input_end = False
-            if 'observation:' not in last_response.lower():
-                action_input_end = 'action input' in last_response.lower()
-            if observation_end or action_input_end:
-                roles[-1][0] = 'tool'
+
+        for i, h in enumerate(text_history):
+            agent_type = cls.agent_type(h[1])
+            if i < len(text_history) - 1 and agent_type == 'toolbench':
+                roles[i + 1][0] = 'tool'
+            if i == len(text_history) - 1 and agent_type in ('toolbench', 'react'):
+                roles[i + 1][0] = 'tool'
+
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
                 model_type,

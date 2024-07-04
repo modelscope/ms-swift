@@ -123,8 +123,12 @@ class Eval(BaseUI):
         with gr.Row():
             gr.Textbox(elem_id='name', scale=20)
             gr.Dropdown(
-                elem_id='eval_dataset', is_list=True, choices=OpenCompassBackendManager.list_datasets(),
-                multiselect=True, allow_custom_value=True, scale=20)
+                elem_id='eval_dataset',
+                is_list=True,
+                choices=OpenCompassBackendManager.list_datasets(),
+                multiselect=True,
+                allow_custom_value=True,
+                scale=20)
             gr.Textbox(elem_id='eval_few_shot', scale=20)
             gr.Textbox(elem_id='eval_limit', scale=20)
             gr.Checkbox(elem_id='eval_use_cache', scale=20)

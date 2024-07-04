@@ -106,7 +106,6 @@ class Hyper(BaseUI):
                 'en': 'Set the output folder',
             }
         },
-
     }
 
     @classmethod

@@ -84,8 +84,12 @@ class Dataset(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         with gr.Accordion(elem_id='dataset_param', open=True):
             with gr.Row():
-                gr.Dropdown(elem_id='dataset', multiselect=True, choices=list(DATASET_MAPPING.keys()),
-                            scale=20, allow_custom_value=True)
+                gr.Dropdown(
+                    elem_id='dataset',
+                    multiselect=True,
+                    choices=list(DATASET_MAPPING.keys()),
+                    scale=20,
+                    allow_custom_value=True)
                 gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
             with gr.Row():
                 gr.Slider(elem_id='dataset_test_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
