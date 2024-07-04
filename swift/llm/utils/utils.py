@@ -563,14 +563,12 @@ def _prepare_inputs(model: PreTrainedModel,
                     **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
     if stop_words is None:
         stop_words = []
-    if images is None:
-        images = []
 
     example = {
         'query': query,
         'history': history,
         'system': system,
-        'images': images,  # for vl. str.
+        'images': images or [],  # for vl. str.
         'tools': kwargs.pop('tools', None),
         'objects': kwargs.pop('objects', None),
     }

@@ -270,7 +270,7 @@ class SwiftMixin:
 
     @staticmethod
     def _create_configuration_file(model: Module, output_dir: str) -> None:
-        cfg = getattr(model, 'cfg', {})
+        cfg = getattr(model, 'cfg', None) or {}
         configuration_path = os.path.join(output_dir, 'configuration.json')
         new_cfg = {}
         if os.path.exists(configuration_path):

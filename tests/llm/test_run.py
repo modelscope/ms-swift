@@ -78,7 +78,12 @@ class TestRun(unittest.TestCase):
             output_dir = self.tmp_dir
             quantization_bit_list = [4]
             dataset = dataset[:2]
-        model_type = ModelType.chatglm3_6b
+        import transformers
+        from packaging import version
+        if version.parse(transformers.__version__) >= version.parse('4.42'):
+            model_type = ModelType.qwen2_0_5b_instruct
+        else:
+            model_type = ModelType.chatglm3_6b
         for quantization_bit in quantization_bit_list:
             if quantization_bit == 4 and version.parse(transformers.__version__) >= version.parse('4.38'):
                 continue
