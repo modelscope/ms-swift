@@ -349,7 +349,7 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def clear_session(cls):
-        return '', [], None, []
+        return '', [], gr.update(value=None, interactive=True), []
 
     @classmethod
     def change_interactive(cls):
@@ -396,25 +396,28 @@ class LLMInfer(BaseUI):
         media_infer_type = TEMPLATE_MAPPING[template].get('infer_media_type', 'round')
         image_interactive = media_infer_type != 'dialogue'
 
-        history_roles = ['user'] * (len(old_history) + 1)
-        if old_history:
-            last_response = old_history[-1][1] if old_history and old_history[-1][1] else ''
+        text_history = [h for h in old_history if h[0]]
+        roles = []
+        for i in range(len(text_history) + 1):
+            roles.append(['user', 'assistant'])
+        if text_history:
+            last_response = text_history[-1][1] if text_history and text_history[-1][1] else ''
             observation_end = last_response.lower().endswith('observation:')
             action_input_end = False
             if 'observation:' not in last_response.lower():
                 action_input_end = 'action input' in last_response.lower()
             if observation_end or action_input_end:
-                history_roles[-1] = 'tool'
+                roles[-1][0] = 'tool'
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
                 model_type,
                 prompt,
                 images=medias,
-                history=[h[:2] for h in old_history if h[0]],
+                history=[h[:2] for h in text_history],
                 system=system,
                 port=args['port'],
                 request_config=request_config,
-                history_roles=history_roles,
+                roles=roles,
             )
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content

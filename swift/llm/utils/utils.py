@@ -821,21 +821,21 @@ Messages = List[Dict[str, str]]
 def history_to_messages(history: Optional[History],
                         query: Optional[str] = None,
                         system: Optional[str] = None,
-                        history_roles: Optional[List[str]] = None) -> Messages:
+                        roles: Optional[List[str]] = None) -> Messages:
     if history is None:
         history = []
     messages = []
-    if not history_roles:
-        history_roles = ['user'] * (len(history) + 1)
-    assert len(history_roles) == len(history) + 1
+    if not roles:
+        roles = [['user', 'assistant']] * (len(history) + 1)
+    assert len(roles) == len(history) + 1
     if system is not None:
         messages.append({'role': 'system', 'content': system})
-    for role, h in zip(history_roles, history):
+    for role, h in zip(roles, history):
         assert isinstance(h, (list, tuple))
-        messages.append({'role': role, 'content': h[0]})
-        messages.append({'role': 'assistant', 'content': h[1]})
+        messages.append({'role': role[0], 'content': h[0]})
+        messages.append({'role': role[1], 'content': h[1]})
     if query is not None:
-        messages.append({'role': history_roles[-1], 'content': query})
+        messages.append({'role': roles[-1][0], 'content': query})
     return messages
 
 
