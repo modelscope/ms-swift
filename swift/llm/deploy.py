@@ -391,7 +391,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         kwargs['do_sample'] = True
 
     generation_config = _GenerationConfig(**kwargs)
+    _old_generation_config = model.generation_config
     set_generation_config(model, generation_config)
+    model.generation_config = _old_generation_config
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
     logger.info(request_info)
@@ -413,7 +415,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     async def _generate_full():
         generation_info = {}
         response, _ = inference(
-            model, template, **example, stop_words=request.stop, generation_info=generation_info, **adapter_kwargs)
+            model,
+            template,
+            **example,
+            stop_words=request.stop,
+            generation_config=generation_config,
+            generation_info=generation_info,
+            **adapter_kwargs)
         num_prompt_tokens = generation_info['num_prompt_tokens']
         num_generated_tokens = generation_info['num_generated_tokens']
         usage_info = UsageInfo(
@@ -451,7 +459,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     def _generate_stream():
         generation_info = {}
         gen = inference_stream(
-            model, template, **example, stop_words=request.stop, generation_info=generation_info, **adapter_kwargs)
+            model,
+            template,
+            **example,
+            stop_words=request.stop,
+            generation_config=generation_config,
+            generation_info=generation_info,
+            **adapter_kwargs)
 
         print_idx = 0
         response = ''
