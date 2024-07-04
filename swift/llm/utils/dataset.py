@@ -2260,6 +2260,7 @@ def _preprocess_self_cognition_dataset(
         if dataset is None:
             res_d_list.append(dataset)
             continue
+        query = []
         response = []
         for d in dataset:
             if d['tag'] == 'zh':
@@ -2267,9 +2268,13 @@ def _preprocess_self_cognition_dataset(
             else:
                 model_n, model_a = model_name[1], model_author[1]
 
+            q = d['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
             r = d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+            query.append(q)
             response.append(r)
-        dataset = dataset.remove_columns('response').add_column('response', response).remove_columns('tag')
+        dataset = dataset.remove_columns('response').add_column('response', response)
+        dataset = dataset.remove_columns('query').add_column('query', query)
+        dataset = dataset.remove_columns('tag')
         res_d_list.append(dataset)
     return tuple(res_d_list)
 
