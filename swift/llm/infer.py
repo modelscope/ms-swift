@@ -223,6 +223,7 @@ def prepare_model_template(args: InferArguments,
         else:
             model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
         model = model.to(model.dtype)
+    model.requires_grad_(False)
 
     if verbose:
         show_layers(model)
@@ -287,7 +288,6 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             from transformers import EetqConfig
             args.quant_config = EetqConfig('int8')
         model, template = prepare_model_template(args, device_map=device_map)
-        model.requires_grad_(False)
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)
