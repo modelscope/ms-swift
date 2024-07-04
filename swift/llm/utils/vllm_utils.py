@@ -30,8 +30,6 @@ logger = get_logger()
 
 @contextmanager
 def vllm_context(self: Template):
-    assert isinstance(self.model,
-                      (AsyncLLMEngine, LLMEngine)), 'Please pass `model=vllm_engine` when calling get_template.'
     self._is_vllm = True
     yield
     self._is_vllm = False
