@@ -676,6 +676,9 @@ class Template:
             if len(image_sizes) > 0:
                 res['image_sizes'] = torch.concat(image_sizes)
 
+        pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
+        if len(pixel_values_videos) > 0:
+            res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
