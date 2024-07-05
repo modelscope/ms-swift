@@ -49,6 +49,7 @@ class TemplateType:
     llava_qwen_instruct = 'llava-qwen-instruct'
     llama_llava_next = 'llama-llava-next'
     llava_next_video = 'llava-next-video'
+    llava_next_video_yi = 'llava-next-video-yi'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -1530,9 +1531,6 @@ class LlavaHfTemplate(Template):
 
 class LlavaVideoTemplate(Template):
 
-    def __init__(self):
-        super().__init__(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>'])
-
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'video'
         media_file = example['videos'][index]
@@ -1570,12 +1568,19 @@ class LlavaVideoTemplate(Template):
 
 register_template(
     TemplateType.llava_next_video,
-    LlavaVideoTemplate(),
+    LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
     use_model=True,
     infer_media_type='round',
     media_type='video',
     lazy_tokenize=True)
 
+register_template(
+    TemplateType.llava_next_video_yi,
+    LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
+    use_model=True,
+    infer_media_type='round',
+    media_type='video',
+    lazy_tokenize=True)
 
 class Llava1_5Template(LlavaHfTemplate):
 
