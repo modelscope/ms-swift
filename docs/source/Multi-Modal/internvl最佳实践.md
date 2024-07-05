@@ -1,5 +1,18 @@
 
 # InternVL 最佳实践
+本篇文档涉及的模型如下:
+
+- [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
+- [internvl-chat-v1.5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
+- [mini-internvl-chat-2b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
+- [mini-internvl-chat-4b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-4B-V1-5)
+- [internvl2-2b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-2B)
+- [internvl2-4b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-4B)
+- [internvl2-8b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-8B)
+- [internvl2-26b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-26B)
+
+
+以下实践以`internvl-chat-v1.5`为例，你也可以通过指定`--model_type`切换为其他模型.
 
 ## 目录
 - [环境准备](#环境准备)
@@ -18,10 +31,6 @@ pip install Pillow
 
 ## 推理
 
-推理[internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)和[internvl-chat-v1.5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
-
-下面教程以`internvl-chat-v1.5`为例，你可以修改`--model_type internvl-chat-v1_5-int8`来选择int8版本的模型，使用`mini-internvl-chat-2b-v1_5`或
-`mini-internvl-chat-4b-v1_5`来使用Mini-Internvl
 
 **注意**
 - 如果要使用本地模型文件，加上参数 `--model_id_or_path /path/to/model`
