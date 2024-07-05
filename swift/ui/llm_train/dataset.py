@@ -32,26 +32,6 @@ class Dataset(BaseUI):
                 'en': 'Set the max length input to the model',
             }
         },
-        'custom_train_dataset_path': {
-            'label': {
-                'zh': '自定义训练数据集路径',
-                'en': 'Custom train dataset path'
-            },
-            'info': {
-                'zh': '输入自定义的训练数据集路径，空格分隔',
-                'en': 'Extra train files, split by blank'
-            }
-        },
-        'custom_val_dataset_path': {
-            'label': {
-                'zh': '自定义校验数据集路径',
-                'en': 'Custom val dataset path'
-            },
-            'info': {
-                'zh': '输入自定义的校验数据集路径，逗号分隔',
-                'en': 'Extra val files, split by comma'
-            }
-        },
         'dataset_test_ratio': {
             'label': {
                 'zh': '验证集拆分比例',
@@ -82,16 +62,6 @@ class Dataset(BaseUI):
                 'en': 'Validate with the sample size from the dataset',
             }
         },
-        'truncation_strategy': {
-            'label': {
-                'zh': '数据集超长策略',
-                'en': 'Dataset truncation strategy'
-            },
-            'info': {
-                'zh': '如果token超长该如何处理',
-                'en': 'How to deal with the rows exceed the max length'
-            }
-        },
         'custom_dataset_info': {
             'label': {
                 'zh': '外部数据集配置',
@@ -102,18 +72,27 @@ class Dataset(BaseUI):
                 'en': 'An extra dataset config to register your own datasets'
             }
         },
+        'dataset_param': {
+            'label': {
+                'zh': '数据集设置',
+                'en': 'Dataset settings'
+            },
+        },
     }
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
-        with gr.Row():
-            gr.Dropdown(elem_id='dataset', multiselect=True, choices=list(DATASET_MAPPING.keys()), scale=20)
-            gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
-            gr.Textbox(elem_id='custom_train_dataset_path', is_list=True, scale=20)
-            gr.Textbox(elem_id='custom_val_dataset_path', is_list=True, scale=20)
-        with gr.Row():
-            gr.Slider(elem_id='dataset_test_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
-            gr.Slider(elem_id='max_length', minimum=32, maximum=32768, step=32, scale=20)
-            gr.Textbox(elem_id='train_dataset_sample', scale=20)
-            gr.Textbox(elem_id='val_dataset_sample', scale=20)
-            gr.Dropdown(elem_id='truncation_strategy', scale=20)
+        with gr.Accordion(elem_id='dataset_param', open=True):
+            with gr.Row():
+                gr.Dropdown(
+                    elem_id='dataset',
+                    multiselect=True,
+                    choices=list(DATASET_MAPPING.keys()),
+                    scale=20,
+                    allow_custom_value=True)
+                gr.Textbox(elem_id='custom_dataset_info', is_list=False, scale=20)
+            with gr.Row():
+                gr.Slider(elem_id='dataset_test_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=20)
+                gr.Slider(elem_id='max_length', minimum=32, maximum=32768, step=1, scale=20)
+                gr.Textbox(elem_id='train_dataset_sample', scale=20)
+                gr.Textbox(elem_id='val_dataset_sample', scale=20)
