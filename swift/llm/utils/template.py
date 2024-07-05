@@ -55,6 +55,7 @@ class TemplateType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
+    internlm_xcomposer2_5 = 'internlm_xcomposer2_5'
     internvl = 'internvl'
     internvl_phi3 = 'internvl-phi3'
     florence = 'florence'
