@@ -39,6 +39,7 @@ class TemplateType:
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
+    codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
     llava1_5 = 'llava1_5'
@@ -55,7 +56,7 @@ class TemplateType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
-    internlm_xcomposer2_5 = 'internlm_xcomposer2_5'
+    internlm_xcomposer2_5 = 'internlm-xcomposer2_5'
     internvl = 'internvl'
     internvl_phi3 = 'internvl-phi3'
     florence = 'florence'
@@ -1074,6 +1075,13 @@ register_template(
     TemplateType.chatglm3,
     GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None, ['<|system|>\n{{SYSTEM}}']))
 
+codegeex4_system = ('你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，' '并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。')
+
+register_template(
+    TemplateType.codegeex4,
+    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|endoftext|>'], codegeex4_system,
+                ['<|system|>\n{{SYSTEM}}']))
+
 register_template(
     TemplateType.deepseek,
     Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant:'], [['eos_token_id']], [['eos_token_id']], None,
@@ -1582,6 +1590,7 @@ register_template(
     infer_media_type='round',
     media_type='video',
     lazy_tokenize=True)
+
 
 class Llava1_5Template(LlavaHfTemplate):
 

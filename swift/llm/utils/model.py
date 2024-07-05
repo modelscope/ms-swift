@@ -151,6 +151,7 @@ class ModelType:
     glm4_9b = 'glm4-9b'
     glm4_9b_chat = 'glm4-9b-chat'
     glm4_9b_chat_1m = 'glm4-9b-chat-1m'
+    codegeex4_9b_chat = 'codegeex4-9b-chat'
     # llama2
     llama2_7b = 'llama2-7b'
     llama2_7b_chat = 'llama2-7b-chat'
@@ -1433,11 +1434,22 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
 
 
 @register_model(
+    ModelType.codegeex4_9b_chat,
+    'ZhipuAI/codegeex4-all-9b',
+    LoRATM.chatglm,
+    TemplateType.codegeex4,
+    support_vllm=True,
+    support_flash_attn=True,
+    tags=['coding'],
+    requires=['transformers<4.42'],
+    hf_model_id='THUDM/codegeex4-all-9b')
+@register_model(
     ModelType.glm4_9b,
     'ZhipuAI/glm-4-9b',
     LoRATM.chatglm,
     TemplateType.chatglm_generation,
     support_vllm=True,
+    support_flash_attn=True,
     requires=['transformers<4.42'],
     hf_model_id='THUDM/glm-4-9b')
 @register_model(
@@ -1445,6 +1457,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     'ZhipuAI/glm-4-9b-chat',
     LoRATM.chatglm,
     TemplateType.chatglm3,
+    support_flash_attn=True,
     support_vllm=True,
     function_kwargs={'kv_cache_patch': True},
     requires=['transformers<4.42'],
@@ -1454,6 +1467,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     'ZhipuAI/glm-4-9b-chat-1m',
     LoRATM.chatglm,
     TemplateType.chatglm3,
+    support_flash_attn=True,
     support_vllm=True,
     function_kwargs={'kv_cache_patch': True},
     requires=['transformers<4.42'],
@@ -1463,6 +1477,7 @@ def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_conf
     'ZhipuAI/glm-4v-9b',
     LoRATM.glm4v,
     TemplateType.glm4v,
+    support_flash_attn=True,
     eos_token='<|endoftext|>',
     requires=['transformers<4.42'],
     tags=['multi-modal', 'vision'],
@@ -3706,7 +3721,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         dist._old_get_rank = get_rank
     return model, tokenizer
 
-internlm_xcomposer2_5_7b_chat
+
 @register_model(
     ModelType.internlm_xcomposer2_5_7b_chat,
     'Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b',
@@ -3714,7 +3729,7 @@ internlm_xcomposer2_5_7b_chat
     TemplateType.internlm_xcomposer2_5,
     eos_token='<|im_end|>',
     support_flash_attn=True,
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='internlm/internlm-xcomposer2d5-7b')
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
@@ -5126,13 +5141,13 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-DPO-hf')
 @register_model(
     ModelType.llava_next_video_7b_32k_instruct,
-    'huangjintao/huangjintao/LLaVA-NeXT-Video-7B-32K-hf',
+    'huangjintao/LLaVA-NeXT-Video-7B-32K-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
     requires=['transformers>=4.42'],
     tags=['multi-modal', 'video'],
-    hf_model_id='llava-hf/huangjintao/LLaVA-NeXT-Video-7B-32K-hf')
+    hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-32K-hf')
 @register_model(
     ModelType.llava_next_video_7b_instruct,
     'huangjintao/LLaVA-NeXT-Video-7B-hf',
