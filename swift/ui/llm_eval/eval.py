@@ -4,6 +4,9 @@ from typing import Type
 import gradio as gr
 
 from swift.ui.base import BaseUI
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class Eval(BaseUI):
@@ -110,10 +113,22 @@ class Eval(BaseUI):
 
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
+        try:
+            from llmuses.backend.opencompass import OpenCompassBackendManager
+        except ImportError as e:
+            logger.error('You are using web-ui, please '
+                         'install requirements by `pip install llmuses ms-opencompass -U`')
+            raise e
+
         with gr.Row():
             gr.Textbox(elem_id='name', scale=20)
             gr.Dropdown(
-                elem_id='eval_dataset', is_list=True, choices=['ceval', 'gsm8k', 'arc'], multiselect=True, scale=20)
+                elem_id='eval_dataset',
+                is_list=True,
+                choices=OpenCompassBackendManager.list_datasets(),
+                multiselect=True,
+                allow_custom_value=True,
+                scale=20)
             gr.Textbox(elem_id='eval_few_shot', scale=20)
             gr.Textbox(elem_id='eval_limit', scale=20)
             gr.Checkbox(elem_id='eval_use_cache', scale=20)

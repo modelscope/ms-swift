@@ -199,6 +199,7 @@ def split_str_parts_by(text: str, delimiters: List[str]):
     Returns:
         The split text in list of dicts.
     """
+    assert isinstance(text, str), f'text: {text}'
     all_start_chars = [d[0] for d in delimiters]
     all_length = [len(d) for d in delimiters]
 

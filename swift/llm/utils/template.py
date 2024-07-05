@@ -1274,8 +1274,8 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
-            img_tokens: List[int] = self.tokenizer.encode('<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs
-                                                          + '</img>\n')
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n', add_special_tokens=False)
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
@@ -1380,6 +1380,7 @@ class FlorenceTemplate(Template):
         return prompts
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
         # read image
         processor = self.tokenizer.processor
         images_path = example.get('images') or []
@@ -1430,8 +1431,9 @@ class FlorenceTemplate(Template):
 
     def post_process_generate_response(self, response, example):
         image = _load_image(example['images'][0])
-        return self.tokenizer.processor.post_process_generation(
-            response, task=example['query'], image_size=(image.width, image.height))
+        return str(
+            self.tokenizer.processor.post_process_generation(
+                response, task=example['query'], image_size=(image.width, image.height)))
 
 
 register_template(
