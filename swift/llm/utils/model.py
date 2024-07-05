@@ -5154,6 +5154,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
         model.config.image_token_index = 64004
     return model, tokenizer
 
+
 @register_model(
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
