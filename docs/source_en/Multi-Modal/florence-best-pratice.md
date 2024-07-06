@@ -146,7 +146,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
 
 **Caption/VQA** task

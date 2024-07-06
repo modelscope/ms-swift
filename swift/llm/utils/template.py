@@ -1542,7 +1542,7 @@ class LlavaVideoTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'video'
         media_file = example['videos'][index]
-        if media_file.rsplit('.', 1)[1] in {'jpg', 'png'}:
+        if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
             return ['<image>\n']
         else:
             return ['<video>\n']
