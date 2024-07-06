@@ -48,6 +48,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
+- 2024.07.06: 支持internvl-2系列: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
 - 2024.07.06: 支持codegeex4-9b-chat.
 - 2024.07.04: 支持internlm2_5-7b系列: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: 支持使用vllm对多模态大模型: llava系列, phi3-vision模型进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.
@@ -556,7 +557,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llava1.5<br>Llava1.6                       | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文 | 7B-34B          | chat模型 |
 | Llava-Next                                | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 8B-110B         | chat模型 |
 | mPLUG-Owl                                 | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文 | 11B             | chat模型 |
-| InternVL                                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 2B-25.5B<br>包含量化版本 | chat模型 |
+| InternVL<br>Mini-Internvl<br>Internvl2                                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 2B-25.5B<br>包含量化版本 | chat模型 |
 | Llava-llama3                              | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文 | 8B              | chat model |
 | Phi3-Vision                                | 微软              | 英文 | 4B              | chat model |
 | PaliGemma                                  | Google              | 英文 | 3B              | chat model |
