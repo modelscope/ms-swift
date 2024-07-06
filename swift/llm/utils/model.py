@@ -266,6 +266,10 @@ class ModelType:
     internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
     mini_internvl_chat_2b_v1_5 = 'mini-internvl-chat-2b-v1_5'
     mini_internvl_chat_4b_v1_5 = 'mini-internvl-chat-4b-v1_5'
+    internvl2_2b = 'internvl2-2b'
+    internvl2_4b = 'internvl2-4b'
+    internvl2_8b = 'internvl2-8b'
+    internvl2_26b = 'internvl2-26b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -3635,6 +3639,46 @@ def fix_internvl_inplace_bug(model) -> None:
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
+@register_model(
+    ModelType.internvl2_2b,
+    'OpenGVLab/InternVL2-2B',
+    LoRATM.internlm2,
+    TemplateType.internvl,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-2B')
+@register_model(
+    ModelType.internvl2_4b,
+    'OpenGVLab/InternVL2-4B',
+    LoRATM.internlm2,
+    TemplateType.internvl,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-4B')
+@register_model(
+    ModelType.internvl2_8b,
+    'OpenGVLab/InternVL2-8B',
+    LoRATM.internlm2,
+    TemplateType.internvl,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-8B')
+@register_model(
+    ModelType.internvl2_26b,
+    'OpenGVLab/InternVL2-26B',
+    LoRATM.internlm2,
+    TemplateType.internvl,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-26B')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
