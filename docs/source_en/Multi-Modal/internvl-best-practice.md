@@ -1,8 +1,8 @@
 # InternVL Best Practice
 The document corresponds to the following models:
 
-- [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
-- [internvl-chat-v1.5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
+- [internvl-chat-v1_5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
+- [internvl-chat-v1_5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
 - [mini-internvl-chat-2b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
 - [mini-internvl-chat-4b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-4B-V1-5)
 - [internvl2-2b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-2B)
@@ -10,7 +10,7 @@ The document corresponds to the following models:
 - [internvl2-8b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-8B)
 - [internvl2-26b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-26B)
 
-The following practice takes `internvl-chat-v1.5` as an example, and you can also switch to other models by specifying `--model_type`.
+The following practice takes `internvl-chat-v1_5` as an example, and you can also switch to other models by specifying `--model_type`.
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -111,13 +111,13 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType,
+    get_model_tokenizer, get_template, inference,
     get_default_template_type, inference_stream
 )
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.internvl_chat_v1_5
+model_type = "internvl-chat-v1_5"
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
