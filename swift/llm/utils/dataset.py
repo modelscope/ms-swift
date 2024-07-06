@@ -19,7 +19,8 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from swift.utils import (get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, safe_ddp_context,
+                         transform_jsonl_to_df)
 from swift.utils.torch_utils import _find_local_mac
 from .media import MediaCache, MediaTag
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
@@ -718,7 +719,8 @@ register_dataset(
 def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
     from datasets.download.download_manager import DownloadManager
     url = 'https://modelscope.cn/datasets/huangjintao/VideoChatGPT/resolve/master/videos.zip'
-    local_dir = DownloadManager().download_and_extract(url)
+    with safe_ddp_context():
+        local_dir = DownloadManager().download_and_extract(url)
     local_dir = os.path.join(str(local_dir), 'Test_Videos')
     # only `.mp4`
     mp4_set = [file[:-4] for file in os.listdir(local_dir) if file.endswith('mp4')]
