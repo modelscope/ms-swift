@@ -47,6 +47,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 2024.07.06: Support codegeex4-9b-chat.
 - 2024.07.04: Support internlm2_5-7b series: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.07.02: Support for `llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct` and other llava-hf models. For best practices, refer to [here](docs/source_en/Multi-Modal/llava-best-practice.md).
@@ -387,6 +388,7 @@ swift sft \
 
 #### Multi-node Multi-GPU
 ```shell
+# If multiple machines share a disk, please additionally specify `--save_on_each_node false`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NNODES=2 \
@@ -507,7 +509,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Model Type                                     | Model Introduction                                                     | Language           | Model Size                             | Model Type                                 |
 |------------------------------------------------|------------------------------------------------------------------------|--------------------|----------------------------------------|------------------------------------------- |
 | Qwen<br>Qwen1.5<br>Qwen2                            | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-110B<br>including quantized versions | base model<br>chat model<br>MoE model<br>code model                      |
-| ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4           | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B-9B                                     | base model<br>chat model<br>code model<br>long text model  |
+| ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4<br>Codegeex4           | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B-9B                                     | base model<br>chat model<br>code model<br>long text model  |
 | Baichuan<br>Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>including quantized versions             | base model<br>chat model                       |
 | Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese<br>English    | 2B-102B                                | instruct model                                 |
 | XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese<br>English    | 7B-65B                                 | base model<br>chat model<br>long text model<br>MoE model                |
