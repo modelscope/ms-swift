@@ -200,7 +200,7 @@ LoRA微调:
 # Experimental environment: A10, 3090, V100...
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type llava1_6-mistral-7b-instruct\
+    --model_type llava1_6-mistral-7b-instruct \
     --dataset coco-en-2-mini \
 
 # Experimental environment: 2*A100...
@@ -215,7 +215,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 # Experimental environment: 4 * A100
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1_6-mistral-7b-instruct\
+    --model_type llava1_6-mistral-7b-instruct \
     --dataset coco-en-2-mini \
     --sft_type full \
     --deepspeed default-zero2
