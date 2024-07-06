@@ -54,6 +54,7 @@ class TemplateType:
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
     internvl = 'internvl'
+    internvl2 = 'internvl2'
     internvl_phi3 = 'internvl-phi3'
     florence = 'florence'
     yi = 'yi'
@@ -1311,7 +1312,13 @@ class InternvlTemplate(Template):
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
 
-
+class Internvl2Template(InternvlTemplate):
+    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
+    def __init__(self):
+        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'], self.system, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+    
+    
 class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
@@ -1338,6 +1345,14 @@ register_template(
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
+register_template(
+    TemplateType.internvl2,
+    Internvl2Template(),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
 
 class FlorenceTemplate(Template):
 
