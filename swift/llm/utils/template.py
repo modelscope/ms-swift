@@ -743,7 +743,11 @@ class Template:
                 response = response[cur_num_space - first_num_space:]
         if isinstance(self.suffix[-1],
                       str) and (not is_finished or is_finished and response[-len(self.suffix[-1]):] == self.suffix[-1]):
-            response = response[:-len(self.suffix[-1])]
+            idx = max(len(response) - len(self.suffix[-1]), 0)
+            # To avoid response length being shorter than previous response length during streaming.
+            if print_idx is not None:
+                idx = max(idx, print_idx[0])
+            response = response[:idx]
 
         if print_idx is not None:
             old_print_idx = print_idx[0]

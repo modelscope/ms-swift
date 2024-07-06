@@ -24,7 +24,7 @@ Output: (supports passing in local path or URL)
 ```python
 """
 <<< who are you
-Input a video path or URL <<< 
+Input a video path or URL <<<
 I am Vicuna, a language model trained by researchers from Large Model Systems Organization (LMSYS).
 --------------------------------------------------
 <<< clear
