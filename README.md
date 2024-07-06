@@ -387,6 +387,7 @@ swift sft \
 
 #### Multi-node Multi-GPU
 ```shell
+# If multiple machines share a disk, please additionally specify `--save_on_each_node false`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NNODES=2 \

@@ -208,6 +208,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
 
 # 使用数据集评估
+# 如果要推理所有数据集样本, 请额外指定`--show_dataset_sample -1`
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged' \
     --infer_backend vllm \
