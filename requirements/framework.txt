@@ -2,6 +2,7 @@ accelerate
 aiohttp
 binpacking
 dacite
+datasets<2.19
 jieba
 matplotlib
 modelscope>=1.14
