@@ -1570,7 +1570,8 @@ def get_model_tokenizer_glm4(model_dir: str,
         model_config._attn_implementation = 'flash_attention_2'
     else:
         model_config._attn_implementation = 'eager'
-    return get_model_tokenizer_chatglm(model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    return get_model_tokenizer_chatglm(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
 
 @register_model(
@@ -1583,16 +1584,18 @@ def get_model_tokenizer_glm4(model_dir: str,
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/glm-4v-9b')
 def get_model_tokenizer_glm4v(model_dir: str,
-                             torch_dtype: Dtype,
-                             model_kwargs: Dict[str, Any],
-                             load_model: bool = True,
-                             **kwargs):
+                              torch_dtype: Dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
     model, tokenizer = get_model_tokenizer_glm4(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     # fix device_map 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
+
     def _output_device_map_hook(module, input, output):
         return output.to(input[0].device)
+
     if n_gpu // local_world_size >= 4:
         for layer in model.transformer.vision.transformer.layers:
             layer.mlp.register_forward_hook(_output_device_map_hook)
