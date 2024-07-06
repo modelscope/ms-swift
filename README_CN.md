@@ -48,7 +48,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
-- 2024.07.06: 支持internvk-2系列: internlm2-2b, internlm2-4b, internlm2-8b, internlm2-26b.
+- 2024.07.06: 支持internvl-2系列: internlm2-2b, internlm2-4b, internlm2-8b, internlm2-26b.
 - 2024.07.04: 支持internlm2_5-7b系列: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: 支持使用vllm对多模态大模型: llava系列, phi3-vision模型进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.
 - 2024.07.02: 支持`llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct`等llava-hf模型. 最佳实践可以查看[这里](docs/source/Multi-Modal/llava最佳实践.md).
