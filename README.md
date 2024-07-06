@@ -47,6 +47,7 @@ SWIFT has rich documentations for users, please check [here](https://github.com/
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
 ## 🎉 News
+- 2024.07.04: Support internvl2 series: internlm2-2b, internlm2-4b, internlm2-8b, internlm2-26b.
 - 2024.07.04: Support internlm2_5-7b series: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.07.02: Support for `llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct` and other llava-hf models. For best practices, refer to [here](docs/source_en/Multi-Modal/llava-best-practice.md).
