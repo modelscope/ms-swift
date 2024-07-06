@@ -115,17 +115,22 @@ class Eval(BaseUI):
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         try:
             from llmuses.backend.opencompass import OpenCompassBackendManager
-        except ImportError as e:
-            logger.error('You are using web-ui, please '
-                         'install requirements by `pip install llmuses ms-opencompass -U`')
-            raise e
+            eval_dataset_list = OpenCompassBackendManager.list_datasets()
+        except ImportError:
+            eval_dataset_list = [
+                'AX_b', 'winogrande', 'mmlu', 'afqmc', 'COPA', 'commonsenseqa', 'CMRC', 'lcsts', 'nq', 'ocnli_fc',
+                'math', 'mbpp', 'DRCD', 'TheoremQA', 'CB', 'ReCoRD', 'lambada', 'tnews', 'flores', 'humaneval', 'AX_g',
+                'ceval', 'bbh', 'BoolQ', 'MultiRC', 'piqa', 'csl', 'ARC_c', 'agieval', 'cmnli', 'strategyqa', 'gsm8k',
+                'summedits', 'eprstmt', 'WiC', 'cluewsc', 'Xsum', 'ocnli', 'triviaqa', 'hellaswag', 'race', 'bustm',
+                'RTE', 'C3', 'GaokaoBench', 'storycloze', 'ARC_e', 'siqa', 'obqa', 'WSC', 'chid'
+            ]
 
         with gr.Row():
             gr.Textbox(elem_id='name', scale=20)
             gr.Dropdown(
                 elem_id='eval_dataset',
                 is_list=True,
-                choices=OpenCompassBackendManager.list_datasets(),
+                choices=eval_dataset_list,
                 multiselect=True,
                 allow_custom_value=True,
                 scale=20)
