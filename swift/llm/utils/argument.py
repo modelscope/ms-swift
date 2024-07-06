@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -579,6 +579,7 @@ class SftArguments(ArgumentsBase):
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
+    lr_scheduler_kwargs: Dict[str, Any] = field(default_factory=dict)
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50
@@ -974,6 +975,7 @@ class SftArguments(ArgumentsBase):
             num_train_epochs=self.num_train_epochs,
             max_steps=self.max_steps,
             lr_scheduler_type=self.lr_scheduler_type,
+            lr_scheduler_kwargs=self.lr_scheduler_kwargs,
             warmup_ratio=self.warmup_ratio,
             logging_steps=self.logging_steps,
             save_strategy=self.save_strategy,
