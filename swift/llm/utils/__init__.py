@@ -6,6 +6,7 @@ from .client_utils import (convert_to_base64, decode_base64, get_model_list_clie
 from .dataset import (DATASET_MAPPING, DatasetName, HfDataset, get_dataset, get_dataset_from_repo,
                       load_dataset_from_local, load_ms_dataset, register_dataset, register_dataset_info,
                       register_local_dataset, sample_dataset)
+from .media import MediaCache, MediaTag
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM, ModelType, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type, get_model_tokenizer,
                     get_model_tokenizer_from_repo, get_model_tokenizer_with_flash_attn, register_model)
