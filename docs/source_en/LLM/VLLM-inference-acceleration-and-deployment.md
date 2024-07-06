@@ -205,6 +205,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
 
 # Evaluate using dataset
+# If you want to infer all dataset samples, please additionally specify `--show_dataset_sample -1`.
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged' \
     --infer_backend vllm \
