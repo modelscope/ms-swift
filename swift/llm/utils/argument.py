@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -26,6 +26,7 @@ from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, 
 from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
+from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -578,6 +579,7 @@ class SftArguments(ArgumentsBase):
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
+    lr_scheduler_kwargs: Dict[str, Any] = field(default_factory=dict)
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50
@@ -973,6 +975,7 @@ class SftArguments(ArgumentsBase):
             num_train_epochs=self.num_train_epochs,
             max_steps=self.max_steps,
             lr_scheduler_type=self.lr_scheduler_type,
+            lr_scheduler_kwargs=self.lr_scheduler_kwargs,
             warmup_ratio=self.warmup_ratio,
             logging_steps=self.logging_steps,
             save_strategy=self.save_strategy,
@@ -1237,6 +1240,8 @@ class InferArguments(ArgumentsBase):
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        self.media_type = template_info.get('media_type', 'image')
+        self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 

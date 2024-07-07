@@ -19,7 +19,8 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from swift.utils import (get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, safe_ddp_context,
+                         transform_jsonl_to_df)
 from swift.utils.torch_utils import _find_local_mac
 from .media import MediaCache, MediaTag
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
@@ -146,6 +147,8 @@ class DatasetName:
     # for qwen-audio
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
+    # for video
+    video_chatgpt = 'video-chatgpt'
 
     # rlhf
     hh_rlhf = 'hh-rlhf'
@@ -711,6 +714,39 @@ register_dataset(
     split=['validation', 'test'],
     tags=['chat', 'multi-modal', 'audio', '🔥'],
     is_main=False)
+
+
+def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
+    from datasets.download.download_manager import DownloadManager
+    url = 'https://modelscope.cn/datasets/huangjintao/VideoChatGPT/resolve/master/videos.zip'
+    with safe_ddp_context():
+        local_dir = DownloadManager().download_and_extract(url)
+    local_dir = os.path.join(str(local_dir), 'Test_Videos')
+    # only `.mp4`
+    mp4_set = [file[:-4] for file in os.listdir(local_dir) if file.endswith('mp4')]
+    query = []
+    response = []
+    videos = []
+    for d in dataset:
+        if d['video_name'] not in mp4_set:
+            continue
+        video_path = os.path.join(local_dir, f"{d['video_name']}.mp4")
+        assert os.path.exists(video_path)
+        question = d['question'] or d['question_1'] or d['question_2']
+        assert question is not None
+        query.append(question)
+        response.append(d['answer'])
+        videos.append([video_path])
+    return HfDataset.from_dict({'query': query, 'response': response, 'videos': videos})
+
+
+register_dataset(
+    DatasetName.video_chatgpt,
+    'huangjintao/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
+    _preprocess_video_chatgpt,
+    get_dataset_from_repo,
+    split=['test'],
+    tags=['chat', 'multi-modal', 'video', '🔥'])
 
 
 def _repair_agent_conversations(conversations: str, use_mini: bool) -> Optional[List[Dict[str, str]]]:
@@ -2260,6 +2296,7 @@ def _preprocess_self_cognition_dataset(
         if dataset is None:
             res_d_list.append(dataset)
             continue
+        query = []
         response = []
         for d in dataset:
             if d['tag'] == 'zh':
@@ -2267,9 +2304,13 @@ def _preprocess_self_cognition_dataset(
             else:
                 model_n, model_a = model_name[1], model_author[1]
 
+            q = d['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
             r = d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+            query.append(q)
             response.append(r)
-        dataset = dataset.remove_columns('response').add_column('response', response).remove_columns('tag')
+        dataset = dataset.remove_columns('response').add_column('response', response)
+        dataset = dataset.remove_columns('query').add_column('query', query)
+        dataset = dataset.remove_columns('tag')
         res_d_list.append(dataset)
     return tuple(res_d_list)
 

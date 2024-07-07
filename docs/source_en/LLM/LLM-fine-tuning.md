@@ -96,6 +96,7 @@ swift sft \
     --output_dir output \
 
 # Multi-machine multi-card
+# If multiple machines share a disk, please additionally specify `--save_on_each_node false`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NNODES=2 \
@@ -241,6 +242,7 @@ print(f'history: {history}')
 
 Using **Dataset** for evaluation:
 ```bash
+# If you want to infer all dataset samples, please additionally specify `--show_dataset_sample -1`.
 # Direct inference
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \

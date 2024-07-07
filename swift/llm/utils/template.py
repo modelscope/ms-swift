@@ -2,9 +2,10 @@
 import re
 from copy import deepcopy
 from io import BytesIO
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
+import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
@@ -38,6 +39,7 @@ class TemplateType:
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
+    codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
     llava1_5 = 'llava1_5'
@@ -47,6 +49,8 @@ class TemplateType:
     llava_llama_instruct = 'llava-llama-instruct'
     llava_qwen_instruct = 'llava-qwen-instruct'
     llama_llava_next = 'llama-llava-next'
+    llava_next_video = 'llava-next-video'
+    llava_next_video_yi = 'llava-next-video-yi'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -674,6 +678,9 @@ class Template:
             if len(image_sizes) > 0:
                 res['image_sizes'] = torch.concat(image_sizes)
 
+        pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
+        if len(pixel_values_videos) > 0:
+            res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
         return res
@@ -736,7 +743,11 @@ class Template:
                 response = response[cur_num_space - first_num_space:]
         if isinstance(self.suffix[-1],
                       str) and (not is_finished or is_finished and response[-len(self.suffix[-1]):] == self.suffix[-1]):
-            response = response[:-len(self.suffix[-1])]
+            idx = max(len(response) - len(self.suffix[-1]), 0)
+            # To avoid response length being shorter than previous response length during streaming.
+            if print_idx is not None:
+                idx = max(idx, print_idx[0])
+            response = response[:idx]
 
         if print_idx is not None:
             old_print_idx = print_idx[0]
@@ -866,7 +877,7 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
     pass
 
 
-register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
+register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True, media_type='audio')
 register_template(
     TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
@@ -913,12 +924,33 @@ def _load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     return image
 
 
-def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]]) -> List['PIL.Image.Image']:
+def _load_video(video_path: str) -> np.ndarray:
+    import av
+    container = av.open(video_path)
+    total_frames = container.streams.video[0].frames
+    indices = np.arange(0, total_frames, total_frames / 8).astype(int)
+    frames = []
+    container.seek(0)
+    start_index = indices[0]
+    end_index = indices[-1]
+    for i, frame in enumerate(container.decode(video=0)):
+        if i > end_index:
+            break
+        if i >= start_index and i in indices:
+            frames.append(frame)
+    return np.stack([x.to_ndarray(format='rgb24') for x in frames])
+
+
+_T = TypeVar('_T')
+
+
+def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
+                load_func: Callable[[str], _T] = _load_image) -> List[_T]:
     res = []
     for path in path_list:
         if path is None:  # ignore None
             continue
-        res.append(_load_image(path))
+        res.append(load_func(path))
     return res
 
 
@@ -1045,6 +1077,13 @@ register_template(
 register_template(
     TemplateType.chatglm3,
     GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None, ['<|system|>\n{{SYSTEM}}']))
+
+codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
+
+register_template(
+    TemplateType.codegeex4,
+    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|endoftext|>'], codegeex4_system,
+                ['<|system|>\n{{SYSTEM}}']))
 
 register_template(
     TemplateType.deepseek,
@@ -1500,6 +1539,60 @@ class LlavaHfTemplate(Template):
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
+
+
+class LlavaVideoTemplate(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type == 'video'
+        media_file = example['videos'][index]
+        if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
+            return ['<image>\n']
+        else:
+            return ['<video>\n']
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        media_files = example.get('videos') or []
+        images_path, videos_path = [], []
+        for media_file in media_files:
+            if media_file is None:
+                continue
+            if media_file.rsplit('.', 1)[1] in {'jpg', 'png'}:
+                images_path.append(media_file)
+            else:
+                videos_path.append(media_file)
+        if len(videos_path) > 0:
+            videos = _read_batch(videos_path, _load_video)
+            video_processor = self.tokenizer.processor.video_processor
+            video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
+            inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
+        if len(images_path) > 0:
+            images = _read_batch(images_path)
+            image_processor = self.tokenizer.processor.image_processor
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+            inputs['pixel_values'] = image_inputs['pixel_values']
+            inputs['image_sizes'] = image_inputs['image_sizes']
+        return inputs, {}
+
+
+register_template(
+    TemplateType.llava_next_video,
+    LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
+    use_model=True,
+    infer_media_type='round',
+    media_type='video',
+    lazy_tokenize=True)
+
+register_template(
+    TemplateType.llava_next_video_yi,
+    LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
+    use_model=True,
+    infer_media_type='round',
+    media_type='video',
+    lazy_tokenize=True)
 
 
 class Llava1_5Template(LlavaHfTemplate):
