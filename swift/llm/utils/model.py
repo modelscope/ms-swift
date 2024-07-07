@@ -203,7 +203,7 @@ class ModelType:
     llava_next_video_7b_instruct = 'llava-next-video-7b-instruct'
     llava_next_video_7b_32k_instruct = 'llava-next-video-7b-32k-instruct'
     llava_next_video_7b_dpo_instruct = 'llava-next-video-7b-dpo-instruct'
-    llava_next_video_34b_instruct = 'llava-next-video-34b-dpo-instruct'
+    llava_next_video_34b_instruct = 'llava-next-video-34b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
