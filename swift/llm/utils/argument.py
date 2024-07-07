@@ -581,7 +581,7 @@ class SftArguments(ArgumentsBase):
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[str] = None  # json
     warmup_ratio: float = 0.05
-    warmup_steps: int = 0  # Overrides any effect of `warmup_ratio` if warmup_ratio > 0
+    warmup_steps: int = 0  # Overrides any effect of `warmup_ratio` if warmup_steps > 0
 
     eval_steps: int = 50
     save_steps: Optional[int] = None
