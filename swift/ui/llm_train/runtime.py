@@ -304,7 +304,7 @@ class Runtime(BaseUI):
 
     @classmethod
     def get_initial(cls, line):
-        tqdm_starts = ['Train:', 'Map:', 'Val:']
+        tqdm_starts = ['Train:', 'Map:', 'Val:', 'Filter:']
         for start in tqdm_starts:
             if line.startswith(start):
                 return start
