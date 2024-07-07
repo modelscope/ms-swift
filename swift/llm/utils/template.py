@@ -1181,8 +1181,8 @@ def replace_img_tag(query: str, history: History, replace_token: str) -> Tuple[s
     return new_query, new_history, images_path
 
 
-class InternLMXComposer2(Template):
-    INTERNLM_XCOMPOSER2_SYSTEM = (
+class InternLMXComposer2Template(Template):
+    INTERNLM_XCOMPOSER_SYSTEM = (
         'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
         '- InternLM-XComposer (浦语·灵笔) is a conversational language model that is developed by '
         'Shanghai AI Laboratory (上海人工智能实验室). '
@@ -1196,7 +1196,7 @@ class InternLMXComposer2(Template):
         chat_sep = ['[UNUSED_TOKEN_145]\n']
         suffix = ['[UNUSED_TOKEN_145]']
         system_prefix = ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n']
-        super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER2_SYSTEM, system_prefix)
+        super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER_SYSTEM, system_prefix)
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
@@ -1274,7 +1274,28 @@ class InternLMXComposer2(Template):
 
 register_template(
     TemplateType.internlm_xcomposer2,
-    InternLMXComposer2(),
+    InternLMXComposer2Template(),
+    use_model=True,
+    lazy_tokenize=True,
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+
+class InternLMXComposer2_5Template(InternLMXComposer2Template):
+    INTERNLM_XCOMPOSER_SYSTEM = (
+        'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
+        '- InternLM-XComposer (浦语·灵笔) is a multi-modality conversational language model '
+        'that is developed by Shanghai AI Laboratory (上海人工智能实验室). '
+        'It is designed to be helpful, honest, and harmless.\n'
+        '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
+        'by the user such as English and 中文.\n'
+        '- InternLM-XComposer (浦语·灵笔) is capable of comprehending and articulating responses effectively '
+        'based on the provided image.')
+
+
+register_template(
+    TemplateType.internlm_xcomposer2_5,
+    InternLMXComposer2_5Template(),
     use_model=True,
     lazy_tokenize=True,
     dataloader_num_workers=0,
