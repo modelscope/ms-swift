@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
+import fcntl
 import hashlib
 import os
 import random
@@ -7,7 +8,6 @@ import re
 import subprocess
 import sys
 import time
-import fcntl
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
 
@@ -27,7 +27,7 @@ class FileLockContext:
 
     cache_dir = os.path.join(get_cache_dir(), 'lockers')
 
-    def __init__(self, origin_symbol: str, timeout: int = 60*30):
+    def __init__(self, origin_symbol: str, timeout: int = 60 * 30):
         self.origin_symbol = origin_symbol
         self.file_path = hashlib.md5(origin_symbol.encode('utf-8')).hexdigest() + '.lock'
         self.file_path = os.path.join(FileLockContext.cache_dir, self.file_path)
