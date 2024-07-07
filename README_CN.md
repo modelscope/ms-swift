@@ -48,7 +48,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
 ## 🎉 新闻
-- 2024.07.06: 支持llava-next-video系列模型: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-dpo-instruct. 可以查看[llava-video最佳实践](docs/source/Multi-Modal/llava-video最佳实践.md)了解更多.
+- 2024.07.06: 支持llava-next-video系列模型: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-instruct. 可以查看[llava-video最佳实践](docs/source/Multi-Modal/llava-video最佳实践.md)了解更多.
 - 2024.07.06: 支持internvl-2系列: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
 - 2024.07.06: 支持codegeex4-9b-chat.
 - 2024.07.04: 支持internlm2_5-7b系列: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
