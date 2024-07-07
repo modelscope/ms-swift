@@ -579,7 +579,7 @@ class SftArguments(ArgumentsBase):
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
-    lr_scheduler_kwargs: Dict[str, Any] = field(default_factory=dict)
+    lr_scheduler_kwargs: Optional[str] = None  # json
     warmup_ratio: float = 0.05
 
     eval_steps: int = 50
@@ -732,6 +732,12 @@ class SftArguments(ArgumentsBase):
             self.lora_use_all = True
         return target_modules
 
+    def handle_lr_scheduler_kwargs(self):
+        if self.lr_scheduler_kwargs is None:
+            self.lr_scheduler_kwargs = {}
+        elif isinstance(self.lr_scheduler_kwargs, str):
+            self.lr_scheduler_kwargs = json.loads(self.lr_scheduler_kwargs)
+
     def _prepare_modules_to_save(self, modules_to_save) -> List[str]:
         if isinstance(modules_to_save, str):
             modules_to_save = [modules_to_save]
@@ -782,6 +788,7 @@ class SftArguments(ArgumentsBase):
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
+        self.handle_lr_scheduler_kwargs()
         self.is_multimodal = self._is_multimodal(self.model_type)
 
         self.lora_use_embedding = False
