@@ -303,6 +303,14 @@ class Runtime(BaseUI):
         return ret
 
     @classmethod
+    def get_initial(cls, line):
+        tqdm_starts = ['Train:', 'Map:', 'Val:']
+        for start in tqdm_starts:
+            if line.startswith(start):
+                return start
+        return None
+
+    @classmethod
     def wait(cls, logging_dir, task):
         if not logging_dir:
             return [None] + Runtime.plot(task)
@@ -333,6 +341,15 @@ class Runtime(BaseUI):
                         latest_lines = latest_lines[:-1]
                     else:
                         latest_data = ''
+                    start = cls.get_initial(latest_lines[-1])
+                    if start:
+                        i = len(latest_lines) - 2
+                        while i >= 0:
+                            if latest_lines[i].startswith(start):
+                                del latest_lines[i]
+                                i -= 1
+                            else:
+                                break
                     lines.extend(latest_lines)
                     yield ['\n'.join(lines)] + Runtime.plot(task)
         except IOError:
