@@ -341,16 +341,16 @@ class Runtime(BaseUI):
                         latest_lines = latest_lines[:-1]
                     else:
                         latest_data = ''
-                    start = cls.get_initial(latest_lines[-1])
+                    lines.extend(latest_lines)
+                    start = cls.get_initial(lines[-1])
                     if start:
-                        i = len(latest_lines) - 2
+                        i = len(lines) - 2
                         while i >= 0:
-                            if latest_lines[i].startswith(start):
-                                del latest_lines[i]
+                            if lines[i].startswith(start):
+                                del lines[i]
                                 i -= 1
                             else:
                                 break
-                    lines.extend(latest_lines)
                     yield ['\n'.join(lines)] + Runtime.plot(task)
         except IOError:
             pass

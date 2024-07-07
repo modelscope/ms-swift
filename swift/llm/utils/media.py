@@ -140,8 +140,10 @@ class MediaCache:
             The local dir contains the extracted files.
         """
         from swift.utils.utils import FileLockContext
-        with FileLockContext(media_type_or_url):
-            return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias)
+        from swift.utils import safe_ddp_context
+        with safe_ddp_context():
+            with FileLockContext(media_type_or_url):
+                return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias)
 
     @staticmethod
     def _safe_download(media_type, media_name=None):

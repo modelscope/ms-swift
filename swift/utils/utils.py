@@ -39,6 +39,7 @@ class FileLockContext:
         start_time = time.time()
         while True:
             try:
+                os.makedirs(FileLockContext.cache_dir, exist_ok=True)
                 open(self.file_path, 'a').close()
                 self.file_handle = open(self.file_path, 'w')
                 fcntl.flock(self.file_handle, fcntl.LOCK_EX)
