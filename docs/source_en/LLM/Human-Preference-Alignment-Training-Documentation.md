@@ -148,6 +148,7 @@ swift rlhf \
 [Paper arvix](https://arxiv.org/abs/2401.08417)
 Hyperparameters
 - beta: The beta factor in CPO loss., default is 0.1
+- cpo_alpha: Controls the strength of the BC regularizer in CPO training
 
 Training script
 ```bash
@@ -199,7 +200,7 @@ swift rlhf \
 Hyperparameters
 - beta: Coefficient before the hidden reward, default is 2.0
 - simpo_gamma: Reward margin term, default is 1.0
-- cpo_alpha: Controls the strength of the BC regularizer in CPO training, mix nll loss in CPO
+- cpo_alpha: Controls the strength of the BC regularizer in CPO training, mix nll loss in CPO to enhances training stability, with a default value of 1.0. Setting it to 0.0 uses the original SimPO algorithm.
 
 Training script
 ```bash
