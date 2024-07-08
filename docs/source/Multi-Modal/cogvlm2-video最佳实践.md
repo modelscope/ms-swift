@@ -16,17 +16,16 @@ pip install -e '.[llm]'
 ```
 
 模型链接:
-- cogvlm2-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chinese-chat-19B/summary)
-- cogvlm2-en-19b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary](https://modelscope.cn/models/ZhipuAI/cogvlm2-llama3-chat-19B/summary)
+- cogvlm2-video-13b-chat: [https://modelscope.cn/models/ZhipuAI/cogvlm2-video-llama3-chat](https://modelscope.cn/models/ZhipuAI/cogvlm2-video-llama3-chat)
 
 
 ## 推理
 
-推理cogvlm2-19b-chat:
+推理cogvlm2-video-13b-chat:
 ```shell
 # Experimental environment: A100
 # 43GB GPU memory
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm2-19b-chat
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type cogvlm2-video-13b-chat
 ```
 
 输出: (支持传入本地路径或URL)
