@@ -621,6 +621,19 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | 华为昇腾NPU           |                         |
 
 
+### 环境变量
+
+- DATASET_ENABLE_CACHE：在预处理数据集时启用缓存，您可以使用`1/True`或`0/False`，默认值为`False`
+- WEBUI_SHARE：共享web-ui，可以使用`1/True`或`0/False`，默认值为`False`
+- SWIFT_UI_LANG：web-ui语言，您可以使用`en`或`zh`，默认值为`zh`
+- WEBUI_SERVER：web-ui可访问的IP`0.0.0.0`表示所有路由，`127.0.0.1`仅用于本地网络。默认值为`127.0.0.1`
+- WEBUI_PORT：web-ui端口
+- USE_HF：使用huggingface endpoint或ModelScope endpoint下载模型和数据集。您可以使用`1/True`或`0/False`，默认值为`False`
+- FORCE_REDOWNLOAD：强制重新下载数据集
+
+其他变量如`CUDA_VISIBLE_DEVICES`也支持，但未在此列出。
+
+
 ## 📃文档
 
 ### 文档编译

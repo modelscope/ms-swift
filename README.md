@@ -624,6 +624,19 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Computing cards A10/A100, etc. | Support BF16 and FlashAttn                      |
 | Huawei Ascend NPU              |                                                 |
 
+### Environment variables
+
+- DATASET_ENABLE_CACHE: Enable cache when preprocess dataset, you can use `1/True` or `0/False`, default `False`
+- WEBUI_SHARE: Share your web-ui, you can use `1/True` or `0/False`, default `False`
+- SWIFT_UI_LANG: web-ui language, you can use `en` or `zh`, default `zh`
+- WEBUI_SERVER: web-ui host ip，`0.0.0.0` for all routes，`127.0.0.1` for local network only. Default `127.0.0.1`
+- WEBUI_PORT: web-ui port
+- USE_HF: Use huggingface endpoint or ModelScope endpoint to download models and datasets. you can use `1/True` or `0/False`, default `False`
+- FORCE_REDOWNLOAD: Force to re-download the dataset
+
+Other variables like `CUDA_VISIBLE_DEVICES` are also supported, which are not listed here.
+
+
 ## 📃 Documentation
 
 ### Documentation Compiling
