@@ -1038,7 +1038,7 @@ class GLM4VTemplate(GLMTemplate):
         if idx_list:
             idx = idx_list[0]
             images_path = example.get('images') or []
-            image = _load_image(images_path[0])
+            image = _read_batch(images_path)[0]
             placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -1768,9 +1768,9 @@ class LLavaLlamaTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         image_path = example.get('images') or []
-        if image_path:
-            raw_image = _load_image(image_path[0])
-            pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        raw_image = _read_batch(image_path)
+        if raw_image:
+            pixel_values = self.tokenizer.processor.image_processor(raw_image[0], return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
 
@@ -1808,9 +1808,9 @@ class PaliGemmaTemplate(Template):
             inputs['token_type_ids'] = [0] * n + [1] * n2
         else:
             inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
-        if image_path:
-            raw_image = _load_image(image_path[0])
-            model_inputs = processor(text=example['query'], images=raw_image, return_tensors='pt')
+        raw_image = _read_batch(image_path)
+        if raw_image:
+            model_inputs = processor(text=example['query'], images=raw_image[0], return_tensors='pt')
             inputs['pixel_values'] = model_inputs['pixel_values']
         return inputs, {}
 
@@ -2029,30 +2029,32 @@ class CogTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images_path = example.get('images') or []
-        image = _load_image(images_path[0]) if len(images_path) >= 1 else []
+        image = _read_batch(images_path)
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
-            self.tokenizer, query=example['query'], history=example.get('history'), images=[image])
-        image_token_len = inputs2['token_type_ids'].sum()
+            self.tokenizer, query=example['query'], history=example.get('history'), images=image)
+        image_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         inputs['token_type_ids'] = [0] + [1] * image_token_len + [0] * len(input_ids[1:])
         inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
-        dtype = model.dtype
-        inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
-        if 'cross_images' in inputs2:
-            # is cogagent
-            inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
+        if len(image) > 0:
+            dtype = model.dtype
+            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+            if 'cross_images' in inputs2:
+                # is cogagent
+                inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        keys = ['images', 'cross_images'] if 'cross_images' in batch[0] else ['images']
+        keys = ['images', 'cross_images']
         for key in keys:
-            res[key] = [b[key][0] for b in batch]
+            if key in batch[0]:
+                res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
         token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
         res['token_type_ids'] = token_type_ids
@@ -2114,14 +2116,14 @@ class Cog2VideoTemplate(CogTemplate):
         if len(inputs) == 0:
             return inputs, {}
         videos_path = example.get('videos') or []
-        video = _load_video_cogvlm2(videos_path[0]) if len(videos_path) >= 1 else []
+        video = _read_batch(videos_path, _load_video_cogvlm2)
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
             self.tokenizer,
             query=example['query'],
             history=example.get('history'),
-            images=[video],
+            images=video,
             template_version='chat')
         video_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
@@ -2130,8 +2132,9 @@ class Cog2VideoTemplate(CogTemplate):
         inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * video_token_len + input_ids[1:]
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * video_token_len + labels[1:]
-        dtype = model.dtype
-        inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+        if len(video) > 0:
+            dtype = model.dtype
+            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
         return inputs, {}
 
 
