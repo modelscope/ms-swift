@@ -2081,6 +2081,7 @@ register_template(
     infer_media_type='dialogue',
     lazy_tokenize=True)
 
+
 def _read_video(video_path: str) -> BytesIO:
     video_path = video_path.strip()
     if video_path.startswith('http'):

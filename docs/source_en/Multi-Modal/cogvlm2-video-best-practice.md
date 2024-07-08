@@ -41,7 +41,7 @@ In the video, a person is seen lighting a fire in a backyard setting. They start
 --------------------------------------------------
 <<< clear
 <<< who are you
-Input a video path or URL <<< 
+Input a video path or URL <<<
 I am a person named John.
 """
 ```
