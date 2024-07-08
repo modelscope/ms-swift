@@ -7,7 +7,6 @@ if TYPE_CHECKING:
     from .arguments import Seq2SeqTrainingArguments, TrainingArguments
     from .dpo_trainer import DPOTrainer
     from .orpo_trainer import ORPOTrainer
-    from .simpo_trainer import SimPOTrainer
     from .rlhf_trainers import RLHFTrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .utils import EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, \
@@ -18,7 +17,6 @@ else:
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
         'dpo_trainer': ['DPOTrainer'],
         'orpo_trainer': ['ORPOTrainer'],
-        'simpo_trainer': ['SimPOTrainer'],
         'rlhf_trainers': ['RLHFTrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'utils': [
