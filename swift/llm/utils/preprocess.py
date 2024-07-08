@@ -161,7 +161,10 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         medias = self.parse_medias(d)
         self.media_replacer(row, medias)
         if self.media_type:
-            row[self.media_name] = medias
+                if not isinstance(self.media_key, str):
+                    row[self.media_name] = medias
+                else:
+                    row[self.media_key] = medias
         return row
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
@@ -251,7 +254,10 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             medias = self.parse_medias(d)
             self.media_replacer(row, medias)
             if self.media_type:
-                row[self.media_name] = medias
+                if not isinstance(self.media_key, str):
+                    row[self.media_name] = medias
+                else:
+                    row[self.media_key] = medias
             return row
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
@@ -306,7 +312,10 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
             medias = self.parse_medias(d)
             self.media_replacer(row, medias)
             if self.media_type:
-                row[self.media_name] = medias
+                if not isinstance(self.media_key, str):
+                    row[self.media_name] = medias
+                else:
+                    row[self.media_key] = medias
         except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
