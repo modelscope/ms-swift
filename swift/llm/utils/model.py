@@ -952,6 +952,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
             logger.debug(f'Model hf_device_map: {model.hf_device_map}')
     return model, tokenizer
 
+
 @register_model(
     ModelType.cogvlm2_video_13b_chat,
     'ZhipuAI/cogvlm2-video-llama3-chat',

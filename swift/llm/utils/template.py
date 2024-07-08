@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import io
 import re
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
-import io
+
 import json
 import numpy as np
 import requests
@@ -2049,8 +2050,7 @@ class CogTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        is_cogagent = 'cross_images' in batch[0]
-        keys = ['images', 'cross_images'] if is_cogagent else ['images']
+        keys = ['images', 'cross_images'] if 'cross_images' in batch[0] else ['images']
         for key in keys:
             res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
@@ -2102,16 +2102,15 @@ def _load_video_cogvlm2(video_path: str) -> np.ndarray:
     video_data = video_data.permute(3, 0, 1, 2)
     return video_data
 
-class Cog2VideoTemplate(Template):
+
+class Cog2VideoTemplate(CogTemplate):
+
     def check_example(self, example):
         videos = example.get('videos') or []
         assert len(videos) <= 1
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        return []
-
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super(CogTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
         videos_path = example.get('videos') or []
@@ -2119,7 +2118,10 @@ class Cog2VideoTemplate(Template):
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
-            self.tokenizer, query=example['query'], history=example.get('history'), images=[video],
+            self.tokenizer,
+            query=example['query'],
+            history=example.get('history'),
+            images=[video],
             template_version='chat')
         video_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
@@ -2132,20 +2134,14 @@ class Cog2VideoTemplate(Template):
         inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
         return inputs, {}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        res['images'] = [b['images'][0] for b in batch]
-        token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
-        res['token_type_ids'] = token_type_ids
-        return res
 
 register_template(
     TemplateType.cogvlm2_video,
     Cog2VideoTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
     use_model=True,
     infer_media_type='dialogue',
-    lazy_tokenize=True, media_type='video')
+    lazy_tokenize=True,
+    media_type='video')
 
 register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
