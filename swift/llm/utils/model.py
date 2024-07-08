@@ -266,6 +266,7 @@ class ModelType:
     internlm2_math_20b_chat = 'internlm2-math-20b-chat'
     # internlm-xcomposer2
     internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
+    internlm_xcomposer2_5_7b_chat = 'internlm-xcomposer2_5-7b-chat'
     # internvl
     internvl_chat_v1_5 = 'internvl-chat-v1_5'
     internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
@@ -3787,6 +3788,15 @@ def get_model_tokenizer_internvl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.internlm_xcomposer2_5_7b_chat,
+    'Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b',
+    LoRATM.internlm2,
+    TemplateType.internlm_xcomposer2_5,
+    eos_token='<|im_end|>',
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
+    hf_model_id='internlm/internlm-xcomposer2d5-7b')
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
