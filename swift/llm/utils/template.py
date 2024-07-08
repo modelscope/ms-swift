@@ -1234,7 +1234,7 @@ class InternLMXComposer2Template(Template):
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        if len(images) > 0:  # # ignore <s>
+        if len(images) > 0:  # ignore <s>
             input_ids = input_ids[1:]
             if labels is not None:
                 labels = labels[1:]

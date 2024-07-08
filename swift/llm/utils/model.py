@@ -3795,7 +3795,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     TemplateType.internlm_xcomposer2_5,
     eos_token='<|im_end|>',
     support_flash_attn=True,
-    tags=['multi-modal', 'vision', 'video'],
+    tags=['multi-modal', 'vision'],
     hf_model_id='internlm/internlm-xcomposer2d5-7b')
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
