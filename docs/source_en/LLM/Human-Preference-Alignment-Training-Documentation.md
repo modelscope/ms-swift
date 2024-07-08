@@ -148,7 +148,7 @@ swift rlhf \
 [Paper arvix](https://arxiv.org/abs/2401.08417)
 Hyperparameters
 - beta: The beta factor in CPO loss., default is 0.1
-- cpo_alpha: Controls the strength of the BC regularizer in CPO training
+- cpo_alpha: Controls the strength of the BC regularizer in CPO training, default is 1.0
 
 Training script
 ```bash
