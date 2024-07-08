@@ -13,6 +13,10 @@
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
+
+# https://github.com/facebookresearch/pytorchvideo/issues/258
+# https://github.com/dmlc/decord/issues/177
+pip install decord pytorchvideo
 ```
 
 模型链接:
