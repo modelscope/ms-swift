@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import io
 import re
 from copy import deepcopy
 from io import BytesIO
@@ -2082,17 +2081,26 @@ register_template(
     infer_media_type='dialogue',
     lazy_tokenize=True)
 
+def _read_video(video_path: str) -> BytesIO:
+    video_path = video_path.strip()
+    if video_path.startswith('http'):
+        content = requests.get(video_path).content
+        mp4_stream = BytesIO(content)
+    else:
+        with open(video_path, 'rb') as f:
+            mp4_stream = BytesIO(f.read())
+    return mp4_stream
+
 
 def _load_video_cogvlm2(video_path: str) -> np.ndarray:
     from decord import cpu, VideoReader, bridge
     bridge.set_bridge('torch')
-    with open(video_path, 'rb') as f:
-        mp4_stream = f.read()
+    mp4_stream = _read_video(video_path)
     clip_end_sec = 60
     clip_start_sec = 0
     num_frames = 24
     if mp4_stream is not None:
-        decord_vr = VideoReader(io.BytesIO(mp4_stream), ctx=cpu(0))
+        decord_vr = VideoReader(mp4_stream, ctx=cpu(0))
     else:
         decord_vr = VideoReader(video_path, ctx=cpu(0))
     duration = len(decord_vr)  # duration in terms of frames
