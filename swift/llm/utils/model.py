@@ -425,6 +425,7 @@ class ModelType:
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
     cogvlm2_en_19b_chat = 'cogvlm2-en-19b-chat'
+    cogvlm2_video_13b_chat = 'cogvlm2-video-13b-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -952,6 +953,16 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.cogvlm2_video_13b_chat,
+    'ZhipuAI/cogvlm2-video-llama3-chat',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm2_video,
+    support_gradient_checkpointing=False,
+    requires=['transformers<4.42', 'decord', 'pytorchvideo'],
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='THUDM/cogvlm2-video-llama3-chat')
 @register_model(
     ModelType.cogvlm2_en_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chat-19B',

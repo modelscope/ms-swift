@@ -79,6 +79,7 @@ class TemplateType:
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
     cogvlm = 'cogvlm'
+    cogvlm2_video = 'cogvlm2-video'
     glm4v = 'glm4v'
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
@@ -2079,6 +2080,80 @@ register_template(
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
+
+
+def _read_video(video_path: str) -> BytesIO:
+    video_path = video_path.strip()
+    if video_path.startswith('http'):
+        content = requests.get(video_path).content
+        mp4_stream = BytesIO(content)
+    else:
+        with open(video_path, 'rb') as f:
+            mp4_stream = BytesIO(f.read())
+    return mp4_stream
+
+
+def _load_video_cogvlm2(video_path: str) -> np.ndarray:
+    from decord import cpu, VideoReader, bridge
+    bridge.set_bridge('torch')
+    mp4_stream = _read_video(video_path)
+    clip_end_sec = 60
+    clip_start_sec = 0
+    num_frames = 24
+    if mp4_stream is not None:
+        decord_vr = VideoReader(mp4_stream, ctx=cpu(0))
+    else:
+        decord_vr = VideoReader(video_path, ctx=cpu(0))
+    duration = len(decord_vr)  # duration in terms of frames
+    start_frame = int(clip_start_sec * decord_vr.get_avg_fps())
+    end_frame = min(duration, int(clip_end_sec * decord_vr.get_avg_fps())) if \
+        clip_end_sec is not None else duration
+    frame_id_list = np.linspace(start_frame, end_frame - 1, num_frames, dtype=int)
+    video_data = decord_vr.get_batch(frame_id_list)
+    video_data = video_data.permute(3, 0, 1, 2)
+    return video_data
+
+
+class Cog2VideoTemplate(CogTemplate):
+
+    def check_example(self, example):
+        videos = example.get('videos') or []
+        assert len(videos) <= 1
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super(CogTemplate, self).encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        videos_path = example.get('videos') or []
+        video = _read_batch(videos_path, _load_video_cogvlm2)
+        inputs.pop('loss_scale', None)
+        model = self.model
+        inputs2 = model.build_conversation_input_ids(
+            self.tokenizer,
+            query=example['query'],
+            history=example.get('history'),
+            images=video,
+            template_version='chat')
+        video_token_len = inputs2['token_type_ids'].sum().item()
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        inputs['token_type_ids'] = [0] + [1] * video_token_len + [0] * len(input_ids[1:])
+        inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * video_token_len + input_ids[1:]
+        if labels is not None:
+            inputs['labels'] = labels[:1] + [-100] * video_token_len + labels[1:]
+        if len(video) > 0:
+            dtype = model.dtype
+            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+        return inputs, {}
+
+
+register_template(
+    TemplateType.cogvlm2_video,
+    Cog2VideoTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
+    use_model=True,
+    infer_media_type='dialogue',
+    lazy_tokenize=True,
+    media_type='video')
 
 register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
