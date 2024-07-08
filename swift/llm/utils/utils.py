@@ -569,6 +569,8 @@ def _prepare_inputs(model: PreTrainedModel,
         'history': history,
         'system': system,
         'images': images or [],  # for vl. str.
+        'audios': kwargs.pop('audios', None) or [],
+        'videos': kwargs.pop('videos', None) or [],
         'tools': kwargs.pop('tools', None),
         'objects': kwargs.pop('objects', None),
     }

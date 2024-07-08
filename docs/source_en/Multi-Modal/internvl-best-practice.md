@@ -1,4 +1,16 @@
 # InternVL Best Practice
+The document corresponds to the following models:
+
+- [internvl-chat-v1_5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
+- [internvl-chat-v1_5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
+- [mini-internvl-chat-2b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
+- [mini-internvl-chat-4b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-4B-V1-5)
+- [internvl2-2b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-2B)
+- [internvl2-4b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-4B)
+- [internvl2-8b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-8B)
+- [internvl2-26b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-26B)
+
+The following practice takes `internvl-chat-v1_5` as an example, and you can also switch to other models by specifying `--model_type`.
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -15,13 +27,6 @@ pip install Pillow
 ```
 
 ## Inference
-
-Inference for [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary)
-(To use a local model file, add the argument `--model_id_or_path /path/to/model`)
-
-Inference with [internvl-chat-v1.5](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5/summary) and [internvl-chat-v1.5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary).
-
-The tutorial below takes `internvl-chat-v1.5` as an example, and you can change to `--model_type internvl-chat-v1_5-int8` to select the INT8 version of the model. Alternatively, select the Mini-Internvl model by choosing either `mini-internvl-chat-2b-v1_5` or `mini-internvl-chat-4b-v1_5`.
 
 **Note**
 - If you want to use a local model file, add the argument --model_id_or_path /path/to/model.
@@ -106,13 +111,13 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType,
+    get_model_tokenizer, get_template, inference,
     get_default_template_type, inference_stream
 )
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.internvl_chat_v1_5
+model_type = "internvl-chat-v1_5"
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')
 
@@ -217,7 +222,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --max_length 4096
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json, jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
 (Only single-turn dialogue is supported. Each turn of dialogue must contain one image. Local paths or URLs can be passed in.)
 

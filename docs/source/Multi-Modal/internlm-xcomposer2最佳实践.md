@@ -1,5 +1,12 @@
 
-# Internlm-Xcomposer2 最佳实践
+# Internlm-Xcomposer2 & Internlm-Xcomposer2.5 最佳实践
+
+本篇文档涉及的模型如下:
+
+- [internlm-xcomposer2-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary)
+- [internlm-xcomposer2_5-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b/summary)
+
+以下实践以`internlm-xcomposer2-7b-chat`为例，你也可以通过指定`--model_type`切换为其他模型.
 
 ## 目录
 - [环境准备](#环境准备)
@@ -10,12 +17,14 @@
 
 ## 环境准备
 ```shell
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 ## 推理
 
-推理[internlm-xcomposer2-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary):
+推理internlm-xcomposer2-7b-chat:
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 21GB GPU memory
@@ -43,10 +52,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type internlm-xcomposer2-7b-chat
 湖面平静如明镜。
 小舟轻荡波光里，
 灯火微摇映水乡。
---------------------------------------------------
-<<< clear
-<<< <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png</img>对图片进行OCR
-很抱歉，我无法对您提供的图片进行OCR。如果您需要文本识别服务，您可以上传图片到其他支持OCR服务的平台，或者您可以尝试使用一些在线OCR工具。
 """
 ```
 

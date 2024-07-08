@@ -2,6 +2,7 @@ import os
 
 import gradio as gr
 from packaging import version
+from transformers.utils import strtobool
 
 from swift.ui.base import all_langs
 from swift.ui.llm_eval.llm_eval import LLMEval
@@ -74,4 +75,4 @@ def run_ui():
         inbrowser=True,
         server_port=port if port is None else int(port),
         height=800,
-        share=bool(int(os.environ.get('WEBUI_SHARE', '0'))))
+        share=strtobool(os.environ.get('WEBUI_SHARE', '0')))
