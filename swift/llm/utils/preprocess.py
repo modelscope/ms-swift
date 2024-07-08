@@ -161,10 +161,10 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         medias = self.parse_medias(d)
         self.media_replacer(row, medias)
         if self.media_type:
-                if not isinstance(self.media_key, str):
-                    row[self.media_name] = medias
-                else:
-                    row[self.media_key] = medias
+            if not isinstance(self.media_key, str):
+                row[self.media_name] = medias
+            else:
+                row[self.media_key] = medias
         return row
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
