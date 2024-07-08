@@ -2,6 +2,7 @@
 # Internlm-Xcomposer2 & Internlm-Xcomposer2.5 最佳实践
 
 本篇文档涉及的模型如下:
+
 - [internlm-xcomposer2-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary)
 - [internlm-xcomposer2_5-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b/summary)
 
