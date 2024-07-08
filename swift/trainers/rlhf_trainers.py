@@ -38,12 +38,6 @@ class RLHFTrainerFactory:
     @staticmethod
     def get_trainer(rlhf_type):
         module_path, class_name = RLHFTrainerFactory.TRAINERS_MAPPING[rlhf_type].rsplit('.', 1)
-        if rlhf_type == 'simpo':
-            import trl
-            from packaging import version
-            if version.parse(trl.__version__) <= version.parse('0.9.4'):
-                module_path = 'swift.trainers.simpo_trainer'
-                class_name = 'SimPOTrainer'
         module = importlib.import_module(module_path)
         trainer_class = getattr(module, class_name)
         return trainer_class

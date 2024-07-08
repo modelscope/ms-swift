@@ -144,29 +144,6 @@ swift rlhf \
     --save_total_limit  2
 ```
 
-Training script using $(x,y_w,y_l)$ format data
-
-```bash
-CUDA_VISIBLE_DEVICES=0 \
-swift rlhf \
-    --rlhf_type dpo \
-    --loss_type kto_pair \
-    --model_type  llama3-8b-instruct \
-    --beta 0.1 \
-    --desirable_weight 1.0 \
-    --undesirable_weight 1.0 \
-    --sft_type  lora \
-    --dataset shareai-llama3-dpo-zh-en-emoji \
-    --num_train_epochs  2  \
-    --lora_target_modules  ALL  \
-    --gradient_checkpointing  true  \
-    --batch_size  1  \
-    --learning_rate  5e-5  \
-    --gradient_accumulation_steps  16  \
-    --warmup_ratio  0.03  \
-    --save_total_limit  2
-```
-
 ## CPO
 [Paper arvix](https://arxiv.org/abs/2401.08417)
 Hyperparameters
@@ -222,6 +199,7 @@ swift rlhf \
 Hyperparameters
 - beta: Coefficient before the hidden reward, default is 2.0
 - simpo_gamma: Reward margin term, default is 1.0
+- cpo_alpha: Controls the strength of the BC regularizer in CPO training, mix nll loss in CPO
 
 Training script
 ```bash

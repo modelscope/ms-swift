@@ -1435,10 +1435,11 @@ class RLHFArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: Optional[float] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair', 'simpo',
-                       'kto', 'bco'] = None
+    loss_type: Optional[str] = None
     sft_beta: float = 0.1
+    # SimPO
     simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
+    cpo_alpha: float = 1.0
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
@@ -1448,8 +1449,7 @@ class RLHFArguments(SftArguments):
         # without reference model
         self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
         if self.rlhf_type == 'simpo':
-            self.loss_type = 'simpo'  # compatibility with trl > 0.9.5
-            self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
+            self.loss_type = 'simpo'
         self.set_default_beta()
         self.set_default_loss_type()
         self.set_default_config()
@@ -1472,10 +1472,6 @@ class RLHFArguments(SftArguments):
             'cpo': 'trl.trainer.cpo_config.CPOConfig',
             'dpo': 'trl.trainer.dpo_config.DPOConfig'
         }
-        import trl
-        if version.parse(trl.__version__) <= version.parse('0.9.4'):
-            CONFIG_MAPPING['simpo'] = 'trl.trainer.dpo_config.DPOConfig'
-
         if self.rlhf_type in CONFIG_MAPPING:
             config_path = CONFIG_MAPPING[self.rlhf_type]
             module_path, config_name = config_path.rsplit('.', 1)
@@ -1494,8 +1490,9 @@ class RLHFArguments(SftArguments):
 
     def check_loss_type(self):
         supported_loss_types = {
-            'dpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust'],
-            'cpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'simpo'],
+            'dpo':
+            ['sigmoid', 'hinge', 'ipo', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust', 'aot', 'aot_pair', 'exo_pair'],
+            'cpo': ['sigmoid', 'hinge', 'ipo', 'simpo'],
             'kto': ['kto', 'bco']
         }
         if self.rlhf_type in supported_loss_types:
