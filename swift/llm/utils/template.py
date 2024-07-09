@@ -1524,6 +1524,15 @@ class FlorenceTemplate(Template):
         inputs['input_ids'] = inputs['input_ids'][0]
         inputs['attention_mask'] = inputs['attention_mask'][0]
         inputs['pixel_values'] = inputs['pixel_values'].to(self.model.dtype)
+        if self.max_length is None:
+            self.max_length = 1024
+        if self.truncation_strategy == 'delete' and len(inputs['input_ids']) > self.max_length:
+            return {}, {}
+        inputs['input_ids'] = inputs['input_ids'][:self.max_length]
+        inputs['attention_mask'] = inputs['attention_mask'][:self.max_length]
+        if inputs['labels'] is not None:
+            labels = labels[:self.max_length]
+
         return inputs, {}
 
     @staticmethod
