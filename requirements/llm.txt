@@ -7,3 +7,4 @@ openai
 sentencepiece
 tiktoken
 uvicorn
+importlib_metadata
