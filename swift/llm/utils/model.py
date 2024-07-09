@@ -276,6 +276,7 @@ class ModelType:
     internvl2_4b = 'internvl2-4b'
     internvl2_8b = 'internvl2-8b'
     internvl2_26b = 'internvl2-26b'
+    internvl2_40b = 'internvl2-40b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -3696,6 +3697,16 @@ def fix_internvl_inplace_bug(model) -> None:
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-26B')
+@register_model(
+    ModelType.internvl2_40b,
+    'OpenGVLab/InternVL2-40B',
+    LoRATM.internlm2,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-40B')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],

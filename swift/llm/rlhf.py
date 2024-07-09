@@ -20,6 +20,13 @@ logger = get_logger()
 
 
 def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
+    if args.rlhf_type == 'simpo':
+        import trl
+        from packaging import version
+        assert version.parse(trl.__version__) <= version.parse('0.9.4'), \
+            'Please ensure to update `trl` to the latest version using the following command:' \
+            'pip install trl==0.9.6 --index-url https://pypi.org/simple.'
+
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args

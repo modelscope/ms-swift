@@ -27,13 +27,13 @@
 
 ## 📖 Table of Contents
 - [Introduction](#-introduction)
+- [Groups](#-Groups)
 - [News](#-news)
 - [Installation](#%EF%B8%8F-installation)
 - [Getting Started](#-getting-started)
 - [Documentation](#-documentation)
 - [License](#-License)
 - [Citation](#-citation)
-- [WeChat Group](#-Wechat-Group)
 
 ## 📝 Introduction
 SWIFT supports training, inference, evaluation and deployment of **300+ LLMs and 50+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
@@ -45,6 +45,15 @@ Additionally, we are expanding capabilities for other modalities. Currently, we 
 SWIFT has rich documentations for users, please check [here](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/index.md).
 
 SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
+
+## ☎ Groups
+
+You can contact us and communicate with us by adding our group:
+
+
+Discord Group              |  微信群
+:-------------------------:|:-------------------------:
+<img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
 - 2024.07.08:Support cogvlm2-video-13b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/cogvlm2-video-best-practice.md).
@@ -715,14 +724,6 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
   year = {2024}
 }
 ```
-
-## ☎ Wechat Group
-
-You can contact us and communicate with us by adding our WeChat group:
-
-<p align="left">
-<img src="asset/wechat.png" width="250" style="display: inline-block;">
-</p>
 
 ## Star History
 
