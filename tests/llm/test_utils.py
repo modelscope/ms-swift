@@ -26,16 +26,21 @@ class TestLlmUtils(unittest.TestCase):
         for query in ['你好', 'hello']:
             seed_everything(42)
             print('stream=True')
-            gen_text_stream, history = inference(model, template, query, stream=True, verbose=True)
+            generation_info = {}
+            gen_text_stream, history = inference(
+                model, template, query, generation_info=generation_info, stream=True, verbose=True)
             print(f'[GEN]: {gen_text_stream}')
             print(f'[HISTORY]: {history}')
+            print(generation_info)
             #
             seed_everything(42)
-            gen = inference_stream(model, template, query)
+            generation_info = {}
+            gen = inference_stream(model, template, query, generation_info=generation_info)
             for gen_text_stream2, history2 in gen:
                 pass
             print(f'[GEN]: {gen_text_stream2}')
             print(f'[HISTORY]: {history2}')
+            print(generation_info)
             #
             seed_everything(42)
             print('stream=False')
