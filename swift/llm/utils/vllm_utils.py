@@ -350,6 +350,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
     assert isinstance(generation_config, VllmGenerationConfig)
@@ -398,8 +399,9 @@ def inference_stream_vllm(llm_engine: LLMEngine,
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()
+        runtime = time.perf_counter() - start_runtime
         generation_info['runtime'] = runtime
-        generation_info['samples/s'] = len(outputs) / runtime
+        generation_info['samples/s'] = len(step_outputs) / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         yield resp_list
     prog_bar.close()
