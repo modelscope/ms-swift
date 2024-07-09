@@ -19,16 +19,11 @@ sys.path.insert(0, os.path.abspath('../../'))
 # -- Project information -----------------------------------------------------
 
 project = 'swift'
-copyright = '2022-2023, Alibaba ModelScope'
-author = 'modelscope Authors'
+copyright = '2022-2024, Alibaba ModelScope'
+author = 'ModelScope Authors'
 version_file = '../../swift/version.py'
-
-os.system(f'pip install -r ../../requirements/docs.txt')
-os.system(f'pip install -r ../../requirements/framework.txt')
-os.system(f'pip install -r ../../requirements/llm.txt')
-os.system(f'pip install --upgrade sphinx docutils')
-
 html_theme = 'sphinx_rtd_theme'
+language = 'en'
 
 
 def get_version():
