@@ -110,7 +110,18 @@ response: The video shows a person lighting a fire in a backyard setting. The pe
 # 40GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type cogvlm2-video-13b-chat \
-    --dataset video-chatgpt
+    --dataset video-chatgpt \
+    --num_train_epochs 3 \
+
+# ZeRO2
+# Experimental environment: 4 * A100
+# 4 * 40GB GPU memory
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
+    --model_type cogvlm2-video-13b-chat \
+    --dataset video-chatgpt \
+    --num_train_epochs 3 \
+    --deepspeed default-zero2
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:

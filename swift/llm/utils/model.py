@@ -3818,6 +3818,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     eos_token='<|im_end|>',
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
+    function_kwargs={'is_v2_5': True},
     hf_model_id='internlm/internlm-xcomposer2d5-7b')
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
@@ -3833,6 +3834,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             model_kwargs: Dict[str, Any],
                                             load_model: bool = True,
                                             **kwargs):
+    is_v2_5 = kwargs.pop('is_v2_5', False)
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config._flash_attn_2_enabled = use_flash_attn
@@ -3850,23 +3852,36 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
             model.model.layers[0].attention.__class__.attention_dropout = 0.
 
         model_cls = model.__class__
-        if not hasattr(model_cls, '__old_encode_img'):  # avoid double patching
-            model_cls.__old_encode_img = model_cls.encode_img
 
-            def _new_encode_img(self, image):
-                if image is None:
-                    return None
-                if isinstance(image, str):
-                    from PIL import Image
-                    image = Image.open(image).convert('RGB')
-                    image = self.vis_processor(image).unsqueeze(0).to(self.device)
-                else:
-                    assert isinstance(image, torch.Tensor)
+        if is_v2_5:
 
-                img_embeds, atts_img, img_target = self.img2emb(image)
-                return img_embeds.to(device=self.device)  # FIX device_map
+            def _output_device_map_hook(module, input, output):
+                output = (output[0].to(input[1].device), output[1])
+                return output
 
-            model_cls.encode_img = _new_encode_img
+            def _output_device_map_hook2(module, input, output):
+                return output.to(input[0].device)
+
+            model.vit.register_forward_hook(_output_device_map_hook)
+            model.vision_proj.register_forward_hook(_output_device_map_hook2)
+        else:
+            if not hasattr(model_cls, '__old_encode_img'):  # avoid double patching
+                model_cls.__old_encode_img = model_cls.encode_img
+
+                def _new_encode_img(self, image):
+                    if image is None:
+                        return None
+                    if isinstance(image, str):
+                        from PIL import Image
+                        image = Image.open(image).convert('RGB')
+                        image = self.vis_processor(image).unsqueeze(0).to(self.device)
+                    else:
+                        assert isinstance(image, torch.Tensor)
+
+                    img_embeds, atts_img, img_target = self.img2emb(image)
+                    return img_embeds.to(device=self.device)  # FIX device_map
+
+                model_cls.encode_img = _new_encode_img
 
     return model, tokenizer
 

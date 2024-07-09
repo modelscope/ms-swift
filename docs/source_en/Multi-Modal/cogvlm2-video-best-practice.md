@@ -109,7 +109,18 @@ Fine-tuning multimodal large models usually uses **custom datasets**. Here is a 
 # 40GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type cogvlm2-video-13b-chat \
-    --dataset video-chatgpt
+    --dataset video-chatgpt \
+    --num_train_epochs 3 \
+
+# ZeRO2
+# Experimental environment: 4 * A100
+# 4 * 40GB GPU memory
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
+    --model_type cogvlm2-video-13b-chat \
+    --dataset video-chatgpt \
+    --num_train_epochs 3 \
+    --deepspeed default-zero2
 ```
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
