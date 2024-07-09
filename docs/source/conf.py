@@ -27,6 +27,8 @@ os.system(f'pip install -r ../../requirements/docs.txt')
 os.system(f'pip install -r ../../requirements/framework.txt')
 os.system(f'pip install -r ../../requirements/llm.txt')
 
+html_theme = 'sphinx_rtd_theme'
+
 
 def get_version():
     with open(version_file, 'r', encoding='utf-8') as f:
