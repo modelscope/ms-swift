@@ -28,13 +28,13 @@
 
 ##  📖 目录
 - [简介](#-简介)
+- [用户群](#-用户群)
 - [新闻](#-新闻)
 - [安装](#-%EF%B8%8F-安装)
 - [快速开始](#-快速开始)
 - [文档](#-文档)
 - [License](#-license)
 - [引用](#-引用)
-- [微信用户群](#-微信用户群)
 
 ## 📝 简介
 SWIFT支持**300+ LLM和50+ MLLM**（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了[PEFT](https://github.com/huggingface/peft)提供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
@@ -46,6 +46,24 @@ SWIFT支持**300+ LLM和50+ MLLM**（多模态大模型）的训练、推理、�
 SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/index.md).
 
 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
+
+
+## ☎ 用户群
+
+请扫描下面的二维码来加入我们的交流群：
+
+
+<div style="display: flex; justify-content: center; align-items: center; margin-top: 20px;">
+    <div style="margin: 0 10px; text-align: center;">
+        <img src="asset/discord_qr.jpg" alt="Image 1" style="width: 200px; height: auto;">
+        <div style="margin-top: 10px; font-size: 14px; color: #333;">Discord Group</div>
+    </div>
+    <div style="margin: 0 10px; text-align: center;">
+        <img src="asset/wechat.png" alt="Image 2" style="width: 200px; height: auto;">
+        <div style="margin-top: 10px; font-size: 14px; color: #333;">微信群</div>
+    </div>
+</div>
+
 
 ## 🎉 新闻
 - 2024.07.08: 支持cogvlm2-video-13b-chat. 最佳实践可以查看[这里](docs/source/Multi-Modal/cogvlm2-video最佳实践.md).
@@ -713,14 +731,6 @@ make docs
   year = {2024}
 }
 ```
-
-## ☎ 微信用户群
-
-您可以通过加我们的微信群, 来和我们联系和交流:
-
-<p align="left">
-<img src="asset/wechat.png" width="250" style="display: inline-block;">
-</p>
 
 
 ## Star History
