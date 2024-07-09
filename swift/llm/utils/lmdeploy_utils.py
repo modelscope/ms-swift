@@ -86,13 +86,47 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
 
 
 def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
-                          template: Template,
-                          request_list: List[Dict[str, Any]],
-                          *,
-                          generation_config: LmdeployGenerationConfig,
-                          use_tqdm: bool = False,
-                          **kwargs):
-    pass
+                              template: Template,
+                              request_list: List[Dict[str, Any]],
+                              *,
+                              generation_config: LmdeployGenerationConfig,
+                              use_tqdm: bool = False,
+                              **kwargs):
+
+    tokenizer = template.tokenizer
+    if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in generation_config.stop_words:
+        generation_config.stop_words.append(tokenizer.eos_token_id)
+    if isinstance(template.suffix[-1], str):
+        token_list = tokenizer.encode(template.suffix[-1], skip_special_token=True)
+        if len(token_list) == 1 and token_list not in generation_config.stop_words:
+            generation_config.stop_words.append(token_list[0])
+    if isinstance(template.suffix[-1], list) and len(
+            template.suffix[-1]) == 1 and template.suffix[-1] not in generation_config.stop_words:
+        generation_config.stop_words.append(template.suffix[-1])
+
+    resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
+    is_multimodal = getattr(lmdeploy_engine, 'is_multimodal', False)
+    if not is_multimodal:
+        use_tqdm = False
+
+    generators = []
+    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
+        history = request.get('history', None)
+        if history is None:
+            history = []
+
+        request['history'] = history
+        inputs = template.encode(request)[0]
+        truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
+        if len(inputs) == 0 and truncation_strategy == 'delete':
+            # input_ids exceeds `max_length`. Please increase the value of `max_length`.
+            resp_list[i] = {'response': '', 'history': history}
+            continue
+        generator = lmdeploy_engine.get_generator(False, i)
+        generators.append((i, inputs, generator))
+
+    return resp_list, generators
+
 
 @torch.inference_mode()
 def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
@@ -113,34 +147,8 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
 
-    tokenizer = template.tokenizer
-    if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in generation_config.stop_words:
-        generation_config.stop_words.append(tokenizer.eos_token_id)
-    if isinstance(template.suffix[-1], str):
-        token_list = tokenizer.encode(template.suffix[-1], skip_special_token=True)
-        if len(token_list) == 1 and token_list not in generation_config.stop_words:
-            generation_config.stop_words.append(token_list[0])
-    if isinstance(template.suffix[-1], list) and len(
-            template.suffix[-1]) == 1 and template.suffix[-1] not in generation_config.stop_words:
-        generation_config.stop_words.append(template.suffix[-1])
-
-    resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
-    generators = []
-    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
-        history = request.get('history', None)
-        if history is None:
-            history = []
-
-        request['history'] = history
-        inputs = template.encode(request)[0]
-        truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
-        if len(inputs) == 0 and truncation_strategy == 'delete':
-            # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': history}
-            continue
-        generator = lmdeploy_engine.get_generator(False, i)
-        generators.append((i, inputs, generator))
-
+    resp_list, generators = _prepare_lmdeploy_request(
+        lmdeploy_engine, template, request_list, generation_config=generation_config, use_tqdm=use_tqdm)
     if generation_info is None:
         generation_info = {}
     else:
@@ -148,6 +156,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     for key in ['num_prompt_tokens', 'num_generated_tokens']:
         generation_info[key] = 0
 
+    tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
     prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
@@ -155,8 +164,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
         async with lmdeploy_engine.safe_run(i):
             async for output in generator.async_stream_infer(
-                    session_id=i, **inputs, sequence_end=True,
-                    stream_output=False, gen_config=generation_config):
+                    session_id=i, **inputs, stream_output=False, gen_config=generation_config):
                 pass
         request = request_list[i]
         input_ids = inputs['input_ids']
@@ -199,8 +207,8 @@ if __name__ == '__main__':
     template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
     lmdeploy_engine.generation_config.max_new_tokens = 256
     generation_info = {}
-    resp_list = inference_lmdeploy(lmdeploy_engine, template, request_list[:2], 
-                                   generation_info=generation_info, verbose=True)
+    resp_list = inference_lmdeploy(
+        lmdeploy_engine, template, request_list[:2], generation_info=generation_info, verbose=True)
     print(generation_info)
 
 # if __name__ == '__main__':

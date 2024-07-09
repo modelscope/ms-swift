@@ -126,6 +126,8 @@ def get_vllm_engine(
         _engine = llm_engine
     llm_engine.dtype = _engine.model_config.dtype  # compat with pt
     llm_engine.vllm_config = vllm_config
+    if len(vllm_config) > 0:
+        llm_engine.is_multimodal = True
     # compatible with vllm==0.3.*
     if version.parse(vllm.__version__) >= version.parse('0.3'):
         assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)
@@ -300,6 +302,9 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
+    is_multimodal = getattr(llm_engine, 'is_multimodal', False)
+    if not is_multimodal:
+        use_tqdm = False
     for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
         history = request.get('history', None)
         if history is None:
