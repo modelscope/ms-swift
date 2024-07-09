@@ -52,7 +52,7 @@ SWIFT具有丰富的文档体系，如有使用问题请请查看[这里](https:
 
 请扫描下面的二维码来加入我们的交流群：
 
-Discord Group              |  微信群
+[Discord Group](https://discord.gg/qQXTzNUp)              |  微信群
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
