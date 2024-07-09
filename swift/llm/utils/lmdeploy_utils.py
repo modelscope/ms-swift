@@ -85,15 +85,24 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             **kwargs)
 
 
+def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
+                          template: Template,
+                          request_list: List[Dict[str, Any]],
+                          *,
+                          generation_config: LmdeployGenerationConfig,
+                          use_tqdm: bool = False,
+                          **kwargs):
+    pass
+
 @torch.inference_mode()
 def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                        template: Template,
                        request_list: List[Dict[str, Any]],
                        *,
                        generation_config: Optional[LmdeployGenerationConfig] = None,
+                       generation_info: Optional[Dict[str, int]] = None,
                        use_tqdm: bool = False,
                        verbose: bool = False,
-                       generation_info: Optional[Dict[str, int]] = None,
                        prompt_prefix: str = '[PROMPT]',
                        output_prefix: str = '[OUTPUT]',
                        **kwargs) -> List[Dict[str, Any]]:
@@ -134,6 +143,8 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
 
     if generation_info is None:
         generation_info = {}
+    else:
+        generation_info.clear()
     for key in ['num_prompt_tokens', 'num_generated_tokens']:
         generation_info[key] = 0
 
@@ -144,16 +155,21 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
         async with lmdeploy_engine.safe_run(i):
             async for output in generator.async_stream_infer(
-                    session_id=i, **inputs, stream_output=True, gen_config=generation_config):
+                    session_id=i, **inputs, sequence_end=True,
+                    stream_output=False, gen_config=generation_config):
                 pass
         request = request_list[i]
+        input_ids = inputs['input_ids']
         response = template.generate_ids_to_response(output.token_ids)
         query = request['query']
         history = request['history']
         history.append([query, response])
-        generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
+        generation_info['num_prompt_tokens'] += len(input_ids)
         generation_info['num_generated_tokens'] += len(output.token_ids)
         resp_list[i] = {'response': response, 'history': history}
+        if verbose:
+            print(f'{prompt_prefix}{tokenizer.decode(input_ids, False)}{output_prefix}', end='')
+            print(tokenizer.decode(output.token_ids, False))
 
     async def _batch_infer() -> None:
         tasks = [_inner_infer(i, inputs, await generator) for i, inputs, generator in generators]
@@ -168,3 +184,31 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
 
     return resp_list
+
+
+if __name__ == '__main__':
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+    from swift.llm import get_default_template_type, get_template
+    model_type = 'qwen-7b-chat'
+    request_list = [{'query': '晚上睡不着觉怎么办'} for i in range(100)]
+
+if __name__ == '__main__':
+    lmdeploy_engine = get_lmdeploy_engine(model_type, torch.float16)
+    template_type = get_default_template_type(model_type)
+    template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
+    lmdeploy_engine.generation_config.max_new_tokens = 256
+    generation_info = {}
+    resp_list = inference_lmdeploy(lmdeploy_engine, template, request_list[:2], 
+                                   generation_info=generation_info, verbose=True)
+    print(generation_info)
+
+# if __name__ == '__main__':
+#     from swift.llm import inference_vllm, get_vllm_engine
+#     vllm_engine = get_vllm_engine(model_type, torch.float16)
+#     template_type = get_default_template_type(model_type)
+#     template = get_template(template_type, vllm_engine.hf_tokenizer)
+#     vllm_engine.generation_config.max_new_tokens = 256
+#     generation_info = {}
+#     resp_list = inference_vllm(vllm_engine, template, request_list[:2], generation_info=generation_info, verbose=True)
+#     print(generation_info)
