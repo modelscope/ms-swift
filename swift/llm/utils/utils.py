@@ -721,7 +721,8 @@ def inference_stream(model: PreTrainedModel,
         else:
             history[-1][-1] = history[-1][-1][:act_length] + response
 
-        generation_info['runtime'] = time.perf_counter() - start_runtime
+        runtime = time.perf_counter() - start_runtime
+        generation_info['runtime'] = runtime
         generation_info['samples/s'] = 1 / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         yield response, history
