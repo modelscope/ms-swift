@@ -26,6 +26,7 @@ version_file = '../../swift/version.py'
 os.system(f'pip install -r ../../requirements/docs.txt')
 os.system(f'pip install -r ../../requirements/framework.txt')
 os.system(f'pip install -r ../../requirements/llm.txt')
+os.system(f'pip install --upgrade sphinx docutils')
 
 html_theme = 'sphinx_rtd_theme'
 
