@@ -8,3 +8,4 @@ sentencepiece
 tiktoken
 uvicorn
 importlib_metadata
+einops
