@@ -561,7 +561,7 @@ def _prepare_inputs(model: PreTrainedModel,
                     generation_config: Optional[GenerationConfig] = None,
                     stop_words: Optional[StopWords] = None,
                     adapter_names: Optional[List[str]] = None,
-                    **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
+                    **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
     if stop_words is None:
         stop_words = []
 
@@ -640,7 +640,7 @@ def inference_stream(model: PreTrainedModel,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
-                     generation_info: Optional[Dict[str, int]] = None,
+                     generation_info: Optional[Dict[str, Any]] = None,
                      adapter_names: Optional[List[str]] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
@@ -738,7 +738,7 @@ def inference(model: PreTrainedModel,
               *,
               generation_config: Optional[GenerationConfig] = None,
               stop_words: Optional[StopWords] = None,
-              generation_info: Optional[Dict[str, int]] = None,
+              generation_info: Optional[Dict[str, Any]] = None,
               stream: bool = False,
               verbose: bool = False,
               adapter_names: Optional[List[str]] = None,
