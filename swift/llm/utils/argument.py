@@ -1495,6 +1495,11 @@ class RLHFArguments(SftArguments):
             'cpo': ['sigmoid', 'hinge', 'ipo', 'simpo'],
             'kto': ['kto', 'bco']
         }
+        if self.loss_type == 'kto_pair':
+            import trl
+            from packaging import version
+            if version.parse(trl.__version__) <= version.parse('0.9.4'):
+                return
         if self.rlhf_type in supported_loss_types:
             assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
                 f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
