@@ -45,29 +45,34 @@ template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
 llm_engine.generation_config.max_new_tokens = 256
+generation_info = {}
 
 request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
-resp_list = inference_vllm(llm_engine, template, request_list)
+resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info)
 for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
     print(f"response: {resp['response']}")
+print(generation_info)
 
 history1 = resp_list[1]['history']
 request_list = [{'query': '这有什么好吃的', 'history': history1}]
-resp_list = inference_vllm(llm_engine, template, request_list)
+resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info)
 for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
     print(f"response: {resp['response']}")
     print(f"history: {resp['history']}")
+print(generation_info)
 
 """Out[0]
 query: 你好!
 response: 你好！很高兴为你服务。有什么我可以帮助你的吗？
 query: 浙江的省会在哪？
 response: 浙江省会是杭州市。
+{'num_prompt_tokens': 46, 'num_generated_tokens': 19, 'runtime': 0.22478563501499593, 'samples/s': 8.897365705182075, 'tokens/s': 84.52497419922972}
 query: 这有什么好吃的
 response: 杭州是一个美食之城，拥有许多著名的菜肴和小吃，例如西湖醋鱼、东坡肉、叫化童子鸡等。此外，杭州还有许多小吃店，可以品尝到各种各样的本地美食。
-history: [('浙江的省会在哪？', '浙江省会是杭州市。'), ('这有什么好吃的', '杭州是一个美食之城，拥有许多著名的菜肴和小吃，例如西湖醋鱼、东坡肉、叫化童子鸡等。此外，杭州还有许多小吃店，可以品尝到各种各样的本地美食。')]
+history: [['浙江的省会在哪？', '浙江省会是杭州市。'], ['这有什么好吃的', '杭州是一个美食之城，拥有许多著名的菜肴和小吃，例如西湖醋鱼、东坡肉、叫化童子鸡等。此外，杭州还有许多小吃店，可以品尝到各种各样的本地美食。']]
+{'num_prompt_tokens': 44, 'num_generated_tokens': 46, 'runtime': 0.5555735469970386, 'samples/s': 1.7999417096173052, 'tokens/s': 82.79731864239604}
 """
 ```
 

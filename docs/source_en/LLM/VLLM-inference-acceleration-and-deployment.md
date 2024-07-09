@@ -42,29 +42,34 @@ template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer)
 # Similar to `transformers.GenerationConfig` interface
 llm_engine.generation_config.max_new_tokens = 256
+generation_info = {}
 
-request_list = [{'query': 'Hello!'}, {'query': 'Where is the capital of Zhejiang?'} ]
-resp_list = inference_vllm(llm_engine, template, request_list)
+request_list = [{'query': 'Hello!'}, {'query': 'Where is the capital of Zhejiang?'}]
+resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info)
 for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
     print(f"response: {resp['response']}")
+print(print(generation_info))
 
 history1 = resp_list[1]['history']
-request_list = [{'query': 'What delicious food is there', 'history': history1}]
-resp_list = inference_vllm(llm_engine, template, request_list)
+request_list = [{'query': 'Is there anything tasty here?', 'history': history1}]
+resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info)
 for request, resp in zip(request_list, resp_list):
     print(f"query: {request['query']}")
     print(f"response: {resp['response']}")
     print(f"history: {resp['history']}")
+print(generation_info)
 
 """Out[0]
 query: Hello!
-response: Hello! I'm happy to be of service. Is there anything I can help you with?
+response: Hello! How can I assist you today? Is there something on your mind that you would like to talk about or ask me about? I'm here to help answer any questions you may have.
 query: Where is the capital of Zhejiang?
-response: Hangzhou is the capital of Zhejiang Province.
-query: What delicious food is there
-response: Hangzhou is a city of gastronomy, with many famous dishes and snacks such as West Lake Vinegar Fish, Dongpo Pork, Beggar's Chicken, etc. In addition, Hangzhou has many snack shops where you can taste a variety of local delicacies.
-history: [('Where is the capital of Zhejiang?', 'Hangzhou is the capital of Zhejiang Province.'), ('What delicious food is there', "Hangzhou is a city of gastronomy, with many famous dishes and snacks such as West Lake Vinegar Fish, Dongpo Pork, Beggar's Chicken, etc. In addition, Hangzhou has many snack shops where you can taste a variety of local delicacies.")]
+response: The capital of Zhejiang is Hangzhou. It is located in eastern China, on the southern bank of the Qiantang River. Hangzhou is known for its beautiful natural scenery, historic landmarks, and cultural heritage, including the West Lake, Lingyin Temple, and the Longjing tea plantations. It is also an important economic center, with a thriving technology industry and a strong presence in finance and commerce.
+{'num_prompt_tokens': 49, 'num_generated_tokens': 126, 'runtime': 1.1092088929726742, 'samples/s': 1.8030868781082436, 'tokens/s': 113.59447332081935}
+query: Is there anything tasty here?
+response: Yes, Hangzhou is famous for its delicious food! One of the most popular dishes from Hangzhou is the "Dongpo pork", which is made from slow-cooked pork that has been marinated in a sweet and savory sauce made from soy sauce, rice wine, and sugar. Another popular dish is "West Lake fish in vinegar sauce", which features fresh fish fillets cooked in a tangy vinegar sauce and served with steamed buns. There are many other delicious local specialties to try, such as "Longjing tea eggs" (steamed eggs boiled in Longjing tea), "Jiashan bamboo shoots" (a type of vegetable dish), and "Zhouguyu" (a soup made with fermented tofu). Hangzhou's cuisine is known for its delicate flavors and use of fresh ingredients, making it a must-try for any food lover visiting the city.
+history: [['Where is the capital of Zhejiang?', 'The capital of Zhejiang is Hangzhou. It is located in eastern China, on the southern bank of the Qiantang River. Hangzhou is known for its beautiful natural scenery, historic landmarks, and cultural heritage, including the West Lake, Lingyin Temple, and the Longjing tea plantations. It is also an important economic center, with a thriving technology industry and a strong presence in finance and commerce.'], ['Is there anything tasty here?', 'Yes, Hangzhou is famous for its delicious food! One of the most popular dishes from Hangzhou is the "Dongpo pork", which is made from slow-cooked pork that has been marinated in a sweet and savory sauce made from soy sauce, rice wine, and sugar. Another popular dish is "West Lake fish in vinegar sauce", which features fresh fish fillets cooked in a tangy vinegar sauce and served with steamed buns. There are many other delicious local specialties to try, such as "Longjing tea eggs" (steamed eggs boiled in Longjing tea), "Jiashan bamboo shoots" (a type of vegetable dish), and "Zhouguyu" (a soup made with fermented tofu). Hangzhou\'s cuisine is known for its delicate flavors and use of fresh ingredients, making it a must-try for any food lover visiting the city.']]
+{'num_prompt_tokens': 129, 'num_generated_tokens': 181, 'runtime': 2.19400689000031, 'samples/s': 0.45578708278343594, 'tokens/s': 82.4974619838019}
 """
 ```
 

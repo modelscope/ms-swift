@@ -666,6 +666,8 @@ def inference_stream(model: PreTrainedModel,
         return '', history
     if generation_info is None:
         generation_info = {}
+    else:
+        generation_info.clear()
     generation_info['num_prompt_tokens'] = token_len
 
     # agent support
@@ -735,9 +737,9 @@ def inference(model: PreTrainedModel,
               *,
               generation_config: Optional[GenerationConfig] = None,
               stop_words: Optional[StopWords] = None,
+              generation_info: Optional[Dict[str, int]] = None,
               stream: bool = False,
               verbose: bool = False,
-              generation_info: Optional[Dict[str, int]] = None,
               adapter_names: Optional[List[str]] = None,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
@@ -765,6 +767,8 @@ def inference(model: PreTrainedModel,
         return '', history
     if generation_info is None:
         generation_info = {}
+    else:
+        generation_info.clear()
     generation_info['num_prompt_tokens'] = token_len
 
     # agent support
