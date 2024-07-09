@@ -1,5 +1,12 @@
 # Internlm-Xcomposer2 Best Practice
 
+The document corresponds to the following models:
+
+- [internlm-xcomposer2-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary)
+- [internlm-xcomposer2_5-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b/summary)
+
+The following practice takes `internlm-xcomposer2-7b-chat` as an example, and you can also switch to other models by specifying `--model_type`.
+
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
 - [Inference](#inference)
@@ -8,12 +15,14 @@
 
 ## Environment Preparation
 ```shell
-pip install 'ms-swift[llm]' -U
+git clone https://github.com/modelscope/swift.git
+cd swift
+pip install -e '.[llm]'
 ```
 
 ## Inference
 
-Inference for [internlm-xcomposer2-7b-chat](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2-7b/summary):
+Inference for internlm-xcomposer2-7b-chat:
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 21GB GPU memory
@@ -133,7 +142,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-en-mini \
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json and jsonl formats. Here's an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json and jsonl formats. Here's an example of a custom dataset:
 
 (Supports multi-turn conversations, each turn can contain multiple images or no images, supports passing local paths or URLs. This model does not support merge-lora)
 

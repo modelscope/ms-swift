@@ -8,7 +8,7 @@
 
 We support three methods for **customizing datasets**.
 
-1. \[Recommended] Use the command line argument directly to specify `--dataset xxx.json yyy.jsonl zzz.csv`, which is more convenient for supporting custom datasets. It supports five data formats (using `SmartPreprocessor`, supported dataset formats are listed below) and supports `dataset_id` and `dataset_path`. No need to modify the `dataset_info.json` file.
+1. \[Recommended] Use the command line argument directly to specify `--dataset xxx.json yyy.jsonl zzz.csv`, which is more convenient for supporting custom datasets. It supports five data formats (using `SmartPreprocessor`, supported dataset formats are listed below) and supports `dataset_id` and `dataset_path`. No need to modify the `dataset_info.json` file. This method is suitable for users who are new to ms-swift, while the following two methods are suitable for developers who want to extend ms-swift.
 2. Adding datasets to `dataset_info.json` is more flexible but cumbersome compared to the first method, and supports using two preprocessors and specifying their parameters: `RenameColumnsPreprocessor`, `ConversationsPreprocessor` (default is to use `SmartPreprocessor`). You can directly modify the built-in `dataset_info.json` in Swift, or pass in an external json file using `--custom_dataset_info xxx.json` (for users who prefer pip install over git clone to expand datasets).
 3. Registering datasets: More flexible but cumbersome compared to the first and second methods, it supports using functions to preprocess datasets. Methods 1 and 2 are implemented by leveraging method 3. You can directly modify the source code for expansion, or pass in a custom registration path using `--custom_register_path xxx.py`, where the script will parse the py file (for pip install users).
 
@@ -16,11 +16,13 @@ We support three methods for **customizing datasets**.
 
 Supports directly passing in custom `dataset_id` (compatible with MS and HF) and `dataset_path`, as well as simultaneously passing in multiple custom datasets and their respective sample sizes. The script will automatically preprocess and concatenate the datasets. If a `dataset_id` is passed in, it will default to using the 'default' subset in the dataset_id and set the split to 'train'. If the dataset_id has already been registered, it will use the subsets, split, and preprocessing functions that were passed in during registration. If a `dataset_path` is passed in, it can be specified as a relative path or an absolute path, where the relative path is relative to the current running directory.
 
+The specified format for each dataset is as follows: `[HF or MS::]{dataset_name} or {dataset_id} or {dataset_path}[:subset1/subset2/...][#dataset_sample]`. The simplest case requires specifying only dataset_name, dataset_id, or dataset_path.
 
 ```bash
---dataset {dataset_id} {dataset_path}
+# Defaulting to using the dataset_id from modelscope, while also supporting the dataset_id from huggingface.
+--dataset {dataset_id} {dataset_path} HF::{dataset_id}
 
-# Dataset Mixing: the following command takes subset1 and subset2 from dataset_id and samples 20,000 records
+# Dataset Mixing: the following command takes subset1 and subset2 from dataset_id and samples 20,000 records. If `#{dataset_sample}` is not used, all samples from the dataset will be used.
 --dataset {dataset_name}#20000 {dataset_id}:{subset1}/{subset2}#20000 {dataset_path}#10000
 ```
 

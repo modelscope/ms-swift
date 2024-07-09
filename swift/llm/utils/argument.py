@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -26,6 +26,7 @@ from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, 
 from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
+from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -578,7 +579,9 @@ class SftArguments(ArgumentsBase):
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
+    lr_scheduler_kwargs: Optional[str] = None  # json
     warmup_ratio: float = 0.05
+    warmup_steps: int = 0  # Overrides any effect of `warmup_ratio` if warmup_steps > 0
 
     eval_steps: int = 50
     save_steps: Optional[int] = None
@@ -730,6 +733,12 @@ class SftArguments(ArgumentsBase):
             self.lora_use_all = True
         return target_modules
 
+    def handle_lr_scheduler_kwargs(self):
+        if self.lr_scheduler_kwargs is None:
+            self.lr_scheduler_kwargs = {}
+        elif isinstance(self.lr_scheduler_kwargs, str):
+            self.lr_scheduler_kwargs = json.loads(self.lr_scheduler_kwargs)
+
     def _prepare_modules_to_save(self, modules_to_save) -> List[str]:
         if isinstance(modules_to_save, str):
             modules_to_save = [modules_to_save]
@@ -780,6 +789,7 @@ class SftArguments(ArgumentsBase):
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
+        self.handle_lr_scheduler_kwargs()
         self.is_multimodal = self._is_multimodal(self.model_type)
 
         self.lora_use_embedding = False
@@ -973,7 +983,9 @@ class SftArguments(ArgumentsBase):
             num_train_epochs=self.num_train_epochs,
             max_steps=self.max_steps,
             lr_scheduler_type=self.lr_scheduler_type,
+            lr_scheduler_kwargs=self.lr_scheduler_kwargs,
             warmup_ratio=self.warmup_ratio,
+            warmup_steps=self.warmup_steps,
             logging_steps=self.logging_steps,
             save_strategy=self.save_strategy,
             save_steps=self.save_steps,
@@ -1237,6 +1249,8 @@ class InferArguments(ArgumentsBase):
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        self.media_type = template_info.get('media_type', 'image')
+        self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 
@@ -1421,10 +1435,11 @@ class RLHFArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: Optional[float] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair', 'simpo',
-                       'kto', 'bco'] = None
+    loss_type: Optional[str] = None
     sft_beta: float = 0.1
+    # SimPO
     simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
+    cpo_alpha: float = 1.0
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
@@ -1434,8 +1449,7 @@ class RLHFArguments(SftArguments):
         # without reference model
         self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
         if self.rlhf_type == 'simpo':
-            self.loss_type = 'simpo'  # compatibility with trl > 0.9.5
-            self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
+            self.loss_type = 'simpo'
         self.set_default_beta()
         self.set_default_loss_type()
         self.set_default_config()
@@ -1458,10 +1472,6 @@ class RLHFArguments(SftArguments):
             'cpo': 'trl.trainer.cpo_config.CPOConfig',
             'dpo': 'trl.trainer.dpo_config.DPOConfig'
         }
-        import trl
-        if version.parse(trl.__version__) <= version.parse('0.9.4'):
-            CONFIG_MAPPING['simpo'] = 'trl.trainer.dpo_config.DPOConfig'
-
         if self.rlhf_type in CONFIG_MAPPING:
             config_path = CONFIG_MAPPING[self.rlhf_type]
             module_path, config_name = config_path.rsplit('.', 1)
@@ -1480,8 +1490,9 @@ class RLHFArguments(SftArguments):
 
     def check_loss_type(self):
         supported_loss_types = {
-            'dpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust'],
-            'cpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'simpo'],
+            'dpo':
+            ['sigmoid', 'hinge', 'ipo', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust', 'aot', 'aot_pair', 'exo_pair'],
+            'cpo': ['sigmoid', 'hinge', 'ipo', 'simpo'],
             'kto': ['kto', 'bco']
         }
         if self.rlhf_type in supported_loss_types:

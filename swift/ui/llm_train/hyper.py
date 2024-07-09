@@ -12,8 +12,8 @@ class Hyper(BaseUI):
     locale_dict = {
         'hyper_param': {
             'label': {
-                'zh': '超参数设置,更多参数在高级参数设置',
-                'en': 'Hyper settings, more params in Advanced settings',
+                'zh': '超参数设置(更多参数->高级参数设置)',
+                'en': 'Hyper settings(more params->Advanced settings)',
             },
         },
         'batch_size': {

@@ -15,6 +15,7 @@ import torch.utils.checkpoint
 import transformers
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                         GenerationConfig, GPTQConfig, snapshot_download)
+from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from torch import Tensor
 from torch import dtype as Dtype
@@ -25,7 +26,6 @@ from transformers.utils import strtobool
 from transformers.utils.versions import require_version
 
 from swift import get_logger
-from swift.hub.utils.utils import get_cache_dir
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .template import TemplateType
 from .utils import get_max_model_len, is_unsloth_available
@@ -199,6 +199,11 @@ class ModelType:
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
+    # llava_next_video
+    llava_next_video_7b_instruct = 'llava-next-video-7b-instruct'
+    llava_next_video_7b_32k_instruct = 'llava-next-video-7b-32k-instruct'
+    llava_next_video_7b_dpo_instruct = 'llava-next-video-7b-dpo-instruct'
+    llava_next_video_34b_instruct = 'llava-next-video-34b-instruct'
     # yi
     yi_6b = 'yi-6b'
     yi_6b_200k = 'yi-6b-200k'
@@ -261,11 +266,16 @@ class ModelType:
     internlm2_math_20b_chat = 'internlm2-math-20b-chat'
     # internlm-xcomposer2
     internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
+    internlm_xcomposer2_5_7b_chat = 'internlm-xcomposer2_5-7b-chat'
     # internvl
     internvl_chat_v1_5 = 'internvl-chat-v1_5'
     internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
     mini_internvl_chat_2b_v1_5 = 'mini-internvl-chat-2b-v1_5'
     mini_internvl_chat_4b_v1_5 = 'mini-internvl-chat-4b-v1_5'
+    internvl2_2b = 'internvl2-2b'
+    internvl2_4b = 'internvl2-4b'
+    internvl2_8b = 'internvl2-8b'
+    internvl2_26b = 'internvl2-26b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -415,6 +425,7 @@ class ModelType:
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
     cogvlm2_en_19b_chat = 'cogvlm2-en-19b-chat'
+    cogvlm2_video_13b_chat = 'cogvlm2-video-13b-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
     # mamba
@@ -942,6 +953,16 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.cogvlm2_video_13b_chat,
+    'ZhipuAI/cogvlm2-video-llama3-chat',
+    LoRATM.cogvlm,
+    TemplateType.cogvlm2_video,
+    support_gradient_checkpointing=False,
+    requires=['transformers<4.42', 'decord', 'pytorchvideo'],
+    placeholder_tokens=['<|reserved_special_token_0|>'],
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='THUDM/cogvlm2-video-llama3-chat')
 @register_model(
     ModelType.cogvlm2_en_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chat-19B',
@@ -3635,6 +3656,46 @@ def fix_internvl_inplace_bug(model) -> None:
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
+@register_model(
+    ModelType.internvl2_2b,
+    'OpenGVLab/InternVL2-2B',
+    LoRATM.internlm2,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-2B')
+@register_model(
+    ModelType.internvl2_4b,
+    'OpenGVLab/InternVL2-4B',
+    LoRATM.internlm2,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-4B')
+@register_model(
+    ModelType.internvl2_8b,
+    'OpenGVLab/InternVL2-8B',
+    LoRATM.internlm2,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-8B')
+@register_model(
+    ModelType.internvl2_26b,
+    'OpenGVLab/InternVL2-26B',
+    LoRATM.internlm2,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-26B')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -3738,6 +3799,15 @@ def get_model_tokenizer_internvl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.internlm_xcomposer2_5_7b_chat,
+    'Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b',
+    LoRATM.internlm2,
+    TemplateType.internlm_xcomposer2_5,
+    eos_token='<|im_end|>',
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
+    hf_model_id='internlm/internlm-xcomposer2d5-7b')
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
@@ -5129,6 +5199,56 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 
 
 @register_model(
+    ModelType.llava_next_video_7b_dpo_instruct,
+    'huangjintao/LLaVA-NeXT-Video-7B-DPO-hf',
+    LoRATM.llama,
+    TemplateType.llava_next_video,
+    support_flash_attn=True,
+    requires=['transformers>=4.42', 'av'],
+    tags=['multi-modal', 'video'],
+    hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-DPO-hf')
+@register_model(
+    ModelType.llava_next_video_7b_32k_instruct,
+    'huangjintao/LLaVA-NeXT-Video-7B-32K-hf',
+    LoRATM.llama,
+    TemplateType.llava_next_video,
+    support_flash_attn=True,
+    requires=['transformers>=4.42', 'av'],
+    tags=['multi-modal', 'video'],
+    hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-32K-hf')
+@register_model(
+    ModelType.llava_next_video_7b_instruct,
+    'huangjintao/LLaVA-NeXT-Video-7B-hf',
+    LoRATM.llama,
+    TemplateType.llava_next_video,
+    support_flash_attn=True,
+    requires=['transformers>=4.42', 'av'],
+    tags=['multi-modal', 'video'],
+    hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-hf')
+def get_model_tokenizer_llava_next_video(*args, **kwargs):
+    from transformers import LlavaNextVideoForConditionalGeneration
+    kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
+
+
+@register_model(
+    ModelType.llava_next_video_34b_instruct,
+    'huangjintao/LLaVA-NeXT-Video-34B-hf',
+    LoRATM.llama,
+    TemplateType.llava_next_video_yi,
+    support_flash_attn=True,
+    requires=['transformers>=4.42', 'av'],
+    tags=['multi-modal', 'video'],
+    hf_model_id='llava-hf/LLaVA-NeXT-Video-34B-hf')
+def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_llava_next_video(*args, **kwargs)
+    if model is not None:
+        model.config.video_token_index = 64003
+        model.config.image_token_index = 64004
+    return model, tokenizer
+
+
+@register_model(
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
     LoRATM.llama,
@@ -5162,12 +5282,13 @@ def get_model_tokenizer_llava(model_dir: str,
                               **kwargs):
     llm_model_type = kwargs.pop('llm_model_type')
     if 'local_repo_path' in kwargs:
-        repo_path = kwargs['local_repo_path']
+        local_repo_path = kwargs['local_repo_path']
     elif 'next' in llm_model_type:
         repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
+        local_repo_path = _git_clone_github(repo_path)
     else:
         repo_path = 'https://github.com/haotian-liu/LLaVA'
-    local_repo_path = _git_clone_github(repo_path)
+        local_repo_path = _git_clone_github(repo_path)
     sys.path.append(os.path.join(local_repo_path))
 
     if llm_model_type == 'mistral':
