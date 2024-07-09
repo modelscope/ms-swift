@@ -29,7 +29,7 @@
 - [Introduction](#-introduction)
 - [Groups](#-Groups)
 - [News](#-news)
-- [Installation](#-installation)
+- [Installation](#%EF%B8%8F-installation)
 - [Getting Started](#-getting-started)
 - [Classroom](#-Classroom)
 - [License](#-License)

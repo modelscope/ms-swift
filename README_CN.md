@@ -30,7 +30,7 @@
 - [简介](#-简介)
 - [用户群](#-用户群)
 - [新闻](#-新闻)
-- [安装](#-安装)
+- [安装](#-%EF%B8%8F-安装)
 - [快速开始](#-快速开始)
 - [教程](#-教程)
 - [License](#-license)
@@ -190,7 +190,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 2023.09.03: 支持**baichuan2**系列: baichuan2-7b, baichuan2-7b-chat, baichuan2-13b, baichuan2-13b-chat.
 </details>
 
-## 🛠️安装
+## 🛠️ 安装
 
 SWIFT在Python环境中运行。请确保您的Python版本高于3.8。
 
