@@ -127,7 +127,6 @@ gen = inference_stream_vllm(llm_engine, template, request_list)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for resp_list in gen:
-    request = request_list[0]
     resp = resp_list[0]
     response = resp['response']
     delta = response[print_idx:]
@@ -349,7 +348,6 @@ gen = inference_stream_vllm(llm_engine, template, request_list)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for resp_list in gen:
-    request = request_list[0]
     resp = resp_list[0]
     response = resp['response']
     delta = response[print_idx:]
