@@ -23,7 +23,7 @@ copyright = '2022-2023, Alibaba ModelScope'
 author = 'modelscope Authors'
 version_file = '../../swift/version.py'
 
-os.system(f'pip install sphinx-book-theme sphinx-copybutton sphinx_markdown_tables')
+os.system(f'pip install sphinx-book-theme sphinx-copybutton sphinx_markdown_tables myst_parser')
 
 
 def get_version():
