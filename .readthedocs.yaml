@@ -28,5 +28,3 @@ python:
       - requirements: requirements/docs.txt
       - requirements: requirements/framework.txt
       - requirements: requirements/llm.txt
-      - package: sphinx
-      - package: docutils
