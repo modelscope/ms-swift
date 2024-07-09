@@ -17,7 +17,8 @@ cd swift
 pip install -e '.[llm]'
 
 # vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
-pip install "vllm>=0.5"
+# vllm在0.5.1版本对多模态有巨大修改, 且只支持1张图片, 这里不进行立即更新, 等vllm稳定后再更新.
+pip install "vllm==0.5.0.*"
 pip install openai -U
 ```
 
@@ -108,8 +109,6 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 
 ## 部署
 
-### Llava 系列
-
 **服务端:**
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-instruct --infer_backend vllm
@@ -196,86 +195,3 @@ response: There are two sheep in the picture.
 ```
 
 更多客户端使用方法可以查看[MLLM部署文档](MLLM部署文档.md#yi-vl-6b-chat)
-
-### phi3-vision
-
-**服务端:**
-```shell
-# vllm>=0.5.1 or build from source
-CUDA_VISIBLE_DEVICES=0 swift deploy --model_type phi3-vision-128k-instruct --infer_backend vllm --max_model_len 8192
-```
-
-**客户端:**
-
-测试:
-```bash
-curl http://localhost:8000/v1/chat/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "phi3-vision-128k-instruct",
-"messages": [{"role": "user", "content": "<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What is the difference between these two pictures?"}],
-"temperature": 0
-}'
-```
-
-使用openai:
-```python
-from openai import OpenAI
-client = OpenAI(
-    api_key='EMPTY',
-    base_url='http://localhost:8000/v1',
-)
-model_type = client.models.list().data[0].id
-print(f'model_type: {model_type}')
-
-# use base64
-# import base64
-# with open('cat.png', 'rb') as f:
-#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# images = [img_base64]
-
-# use local_path
-# from swift.llm import convert_to_base64
-# images = ['cat.png']
-# images = convert_to_base64(images=images)['images']
-
-# use url
-
-query = '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What is the difference between these two pictures?'
-messages = [{
-    'role': 'user',
-    'content': query
-}]
-resp = client.chat.completions.create(
-    model=model_type,
-    messages=messages,
-    temperature=0)
-response = resp.choices[0].message.content
-print(f'query: {query}')
-print(f'response: {response}')
-
-# 流式
-query = 'How many sheep are in the picture?'
-messages = [{
-    'role': 'user',
-    'content': query
-}]
-stream_resp = client.chat.completions.create(
-    model=model_type,
-    messages=messages,
-    stream=True,
-    temperature=0)
-
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].delta.content, end='', flush=True)
-print()
-"""
-model_type: phi3-vision-128k-instruct
-query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What is the difference between these two pictures?
-response: The first picture shows a group of four sheep standing in a field, while the second picture is a close-up of a kitten with big eyes. The main difference between these two pictures is the subjects and the setting. The first image features animals typically found in a pastoral or rural environment, whereas the second image focuses on a small domestic animal, a kitten, which is usually found indoors. Additionally, the first picture has a more peaceful and serene atmosphere, while the second image has a more intimate and detailed view of the kitten.
-query: How many sheep are in the picture?
-response: There are three sheep in the picture.
-"""
-```
