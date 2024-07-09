@@ -25,17 +25,8 @@ sphinx:
 # See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
 python:
    install:
-      - method: pip
-        path: .
-        requirements: requirements/docs.txt
-      - method: pip
-        path: .
-        requirements: requirements/framework.txt
-      - method: pip
-        path: .
-        requirements: requirements/llm.txt
-      - method: pip
-        path: .
-        extra_requirements:
-          - pip install -U sphinx
-          - pip install -U docutils
+      - requirements: requirements/docs.txt
+      - requirements: requirements/framework.txt
+      - requirements: requirements/llm.txt
+      - package: sphinx
+      - package: docutils
