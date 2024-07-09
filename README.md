@@ -51,16 +51,9 @@ SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spa
 You can contact us and communicate with us by adding our group:
 
 
-<div style="display: flex; justify-content: center; align-items: center; margin-top: 20px;">
-    <div style="margin: 0 10px; text-align: center;">
-        <img src="asset/discord_qr.jpg" alt="Image 1" style="width: 200px; height: auto;">
-        <div style="margin-top: 10px; font-size: 14px; color: #333;">Discord Group</div>
-    </div>
-    <div style="margin: 0 10px; text-align: center;">
-        <img src="asset/wechat.png" alt="Image 2" style="width: 200px; height: auto;">
-        <div style="margin-top: 10px; font-size: 14px; color: #333;">微信群</div>
-    </div>
-</div>
+Discord Group              |  微信群
+:-------------------------:|:-------------------------:
+<img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
 - 2024.07.08:Support cogvlm2-video-13b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/cogvlm2-video-best-practice.md).
