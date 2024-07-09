@@ -10,27 +10,10 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.12"
-  jobs:
-    - name: Build English Documentation
-      sphinx:
-        configuration: docs/source/conf.py
-        output_base: en
-    - name: Build Chinese Documentation
-      sphinx:
-        configuration: docs/source_en/conf.py
-        output_base: zh
 
 # Build documentation in the "docs/" directory with Sphinx
-subprojects:
-  en:
-    url: https://swift.readthedocs.io/en/latest/
-    repository: https://github.com/tastelikefeet/swift
-  zh:
-    url: https://swift.readthedocs.io/zh/latest/
-    repository: https://github.com/tastelikefeet/swift
-
 sphinx:
-  configuration: docs/source/conf.py
+  configuration: docs/source_en/conf.py
 
 # Optionally build your docs in additional formats such as PDF and ePub
 # formats:
