@@ -1,11 +1,11 @@
 attrdict
 charset_normalizer
 cpm_kernels
+einops
 fastapi
 gradio>=3.40.0
+importlib_metadata
 openai
 sentencepiece
 tiktoken
 uvicorn
-importlib_metadata
-einops
