@@ -1,7 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
-import fcntl
-import hashlib
 import os
 import random
 import re
@@ -13,7 +11,6 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import torch.distributed as dist
-from modelscope.hub.utils.utils import get_cache_dir
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 
 from .logger import get_logger
@@ -21,51 +18,6 @@ from .np_utils import stat_array
 from .torch_utils import broadcast_string, is_dist, is_local_master, use_torchacc
 
 logger = get_logger()
-
-
-class FileLockContext:
-
-    cache_dir = os.path.join(get_cache_dir(), 'lockers')
-
-    def __init__(self, origin_symbol: str, timeout: int = 60 * 30):
-        self.origin_symbol = origin_symbol
-        self.file_path = hashlib.md5(origin_symbol.encode('utf-8')).hexdigest() + '.lock'
-        self.file_path = os.path.join(FileLockContext.cache_dir, self.file_path)
-        self.file_handle = None
-        self.timeout = timeout
-
-    def acquire(self):
-        """Acquire the lock, optionally waiting until it is available."""
-        start_time = time.time()
-        while True:
-            try:
-                os.makedirs(FileLockContext.cache_dir, exist_ok=True)
-                open(self.file_path, 'a').close()
-                self.file_handle = open(self.file_path, 'w')
-                fcntl.flock(self.file_handle, fcntl.LOCK_EX)
-                return True
-            except IOError as e:
-                if self.file_handle:
-                    self.file_handle.close()
-                    self.file_handle = None
-                if self.timeout and (time.time() - start_time) >= self.timeout:
-                    raise IOError(f'Cannot acquire the file lock from {self.origin_symbol} '
-                                  f'as the timeout reaches: {self.timeout} seconds') from e
-                time.sleep(1)
-
-    def release(self):
-        """Release the lock."""
-        if self.file_handle:
-            fcntl.flock(self.file_handle, fcntl.LOCK_UN)
-            self.file_handle.close()
-            self.file_handle = None
-
-    def __enter__(self):
-        self.acquire()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.release()
 
 
 @contextmanager
