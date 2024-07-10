@@ -19,3 +19,7 @@ tqdm
 transformers>=4.33,<4.43
 transformers_stream_generator
 trl>=0.9.4
+importlib_metadata
+oss2
+einops
+addict
