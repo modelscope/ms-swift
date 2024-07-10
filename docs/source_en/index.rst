@@ -57,8 +57,7 @@ Swift DOCUMENTATION
    Multi-Modal/cogvlm-best-practice.md
    Multi-Modal/cogvlm2-best-practice.md
    Multi-Modal/cogvlm2-video-best-practice.md
-   Multi-Modal/florence-best-practice.md
-   Multi-Modal/mplug-owl2-best-practice.md
+   Multi-Modal/florence-best-pratice.md
    Multi-Modal/glm4v-best-practice.md
    Multi-Modal/minicpm-v-best-practice.md
    Multi-Modal/internvl-best-practice.md
