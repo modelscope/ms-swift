@@ -22,7 +22,7 @@ The specified format for each dataset is as follows: `[HF or MS::]{dataset_name}
 # Defaulting to using the dataset_id from modelscope, while also supporting the dataset_id from huggingface.
 --dataset {dataset_id} {dataset_path} HF::{dataset_id}
 
-# Dataset Mixing: the following command takes subset1 and subset2 from dataset_id and samples 20,000 records. If `#{dataset_sample}` is not used, all samples from the dataset will be used.
+# Dataset Mixing: the following command takes subset1 and subset2 from dataset_id and randomly samples 20,000 records. If `#{dataset_sample}` is not used, all samples from the dataset will be used.
 --dataset {dataset_name}#20000 {dataset_id}:{subset1}/{subset2}#20000 {dataset_path}#10000
 ```
 
