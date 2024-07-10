@@ -22,7 +22,7 @@ Swift DOCUMENTATION
 
    LLM/LLM-fine-tuning.md
    LLM/LLM-inference.md
-   LLM/DPO.md
+   LLM/Human-Preference-Alignment-Training-Documentation.md
    LLM/LLM-eval.md
    LLM/LLM-quantization.md
    LLM/VLLM-inference-acceleration-and-deployment.md
@@ -34,7 +34,9 @@ Swift DOCUMENTATION
    LLM/Agent-fine-tuning-best-practice.md
    LLM/Agent-deployment-best-practice.md
    LLM/Qwen1.5-best-practice.md
+   LLM/NPU-best-practice.md
    LLM/Grok-1-best-practice.md
+   LLM/DPO.md
    LLM/ORPO.md
    LLM/SimPO.md
    LLM/Compat-HF.md
@@ -54,15 +56,13 @@ Swift DOCUMENTATION
    Multi-Modal/yi-vl-best-practice.md
    Multi-Modal/cogvlm-best-practice.md
    Multi-Modal/cogvlm2-best-practice.md
+   Multi-Modal/cogvlm2-video-best-practice.md
+   Multi-Modal/florence-best-practice.md
+   Multi-Modal/mplug-owl2-best-practice.md
+   Multi-Modal/glm4v-best-practice.md
    Multi-Modal/minicpm-v-best-practice.md
    Multi-Modal/internvl-best-practice.md
    Multi-Modal/mutlimodal-deployment.md
-
-.. toctree::
-   :maxdepth: 2
-   :caption: AIGC Training and Inference
-
-   AIGC/AnimateDiff-train-infer.md
 
 .. toctree::
    :maxdepth: 2

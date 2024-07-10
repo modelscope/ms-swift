@@ -442,6 +442,38 @@ swift sft \
     --deepspeed default-zero3
 ```
 
+#### Pretraining
+
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 30GB
+# Runtime: 0.8 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift pt \
+    --model_type qwen1half-7b-chat \
+    --dataset chinese_c4#10000 \
+    --num_train_epochs 1 \
+    --sft_type full \
+    --deepspeed default-zero3 \
+    --output_dir output \
+```
+
+
+#### RLHF
+
+```shell
+# We support rlhf_type dpo/cpo/simpo/orpo/kto
+CUDA_VISIBLE_DEVICES=0 \
+swift rlhf \
+    --rlhf_type dpo \
+    --model_type qwen1half-7b-chat \
+    --dataset shareai-llama3-dpo-zh-en-emoji \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
+```
+
 
 ### Inference
 Original model:

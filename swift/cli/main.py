@@ -6,6 +6,7 @@ import sys
 from typing import Dict, List, Optional
 
 ROUTE_MAPPING: Dict[str, str] = {
+    'pt': 'swift.cli.sft',
     'sft': 'swift.cli.sft',
     'infer': 'swift.cli.infer',
     'app-ui': 'swift.cli.app_ui',

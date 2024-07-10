@@ -66,6 +66,7 @@
         "columns": {
             "text": "response"
         },
+        "dataset_id": "swift/chinese-c4",
         "tags": ["pretrain", "zh", "quality"],
         "hf_dataset_id": "shjwudp/chinese-c4",
         "huge_dataset": true
@@ -82,6 +83,8 @@
         "columns": {
             "text": "response"
         },
+        "subsets": ["v1_7"],
+        "dataset_id": "swift/dolma",
         "tags": ["pretrain", "quality"],
         "hf_dataset_id": "allenai/dolma",
         "huge_dataset": true
