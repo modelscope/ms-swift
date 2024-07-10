@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import os
+import time
 from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -125,6 +126,8 @@ def get_vllm_engine(
         _engine = llm_engine
     llm_engine.dtype = _engine.model_config.dtype  # compat with pt
     llm_engine.vllm_config = vllm_config
+    if len(vllm_config) > 0:
+        llm_engine.is_multimodal = True
     # compatible with vllm==0.3.*
     if version.parse(vllm.__version__) >= version.parse('0.3'):
         assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)
@@ -299,6 +302,9 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
+    is_multimodal = getattr(llm_engine, 'is_multimodal', False)
+    if not is_multimodal:
+        use_tqdm = False
     for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
         history = request.get('history', None)
         if history is None:
@@ -333,6 +339,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
                           request_list: List[Dict[str, Any]],
                           *,
                           generation_config: Optional[VllmGenerationConfig] = None,
+                          generation_info: Optional[Dict[str, Any]] = None,
                           lora_request: Optional['LoRARequest'] = None,
                           use_tqdm: bool = False,
                           **kwargs) -> Iterator[List[Dict[str, Any]]]:
@@ -343,6 +350,7 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
     assert isinstance(generation_config, VllmGenerationConfig)
@@ -357,6 +365,11 @@ def inference_stream_vllm(llm_engine: LLMEngine,
         use_tqdm=use_tqdm,
         **kwargs)
 
+    if generation_info is None:
+        generation_info = {}
+    else:
+        generation_info.clear()
+
     if generation_config.use_beam_search:
         error_msg = 'Streaming generation does not support beam search.'
         raise ValueError(error_msg)
@@ -364,6 +377,8 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     print_idx_list = [[0] for _ in range(len(request_list))]
     prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
     while llm_engine.has_unfinished_requests():
+        for key in ['num_prompt_tokens', 'num_generated_tokens']:
+            generation_info[key] = 0
         step_outputs = llm_engine.step()
         for output in step_outputs:
             i = int(output.request_id)
@@ -379,9 +394,15 @@ def inference_stream_vllm(llm_engine: LLMEngine,
                 history[-1] = [query, safe_response]
             else:
                 history[-1][-1] = history[-1][-1][:agent_state[i][1]] + safe_response
+            generation_info['num_prompt_tokens'] += len(output.prompt_token_ids)
+            generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
                 prog_bar.update()
+        runtime = time.perf_counter() - start_runtime
+        generation_info['runtime'] = runtime
+        generation_info['samples/s'] = len(step_outputs) / runtime
+        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         yield resp_list
     prog_bar.close()
 
@@ -392,6 +413,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    request_list: List[Dict[str, Any]],
                    *,
                    generation_config: Optional[VllmGenerationConfig] = None,
+                   generation_info: Optional[Dict[str, Any]] = None,
                    lora_request: Optional['LoRARequest'] = None,
                    use_tqdm: bool = False,
                    verbose: bool = False,
@@ -405,6 +427,7 @@ def inference_vllm(llm_engine: LLMEngine,
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
     assert isinstance(generation_config, VllmGenerationConfig)
@@ -419,6 +442,13 @@ def inference_vllm(llm_engine: LLMEngine,
         use_tqdm=use_tqdm,
         **kwargs)
 
+    if generation_info is None:
+        generation_info = {}
+    else:
+        generation_info.clear()
+    for key in ['num_prompt_tokens', 'num_generated_tokens']:
+        generation_info[key] = 0
+
     tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
@@ -431,6 +461,7 @@ def inference_vllm(llm_engine: LLMEngine,
                 outputs.append(output)
                 prog_bar.update()
     prog_bar.close()
+
     for output in outputs:
         i = int(output.request_id)
         request = request_list[i]
@@ -442,10 +473,17 @@ def inference_vllm(llm_engine: LLMEngine,
             history.append([query, response])
         else:
             history[-1][-1] = history[-1][-1] + response
+
+        generation_info['num_prompt_tokens'] += len(output.prompt_token_ids)
+        generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
         resp_list[i] = {'response': response, 'history': history}
         if verbose:
             print(f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}', end='')
             print(tokenizer.decode(output.outputs[0].token_ids, False))
+    runtime = time.perf_counter() - runtime
+    generation_info['runtime'] = runtime
+    generation_info['samples/s'] = len(outputs) / runtime
+    generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
 
 

@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import os
 import shutil
+import time
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -560,7 +561,7 @@ def _prepare_inputs(model: PreTrainedModel,
                     generation_config: Optional[GenerationConfig] = None,
                     stop_words: Optional[StopWords] = None,
                     adapter_names: Optional[List[str]] = None,
-                    **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int]:
+                    **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
     if stop_words is None:
         stop_words = []
 
@@ -639,12 +640,13 @@ def inference_stream(model: PreTrainedModel,
                      *,
                      generation_config: Optional[GenerationConfig] = None,
                      stop_words: Optional[StopWords] = None,
-                     generation_info: Optional[Dict[str, int]] = None,
+                     generation_info: Optional[Dict[str, Any]] = None,
                      adapter_names: Optional[List[str]] = None,
                      **kwargs) -> Iterator[Tuple[str, History]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
+    start_runtime = time.perf_counter()
     if history is None:
         history = []
     else:
@@ -664,6 +666,8 @@ def inference_stream(model: PreTrainedModel,
         return '', history
     if generation_info is None:
         generation_info = {}
+    else:
+        generation_info.clear()
     generation_info['num_prompt_tokens'] = token_len
 
     # agent support
@@ -716,6 +720,11 @@ def inference_stream(model: PreTrainedModel,
             history[-1] = [query, response]
         else:
             history[-1][-1] = history[-1][-1][:act_length] + response
+
+        runtime = time.perf_counter() - start_runtime
+        generation_info['runtime'] = runtime
+        generation_info['samples/s'] = 1 / runtime
+        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         yield response, history
 
 
@@ -729,16 +738,17 @@ def inference(model: PreTrainedModel,
               *,
               generation_config: Optional[GenerationConfig] = None,
               stop_words: Optional[StopWords] = None,
+              generation_info: Optional[Dict[str, Any]] = None,
               stream: bool = False,
               verbose: bool = False,
+              adapter_names: Optional[List[str]] = None,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
-              generation_info: Optional[Dict[str, int]] = None,
-              adapter_names: Optional[List[str]] = None,
               **kwargs) -> Tuple[str, History]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
+    runtime = time.perf_counter()
     if history is None:
         history = []
     else:
@@ -758,6 +768,8 @@ def inference(model: PreTrainedModel,
         return '', history
     if generation_info is None:
         generation_info = {}
+    else:
+        generation_info.clear()
     generation_info['num_prompt_tokens'] = token_len
 
     # agent support
@@ -794,6 +806,10 @@ def inference(model: PreTrainedModel,
         history.append([query, response])
     else:
         history[-1][-1] = history[-1][-1] + response
+    runtime = time.perf_counter() - runtime
+    generation_info['runtime'] = runtime
+    generation_info['samples/s'] = 1 / runtime
+    generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return response, history
 
 
