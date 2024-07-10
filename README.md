@@ -31,27 +31,26 @@
 - [News](#-news)
 - [Installation](#%EF%B8%8F-installation)
 - [Getting Started](#-getting-started)
-- [Documentation](#-documentation)
+- [Classroom](#-Classroom)
 - [License](#-License)
 - [Citation](#-citation)
 
 ## 📝 Introduction
 SWIFT supports training, inference, evaluation and deployment of **300+ LLMs and 50+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
 
-To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
+To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners. SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
-Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
-
-SWIFT has rich documentations for users, please check [here](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/index.md).
-
-SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
+SWIFT has rich documentations for users, please feel free to check our documentation website:
+<p align="center">
+        <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
+</p>
 
 ## ☎ Groups
 
 You can contact us and communicate with us by adding our group:
 
 
-Discord Group              |  微信群
+[Discord Group](https://discord.gg/qQXTzNUp)              |  微信群
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
@@ -647,54 +646,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 Other variables like `CUDA_VISIBLE_DEVICES` are also supported, which are not listed here.
 
 
-## 📃 Documentation
-
-### Documentation Compiling
-
-```shell
-make docs
-# Check docs/build/html/index.html in web-browser
-```
-
-### User Guide
-
-| Document Name                                                |
-| ------------------------------------------------------------ |
-| [Using Web-UI](docs/source_en/GetStarted/Web-ui.md)          |
-| [Using Tuners](docs/source_en/GetStarted/Tuners.md)          |
-| [LLM Inference](docs/source_en/LLM/LLM-inference.md)         |
-| [LLM Fine-tuning](docs/source_en/LLM/LLM-fine-tuning.md)     |
-| [LLM Evaluation](docs/source_en/LLM/LLM-eval.md)     |
-| [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
-| [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
-| [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
-| [Human Preference Alignment Training Documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md) |
-
-### Reference Documentation
-| Document Name                                                |
-| ------------------------------------------------------------ |
-| [Command Line Arguments](docs/source_en/LLM/Command-line-parameters.md) |
-| [Supported Models and Datasets List](docs/source_en/LLM/Supported-models-datasets.md) |
-| [Customizing New Models and Datasets](docs/source_en/LLM/Customization.md) |
-| [Runtime Speed and Memory Benchmark](docs/source_en/LLM/Benchmark.md) |
-
-
-### Best Practices
-
-| Best Practices Name                                                |
-| ------------------------------------------------------------ |
-| [Agent Fine-Tuning Best Practice](docs/source_en/LLM/Agent-fine-tuning-best-practice.md) |
-| [Agent Deployment Best Practice](docs/source_en/LLM/Agent-deployment-best-practice.md) |
-| [Self-Cognition Fine-Tuning Best Practice](docs/source_en/LLM/Self-cognition-best-practice.md) |
-|  [Qwen1.5 Best Practice](docs/source_en/LLM/Qwen1.5-best-practice.md) |
-|  [Multi-Modal Model Training Best Practice](docs/source_en/Multi-Modal/index.md) |
-|  [NPU Best Practice](docs/source_en/LLM/NPU-best-practice.md) |
-| [DPO Human Alignment Training](docs/source_en/LLM/DPO.md)   |
-| [ORPO Human Alignment Training](docs/source_en/LLM/ORPO.md)   |
-| [SimPO Human Alignment Training](docs/source_en/LLM/SimPO.md)   |
-
-
-### Deep Learning Tutorials
+## 📚 Classroom
 
 | Tutorial Name                                                |
 |-------------------------------------------------------------- |
