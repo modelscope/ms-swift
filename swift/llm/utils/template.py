@@ -1387,6 +1387,8 @@ class InternvlTemplate(Template):
 
 class Internvl2Template(InternvlTemplate):
 
+    video_segments = 8
+
     def get_index(self, bound, fps, max_frame, first_idx=0, num_segments=32):
         if bound:
             start, end = bound[0], bound[1]
@@ -1490,14 +1492,8 @@ class Internvl2Template(InternvlTemplate):
         if media_type == 'image':
             return [[-100]]
         elif media_type == 'video':
-            video_path = example['videos'][index]
-            pixel_values, num_patches_list = self.load_video(video_path, num_segments=8, max_num=1)
-            if 'pixel_values' not in example:
-                example['pixel_values'] = pixel_values
-            else:
-                example['pixel_values'].extend(pixel_values)
             context_list = []
-            for i in range(len(num_patches_list)):
+            for i in range(self.video_segments):
                 context_list.append([f'Frame{i + 1}: '])
                 context_list.append([-100])
                 context_list.append(['\n'])
