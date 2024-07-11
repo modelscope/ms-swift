@@ -1387,6 +1387,150 @@ class InternvlTemplate(Template):
 
 class Internvl2Template(InternvlTemplate):
 
+    def get_index(self, bound, fps, max_frame, first_idx=0, num_segments=32):
+        if bound:
+            start, end = bound[0], bound[1]
+        else:
+            start, end = -100000, 100000
+        start_idx = max(first_idx, round(start * fps))
+        end_idx = min(round(end * fps), max_frame)
+        seg_size = float(end_idx - start_idx) / num_segments
+        frame_indices = np.array([
+            int(start_idx + (seg_size / 2) + np.round(seg_size * idx))
+            for idx in range(num_segments)
+        ])
+        return frame_indices
+
+    def build_transform(self, input_size):
+        import torchvision.transforms as T
+        from torchvision.transforms.functional import InterpolationMode
+        mean, std = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+        transform = T.Compose([
+            T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+            T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
+            T.ToTensor(),
+            T.Normalize(mean=mean, std=std)
+        ])
+        return transform
+
+    def find_closest_aspect_ratio(self, aspect_ratio, target_ratios, width, height, image_size):
+        best_ratio_diff = float('inf')
+        best_ratio = (1, 1)
+        area = width * height
+        for ratio in target_ratios:
+            target_aspect_ratio = ratio[0] / ratio[1]
+            ratio_diff = abs(aspect_ratio - target_aspect_ratio)
+            if ratio_diff < best_ratio_diff:
+                best_ratio_diff = ratio_diff
+                best_ratio = ratio
+            elif ratio_diff == best_ratio_diff:
+                if area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
+                    best_ratio = ratio
+        return best_ratio
+
+    def dynamic_preprocess(self, image, min_num=1, max_num=6, image_size=448, use_thumbnail=False):
+        orig_width, orig_height = image.size
+        aspect_ratio = orig_width / orig_height
+
+        # calculate the existing image aspect ratio
+        target_ratios = set(
+            (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
+            max_num >= i * j >= min_num)
+        target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
+
+        # find the closest aspect ratio to the target
+        target_aspect_ratio = self.find_closest_aspect_ratio(
+            aspect_ratio, target_ratios, orig_width, orig_height, image_size)
+
+        # calculate the target width and height
+        target_width = image_size * target_aspect_ratio[0]
+        target_height = image_size * target_aspect_ratio[1]
+        blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
+
+        # resize the image
+        resized_img = image.resize((target_width, target_height))
+        processed_images = []
+        for i in range(blocks):
+            box = (
+                (i % (target_width // image_size)) * image_size,
+                (i // (target_width // image_size)) * image_size,
+                ((i % (target_width // image_size)) + 1) * image_size,
+                ((i // (target_width // image_size)) + 1) * image_size
+            )
+            # split the image
+            split_img = resized_img.crop(box)
+            processed_images.append(split_img)
+        assert len(processed_images) == blocks
+        if use_thumbnail and len(processed_images) != 1:
+            thumbnail_img = image.resize((image_size, image_size))
+            processed_images.append(thumbnail_img)
+        return processed_images
+
+    def load_video(self, video_path, bound=None, input_size=448, max_num=1, num_segments=32):
+        from decord import VideoReader, cpu
+        from PIL import Image
+        vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+        max_frame = len(vr) - 1
+        fps = float(vr.get_avg_fps())
+
+        pixel_values_list, num_patches_list = [], []
+        transform = self.build_transform(input_size=input_size)
+        frame_indices = self.get_index(bound, fps, max_frame, first_idx=0, num_segments=num_segments)
+        for frame_index in frame_indices:
+            img = Image.fromarray(vr[frame_index].asnumpy()).convert('RGB')
+            img = self.dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
+            pixel_values = [transform(tile) for tile in img]
+            pixel_values = torch.stack(pixel_values)
+            num_patches_list.append(pixel_values.shape[0])
+            pixel_values_list.append(pixel_values)
+        pixel_values = torch.cat(pixel_values_list)
+        return pixel_values, num_patches_list
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        if media_type == 'image':
+            return [[-100]]
+        elif media_type == 'video':
+            video_path = example['videos'][index]
+            pixel_values, num_patches_list = self.load_video(video_path, num_segments=8, max_num=1)
+            if 'pixel_values' not in example:
+                example['pixel_values'] = pixel_values
+            else:
+                example['pixel_values'].extend(pixel_values)
+            context_list = []
+            for i in range(len(num_patches_list)):
+                context_list.append([f'Frame{i + 1}: '])
+                context_list.append([-100])
+                context_list.append(['\n'])
+            return context_list
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if len(inputs) == 0 or not example.get('videos'):
+            return inputs, {}
+
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        labels = inputs.get('labels')
+
+        pixel_values = example.get('pixel_values')
+        pixel_values = torch.cat(pixel_values, dim=0)
+        image_bs = pixel_values.shape[0]
+
+        idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
+        img_tokens: List[int] = self.tokenizer.encode(
+            '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n', add_special_tokens=False)
+        input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
+        if labels is not None:
+            labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+
+        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+        inputs['image_flags'] = torch.ones(image_bs)
+
+        inputs.pop('loss_scale', None)
+        return inputs, {}
+
     def __init__(self):
         self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
         Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
