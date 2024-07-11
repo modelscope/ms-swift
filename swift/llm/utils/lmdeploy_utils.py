@@ -200,7 +200,7 @@ def inference_stream_lmdeploy(
     thread = Thread(target=lambda: asyncio.run(_batch_infer()))
     thread.start()
 
-    while True:
+    while n_finished < len(generators):
         n_steps += 1
         i, output = queue.get()
         is_finished = False
@@ -208,8 +208,6 @@ def inference_stream_lmdeploy(
             is_finished = True
             n_finished += 1
             prog_bar.update()
-            if n_finished == len(generators):
-                break
             output = outputs[i]  # old value
         outputs[i] = output
         if not is_finished and n_steps % flush_steps != 0:

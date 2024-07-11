@@ -9,10 +9,12 @@
 5. [LLM Evaluation](LLM-eval.md)
 6. [LLM Quantization](LLM-quantization.md)
 7. [VLLM Inference and Deployment](VLLM-inference-acceleration-and-deployment.md)
-8. [LLM Experimental](LLM-exp.md)
-9. [ORPO Training](ORPO.md)
-10. [SimPO Training](SimPO.md)
-11. [Human Preference Alignment Training Documentation](Human-Preference-Alignment-Training-Documentation.md)
+8. [LmDeploy Inference and Deployment](LmDeploy-inference-acceleration-and-deployment.md)
+9. [LLM Experimental](LLM-exp.md)
+10. [ORPO Training](ORPO.md)
+11. [SimPO Training](SimPO.md)
+12. [Human Preference Alignment Training Documentation](Human-Preference-Alignment-Training-Documentation.md)
+
 ### ⭐️Best Practices!
 
 1. [Self Cognition Best Practice](Self-cognition-best-practice.md)
