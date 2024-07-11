@@ -26,6 +26,7 @@ Swift DOCUMENTATION
    LLM/LLM评测文档.md
    LLM/LLM量化文档.md
    LLM/VLLM推理加速与部署.md
+   LLM/LmDeploy推理加速与部署.md
    LLM/LLM实验文档.md
    LLM/命令行参数.md
    LLM/支持的模型和数据集.md
@@ -52,19 +53,20 @@ Swift DOCUMENTATION
    Multi-Modal/internlm-xcomposer2最佳实践.md
    Multi-Modal/phi3-vision最佳实践.md
    Multi-Modal/llava最佳实践.md
+   Multi-Modal/llava-video最佳实践.md
    Multi-Modal/yi-vl最佳实践.md
    Multi-Modal/mplug-owl2最佳实践.md
+   Multi-Modal/florence最佳实践.md
    Multi-Modal/cogvlm最佳实践.md
    Multi-Modal/cogvlm2最佳实践.md
-   Multi-Modal/cogvlm2-video最佳实践.md
-   Multi-Modal/florence最佳实践.md
-   Multi-Modal/mplug-owl2最佳实践.md
    Multi-Modal/glm4v最佳实践.md
+   Multi-Modal/cogvlm2-video最佳实践.md
    Multi-Modal/minicpm-v最佳实践.md
    Multi-Modal/minicpm-v-2最佳实践.md
    Multi-Modal/minicpm-v-2.5最佳实践.md
    Multi-Modal/internvl最佳实践.md
    Multi-Modal/MLLM部署文档.md
+   Multi-Modal/vLLM推理加速文档.md
 
 .. toctree::
    :maxdepth: 2

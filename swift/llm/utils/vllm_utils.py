@@ -394,12 +394,12 @@ def inference_stream_vllm(
         n_steps += 1
         step_outputs = llm_engine.step()
         for output in step_outputs:
-            i = int(output.request_id)
-            request = request_list[i]
-            generate_ids = output.outputs[0].token_ids
             if not output.finished and n_steps % flush_steps != 0:
                 continue
             is_flush = True
+            i = int(output.request_id)
+            request = request_list[i]
+            generate_ids = output.outputs[0].token_ids
             safe_response = template.generate_ids_to_response(
                 generate_ids, output.finished, print_idx=print_idx_list[i])
             query = request['query']

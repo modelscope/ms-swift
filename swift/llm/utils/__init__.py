@@ -22,9 +22,9 @@ from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWo
                        get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
                     find_ln, get_max_model_len, get_time_info, history_to_messages, inference, inference_stream,
-                    is_quant_model, is_vllm_available, limit_history_length, messages_join_observation,
-                    messages_to_history, print_example, safe_tokenizer_decode, set_generation_config,
-                    sort_by_max_length, stat_dataset, to_device)
+                    is_lmdeploy_available, is_quant_model, is_vllm_available, limit_history_length,
+                    messages_join_observation, messages_to_history, print_example, safe_tokenizer_decode,
+                    set_generation_config, sort_by_max_length, stat_dataset, to_device)
 
 try:
     if is_vllm_available():
@@ -37,4 +37,17 @@ try:
 except Exception as e:
     from swift.utils import get_logger
     logger = get_logger()
-    logger.warning(f'import vllm_utils error: {e}')
+    logger.error(f'import vllm_utils error: {e}')
+
+try:
+    if is_lmdeploy_available():
+        from .lmdeploy_utils import (
+            LmdeployGenerationConfig,
+            get_lmdeploy_engine,
+            inference_stream_lmdeploy,
+            inference_lmdeploy,
+        )
+except Exception as e:
+    from swift.utils import get_logger
+    logger = get_logger()
+    logger.error(f'import lmdeploy_utils error: {e}')

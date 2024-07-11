@@ -24,9 +24,9 @@ pip install -r requirements/llm.txt -U
 ```
 
 ## Inference Acceleration
-vllm does not support bnb quantized models. The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
+The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
 
-### qwen-7b-chat
+### Using Python
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
