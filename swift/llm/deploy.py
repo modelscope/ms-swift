@@ -21,7 +21,7 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream,
+                    Model, ModelList, Template, UsageInfo, compat_openai, decode_base64, inference, inference_stream,
                     messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
@@ -108,11 +108,17 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{llm_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
-
+        messages = request.messages
         # For agent, check if response is endwith observations and join tool observation
-        messages_join_observation(request.messages)
-
-        example = messages_to_history(request.messages)
+        messages_join_observation(messages)
+        images = request.images
+        if _args.is_multimodal:
+            compat_openai(messages, images, template.template_type)
+            messages = decode_base64(messages=messages)['messages']
+            images = decode_base64(images=images)['images']
+        example = messages_to_history(messages)
+        if len(images) > 0:
+            example['images'] = images
 
         # tool choice
         if request.tool_choice is not None and request.tools is not None:
@@ -134,11 +140,18 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{llm_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
-        example = {'query': request.prompt}
+        prompt = request.prompt
+        images = request.images
+        if _args.is_multimodal:
+            prompt = decode_base64(prompt=prompt)['prompt']
+            images = decode_base64(images=images)['images']
+        example = {'query': prompt}
+        if len(images) > 0:
+            example['images'] = images
         with vllm_context(template):
             inputs = template.encode(example)[0]
         request_id = f'cmpl-{random_uuid()}'
-        _request['prompt'] = request.prompt
+        _request['prompt'] = prompt
 
     request_info = {'request_id': request_id}
     request_info.update(_request)
@@ -326,6 +339,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         messages_join_observation(messages)
         images = request.images
         if _args.is_multimodal:
+            compat_openai(messages, images, template.template_type)
             messages = decode_base64(messages=messages)['messages']
             images = decode_base64(images=images)['images']
         example = messages_to_history(messages)

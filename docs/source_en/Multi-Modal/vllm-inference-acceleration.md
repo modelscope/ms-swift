@@ -141,43 +141,47 @@ print(f'model_type: {model_type}')
 # import base64
 # with open('cat.png', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# images = [img_base64]
+# image_url = f'data:image/jpeg;base64,{img_base64}'
 
 # use local_path
 # from swift.llm import convert_to_base64
-# images = ['cat.png']
-# images = convert_to_base64(images=images)['images']
+# image_url = convert_to_base64(images=['cat.png'])['images'][0]
+# image_url = f'data:image/jpeg;base64,{image_url}'
 
 # use url
-images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+image_url = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'
 
 query = 'Describe this image.'
 messages = [{
     'role': 'user',
-    'content': query
+    'content': [
+        {'type': 'text', 'text': query},
+        {'type': 'image_url', 'image_url': {'url': image_url}},
+    ]
 }]
+
 resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
-    temperature=0,
-    extra_body={'images': images})
+    temperature=0)
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
 
-# Streaming
-images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+# 流式
 query = 'How many sheep are in the picture?'
 messages = [{
     'role': 'user',
-    'content': query
+    'content': [
+        {'type': 'text', 'text': query},
+        {'type': 'image_url', 'image_url': {'url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'}}
+    ]
 }]
 stream_resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
     stream=True,
-    temperature=0,
-    extra_body={'images': images})
+    temperature=0)
 
 print(f'query: {query}')
 print('response: ', end='')
@@ -187,9 +191,9 @@ print()
 """
 model_type: llava1_6-vicuna-13b-instruct
 query: Describe this image.
-response: The image shows a close-up of a person's hands playing a guitar. The hands are positioned on the neck of the guitar, with the fingers pressing down on the strings to produce music. The guitar has a wooden body and a glossy finish, and the strings are clearly visible. The background is blurred, but it appears to be an indoor setting with warm lighting. The focus of the image is on the hands and the guitar, with the background serving to highlight the subject. There are no visible texts or distinctive brands in the image. The style of the image is a realistic photograph with a shallow depth of field, which is a common technique in portrait photography to draw attention to the subject.
+response: In the image, a kitten with striking blue eyes is the main subject. The kitten, with its fur in shades of gray and white, is sitting on a white surface. Its head is slightly tilted to the left, giving it a curious and endearing expression. The kitten's eyes are wide open, and its mouth is slightly open, as if it's in the middle of a meow or perhaps just finished one. The background is blurred, drawing focus to the kitten, but it appears to be a room with a window, suggesting an indoor setting. The overall image gives a sense of warmth and cuteness.
 query: How many sheep are in the picture?
-response: There are two sheep in the picture.
+response: There are four sheep in the picture.
 """
 ```
 
