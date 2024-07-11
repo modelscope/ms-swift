@@ -37,7 +37,7 @@ try:
 except Exception as e:
     from swift.utils import get_logger
     logger = get_logger()
-    logger.warning(f'import vllm_utils error: {e}')
+    logger.error(f'import vllm_utils error: {e}')
 
 try:
     if is_lmdeploy_available():
@@ -50,4 +50,4 @@ try:
 except Exception as e:
     from swift.utils import get_logger
     logger = get_logger()
-    logger.warning(f'import lmdeploy_utils error: {e}')
+    logger.error(f'import lmdeploy_utils error: {e}')
