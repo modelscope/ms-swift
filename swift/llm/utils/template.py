@@ -1397,10 +1397,8 @@ class Internvl2Template(InternvlTemplate):
         start_idx = max(first_idx, round(start * fps))
         end_idx = min(round(end * fps), max_frame)
         seg_size = float(end_idx - start_idx) / num_segments
-        frame_indices = np.array([
-            int(start_idx + (seg_size / 2) + np.round(seg_size * idx))
-            for idx in range(num_segments)
-        ])
+        frame_indices = np.array(
+            [int(start_idx + (seg_size / 2) + np.round(seg_size * idx)) for idx in range(num_segments)])
         return frame_indices
 
     def build_transform(self, input_size):
@@ -1435,14 +1433,13 @@ class Internvl2Template(InternvlTemplate):
         aspect_ratio = orig_width / orig_height
 
         # calculate the existing image aspect ratio
-        target_ratios = set(
-            (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
-            max_num >= i * j >= min_num)
+        target_ratios = set((i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1)
+                            for j in range(1, n + 1) if max_num >= i * j >= min_num)
         target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
 
         # find the closest aspect ratio to the target
-        target_aspect_ratio = self.find_closest_aspect_ratio(
-            aspect_ratio, target_ratios, orig_width, orig_height, image_size)
+        target_aspect_ratio = self.find_closest_aspect_ratio(aspect_ratio, target_ratios, orig_width, orig_height,
+                                                             image_size)
 
         # calculate the target width and height
         target_width = image_size * target_aspect_ratio[0]
@@ -1453,12 +1450,10 @@ class Internvl2Template(InternvlTemplate):
         resized_img = image.resize((target_width, target_height))
         processed_images = []
         for i in range(blocks):
-            box = (
-                (i % (target_width // image_size)) * image_size,
-                (i // (target_width // image_size)) * image_size,
-                ((i % (target_width // image_size)) + 1) * image_size,
-                ((i // (target_width // image_size)) + 1) * image_size
-            )
+            box = ((i % (target_width // image_size)) * image_size, (i // (target_width // image_size)) * image_size,
+                   ((i %
+                     (target_width // image_size)) + 1) * image_size, ((i //
+                                                                        (target_width // image_size)) + 1) * image_size)
             # split the image
             split_img = resized_img.crop(box)
             processed_images.append(split_img)
@@ -1522,11 +1517,13 @@ class Internvl2Template(InternvlTemplate):
             for idx, pv in zip(idx_list, pixel_values):
                 patches += pv.shape[0]
                 img_tokens: List[int] = self.tokenizer.encode(
-                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n', add_special_tokens=False)
-                input_ids = input_ids[:idx+added_tokens_len] + img_tokens + input_ids[idx+added_tokens_len + 1:]
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n',
+                    add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
                 if labels is not None:
-                    labels = labels[:idx+added_tokens_len] + [-100] * len(img_tokens) + labels[idx+added_tokens_len + 1:]
-                added_tokens_len += len(img_tokens)-1
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
             inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
@@ -1541,10 +1538,11 @@ class Internvl2Template(InternvlTemplate):
             for idx, num_patch in zip(idx_list, num_patches):
                 img_tokens: List[int] = self.tokenizer.encode(
                     '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
-                input_ids = input_ids[:idx+added_tokens_len] + img_tokens + input_ids[idx+added_tokens_len + 1:]
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
                 if labels is not None:
-                    labels = labels[:idx+added_tokens_len] + [-100] * len(img_tokens) + labels[idx+added_tokens_len + 1:]
-                added_tokens_len += len(img_tokens)-1
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
