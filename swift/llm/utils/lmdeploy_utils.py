@@ -1,13 +1,13 @@
 import asyncio
 import inspect
-import time
 import os
+import time
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Union
+from queue import Queue
 from threading import Thread
+from typing import Any, Dict, List, Optional, Union
 
 import torch
-from queue import Queue
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
 from lmdeploy import TurbomindEngineConfig, pipeline
 from lmdeploy.serve.async_engine import AsyncEngine
@@ -172,7 +172,6 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         for coro in asyncio.as_completed(tasks):
             await coro
             prog_bar.update()
-
 
     thread = Thread(target=lambda: asyncio.run(_batch_infer()))
     thread.start()
