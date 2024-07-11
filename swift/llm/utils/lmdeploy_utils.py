@@ -12,7 +12,6 @@ from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
 from lmdeploy import TurbomindEngineConfig, pipeline
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
-from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import GenerationConfig
 
@@ -22,7 +21,8 @@ from .template import Template
 
 def get_lmdeploy_engine(
         model_type: str,
-        # torch_dtype: Optional[Dtype] = None,  # TODO: https://github.com/InternLM/lmdeploy/issues/1846
+        # TODO: https://github.com/InternLM/lmdeploy/issues/1846
+        # torch_dtype: Optional[Dtype] = None,
         *,
         model_id_or_path: Optional[str] = None,
         revision: Optional[str] = None,
@@ -144,16 +144,14 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
 
 @torch.inference_mode()
-def inference_stream_lmdeploy(
-        lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
-        template: Template,
-        request_list: List[Dict[str, Any]],
-        *,
-        generation_config: Optional[LmdeployGenerationConfig] = None,
-        generation_info: Optional[Dict[str, Any]] = None,
-        use_tqdm: bool = False,
-        flush_steps: Optional[int] = None,  # Ensuring efficiency
-        **kwargs) -> List[Dict[str, Any]]:
+def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
+                              template: Template,
+                              request_list: List[Dict[str, Any]],
+                              *,
+                              generation_config: Optional[LmdeployGenerationConfig] = None,
+                              generation_info: Optional[Dict[str, Any]] = None,
+                              use_tqdm: bool = False,
+                              **kwargs) -> List[Dict[str, Any]]:
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
@@ -175,9 +173,6 @@ def inference_stream_lmdeploy(
         **kwargs)
 
     n_finished = 0
-    n_steps = 0
-    if flush_steps is None:
-        flush_steps = min(100, len(generators))
     print_idx_list = [[0] for _ in range(len(request_list))]
     outputs = [None] * len(request_list)
     num_generated_tokens = [0] * len(request_list)
@@ -201,7 +196,6 @@ def inference_stream_lmdeploy(
     thread.start()
 
     while n_finished < len(generators):
-        n_steps += 1
         i, output = queue.get()
         is_finished = False
         if output is None:
@@ -210,8 +204,6 @@ def inference_stream_lmdeploy(
             prog_bar.update()
             output = outputs[i]  # old value
         outputs[i] = output
-        if not is_finished and n_steps % flush_steps != 0:
-            continue
         request = request_list[i]
         safe_response = template.generate_ids_to_response(output.token_ids, is_finished, print_idx=print_idx_list[i])
         query = request['query']
