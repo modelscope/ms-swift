@@ -2,6 +2,7 @@
 import inspect
 import logging
 import time
+from contextlib import nullcontext
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
@@ -21,7 +22,7 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, decode_base64, inference, inference_stream,
+                    Model, ModelList, Template, UsageInfo, compat_openai, decode_base64, inference, inference_stream,
                     messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
@@ -91,10 +92,16 @@ def is_generation_template(template_type: str) -> bool:
     return is_generation
 
 
-@torch.inference_mode()
-async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
-    global llm_engine, template, _args
-    from .utils import VllmGenerationConfig, vllm_context
+async def _prepare_request(request: Union[ChatCompletionRequest, CompletionRequest]):
+    global template, model, llm_engine, _args
+    if _args.infer_backend == 'vllm':
+        from .utils import vllm_context
+        model_or_engine = llm_engine
+        context = vllm_context(template)
+    else:
+        model_or_engine = model
+        context = nullcontext(template)
+
     error_msg = await check_model(request)
     if error_msg is not None:
         return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
@@ -106,15 +113,20 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         if is_generation_template(template.template_type):
             return create_error_response(
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
-                f'the model `{llm_engine.model_type}` is in text generation format. '
+                f'the model `{model_or_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
-
+        messages = request.messages
         # For agent, check if response is endwith observations and join tool observation
-        messages_join_observation(request.messages)
+        messages_join_observation(messages)
+        images = request.images
+        if _args.is_multimodal:
+            compat_openai(messages, images, template.template_type)
+            messages = decode_base64(messages=messages)['messages']
+            images = decode_base64(images=images)['images']
+        example = messages_to_history(messages)
+        if len(images) > 0:
+            example['images'] = images
 
-        example = messages_to_history(request.messages)
-
-        # tool choice
         if request.tool_choice is not None and request.tools is not None:
             if isinstance(request.tool_choice, dict):
                 name = request.tool_choice['function']['name']
@@ -124,29 +136,52 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 example['tools'] = [tool]
             elif request.tool_choice == 'auto':
                 example['tools'] = request.tools
-        with vllm_context(template):
+        with context:
             inputs = template.encode(example)[0]
         request_id = f'chatcmpl-{random_uuid()}'
-        _request['messages'] = request.messages
+        _request['messages'] = messages
     else:
         if not is_generation_template(template.template_type):
             return create_error_response(
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
-                f'the model `{llm_engine.model_type}` is in chat format. '
+                f'the model `{model_or_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
-        example = {'query': request.prompt}
-        with vllm_context(template):
+        prompt = request.prompt
+        images = request.images
+        if _args.is_multimodal:
+            prompt = decode_base64(prompt=prompt)['prompt']
+            images = decode_base64(images=images)['images']
+        example = {'query': prompt}
+        if len(images) > 0:
+            example['images'] = images
+        with context:
             inputs = template.encode(example)[0]
         request_id = f'cmpl-{random_uuid()}'
-        _request['prompt'] = request.prompt
+        _request['prompt'] = prompt
 
     request_info = {'request_id': request_id}
     request_info.update(_request)
 
-    input_ids = inputs['input_ids']
-    error_msg = await check_length(request, input_ids)
-    if error_msg is not None:
-        return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+    if 'input_ids' in inputs:
+        input_ids = inputs['input_ids']
+        error_msg = await check_length(request, input_ids)
+        if error_msg is not None:
+            return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+
+    return request_info, inputs, example
+
+
+@torch.inference_mode()
+async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
+    global llm_engine, template, _args
+    from .utils import VllmGenerationConfig
+
+    result = await _prepare_request(request)
+    if isinstance(result, JSONResponse):
+        return result
+
+    request_info, inputs, _ = result
+    request_id = request_info['request_id']
 
     kwargs = {'max_new_tokens': request.max_tokens}
     for key in ['n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
@@ -193,6 +228,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         request_inputs = _prepare_request_inputs(inputs)
         result_generator = llm_engine.generate(request_inputs, generation_config, request_id, **generate_kwargs)
     else:
+        input_ids = inputs['input_ids']
         result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
 
     async def _generate_full():
@@ -308,69 +344,12 @@ class _GenerationConfig(GenerationConfig):
 @torch.inference_mode()
 async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global model, template
-    error_msg = await check_model(request)
-    if error_msg is not None:
-        return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+    result = await _prepare_request(request)
+    if isinstance(result, JSONResponse):
+        return result
 
-    if request.seed is not None:
-        seed_everything(request.seed, verbose=False)
-    _request = {'model': request.model}
-    if isinstance(request, ChatCompletionRequest):
-        if is_generation_template(template.template_type):
-            return create_error_response(
-                HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
-                f'the model `{model.model_type}` is in text generation format. '
-                'Please use the `completions` API.')
-        messages = request.messages
-        # For agent, check if response is endwith observations and join tool observation
-        messages_join_observation(messages)
-        images = request.images
-        if _args.is_multimodal:
-            messages = decode_base64(messages=messages)['messages']
-            images = decode_base64(images=images)['images']
-        example = messages_to_history(messages)
-        if len(images) > 0:
-            example['images'] = images
-
-        if request.tool_choice is not None and request.tools is not None:
-            if isinstance(request.tool_choice, dict):
-                name = request.tool_choice['function']['name']
-                tool = next((t for t in request.tools if t['function']['name'] == name), None)
-                if tool is None:
-                    raise ValueError(f"Tool choice '{name}' not found in tools.")
-                example['tools'] = [tool]
-            elif request.tool_choice == 'auto':
-                example['tools'] = request.tools
-
-        inputs = template.encode(example)[0]
-        request_id = f'chatcmpl-{random_uuid()}'
-        _request['messages'] = messages
-    else:
-        if not is_generation_template(template.template_type):
-            return create_error_response(
-                HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
-                f'the model `{model.model_type}` is in chat format. '
-                'Please use the `chat.completions` API.')
-        prompt = request.prompt
-        images = request.images
-        if _args.is_multimodal:
-            prompt = decode_base64(prompt=prompt)['prompt']
-            images = decode_base64(images=images)['images']
-        example = {'query': prompt}
-        if len(images) > 0:
-            example['images'] = images
-        inputs = template.encode(example)[0]
-        request_id = f'cmpl-{random_uuid()}'
-        _request['prompt'] = prompt
-
-    request_info = {'request_id': request_id}
-    request_info.update(_request)
-
-    if 'input_ids' in inputs:
-        input_ids = inputs['input_ids']
-        error_msg = await check_length(request, input_ids)
-        if error_msg is not None:
-            return create_error_response(HTTPStatus.BAD_REQUEST, error_msg)
+    request_info, _, example = result
+    request_id = request_info['request_id']
 
     kwargs = {'max_new_tokens': request.max_tokens}
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'

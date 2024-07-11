@@ -67,7 +67,7 @@ class CompletionRequestMixin:
 @dataclass
 class ChatCompletionRequestMixin:
     model: str
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, Union[str, List[Dict]]]]
     tools: Optional[List[Dict[str, Union[str, Dict]]]] = None
     tool_choice: Optional[Union[str, Dict]] = 'auto'
     images: List[str] = field(default_factory=list)

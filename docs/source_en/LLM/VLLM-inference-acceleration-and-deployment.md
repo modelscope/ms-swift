@@ -235,7 +235,12 @@ print(f'model_type: {model_type}')
 
 query = 'Where is the capital of Zhejiang?'
 request_config = XRequestConfig(seed=42)
-resp = asyncio.run(inference_client_async(model_type, query, request_config=request_config))
+tasks = [inference_client_async(model_type, query, request_config=request_config) for _ in range(5)]
+async def _batch_run(tasks):
+    return await asyncio.gather(*tasks)
+
+resp_list = asyncio.run(_batch_run(tasks))
+resp = resp_list[0]
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
@@ -256,9 +261,9 @@ asyncio.run(_stream())
 """Out[0]
 model_type: qwen-7b-chat
 query: Where is the capital of Zhejiang?
-response: The capital of Zhejiang Province is Hangzhou.
+response: The capital of Zhejiang is Hangzhou.
 query: What delicious food is there?
-response: Hangzhou has many delicious foods, such as West Lake Vinegar Fish, Dongpo Pork, Longjing Shrimp, Beggar's Chicken, etc. In addition, Hangzhou also has many specialty snacks, such as West Lake Lotus Root Powder, Hangzhou Xiao Long Bao, Hangzhou You Tiao, etc.
+response: Hangzhou is famous for its delicious food, such as West Lake Fish in Vinegar Gravy, Dongpo Pork, and Longjing Tea.
 """
 ```
 
