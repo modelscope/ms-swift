@@ -105,7 +105,7 @@ def llm_export(args: ExportArguments) -> None:
     if args.quant_bits > 0:
         assert args.quant_output_dir is not None
         _args = args
-        assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
+        # assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
         assert args.sft_type == 'full', 'you need to merge lora'
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
@@ -119,6 +119,7 @@ def llm_export(args: ExportArguments) -> None:
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
         elif args.quant_method in ('bnb', 'hqq', 'eetq'):
+            args.quantization_bit = args.quant_bits
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
             model.save_pretrained(args.quant_output_dir)
         else:
