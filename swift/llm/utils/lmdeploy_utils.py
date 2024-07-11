@@ -20,17 +20,24 @@ from .model import get_model_tokenizer
 from .template import Template
 
 
-def get_lmdeploy_engine(model_type: str,
-                        torch_dtype: Optional[Dtype] = None,
-                        *,
-                        model_id_or_path: Optional[str] = None,
-                        revision: Optional[str] = None,
-                        tp: int = 1,
-                        cache_max_entry_count: float = 0.8,
-                        engine_kwargs: Optional[Dict[str, Any]] = None,
-                        **kwargs) -> Union[AsyncEngine, VLAsyncEngine]:
+def get_lmdeploy_engine(
+        model_type: str,
+        # torch_dtype: Optional[Dtype] = None,  # TODO
+        *,
+        model_id_or_path: Optional[str] = None,
+        revision: Optional[str] = None,
+        tp: int = 1,
+        cache_max_entry_count: float = 0.8,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+        **kwargs) -> Union[AsyncEngine, VLAsyncEngine]:
+    model_dir = kwargs.pop('model_dir', None)
     tokenizer = get_model_tokenizer(
-        model_type, load_model=False, model_id_or_path=model_id_or_path, revision=revision, download_model=True)[1]
+        model_type,
+        load_model=False,
+        model_id_or_path=model_id_or_path,
+        model_dir=model_dir,
+        revision=revision,
+        download_model=True)[1]
     model_dir = tokenizer.model_dir
 
     if engine_kwargs is None:
@@ -93,9 +100,13 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
                               request_list: List[Dict[str, Any]],
                               *,
                               generation_config: LmdeployGenerationConfig,
+                              generation_info: Dict[str, Any],
                               use_tqdm: bool = False,
                               **kwargs):
+    for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
+        generation_info[key] = 0
 
+    template.model = lmdeploy_engine
     tokenizer = template.tokenizer
     if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in generation_config.stop_words:
         generation_config.stop_words.append(tokenizer.eos_token_id)
@@ -125,38 +136,52 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': history}
             continue
+        generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generator = lmdeploy_engine.get_generator(False, i)
         generators.append((i, inputs, generator))
-
+    generation_info['num_samples'] = len(generators)
     return resp_list, generators
 
 
 @torch.inference_mode()
-def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
-                              template: Template,
-                              request_list: List[Dict[str, Any]],
-                              *,
-                              generation_config: Optional[LmdeployGenerationConfig] = None,
-                              generation_info: Optional[Dict[str, int]] = None,
-                              use_tqdm: bool = False,
-                              **kwargs) -> List[Dict[str, Any]]:
+def inference_stream_lmdeploy(
+        lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
+        template: Template,
+        request_list: List[Dict[str, Any]],
+        *,
+        generation_config: Optional[LmdeployGenerationConfig] = None,
+        generation_info: Optional[Dict[str, Any]] = None,
+        use_tqdm: bool = False,
+        flush_steps: Optional[int] = None,  # Ensuring efficiency
+        **kwargs) -> List[Dict[str, Any]]:
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
     assert isinstance(generation_config, LmdeployGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
-
-    resp_list, generators = _prepare_lmdeploy_request(
-        lmdeploy_engine, template, request_list, generation_config=generation_config, use_tqdm=use_tqdm)
     if generation_info is None:
         generation_info = {}
     else:
         generation_info.clear()
 
-    tokenizer = template.tokenizer
+    resp_list, generators = _prepare_lmdeploy_request(
+        lmdeploy_engine,
+        template,
+        request_list,
+        generation_config=generation_config,
+        generation_info=generation_info,
+        use_tqdm=use_tqdm,
+        **kwargs)
+
+    n_finished = 0
+    n_steps = 0
+    if flush_steps is None:
+        flush_steps = min(100, len(generators))
     print_idx_list = [[0] for _ in range(len(request_list))]
-    prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
+    outputs = [None] * len(request_list)
+    num_generated_tokens = [0] * len(request_list)
+    prog_bar = tqdm(total=len(generators), dynamic_ncols=True, disable=not use_tqdm)
     queue = Queue()
 
     async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
@@ -171,36 +196,42 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         tasks = [_inner_infer(i, inputs, generator) for i, inputs, generator in generators]
         for coro in asyncio.as_completed(tasks):
             await coro
-            prog_bar.update()
 
     thread = Thread(target=lambda: asyncio.run(_batch_infer()))
     thread.start()
 
-    not_finished = not_start_num = len(generators)
-    while not_finished:
+    while True:
+        n_steps += 1
         i, output = queue.get()
+        is_finished = False
         if output is None:
-            not_finished -= 1
-            if not_finished == 0:
+            is_finished = True
+            n_finished += 1
+            prog_bar.update()
+            if n_finished == len(generators):
                 break
+            output = outputs[i]  # old value
+        outputs[i] = output
+        if not is_finished and n_steps % flush_steps != 0:
             continue
         request = request_list[i]
-        response = template.generate_ids_to_response(output.token_ids)
+        safe_response = template.generate_ids_to_response(output.token_ids, is_finished, print_idx=print_idx_list[i])
         query = request['query']
         history = request['history']
         if resp_list[i] is None:
-            not_start_num -= 1
             history.append(None)
-        history[-1] = [query, response]
-        resp_list[i] = {'response': response, 'history': history}
-        if not_start_num == 0:
-            yield resp_list
+        history[-1] = [query, safe_response]
+        n_gen_tokens = len(output.token_ids)
+        generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
+        num_generated_tokens[i] = n_gen_tokens
+        resp_list[i] = {'response': safe_response, 'history': history}
 
+        runtime = time.perf_counter() - start_runtime
+        generation_info['runtime'] = runtime
+        generation_info['samples/s'] = n_finished / runtime
+        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
+        yield resp_list
     prog_bar.close()
-    runtime = time.perf_counter() - start_runtime
-    generation_info['runtime'] = runtime
-    generation_info['samples/s'] = len(generators) / runtime
-    generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
 
 
 @torch.inference_mode()
@@ -209,7 +240,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                        request_list: List[Dict[str, Any]],
                        *,
                        generation_config: Optional[LmdeployGenerationConfig] = None,
-                       generation_info: Optional[Dict[str, int]] = None,
+                       generation_info: Optional[Dict[str, Any]] = None,
                        use_tqdm: bool = False,
                        verbose: bool = False,
                        prompt_prefix: str = '[PROMPT]',
@@ -221,20 +252,24 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     assert isinstance(generation_config, LmdeployGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
-
-    resp_list, generators = _prepare_lmdeploy_request(
-        lmdeploy_engine, template, request_list, generation_config=generation_config, use_tqdm=use_tqdm)
     if generation_info is None:
         generation_info = {}
     else:
         generation_info.clear()
-    for key in ['num_prompt_tokens', 'num_generated_tokens']:
-        generation_info[key] = 0
+
+    resp_list, generators = _prepare_lmdeploy_request(
+        lmdeploy_engine,
+        template,
+        request_list,
+        generation_config=generation_config,
+        generation_info=generation_info,
+        use_tqdm=use_tqdm,
+        **kwargs)
 
     tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
-    prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=len(generators), dynamic_ncols=True, disable=not use_tqdm)
 
     async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
         generator = await generator
@@ -248,23 +283,23 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
         query = request['query']
         history = request['history']
         history.append([query, response])
-        generation_info['num_prompt_tokens'] += len(input_ids)
+
         generation_info['num_generated_tokens'] += len(output.token_ids)
         resp_list[i] = {'response': response, 'history': history}
         if verbose:
             print(f'{prompt_prefix}{tokenizer.decode(input_ids, False)}{output_prefix}', end='')
             print(tokenizer.decode(output.token_ids, False))
+        prog_bar.update()
 
     async def _batch_infer() -> None:
         tasks = [_inner_infer(i, inputs, generator) for i, inputs, generator in generators]
         for coro in asyncio.as_completed(tasks):
             await coro
-            prog_bar.update()
 
     asyncio.run(_batch_infer())
     prog_bar.close()
-    generation_info['runtime'] = time.perf_counter() - runtime
+    runtime = time.perf_counter() - runtime
+    generation_info['runtime'] = runtime
     generation_info['samples/s'] = len(generators) / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-
     return resp_list
