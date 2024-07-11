@@ -1505,29 +1505,50 @@ class Internvl2Template(InternvlTemplate):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
-        if len(inputs) == 0 or not example.get('videos'):
+        if len(inputs) == 0:
             return inputs, {}
-
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
+        images_path = example.get('images') or []
+        videos_path = example.get('videos') or []
+        if images_path:
+            from .vision_utils import load_image
+            pixel_values = []
+            if isinstance(images_path, str):
+                images_path = [images_path]
+            for image_path in images_path:
+                pixel_values.append(load_image(image_path))
 
-        pixel_values = example.get('pixel_values')
-        pixel_values = torch.cat(pixel_values, dim=0)
-        image_bs = pixel_values.shape[0]
-
-        idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
-        img_tokens: List[int] = self.tokenizer.encode(
-            '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n', add_special_tokens=False)
-        input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
-        if labels is not None:
-            labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
-
-        inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-        inputs['image_flags'] = torch.ones(image_bs)
-
+            assert len(images_path) == len(idx_list)
+            added_tokens_len = 0
+            for idx, pv in zip(idx_list, pixel_values):
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n', add_special_tokens=False)
+                input_ids = input_ids[:idx+added_tokens_len] + img_tokens + input_ids[idx+added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx+added_tokens_len] + [-100] * len(img_tokens) + labels[idx+added_tokens_len + 1:]
+                added_tokens_len += len(img_tokens)
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
+        if videos_path:
+            if not isinstance(videos_path, (list, tuple)):
+                videos_path = [videos_path]
+            assert len(videos_path) == 1
+            pixel_values, num_patches = self.load_video(videos_path[0])
+            assert pixel_values.shape[0] == len(idx_list)
+            added_tokens_len = 0
+            for idx, num_patch in zip(idx_list, num_patches):
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
+                input_ids = input_ids[:idx+added_tokens_len] + img_tokens + input_ids[idx+added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx+added_tokens_len] + [-100] * len(img_tokens) + labels[idx+added_tokens_len + 1:]
+                added_tokens_len += len(img_tokens)
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         inputs.pop('loss_scale', None)
         return inputs, {}
 
