@@ -118,6 +118,9 @@ def llm_export(args: ExportArguments) -> None:
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
+        elif args.quant_method in ('bnb', 'hqq', 'eetq'):
+            model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
+            model.save_pretrained(args.quant_output_dir)
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')
 
