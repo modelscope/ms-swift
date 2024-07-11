@@ -278,9 +278,13 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
                           request_list: List[Dict[str, Any]],
                           *,
                           generation_config: VllmGenerationConfig,
+                          generation_info: Dict[str, Any],
                           lora_request: Optional['LoRARequest'] = None,
                           use_tqdm: bool = False,
                           **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
+    for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
+        generation_info[key] = 0
+
     template.model = llm_engine
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -327,22 +331,25 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': history}
             continue
-
+        generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
+        generation_info['num_samples'] += 1
         _add_vllm_request(
             llm_engine, inputs, request_id=str(i), generation_config=generation_config, **add_request_kwargs)
     return resp_list, agent_state
 
 
 @torch.inference_mode()
-def inference_stream_vllm(llm_engine: LLMEngine,
-                          template: Template,
-                          request_list: List[Dict[str, Any]],
-                          *,
-                          generation_config: Optional[VllmGenerationConfig] = None,
-                          generation_info: Optional[Dict[str, Any]] = None,
-                          lora_request: Optional['LoRARequest'] = None,
-                          use_tqdm: bool = False,
-                          **kwargs) -> Iterator[List[Dict[str, Any]]]:
+def inference_stream_vllm(
+        llm_engine: LLMEngine,
+        template: Template,
+        request_list: List[Dict[str, Any]],
+        *,
+        generation_config: Optional[VllmGenerationConfig] = None,
+        generation_info: Optional[Dict[str, Any]] = None,
+        lora_request: Optional['LoRARequest'] = None,
+        use_tqdm: bool = False,
+        flush_steps: Optional[int] = None,  # Ensuring efficiency
+        **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system'.
@@ -356,34 +363,43 @@ def inference_stream_vllm(llm_engine: LLMEngine,
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
-    resp_list, agent_state = _prepare_vllm_request(
-        llm_engine,
-        template,
-        request_list,
-        generation_config=generation_config,
-        lora_request=lora_request,
-        use_tqdm=use_tqdm,
-        **kwargs)
-
     if generation_info is None:
         generation_info = {}
     else:
         generation_info.clear()
 
+    resp_list, agent_state = _prepare_vllm_request(
+        llm_engine,
+        template,
+        request_list,
+        generation_config=generation_config,
+        generation_info=generation_info,
+        lora_request=lora_request,
+        use_tqdm=use_tqdm,
+        **kwargs)
+
     if generation_config.use_beam_search:
         error_msg = 'Streaming generation does not support beam search.'
         raise ValueError(error_msg)
 
+    n_finished = 0
+    n_steps = 0
+    if flush_steps is None:
+        flush_steps = min(10, generation_info['num_samples'])
     print_idx_list = [[0] for _ in range(len(request_list))]
-    prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
+    num_generated_tokens = [0] * len(request_list)
+    prog_bar = tqdm(total=generation_info['num_samples'], dynamic_ncols=True, disable=not use_tqdm)
     while llm_engine.has_unfinished_requests():
-        for key in ['num_prompt_tokens', 'num_generated_tokens']:
-            generation_info[key] = 0
+        is_flush = False
+        n_steps += 1
         step_outputs = llm_engine.step()
         for output in step_outputs:
             i = int(output.request_id)
             request = request_list[i]
             generate_ids = output.outputs[0].token_ids
+            if not output.finished and n_steps % flush_steps != 0:
+                continue
+            is_flush = True
             safe_response = template.generate_ids_to_response(
                 generate_ids, output.finished, print_idx=print_idx_list[i])
             query = request['query']
@@ -394,14 +410,20 @@ def inference_stream_vllm(llm_engine: LLMEngine,
                 history[-1] = [query, safe_response]
             else:
                 history[-1][-1] = history[-1][-1][:agent_state[i][1]] + safe_response
-            generation_info['num_prompt_tokens'] += len(output.prompt_token_ids)
-            generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
+
+            n_gen_tokens = sum(len(_output.token_ids) for _output in output.outputs)
+            generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
+            num_generated_tokens[i] = n_gen_tokens
+
             resp_list[i] = {'response': safe_response, 'history': history}
             if output.finished:
+                n_finished += 1
                 prog_bar.update()
+        if not is_flush:
+            continue
         runtime = time.perf_counter() - start_runtime
         generation_info['runtime'] = runtime
-        generation_info['samples/s'] = len(step_outputs) / runtime
+        generation_info['samples/s'] = n_finished / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         yield resp_list
     prog_bar.close()
@@ -433,26 +455,25 @@ def inference_vllm(llm_engine: LLMEngine,
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
+    if generation_info is None:
+        generation_info = {}
+    else:
+        generation_info.clear()
+
     resp_list, agent_state = _prepare_vllm_request(
         llm_engine,
         template,
         request_list,
         generation_config=generation_config,
+        generation_info=generation_info,
         lora_request=lora_request,
         use_tqdm=use_tqdm,
         **kwargs)
 
-    if generation_info is None:
-        generation_info = {}
-    else:
-        generation_info.clear()
-    for key in ['num_prompt_tokens', 'num_generated_tokens']:
-        generation_info[key] = 0
-
     tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
-    prog_bar = tqdm(total=len(request_list), dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=generation_info['num_samples'], dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
@@ -474,7 +495,6 @@ def inference_vllm(llm_engine: LLMEngine,
         else:
             history[-1][-1] = history[-1][-1] + response
 
-        generation_info['num_prompt_tokens'] += len(output.prompt_token_ids)
         generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
         resp_list[i] = {'response': response, 'history': history}
         if verbose:

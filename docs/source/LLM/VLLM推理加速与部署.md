@@ -59,7 +59,6 @@ history1 = resp_list[1]['history']
 request_list = [{'query': '这有什么好吃的', 'history': history1}]
 gen = inference_stream_vllm(llm_engine, template, request_list, generation_info=generation_info)
 query = request_list[0]['query']
-history1 = resp_list[1]['history']
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for resp_list in gen:
