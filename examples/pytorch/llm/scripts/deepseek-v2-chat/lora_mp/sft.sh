@@ -7,7 +7,6 @@ swift sft \
     --tuner_backend peft \
     --dtype bf16 \
     --output_dir output \
-    --ddp_backend nccl \
     --dataset alpaca-zh#5000 \
     --num_train_epochs 1 \
     --max_length 1024 \

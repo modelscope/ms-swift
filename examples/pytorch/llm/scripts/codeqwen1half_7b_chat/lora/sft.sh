@@ -8,7 +8,6 @@ swift sft \
     --tuner_backend peft \
     --dtype AUTO \
     --output_dir output \
-    --ddp_backend nccl \
     --dataset leetcode-python-en \
     --num_train_epochs 3 \
     --max_length 2048 \

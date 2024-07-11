@@ -558,7 +558,8 @@ def _prepare_inputs(model: PreTrainedModel,
                     system: Optional[str] = None,
                     images: Optional[List[str]] = None,
                     *,
-                    generation_config: Optional[GenerationConfig] = None,
+                    generation_config: GenerationConfig,
+                    generation_info: Dict[str, Any],
                     stop_words: Optional[StopWords] = None,
                     adapter_names: Optional[List[str]] = None,
                     **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
@@ -599,9 +600,6 @@ def _prepare_inputs(model: PreTrainedModel,
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
-    if generation_config is None:
-        generation_config = getattr(model, 'generation_config')
-    generation_config = deepcopy(generation_config)
 
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
@@ -626,7 +624,7 @@ def _prepare_inputs(model: PreTrainedModel,
 
     stopping_criteria = StoppingCriteriaList([StopWordsCriteria(tokenizer, stop_words, **tokenizer_kwargs)])
     inputs['stopping_criteria'] = stopping_criteria
-    inputs['generation_config'] = generation_config
+    generation_info['num_prompt_tokens'] = token_len
     return inputs, tokenizer_kwargs, token_len, example
 
 
@@ -651,6 +649,13 @@ def inference_stream(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config')
+    generation_config = deepcopy(generation_config)
+    if generation_info is None:
+        generation_info = {}
+    else:
+        generation_info.clear()
     inputs, tokenizer_kwargs, token_len, example = _prepare_inputs(
         model,
         template,
@@ -659,16 +664,12 @@ def inference_stream(model: PreTrainedModel,
         system,
         images,
         generation_config=generation_config,
+        generation_info=generation_info,
         stop_words=stop_words,
         adapter_names=adapter_names,
         **kwargs)
     if len(inputs) == 0:
         return '', history
-    if generation_info is None:
-        generation_info = {}
-    else:
-        generation_info.clear()
-    generation_info['num_prompt_tokens'] = token_len
 
     # agent support
     is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
@@ -677,13 +678,12 @@ def inference_stream(model: PreTrainedModel,
         act_length = len(history[-1][-1])
         query = None
 
-    generation_config = inputs['generation_config']
     if generation_config.num_beams != 1:
         error_msg = 'Streaming generation does not support beam search.'
         raise ValueError(error_msg)
 
     streamer = TokenListIteratorStreamer()
-    generation_kwargs = {'streamer': streamer, **inputs}
+    generation_kwargs = {'streamer': streamer, 'generation_config': generation_config, **inputs}
     _model_generate = model.generate
     if is_torch_npu_available():
 
@@ -753,6 +753,13 @@ def inference(model: PreTrainedModel,
         history = []
     else:
         history = deepcopy(history)
+    if generation_config is None:
+        generation_config = getattr(model, 'generation_config')
+    generation_config = deepcopy(generation_config)
+    if generation_info is None:
+        generation_info = {}
+    else:
+        generation_info.clear()
     inputs, tokenizer_kwargs, token_len, example = _prepare_inputs(
         model,
         template,
@@ -761,16 +768,12 @@ def inference(model: PreTrainedModel,
         system,
         images,
         generation_config=generation_config,
+        generation_info=generation_info,
         stop_words=stop_words,
         adapter_names=adapter_names,
         **kwargs)
     if len(inputs) == 0:
         return '', history
-    if generation_info is None:
-        generation_info = {}
-    else:
-        generation_info.clear()
-    generation_info['num_prompt_tokens'] = token_len
 
     # agent support
     is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
@@ -794,7 +797,7 @@ def inference(model: PreTrainedModel,
         else:
             print(f'[QUERY]{query}\n{output_prefix}', end='')
 
-    generate_ids = model.generate(streamer=streamer, **inputs)
+    generate_ids = model.generate(streamer=streamer, generation_config=generation_config, **inputs)
     generate_ids = template.get_generate_ids(generate_ids, token_len)
     generation_info['num_generated_tokens'] = len(generate_ids)
     if verbose and stream is False:

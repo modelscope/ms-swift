@@ -9,7 +9,6 @@ swift sft \
     --template_type AUTO \
     --dtype AUTO \
     --output_dir output \
-    --ddp_backend nccl \
     --dataset dureader-robust-zh \
     --train_dataset_sample 20000 \
     --num_train_epochs 1 \
