@@ -15,7 +15,6 @@ from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
-from swift.llm.utils.vision_utils import load_video
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, upper_bound, use_torchacc
 
@@ -1439,6 +1438,7 @@ class Internvl2Template(InternvlTemplate):
             if not isinstance(videos_path, (list, tuple)):
                 videos_path = [videos_path]
             assert len(videos_path) == 1
+            from swift.llm.utils.vision_utils import load_video
             pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
             assert len(num_patches) == len(idx_list)
             added_tokens_len = 0
