@@ -192,8 +192,7 @@ messages = [{
     'content': [
         {'type': 'text', 'text': 'Picture 1:'},
         {'type': 'image_url', 'image_url': {'url': image_url}},
-        {'type': 'text', 'text': '\n'},
-        {'type': 'text', 'text': query},
+        {'type': 'text', 'text': f'\n{query}'},
     ]
 }]
 resp = client.chat.completions.create(

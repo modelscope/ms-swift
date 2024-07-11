@@ -57,7 +57,9 @@ class ArgumentsBase:
         return value
 
     @staticmethod
-    def _is_multimodal(model_type: str) -> bool:
+    def _is_multimodal(model_type: Optional[str] = None) -> bool:
+        if model_type is None:
+            return False
         model_info = MODEL_MAPPING[model_type]
         tags = model_info.get('tags') or []
         return 'multi-modal' in tags
