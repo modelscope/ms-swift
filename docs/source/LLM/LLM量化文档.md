@@ -305,7 +305,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```
 
 **注意**
-- hqq支持更多自定义参数，比如为不同网络层指定不同量化配置，具体请见[命令行参数](https://github.com/modelscope/swift/blob/main/docs/source/LLM/命令行参数.md)
+- hqq支持更多自定义参数，比如为不同网络层指定不同量化配置，具体请见[命令行参数](命令行参数.md)
 - eetq量化为8bit量化，无需指定quantization_bit。目前不支持bf16，需要指定dtype为fp16
 - eetq目前qlora速度比较慢，推荐使用hqq。参考[issue](https://github.com/NetEase-FuXi/EETQ/issues/17)
 
