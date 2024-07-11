@@ -100,7 +100,7 @@ def load_image(img_path, input_size=448, max_num=6):
     return pixel_values
 
 
-def get_index(self, bound, fps, max_frame, first_idx=0, num_segments=32):
+def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
     if bound:
         start, end = bound[0], bound[1]
     else:
@@ -113,7 +113,7 @@ def get_index(self, bound, fps, max_frame, first_idx=0, num_segments=32):
     return frame_indices
 
 
-def load_video(self, video_path, bound=None, input_size=448, max_num=1, num_segments=32):
+def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
     from decord import VideoReader, cpu
     from PIL import Image
     vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
@@ -121,11 +121,11 @@ def load_video(self, video_path, bound=None, input_size=448, max_num=1, num_segm
     fps = float(vr.get_avg_fps())
 
     pixel_values_list, num_patches_list = [], []
-    transform = self.build_transform(input_size=input_size)
-    frame_indices = self.get_index(bound, fps, max_frame, first_idx=0, num_segments=num_segments)
+    transform = build_transform(input_size=input_size)
+    frame_indices = get_index(bound, fps, max_frame, first_idx=0, num_segments=num_segments)
     for frame_index in frame_indices:
         img = Image.fromarray(vr[frame_index].asnumpy()).convert('RGB')
-        img = self.dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
+        img = dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
         pixel_values = [transform(tile) for tile in img]
         pixel_values = torch.stack(pixel_values)
         num_patches_list.append(pixel_values.shape[0])
