@@ -9,7 +9,6 @@ swift sft \
     --template_type AUTO \
     --dtype bf16 \
     --output_dir output \
-    --ddp_backend nccl \
     --dataset blossom-math-zh \
     --num_train_epochs 1 \
     --max_length 1024 \
