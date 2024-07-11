@@ -165,7 +165,7 @@ Final Answer: 如果您想要一款拍照表现出色的手机，我为您推荐
 | ms-bench         | 60000(抽样)     |
 | self-recognition | 3000(重复抽样)  |
 
-我们也支持使用自己的Agent数据集。数据集格式需要符合[自定义数据集](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86)的要求。更具体地，Agent的response/system应该符合上述的Action/Action Input/Observation格式。
+我们也支持使用自己的Agent数据集。数据集格式需要符合[自定义数据集](%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86)的要求。更具体地，Agent的response/system应该符合上述的Action/Action Input/Observation格式。
 
 我们将**MLP**和**Embedder**加入了lora_target_modules. 你可以通过指定`--lora_target_modules ALL`在所有的linear层(包括qkvo以及mlp和embedder)加lora. 这**通常是效果最好的**.
 
