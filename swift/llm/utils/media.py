@@ -1,8 +1,10 @@
+import hashlib
 import os
 import shutil
 from typing import Any, Dict, Literal, Optional, Union
 
 import numpy as np
+from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.utils import get_logger
@@ -110,6 +112,7 @@ class MediaTag:
 class MediaCache:
 
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
+    lock_dir = os.path.join(get_cache_dir(), 'lockers')
 
     media_type_urls = {
         'llava', 'coco', 'sam', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2', 'share_textvqa', 'web-celebrity',
@@ -139,9 +142,11 @@ class MediaCache:
         Returns:
             The local dir contains the extracted files.
         """
-        from swift.utils import safe_ddp_context, FileLockContext
+        from swift.utils import safe_ddp_context
+        file_path = hashlib.md5(media_type_or_url.encode('utf-8')).hexdigest() + '.lock'
+        file_path = os.path.join(MediaCache.lock_dir, file_path)
         with safe_ddp_context():
-            with FileLockContext(media_type_or_url):
+            with FileLock(file_path):
                 return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias)
 
     @staticmethod

@@ -22,7 +22,7 @@ Swift DOCUMENTATION
 
    LLM/LLM推理文档.md
    LLM/LLM微调文档.md
-   LLM/DPO训练文档.md
+   LLM/人类偏好对齐训练文档.md
    LLM/LLM评测文档.md
    LLM/LLM量化文档.md
    LLM/VLLM推理加速与部署.md
@@ -36,6 +36,7 @@ Swift DOCUMENTATION
    LLM/Qwen1.5全流程最佳实践.md
    LLM/NPU推理与微调最佳实践.md
    LLM/Grok训练和推理.md
+   LLM/DPO算法最佳实践.md
    LLM/ORPO算法最佳实践.md
    LLM/SimPO算法最佳实践.md
    LLM/HuggingFace生态兼容.md
@@ -55,17 +56,15 @@ Swift DOCUMENTATION
    Multi-Modal/mplug-owl2最佳实践.md
    Multi-Modal/cogvlm最佳实践.md
    Multi-Modal/cogvlm2最佳实践.md
+   Multi-Modal/cogvlm2-video最佳实践.md
+   Multi-Modal/florence最佳实践.md
+   Multi-Modal/mplug-owl2最佳实践.md
+   Multi-Modal/glm4v最佳实践.md
    Multi-Modal/minicpm-v最佳实践.md
    Multi-Modal/minicpm-v-2最佳实践.md
    Multi-Modal/minicpm-v-2.5最佳实践.md
    Multi-Modal/internvl最佳实践.md
    Multi-Modal/MLLM部署文档.md
-
-.. toctree::
-   :maxdepth: 2
-   :caption: AIGC Training and Inference
-
-   AIGC/AnimateDiff微调推理文档.md
 
 .. toctree::
    :maxdepth: 2
