@@ -1387,6 +1387,76 @@ class InternvlTemplate(Template):
 
 class Internvl2Template(InternvlTemplate):
 
+    video_segments = 8
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        if media_type == 'image':
+            return [[-100]]
+        elif media_type == 'video':
+            context_list = []
+            for i in range(self.video_segments):
+                context_list.append(f'Frame{i + 1}: ')
+                context_list.append([-100])
+                context_list.append('\n')
+            return context_list
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super(InternvlTemplate, self).encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        labels = inputs.get('labels')
+        images_path = example.get('images') or []
+        videos_path = example.get('videos') or []
+        if images_path:
+            from .vision_utils import load_image
+            pixel_values = []
+            if isinstance(images_path, str):
+                images_path = [images_path]
+            for image_path in images_path:
+                pixel_values.append(load_image(image_path))
+
+            assert len(images_path) == len(idx_list)
+            added_tokens_len = 0
+            patches = 0
+            for idx, pv in zip(idx_list, pixel_values):
+                patches += pv.shape[0]
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n',
+                    add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(patches)
+        if videos_path:
+            if not isinstance(videos_path, (list, tuple)):
+                videos_path = [videos_path]
+            assert len(videos_path) == 1
+            from swift.llm.utils.vision_utils import load_video
+            pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
+            assert len(num_patches) == len(idx_list)
+            added_tokens_len = 0
+            for idx, num_patch in zip(idx_list, num_patches):
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(sum(num_patches))
+        inputs.pop('loss_scale', None)
+        return inputs, {}
+
     def __init__(self):
         self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
         Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
