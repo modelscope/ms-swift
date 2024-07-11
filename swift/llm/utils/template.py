@@ -1494,13 +1494,13 @@ class Internvl2Template(InternvlTemplate):
         elif media_type == 'video':
             context_list = []
             for i in range(self.video_segments):
-                context_list.append([f'Frame{i + 1}: '])
+                context_list.append(f'Frame{i + 1}: ')
                 context_list.append([-100])
-                context_list.append(['\n'])
+                context_list.append('\n')
             return context_list
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super(InternvlTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
@@ -1518,22 +1518,25 @@ class Internvl2Template(InternvlTemplate):
 
             assert len(images_path) == len(idx_list)
             added_tokens_len = 0
+            patches = 0
             for idx, pv in zip(idx_list, pixel_values):
+                patches += pv.shape[0]
                 img_tokens: List[int] = self.tokenizer.encode(
                     '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n', add_special_tokens=False)
                 input_ids = input_ids[:idx+added_tokens_len] + img_tokens + input_ids[idx+added_tokens_len + 1:]
                 if labels is not None:
                     labels = labels[:idx+added_tokens_len] + [-100] * len(img_tokens) + labels[idx+added_tokens_len + 1:]
-                added_tokens_len += len(img_tokens)
+                added_tokens_len += len(img_tokens)-1
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
             inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(patches)
         if videos_path:
             if not isinstance(videos_path, (list, tuple)):
                 videos_path = [videos_path]
             assert len(videos_path) == 1
-            pixel_values, num_patches = self.load_video(videos_path[0])
-            assert pixel_values.shape[0] == len(idx_list)
+            pixel_values, num_patches = self.load_video(videos_path[0], num_segments=self.video_segments)
+            assert len(num_patches) == len(idx_list)
             added_tokens_len = 0
             for idx, num_patch in zip(idx_list, num_patches):
                 img_tokens: List[int] = self.tokenizer.encode(
@@ -1541,10 +1544,11 @@ class Internvl2Template(InternvlTemplate):
                 input_ids = input_ids[:idx+added_tokens_len] + img_tokens + input_ids[idx+added_tokens_len + 1:]
                 if labels is not None:
                     labels = labels[:idx+added_tokens_len] + [-100] * len(img_tokens) + labels[idx+added_tokens_len + 1:]
-                added_tokens_len += len(img_tokens)
+                added_tokens_len += len(img_tokens)-1
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(sum(num_patches))
         inputs.pop('loss_scale', None)
         return inputs, {}
 
