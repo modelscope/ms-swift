@@ -22,7 +22,7 @@ from .template import Template
 
 def get_lmdeploy_engine(
         model_type: str,
-        # torch_dtype: Optional[Dtype] = None,  # TODO
+        # torch_dtype: Optional[Dtype] = None,  # TODO: https://github.com/InternLM/lmdeploy/issues/1846
         *,
         model_id_or_path: Optional[str] = None,
         revision: Optional[str] = None,
