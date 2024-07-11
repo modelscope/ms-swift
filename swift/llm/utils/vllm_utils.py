@@ -282,6 +282,9 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
                           lora_request: Optional['LoRARequest'] = None,
                           use_tqdm: bool = False,
                           **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
+    for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
+        generation_info[key] = 0
+
     template.model = llm_engine
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
@@ -364,8 +367,6 @@ def inference_stream_vllm(
         generation_info = {}
     else:
         generation_info.clear()
-    for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
-        generation_info[key] = 0
 
     resp_list, agent_state = _prepare_vllm_request(
         llm_engine,
@@ -458,8 +459,6 @@ def inference_vllm(llm_engine: LLMEngine,
         generation_info = {}
     else:
         generation_info.clear()
-    for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
-        generation_info[key] = 0
 
     resp_list, agent_state = _prepare_vllm_request(
         llm_engine,
