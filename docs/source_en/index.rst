@@ -20,12 +20,13 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: LLM Training and Inference
 
-   LLM/LLM-fine-tuning.md
    LLM/LLM-inference.md
+   LLM/LLM-fine-tuning.md
    LLM/Human-Preference-Alignment-Training-Documentation.md
    LLM/LLM-eval.md
    LLM/LLM-quantization.md
    LLM/VLLM-inference-acceleration-and-deployment.md
+   LLM/LmDeploy-inference-acceleration-and-deployment.md
    LLM/LLM-exp.md
    LLM/Command-line-parameters.md
    LLM/Supported-models-datasets.md
@@ -53,15 +54,17 @@ Swift DOCUMENTATION
    Multi-Modal/internlm-xcomposer2-best-practice.md
    Multi-Modal/phi3-vision-best-practice.md
    Multi-Modal/llava-best-practice.md
+   Multi-Modal/llava-video-best-practice.md
    Multi-Modal/yi-vl-best-practice.md
+   Multi-Modal/florence-best-pratice.md
    Multi-Modal/cogvlm-best-practice.md
    Multi-Modal/cogvlm2-best-practice.md
-   Multi-Modal/cogvlm2-video-best-practice.md
-   Multi-Modal/florence-best-pratice.md
    Multi-Modal/glm4v-best-practice.md
+   Multi-Modal/cogvlm2-video-best-practice.md
    Multi-Modal/minicpm-v-best-practice.md
    Multi-Modal/internvl-best-practice.md
    Multi-Modal/mutlimodal-deployment.md
+   Multi-Modal/vllm-inference-acceleration.md
 
 .. toctree::
    :maxdepth: 2
