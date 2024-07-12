@@ -635,6 +635,7 @@ class SftArguments(ArgumentsBase):
     custom_dataset_info: Optional[str] = None  # .json
 
     device_map_config_path: Optional[str] = None
+    device_max_memory: Optional[List] = None
 
     # generation config
     max_new_tokens: int = 2048
