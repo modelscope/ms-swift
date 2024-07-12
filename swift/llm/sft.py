@@ -5,7 +5,6 @@ from typing import Any, Dict, Union
 
 import json
 import torch
-from accelerate import Accelerator
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled

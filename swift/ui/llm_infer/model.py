@@ -80,6 +80,16 @@ class Model(BaseUI):
                 'en': 'Only available when sft_type=lora'
             }
         },
+        'lora_modules': {
+            'label': {
+                'zh': '外部lora模块',
+                'en': 'More lora modules'
+            },
+            'info': {
+                'zh': '空格分割的name=/path1/path2键值对',
+                'en': 'name=/path1/path2 split by blanks'
+            }
+        },
         'more_params': {
             'label': {
                 'zh': '更多参数',
