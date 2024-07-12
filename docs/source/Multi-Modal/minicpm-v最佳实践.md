@@ -11,6 +11,7 @@
 
 ## 环境准备
 ```shell
+# 请使用"ms-swift>=2.2"或者main分支.
 pip install 'ms-swift[llm]' -U
 ```
 
