@@ -1135,6 +1135,7 @@ class InferArguments(ArgumentsBase):
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
     device_map_config_path: Optional[str] = None
+    device_max_memory: List[str] = field(default_factory=list)
 
     # vllm
     gpu_memory_utilization: float = 0.9

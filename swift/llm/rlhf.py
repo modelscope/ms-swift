@@ -61,6 +61,10 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         else:
             model_kwargs['device_map'] = 'auto'
 
+    if args.device_max_memory:
+        assert len(args.device_max_memory) == torch.cuda.device_count()
+        model_kwargs['max_memory'] = {i: mem for i, mem in enumerate(args.device_max_memory)}
+
     # quantization
     if args.quant_method == 'hqq':
         from transformers import HqqConfig
