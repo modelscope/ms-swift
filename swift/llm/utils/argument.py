@@ -57,7 +57,9 @@ class ArgumentsBase:
         return value
 
     @staticmethod
-    def _is_multimodal(model_type: str) -> bool:
+    def _is_multimodal(model_type: Optional[str] = None) -> bool:
+        if model_type is None:
+            return False
         model_info = MODEL_MAPPING[model_type]
         tags = model_info.get('tags') or []
         return 'multi-modal' in tags
@@ -490,6 +492,7 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    lora_target_regex: Optional[str] = None
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05

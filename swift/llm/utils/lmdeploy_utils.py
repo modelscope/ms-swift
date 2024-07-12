@@ -189,8 +189,7 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
     async def _batch_infer() -> None:
         tasks = [_inner_infer(i, inputs, generator) for i, inputs, generator in generators]
-        for coro in asyncio.as_completed(tasks):
-            await coro
+        await asyncio.gather(*tasks)
 
     thread = Thread(target=lambda: asyncio.run(_batch_infer()))
     thread.start()
@@ -283,8 +282,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
 
     async def _batch_infer() -> None:
         tasks = [_inner_infer(i, inputs, generator) for i, inputs, generator in generators]
-        for coro in asyncio.as_completed(tasks):
-            await coro
+        await asyncio.gather(*tasks)
 
     asyncio.run(_batch_infer())
     prog_bar.close()
