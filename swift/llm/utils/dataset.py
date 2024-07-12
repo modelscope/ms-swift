@@ -719,7 +719,7 @@ register_dataset(
 
 
 def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
-    url = 'https://modelscope.cn/datasets/huangjintao/VideoChatGPT/resolve/master/videos.zip'
+    url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
     local_dir = MediaCache.download(url, 'video_chatgpt')
     local_dir = os.path.join(local_dir, 'Test_Videos')
     # only `.mp4`
@@ -742,7 +742,7 @@ def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.video_chatgpt,
-    'huangjintao/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
+    'swift/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
     _preprocess_video_chatgpt,
     get_dataset_from_repo,
     split=['test'],
@@ -1832,7 +1832,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.sharegpt,
-    'huangjintao/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
+    'swift/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
     preprocess_sharegpt,
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round'])
@@ -1977,7 +1977,7 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 
 register_dataset(
     DatasetName.agent_instruct_all_en,
-    'huangjintao/AgentInstruct_copy', ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
+    'swift/AgentInstruct_copy', ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
     ConversationsPreprocessor('human', 'gpt', repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
