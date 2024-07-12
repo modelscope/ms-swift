@@ -9,6 +9,7 @@
 
 ## Environment Setup
 ```shell
+# Please use 'ms-swift>=2.2' or the main branch.
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
