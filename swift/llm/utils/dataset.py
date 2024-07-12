@@ -719,7 +719,7 @@ register_dataset(
 
 
 def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
-    url = 'https://modelscope.cn/datasets/huangjintao/VideoChatGPT/resolve/master/videos.zip'
+    url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
     local_dir = MediaCache.download(url, 'video_chatgpt')
     local_dir = os.path.join(local_dir, 'Test_Videos')
     # only `.mp4`
