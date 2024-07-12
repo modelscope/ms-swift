@@ -1249,8 +1249,6 @@ class InferArguments(ArgumentsBase):
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
-        self.media_type = template_info.get('media_type', 'image')
-        self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 

@@ -883,7 +883,7 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
     pass
 
 
-register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True, media_type='audio')
+register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
 register_template(
     TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
@@ -1686,9 +1686,7 @@ class LlavaHfTemplate(Template):
 class LlavaVideoTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        assert media_type == 'video'
-        media_file = example['videos'][index]
-        if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
+        if media_type == 'image':
             return ['<image>\n']
         else:
             return ['<video>\n']
@@ -1725,7 +1723,6 @@ register_template(
     LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
     use_model=True,
     infer_media_type='round',
-    media_type='video',
     lazy_tokenize=True)
 
 register_template(
@@ -1733,7 +1730,6 @@ register_template(
     LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
     use_model=True,
     infer_media_type='round',
-    media_type='video',
     lazy_tokenize=True)
 
 
@@ -2231,8 +2227,7 @@ register_template(
     Cog2VideoTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
     use_model=True,
     infer_media_type='dialogue',
-    lazy_tokenize=True,
-    media_type='video')
+    lazy_tokenize=True)
 
 register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 

@@ -242,8 +242,20 @@ def prepare_model_template(args: InferArguments,
     return model, template
 
 
-def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue'],
-                    media_type: Literal['image', 'video', 'audio']) -> None:
+media_extensions = {
+    'image': ['.png', '.jpg', '.jpeg'],
+    'video': ['.mp4', '.avi', '.mov', '.wmv', '.mpg', '.mpeg', '.mv', '.flv'],
+    'audio': ['.mp3', '.wav', '.aac', '.ogg']
+}
+
+
+def get_media_type_of_file(filename):
+    for key, extensions in media_extensions.items():
+        if any([ext in filename.lower() for ext in extensions]):
+            return key
+
+
+def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue']) -> None:
     media_key = MediaTag.media_keys[media_type]
     a_an = 'an' if media_type[0] in {'i', 'a'} else 'a'
     text = f'Input {a_an} {media_type} path or URL <<< '
@@ -367,7 +379,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 history = []
                 infer_kwargs = {}
 
-            read_media_file(infer_kwargs, args.infer_media_type, args.media_type)
+            read_media_file(infer_kwargs, args.infer_media_type)
             infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:
                 system = template.default_system
