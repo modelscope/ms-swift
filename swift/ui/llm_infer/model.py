@@ -117,6 +117,7 @@ class Model(BaseUI):
             system = gr.Textbox(elem_id='system', lines=4, scale=20)
         Generate.build_ui(base_tab)
         with gr.Row():
+            gr.Textbox(elem_id='lora_modules', lines=1, is_list=True, scale=40)
             gr.Textbox(elem_id='more_params', lines=1, scale=20)
             gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
 

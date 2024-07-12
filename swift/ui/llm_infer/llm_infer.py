@@ -2,7 +2,6 @@ import os
 import re
 import sys
 import time
-from copy import copy
 from datetime import datetime
 from functools import partial
 from typing import Type
@@ -14,7 +13,7 @@ from gradio import Accordion, Tab
 from modelscope import GenerationConfig, snapshot_download
 
 from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, XRequestConfig, inference_client,
-                       inference_stream, limit_history_length, prepare_model_template)
+                       inference_stream, prepare_model_template)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime

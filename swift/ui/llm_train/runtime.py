@@ -16,6 +16,7 @@ from transformers import is_tensorboard_available
 from swift.ui.base import BaseUI
 from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
 from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, get_logger, read_tensorboard_file, tensorboard_smoothing
+from swift.utils.utils import format_time
 
 logger = get_logger()
 
@@ -422,23 +423,6 @@ class Runtime(BaseUI):
         ts = time.time()
         create_time = proc.create_time()
         create_time_formatted = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
-
-        def format_time(seconds):
-            days = int(seconds // (24 * 3600))
-            hours = int((seconds % (24 * 3600)) // 3600)
-            minutes = int((seconds % 3600) // 60)
-            seconds = int(seconds % 60)
-
-            if days > 0:
-                time_str = f'{days}d {hours}h {minutes}m {seconds}s'
-            elif hours > 0:
-                time_str = f'{hours}h {minutes}m {seconds}s'
-            elif minutes > 0:
-                time_str = f'{minutes}m {seconds}s'
-            else:
-                time_str = f'{seconds}s'
-
-            return time_str
 
         return f'pid:{pid}/create:{create_time_formatted}' \
                f'/running:{format_time(ts-create_time)}/cmd:{" ".join(proc.cmdline())}'
