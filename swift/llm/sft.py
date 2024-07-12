@@ -42,7 +42,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
     # Loading Model and Tokenizer
-    if is_deepspeed_zero3_enabled() or Accelerator().state.fsdp_plugin is not None:
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
         model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
