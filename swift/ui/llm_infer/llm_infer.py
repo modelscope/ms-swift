@@ -142,7 +142,7 @@ class LLMInfer(BaseUI):
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
-                    image = gr.File(elem_id='file', type='filepath')
+                    image = gr.Image(elem_id='file', type='filepath')
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
@@ -391,8 +391,8 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
-    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history, system,
-                     infer_model_type, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
+    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history,
+                     infer_model_type, system, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None, None, []
