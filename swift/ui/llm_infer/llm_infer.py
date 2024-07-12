@@ -84,12 +84,6 @@ class LLMInfer(BaseUI):
                 'en': 'Input:'
             },
         },
-        'file': {
-            'label': {
-                'zh': '多模态文件',
-                'en': 'File for the multi-modal'
-            },
-        },
         'clear_history': {
             'value': {
                 'zh': '清除对话信息',
@@ -142,7 +136,7 @@ class LLMInfer(BaseUI):
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
-                    image = gr.Image(elem_id='file', type='filepath')
+                    image = gr.Image(type='filepath')
 
                 with gr.Row():
                     clear_history = gr.Button(elem_id='clear_history')
