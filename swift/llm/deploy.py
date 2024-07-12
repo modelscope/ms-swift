@@ -116,13 +116,13 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         messages = request.messages
-        # For agent, check if response is endwith observations and join tool observation
-        messages_join_observation(messages)
         images = request.images
         if _args.is_multimodal:
             compat_openai(messages, images, template.template_type)
             messages = decode_base64(messages=messages)['messages']
             images = decode_base64(images=images)['images']
+        # For agent, check if response is endwith observations and join tool observation
+        messages_join_observation(messages)
         example = messages_to_history(messages)
         if len(images) > 0:
             example['images'] = images
