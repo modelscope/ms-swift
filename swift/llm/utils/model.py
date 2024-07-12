@@ -3700,7 +3700,7 @@ def fix_internvl_inplace_bug(model) -> None:
 @register_model(
     ModelType.internvl2_40b,
     'OpenGVLab/InternVL2-40B',
-    LoRATM.internlm2,
+    LoRATM.llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
