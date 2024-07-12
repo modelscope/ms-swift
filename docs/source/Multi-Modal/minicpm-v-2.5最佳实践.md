@@ -10,6 +10,7 @@
 
 ## 环境准备
 ```shell
+# 请使用"ms-swift>=2.2"或者main分支.
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
