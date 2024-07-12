@@ -61,8 +61,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             model_kwargs['device_map'] = 'auto'
 
     if args.device_max_memory:
-        assert len(args.device_max_memory) == torch.cuda.device_count()
-        model_kwargs['max_memory'] = {i: mem for i, mem in enumerate(args.device_max_memory)}
+        n_gpu = torch.cuda.device_count()
+        assert len(args.device_max_memory) == n_gpu / local_world_size
+        model_kwargs['max_memory'] = {i: mem for i, mem in zip(list(range(local_rank, n_gpu, local_world_size)), args.device_max_memory)}
 
     if args.quant_method == 'hqq':
         from transformers import HqqConfig
