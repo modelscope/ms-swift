@@ -2442,7 +2442,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     hf_model_id='mistralai/Mistral-7B-v0.1')
 @register_model(
     ModelType.codestral_22b,
-    'huangjintao/Codestral-22B-v0.1',
+    'swift/Codestral-22B-v0.1',
     LoRATM.llama,
     TemplateType.default_generation,
     requires=['transformers>=4.34'],
@@ -4033,7 +4033,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 @register_model(
     ModelType.llama3_70b_instruct_awq,
-    'huangjintao/Meta-Llama-3-70B-Instruct-AWQ',
+    'swift/Meta-Llama-3-70B-Instruct-AWQ',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['autoawq'],
@@ -4044,7 +4044,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_70b_instruct_int8,
-    'huangjintao/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
+    'swift/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4055,7 +4055,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_70b_instruct_int4,
-    'huangjintao/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
+    'swift/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4066,7 +4066,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.llama3_8b_instruct_awq,
-    'huangjintao/Meta-Llama-3-8B-Instruct-AWQ',
+    'swift/Meta-Llama-3-8B-Instruct-AWQ',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['autoawq'],
@@ -4077,7 +4077,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_8b_instruct_int8,
-    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
+    'swift/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4088,7 +4088,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_8b_instruct_int4,
-    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
+    'swift/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -5106,7 +5106,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 
 @register_model(
     ModelType.llava1_5_13b_instruct,
-    'huangjintao/llava-1.5-13b-hf',
+    'swift/llava-1.5-13b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
@@ -5123,7 +5123,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     hf_model_id='llava-hf/llava-1.5-13b-hf')
 @register_model(
     ModelType.llava1_5_7b_instruct,
-    'huangjintao/llava-1.5-7b-hf',
+    'swift/llava-1.5-7b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
@@ -5147,7 +5147,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 @register_model(
     ModelType.llava1_6_vicuna_7b_instruct,
-    'huangjintao/llava-v1.6-vicuna-7b-hf',
+    'swift/llava-v1.6-vicuna-7b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
@@ -5163,7 +5163,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
 @register_model(
     ModelType.llava1_6_vicuna_13b_instruct,
-    'huangjintao/llava-v1.6-vicuna-13b-hf',
+    'swift/llava-v1.6-vicuna-13b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
@@ -5179,7 +5179,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
 @register_model(
     ModelType.llava1_6_mistral_7b_instruct,
-    'huangjintao/llava-v1.6-mistral-7b-hf',
+    'swift/llava-v1.6-mistral-7b-hf',
     LoRATM.llama,
     TemplateType.llava_mistral,
     support_vllm=True,
@@ -5202,7 +5202,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 
 @register_model(
     ModelType.llava1_6_yi_34b_instruct,
-    'huangjintao/llava-v1.6-34b-hf',
+    'swift/llava-v1.6-34b-hf',
     LoRATM.llama,
     TemplateType.llava_yi,
     support_vllm=True,
@@ -5226,7 +5226,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 
 @register_model(
     ModelType.llava_next_video_7b_dpo_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-DPO-hf',
+    'swift/LLaVA-NeXT-Video-7B-DPO-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5235,7 +5235,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-DPO-hf')
 @register_model(
     ModelType.llava_next_video_7b_32k_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-32K-hf',
+    'swift/LLaVA-NeXT-Video-7B-32K-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5244,7 +5244,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-32K-hf')
 @register_model(
     ModelType.llava_next_video_7b_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-hf',
+    'swift/LLaVA-NeXT-Video-7B-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5259,7 +5259,7 @@ def get_model_tokenizer_llava_next_video(*args, **kwargs):
 
 @register_model(
     ModelType.llava_next_video_34b_instruct,
-    'huangjintao/LLaVA-NeXT-Video-34B-hf',
+    'swift/LLaVA-NeXT-Video-34B-hf',
     LoRATM.llama,
     TemplateType.llava_next_video_yi,
     support_flash_attn=True,

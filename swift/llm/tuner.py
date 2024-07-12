@@ -105,7 +105,7 @@ def prepare_model(model, args: SftArguments):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
             lora_kwargs = {
                 'r': args.lora_rank,
-                'target_modules': args.lora_target_modules,
+                'target_modules': args.lora_target_regex or args.lora_target_modules,
                 'lora_alpha': args.lora_alpha,
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,
