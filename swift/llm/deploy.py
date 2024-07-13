@@ -184,7 +184,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     request_id = request_info['request_id']
 
     kwargs = {'max_new_tokens': request.max_tokens}
-    for key in ['n', 'stop', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
+    for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
         kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
         new_value = getattr(request, key)
@@ -192,6 +192,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             kwargs[key] = getattr(llm_engine.generation_config, key)
         else:
             kwargs[key] = new_value
+    kwargs['stop'] = (llm_engine.generation_config.stop or []) + (getattr(request, 'stop') or [])
 
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search and request.stream:
@@ -343,7 +344,7 @@ class _GenerationConfig(GenerationConfig):
 
 @torch.inference_mode()
 async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
-    global model, template
+    global model, template, _args
     result = await _prepare_request(request)
     if isinstance(result, JSONResponse):
         return result
@@ -359,8 +360,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         new_value = getattr(request, key)
         if new_value is None:
             kwargs[key] = getattr(model.generation_config, key)
+            if key == 'temperature':
+                do_sample = getattr(model.generation_config, 'do_sample')
+                if not do_sample:
+                    kwargs[key] = 0
         else:
             kwargs[key] = new_value
+
     if kwargs['temperature'] == 0:
         kwargs['do_sample'] = False
         kwargs['temperature'] = 1
@@ -374,7 +380,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     set_generation_config(model, generation_config)  # inplace
     model.generation_config = _old_generation_config
     request_info['generation_config'] = generation_config
-    request_info.update({'seed': request.seed, 'stop': request.stop, 'stream': request.stream})
+    stop = (_args.stop_words or []) + (getattr(request, 'stop') or [])
+    request_info.update({'seed': request.seed, 'stop': stop, 'stream': request.stream})
     logger.info(request_info)
 
     created_time = int(time.time())
@@ -397,7 +404,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             model,
             template,
             **example,
-            stop_words=request.stop,
+            stop_words=stop,
             generation_config=generation_config,
             generation_info=generation_info,
             **adapter_kwargs)
@@ -441,7 +448,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             model,
             template,
             **example,
-            stop_words=request.stop,
+            stop_words=stop,
             generation_config=generation_config,
             generation_info=generation_info,
             **adapter_kwargs)
