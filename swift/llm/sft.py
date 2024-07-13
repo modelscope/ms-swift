@@ -60,6 +60,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         elif not use_torchacc():
             model_kwargs['device_map'] = 'auto'
 
+    if args.device_max_memory:
+        n_gpu = torch.cuda.device_count()
+        assert len(args.device_max_memory) == n_gpu / local_world_size
+        model_kwargs['max_memory'] = {
+            i: mem
+            for i, mem in zip(list(range(local_rank, n_gpu, local_world_size)), args.device_max_memory)
+        }
+
     if args.quant_method == 'hqq':
         from transformers import HqqConfig
         if args.hqq_dynamic_config_path is not None:
