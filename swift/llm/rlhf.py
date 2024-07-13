@@ -63,7 +63,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
 
     if args.device_max_memory:
         n_gpu = torch.cuda.device_count()
-        assert len(args.device_max_memory) == n_gpu / local_world_size
+        assert len(args.device_max_memory) == n_gpu // local_world_size
         model_kwargs['max_memory'] = {
             i: mem
             for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
