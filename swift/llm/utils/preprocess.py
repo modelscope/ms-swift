@@ -24,7 +24,7 @@ def _reduce_columns(cls: type) -> type:
     cls._patching = True
 
     def new_call_func(self, dataset: HfDataset) -> HfDataset:
-        self.column_state = set()
+        self.column_state = set(['images', 'videos', 'audios'])
         dataset = call_func(self, dataset)
         for k in dataset.features.keys():
             if k not in self.column_state:
@@ -161,7 +161,10 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         medias = self.parse_medias(d)
         self.media_replacer(row, medias)
         if self.media_type:
-            row[self.media_name] = medias
+            if not isinstance(self.media_key, str):
+                row[self.media_name] = medias
+            else:
+                row[self.media_key] = medias
         return row
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
@@ -237,6 +240,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 hr.append([q[self.from_key], r[self.from_key]])
             query = conversations[-2][self.value_key]
             query_role = conversations[-2][self.from_key]
+            query_role = query_role if query_role == 'tool' else 'user'
             response = conversations[-1][self.value_key]
             system = sys
             history = h
@@ -251,7 +255,10 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             medias = self.parse_medias(d)
             self.media_replacer(row, medias)
             if self.media_type:
-                row[self.media_name] = medias
+                if not isinstance(self.media_key, str):
+                    row[self.media_name] = medias
+                else:
+                    row[self.media_key] = medias
             return row
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
@@ -306,7 +313,10 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
             medias = self.parse_medias(d)
             self.media_replacer(row, medias)
             if self.media_type:
-                row[self.media_name] = medias
+                if not isinstance(self.media_key, str):
+                    row[self.media_name] = medias
+                else:
+                    row[self.media_key] = medias
         except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')

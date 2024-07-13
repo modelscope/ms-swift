@@ -7,7 +7,6 @@ swift sft \
     --tuner_backend peft \
     --dtype bf16 \
     --output_dir output \
-    --ddp_backend nccl \
     --dataset alpaca-zh#5000 \
     --num_train_epochs 1 \
     --max_length 1024 \
@@ -29,4 +28,4 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 10 \
     --logging_steps 10 \
-    --device_map_config_path scripts/deepseek-v2-chat/lora_ddp_ds3/deepseek2_device_map.json
+    --device_map_config_path scripts/deepseek-v2-chat/lora_mp/deepseek2_device_map.json

@@ -55,6 +55,9 @@ class LLMTrain(BaseUI):
         SelfCog,
         Advanced,
         RLHF,
+        Lisa,
+        Galore,
+        LlamaPro,
     ]
 
     locale_dict: Dict[str, Dict] = {

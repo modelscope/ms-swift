@@ -79,6 +79,7 @@ class TemplateType:
     codefuse_codellama = 'codefuse-codellama'
     codefuse = 'codefuse'
     cogvlm = 'cogvlm'
+    cogvlm2_video = 'cogvlm2-video'
     glm4v = 'glm4v'
     cogagent_chat = 'cogagent-chat'
     cogagent_instruct = 'cogagent-instruct'
@@ -929,7 +930,7 @@ def _load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     return image
 
 
-def _load_video(video_path: str) -> np.ndarray:
+def _load_video_llava(video_path: str) -> np.ndarray:
     import av
     container = av.open(video_path)
     total_frames = container.streams.video[0].frames
@@ -1036,7 +1037,7 @@ class GLM4VTemplate(GLMTemplate):
         if idx_list:
             idx = idx_list[0]
             images_path = example.get('images') or []
-            image = _load_image(images_path[0])
+            image = _read_batch(images_path)[0]
             placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -1052,8 +1053,6 @@ class GLM4VTemplate(GLMTemplate):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        pad_len = res['labels'].shape[1] - res['input_ids'].shape[1]
-        res['attention_mask'] = F.pad(res['attention_mask'], (pad_len, 0), 'constant', 1)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
@@ -1386,6 +1385,76 @@ class InternvlTemplate(Template):
 
 class Internvl2Template(InternvlTemplate):
 
+    video_segments = 8
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        if media_type == 'image':
+            return [[-100]]
+        elif media_type == 'video':
+            context_list = []
+            for i in range(self.video_segments):
+                context_list.append(f'Frame{i + 1}: ')
+                context_list.append([-100])
+                context_list.append('\n')
+            return context_list
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super(InternvlTemplate, self).encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        labels = inputs.get('labels')
+        images_path = example.get('images') or []
+        videos_path = example.get('videos') or []
+        if images_path:
+            from .vision_utils import load_image
+            pixel_values = []
+            if isinstance(images_path, str):
+                images_path = [images_path]
+            for image_path in images_path:
+                pixel_values.append(load_image(image_path))
+
+            assert len(images_path) == len(idx_list)
+            added_tokens_len = 0
+            patches = 0
+            for idx, pv in zip(idx_list, pixel_values):
+                patches += pv.shape[0]
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n',
+                    add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(patches)
+        if videos_path:
+            if not isinstance(videos_path, (list, tuple)):
+                videos_path = [videos_path]
+            assert len(videos_path) == 1
+            from swift.llm.utils.vision_utils import load_video
+            pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
+            assert len(num_patches) == len(idx_list)
+            added_tokens_len = 0
+            for idx, num_patch in zip(idx_list, num_patches):
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(sum(num_patches))
+        inputs.pop('loss_scale', None)
+        return inputs, {}
+
     def __init__(self):
         self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
         Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
@@ -1523,6 +1592,15 @@ class FlorenceTemplate(Template):
         inputs['input_ids'] = inputs['input_ids'][0]
         inputs['attention_mask'] = inputs['attention_mask'][0]
         inputs['pixel_values'] = inputs['pixel_values'].to(self.model.dtype)
+        if self.max_length is None:
+            self.max_length = 1024
+        if self.truncation_strategy == 'delete' and len(inputs['input_ids']) > self.max_length:
+            return {}, {}
+        inputs['input_ids'] = inputs['input_ids'][:self.max_length]
+        inputs['attention_mask'] = inputs['attention_mask'][:self.max_length]
+        if inputs['labels'] is not None:
+            labels = labels[:self.max_length]
+
         return inputs, {}
 
     @staticmethod
@@ -1627,7 +1705,7 @@ class LlavaVideoTemplate(Template):
             else:
                 videos_path.append(media_file)
         if len(videos_path) > 0:
-            videos = _read_batch(videos_path, _load_video)
+            videos = _read_batch(videos_path, _load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
@@ -1766,9 +1844,9 @@ class LLavaLlamaTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         image_path = example.get('images') or []
-        if image_path:
-            raw_image = _load_image(image_path[0])
-            pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
+        raw_image = _read_batch(image_path)
+        if raw_image:
+            pixel_values = self.tokenizer.processor.image_processor(raw_image[0], return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
 
@@ -1806,9 +1884,9 @@ class PaliGemmaTemplate(Template):
             inputs['token_type_ids'] = [0] * n + [1] * n2
         else:
             inputs['token_type_ids'] = [0] * len(inputs['input_ids'])
-        if image_path:
-            raw_image = _load_image(image_path[0])
-            model_inputs = processor(text=example['query'], images=raw_image, return_tensors='pt')
+        raw_image = _read_batch(image_path)
+        if raw_image:
+            model_inputs = processor(text=example['query'], images=raw_image[0], return_tensors='pt')
             inputs['pixel_values'] = model_inputs['pixel_values']
         return inputs, {}
 
@@ -1949,9 +2027,9 @@ class DeepseekVLTemplate(Template):
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history,
                                                                             '<image_placeholder>')
         inputs, _ = super().encode(example)
-        images_path.extend(example.get('images') or [])
         if len(inputs) == 0:
             return inputs, {}
+        images_path.extend(example.get('images') or [])
         images = _read_batch(images_path)
         processor = self.tokenizer.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
@@ -2024,34 +2102,35 @@ class CogTemplate(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
-        images_path = example.get('images') or []
-        image = _load_image(images_path[0]) if len(images_path) >= 1 else []
         if len(inputs) == 0:
             return inputs, {}
+        images_path = example.get('images') or []
+        image = _read_batch(images_path)
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
-            self.tokenizer, query=example['query'], history=example.get('history'), images=[image])
-        image_token_len = inputs2['token_type_ids'].sum()
+            self.tokenizer, query=example['query'], history=example.get('history'), images=image)
+        image_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         inputs['token_type_ids'] = [0] + [1] * image_token_len + [0] * len(input_ids[1:])
         inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * image_token_len + input_ids[1:]
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
-        dtype = model.dtype
-        inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
-        if 'cross_images' in inputs2:
-            # is cogagent
-            inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
+        if len(image) > 0:
+            dtype = model.dtype
+            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+            if 'cross_images' in inputs2:
+                # is cogagent
+                inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        is_cogagent = 'cross_images' in batch[0]
-        keys = ['images', 'cross_images'] if is_cogagent else ['images']
+        keys = ['images', 'cross_images']
         for key in keys:
-            res[key] = [b[key][0] for b in batch]
+            if key in batch[0]:
+                res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
         token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
         res['token_type_ids'] = token_type_ids
@@ -2078,6 +2157,80 @@ register_template(
     use_model=True,
     infer_media_type='dialogue',
     lazy_tokenize=True)
+
+
+def _read_video(video_path: str) -> BytesIO:
+    video_path = video_path.strip()
+    if video_path.startswith('http'):
+        content = requests.get(video_path).content
+        mp4_stream = BytesIO(content)
+    else:
+        with open(video_path, 'rb') as f:
+            mp4_stream = BytesIO(f.read())
+    return mp4_stream
+
+
+def _load_video_cogvlm2(video_path: str) -> np.ndarray:
+    from decord import cpu, VideoReader, bridge
+    bridge.set_bridge('torch')
+    mp4_stream = _read_video(video_path)
+    clip_end_sec = 60
+    clip_start_sec = 0
+    num_frames = 24
+    if mp4_stream is not None:
+        decord_vr = VideoReader(mp4_stream, ctx=cpu(0))
+    else:
+        decord_vr = VideoReader(video_path, ctx=cpu(0))
+    duration = len(decord_vr)  # duration in terms of frames
+    start_frame = int(clip_start_sec * decord_vr.get_avg_fps())
+    end_frame = min(duration, int(clip_end_sec * decord_vr.get_avg_fps())) if \
+        clip_end_sec is not None else duration
+    frame_id_list = np.linspace(start_frame, end_frame - 1, num_frames, dtype=int)
+    video_data = decord_vr.get_batch(frame_id_list)
+    video_data = video_data.permute(3, 0, 1, 2)
+    return video_data
+
+
+class Cog2VideoTemplate(CogTemplate):
+
+    def check_example(self, example):
+        videos = example.get('videos') or []
+        assert len(videos) <= 1
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super(CogTemplate, self).encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        videos_path = example.get('videos') or []
+        video = _read_batch(videos_path, _load_video_cogvlm2)
+        inputs.pop('loss_scale', None)
+        model = self.model
+        inputs2 = model.build_conversation_input_ids(
+            self.tokenizer,
+            query=example['query'],
+            history=example.get('history'),
+            images=video,
+            template_version='chat')
+        video_token_len = inputs2['token_type_ids'].sum().item()
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        inputs['token_type_ids'] = [0] + [1] * video_token_len + [0] * len(input_ids[1:])
+        inputs['input_ids'] = input_ids[:1] + [self.tokenizer.pad_token_id] * video_token_len + input_ids[1:]
+        if labels is not None:
+            inputs['labels'] = labels[:1] + [-100] * video_token_len + labels[1:]
+        if len(video) > 0:
+            dtype = model.dtype
+            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+        return inputs, {}
+
+
+register_template(
+    TemplateType.cogvlm2_video,
+    Cog2VideoTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
+    use_model=True,
+    infer_media_type='dialogue',
+    lazy_tokenize=True,
+    media_type='video')
 
 register_template(TemplateType.minicpm, Template(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']))
 
@@ -2107,10 +2260,10 @@ class MiniCPMVTemplate(Template):
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
-        images_path = example['images']
-        image = _load_image(images_path[0])
         if len(inputs) == 0:
             return inputs, {}
+        images_path = example['images']
+        image = _load_image(images_path[0])
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -1)

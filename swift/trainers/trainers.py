@@ -202,12 +202,13 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
 
+        if labels is None:
+            labels = inputs['labels']
+
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import reduce_xtuner_sequence_parallel_loss
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
-        if labels is None:
-            labels = inputs['labels']
         if self.is_encoder_decoder:
             preds = outputs.logits.argmax(dim=2)[..., :]
             labels = labels[..., :]

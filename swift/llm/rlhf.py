@@ -20,6 +20,13 @@ logger = get_logger()
 
 
 def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
+    if args.rlhf_type == 'simpo':
+        import trl
+        from packaging import version
+        assert version.parse(trl.__version__) <= version.parse('0.9.4'), \
+            'Please ensure to update `trl` to the latest version using the following command:' \
+            'pip install trl==0.9.6 --index-url https://pypi.org/simple.'
+
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
@@ -53,6 +60,14 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             model_kwargs['device_map'] = 'cuda:0'
         else:
             model_kwargs['device_map'] = 'auto'
+
+    if args.device_max_memory:
+        n_gpu = torch.cuda.device_count()
+        assert len(args.device_max_memory) == n_gpu // local_world_size
+        model_kwargs['max_memory'] = {
+            i: mem
+            for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
+        }
 
     # quantization
     if args.quant_method == 'hqq':
