@@ -65,7 +65,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         assert len(args.device_max_memory) == n_gpu / local_world_size
         model_kwargs['max_memory'] = {
             i: mem
-            for i, mem in zip(list(range(local_rank, n_gpu, local_world_size)), args.device_max_memory)
+            for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
         }
 
     if args.quant_method == 'hqq':
