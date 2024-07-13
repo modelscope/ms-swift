@@ -1,21 +1,18 @@
 import os
-# from megatron.training.checkpointing import get_checkpoint_name, get_checkpoint_tracker_filename, read_metadata
-# from megatron.training.utils import get_ltor_masks_and_position_ids
 import sys
-from argparse import Namespace
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
-
-import torch
-from megatron.training import get_args
-from megatron.training.initialize import initialize_megatron
-from megatron_patch.arguments import get_patch_args
-from transformers.modeling_utils import WEIGHTS_INDEX_NAME, WEIGHTS_NAME, load_sharded_checkpoint, shard_checkpoint
-
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+from transformers.modeling_utils import WEIGHTS_INDEX_NAME, WEIGHTS_NAME, shard_checkpoint, load_sharded_checkpoint
+
 os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
 sys.path.append('/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch')
+sys.path.append('/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/examples/qwen2')
+from dataclasses import asdict, dataclass, field
+from typing import Any, List, Optional
 
+from pretrain_qwen import forward_step, model_provider, train_valid_test_datasets_provider
+from megatron.core.enums import ModelType
+from megatron.training import pretrain
+from megatron_patch.arguments import get_patch_args
 
 @dataclass
 class MegatronArguments:
@@ -136,22 +133,28 @@ class MegatronArguments:
                 new_args.append(str(value))
         return new_args
 
-    def get_megatron_args(self) -> Namespace:
+    def parse_to_megatron(self) -> None:
         new_args = self.args_to_argv()
         sys._old_argv = sys.argv
         sys.argv = sys.argv[:1] + new_args
 
-        initialize_megatron(extra_args_provider=get_patch_args)
-        return get_args()
+        # initialize_megatron(extra_args_provider=get_patch_args)
+        # return get_args()
 
 
 if __name__ == '__main__':
     args = MegatronArguments(
-        load='../../qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1',
-        train_data_path=['qwen-datasets/alpaca_zh-qwen-train.json'],
-        valid_data_path=['qwen-datasets/alpaca_zh-qwen-valid.json'],
-        test_data_path=['qwen-datasets/alpaca_zh-qwen-valid.json'],
+        load='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1',
+        train_data_path=['/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-datasets/alpaca_zh-qwen-train.json'],
+        valid_data_path=['/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-datasets/alpaca_zh-qwen-valid.json'],
+        test_data_path=['/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-datasets/alpaca_zh-qwen-valid.json'],
     )
-    megatron_args = args.get_megatron_args()
+    args.parse_to_megatron()
+    train_valid_test_datasets_provider.is_distributed = True
 
-    print()
+    pretrain(
+        train_valid_test_datasets_provider,
+        model_provider,
+        ModelType.encoder_or_decoder,
+        forward_step,
+        extra_args_provider=get_patch_args)
