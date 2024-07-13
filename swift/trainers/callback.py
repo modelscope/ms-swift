@@ -8,6 +8,7 @@ from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
 
 from swift.utils import append_to_jsonl, is_pai_training_job, use_torchacc
+from ..utils.utils import format_time
 from .arguments import TrainingArguments
 
 
@@ -17,6 +18,7 @@ class ProgressCallbackNew(ProgressCallback):
         if state.is_local_process_zero:
             self.training_bar = tqdm(desc='Train', total=state.max_steps, dynamic_ncols=True)
         self.current_step = 0
+        self.start_time = time.time()
         if use_torchacc():
             self.warmup_start_time = 0
             self.warmup_metric = None
@@ -33,7 +35,14 @@ class ProgressCallbackNew(ProgressCallback):
             self.prediction_bar.update()
 
     def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
-        logs['global_step'] = state.global_step
+        logs['steps[global_step/max_steps]'] = f'{state.global_step}/{state.max_steps}'
+        train_percentage = state.global_step / state.max_steps if state.max_steps else 0.
+        logs['percentage'] = f'{train_percentage * 100:.2f}%'
+        elapsed = time.time() - self.start_time
+        elapsed = max(0., elapsed)
+        logs['elapsed_time'] = format_time(elapsed)
+        logs['remaining_time'] = format_time(elapsed / train_percentage - elapsed)
+
         if use_torchacc():
             if state.global_step >= self.metric_warmup_step and self.warmup_start_time == 0:
                 self.warmup_start_time = time.time()

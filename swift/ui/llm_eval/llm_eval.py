@@ -126,7 +126,7 @@ class LLMEval(BaseUI):
                 elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
                     value = True if value.lower() == 'true' else False
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
-                kwargs_is_list[key] = isinstance(value, list)
+                kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
                 other_kwargs[key] = value
             if key == 'more_params' and value:

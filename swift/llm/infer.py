@@ -146,6 +146,9 @@ def prepare_model_template(args: InferArguments,
     if device_map == 'auto':
         model_kwargs['low_cpu_mem_usage'] = True
     model_kwargs['device_map'] = device_map
+    if args.device_max_memory:
+        assert len(args.device_max_memory) == torch.cuda.device_count()
+        model_kwargs['max_memory'] = {i: mem for i, mem in enumerate(args.device_max_memory)}
 
     # Loading Model and Tokenizer
     if hasattr(args, 'quant_config'):
