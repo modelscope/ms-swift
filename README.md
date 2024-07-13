@@ -50,7 +50,7 @@ SWIFT has rich documentations for users, please feel free to check our documenta
 You can contact us and communicate with us by adding our group:
 
 
-[Discord Group](https://discord.gg/qQXTzNUp)              |  微信群
+[Discord Group](https://discord.gg/FMupRv4jUR)              |  微信群
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
