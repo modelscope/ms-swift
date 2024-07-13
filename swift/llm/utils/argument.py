@@ -1117,7 +1117,7 @@ class InferArguments(ArgumentsBase):
     top_p: float = 0.7
     repetition_penalty: float = 1.
     num_beams: int = 1
-    stop_words: List[str] = None
+    stop_words: List[str] = field(default_factory=list)
 
     # rope-scaling
     rope_scaling: Literal['linear', 'dynamic'] = None
