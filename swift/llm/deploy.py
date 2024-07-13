@@ -356,12 +356,17 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     # not use: 'n', 'best_of', 'frequency_penalty', 'presence_penalty'
     for key in ['length_penalty', 'num_beams']:
         kwargs[key] = getattr(request, key)
-    for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+    for key in ['top_k', 'top_p', 'repetition_penalty']:
         new_value = getattr(request, key)
         if new_value is None:
             kwargs[key] = getattr(model.generation_config, key)
         else:
             kwargs[key] = new_value
+    temperature = getattr(request, 'temperature')
+    if temperature is None:
+        do_sample = getattr(model.generation_config, 'do_sample')
+        kwargs['temperature'] = temperature if do_sample else 0
+
     if kwargs['temperature'] == 0:
         kwargs['do_sample'] = False
         kwargs['temperature'] = 1
