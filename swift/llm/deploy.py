@@ -360,8 +360,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         new_value = getattr(request, key)
         if new_value is None:
             kwargs[key] = getattr(model.generation_config, key)
+            if key == 'temperature':
+                do_sample = getattr(model.generation_config, 'do_sample')
+                if not do_sample:
+                    kwargs[key] = 0
         else:
             kwargs[key] = new_value
+
     if kwargs['temperature'] == 0:
         kwargs['do_sample'] = False
         kwargs['temperature'] = 1

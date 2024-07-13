@@ -50,7 +50,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 请扫描下面的二维码来加入我们的交流群：
 
-[Discord Group](https://discord.gg/qQXTzNUp)              |  微信群
+[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  微信群
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
@@ -228,7 +228,7 @@ docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.
 
 ## 🚀 快速开始
 
-本章节介绍基本使用，更丰富的使用方式请查看[文档部分](#-文档)。
+本章节介绍基本使用，更丰富的使用方式请查看[文档部分](https://swift.readthedocs.io/zh-cn/latest/)。
 
 ### Web-UI
 
