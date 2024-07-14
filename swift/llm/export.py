@@ -7,6 +7,7 @@ import torch
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
 from .infer import merge_lora, prepare_model_template, save_checkpoint
 from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
+from .utils.model import safe_snapshot_download
 
 logger = get_logger()
 
@@ -97,7 +98,7 @@ def llm_export(args: ExportArguments) -> None:
     if args.to_peft_format:
         assert args.sft_type == 'lora', f'args.sft_type: {args.sft_type}'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
-    model_path = args.ckpt_dir or args.model_id_or_path
+    model_path = None
     if args.merge_lora:
         # fix parameter conflict
         quant_method = args.quant_method
@@ -105,28 +106,31 @@ def llm_export(args: ExportArguments) -> None:
         model_path = merge_lora(args, device_map=args.merge_device_map)
         args.quant_method = quant_method
     if args.to_ollama:
+        if not model_path:
+            model_path = safe_snapshot_download(args.model_type, args.model_id_or_path, revision=args.model_revision)
         logger.info(f'Exporting to ollama:')
-        logger.info(f'If you have a gguf file, try to pass the file by : --gguf_file /xxx/xxx.gguf, '
+        logger.info(f'If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, '
                     f'else SWIFT will use the original(merged) model dir')
+        os.makedirs(args.ollama_output_dir, exist_ok=True)
+        model, template = prepare_model_template(args)
         with open(os.path.join(args.ollama_output_dir, 'Modelfile'), 'w') as f:
-            f.write(f'FROM {model_path}')
-            f.write(f'TEMPLATE """{{ if .System }}'
-                    f'{template.system_prefix[0].replace("{{system}}", " .System ")}'
-                    f'{{ end }}')
-            f.write(f'{{ if .Prompt }}'
-                    f'{template.prompt[0].replace("{{QUERY}}", " .Prompt ")}'
-                    f'{{ end }}')
+            f.write(f'FROM {model_path}\n')
+            f.write(f'TEMPLATE """{{{{ if .System }}}}'
+                    f'{template.system_prefix[0].replace("{{SYSTEM}}", "{{ .System }}")}'
+                    f'{{{{ end }}}}')
+            f.write(f'{{{{ if .Prompt }}}}'
+                    f'{template.prompt[0].replace("{{QUERY}}", "{{ .Prompt }}")}'
+                    f'{{{{ end }}}}')
             f.write('{{ .Response }}')
-            f.write('{{ .Response }}')
-            f.write(template.suffix[0])
-            f.write(f'PARAMETER stop "{template.suffix}"')
+            f.write(template.suffix[0] + '"""\n')
+            f.write(f'PARAMETER stop "{template.suffix[0]}"\n')
             if args.stop_words:
                 for stop_word in args.stop_words:
-                    f.write(f'PARAMETER stop "{stop_word}"')
+                    f.write(f'PARAMETER stop "{stop_word}"\n')
         logger.info('Save Modelfile done, you can start ollama by:')
         logger.info('> ollama serve')
         logger.info('In another terminal:')
-        logger.info('> ollama create my-custom-model(or another name) '
+        logger.info('> ollama create my-custom-model '
                     f'-f {os.path.join(args.ollama_output_dir, "Modelfile")}')
         logger.info('> ollama run my-custom-model')
     elif args.quant_bits > 0:
