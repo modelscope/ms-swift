@@ -118,9 +118,17 @@ def llm_export(args: ExportArguments) -> None:
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
-        elif args.quant_method in ('bnb', 'hqq', 'eetq'):
+        elif args.quant_method == 'bnb':
+            import bitsandbytes as bnb
             args.quantization_bit = args.quant_bits
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
+            if args.quant_bits == 8:
+                dtype = torch.int8
+            elif args.quant_bits == 4:
+                dtype = torch.int4
+            else:
+                raise ValueError(f'Unsupported bits for bnb: {args.quant_bits}')
+            model = bnb.quantization.quantize_model(model, dtype=dtype)
             model.save_pretrained(args.quant_output_dir)
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')
