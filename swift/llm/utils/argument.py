@@ -1381,6 +1381,9 @@ class EvalArguments(InferArguments):
 @dataclass
 class ExportArguments(InferArguments):
     to_peft_format: bool = False
+    to_ollama: bool = False
+    ollama_output_dir: Optional[str] = None
+    gguf_file: Optional[str] = None
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 
@@ -1422,6 +1425,13 @@ class ExportArguments(InferArguments):
                                                          f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
+        if self.to_ollama:
+            assert self.sft_type in ('full', 'lora', 'longlora', 'llamapro')
+            if self.sft_type in ('lora', 'longlora', 'llamapro'):
+                self.merge_lora = True
+            if not self.ollama_output_dir:
+                self.ollama_output_dir = f'{self.model_type}-ollama'
+            assert not os.path.exists(self.ollama_output_dir), f'args.ollama_output_dir: {self.ollama_output_dir}'
 
 
 @dataclass

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from typing import Optional
 
 import torch
@@ -96,13 +97,39 @@ def llm_export(args: ExportArguments) -> None:
     if args.to_peft_format:
         assert args.sft_type == 'lora', f'args.sft_type: {args.sft_type}'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
+    model_path = args.ckpt_dir or args.model_id_or_path
     if args.merge_lora:
         # fix parameter conflict
         quant_method = args.quant_method
         args.quant_method = None
-        merge_lora(args, device_map=args.merge_device_map)
+        model_path = merge_lora(args, device_map=args.merge_device_map)
         args.quant_method = quant_method
-    if args.quant_bits > 0:
+    if args.to_ollama:
+        logger.info(f'Exporting to ollama:')
+        logger.info(f'If you have a gguf file, try to pass the file by : --gguf_file /xxx/xxx.gguf, '
+                    f'else SWIFT will use the original(merged) model dir')
+        with open(os.path.join(args.ollama_output_dir, 'Modelfile'), 'w') as f:
+            f.write(f'FROM {model_path}')
+            f.write(f'TEMPLATE """{{ if .System }}'
+                    f'{template.system_prefix[0].replace("{{system}}", " .System ")}'
+                    f'{{ end }}')
+            f.write(f'{{ if .Prompt }}'
+                    f'{template.prompt[0].replace("{{QUERY}}", " .Prompt ")}'
+                    f'{{ end }}')
+            f.write('{{ .Response }}')
+            f.write('{{ .Response }}')
+            f.write(template.suffix[0])
+            f.write(f'PARAMETER stop "{template.suffix}"')
+            if args.stop_words:
+                for stop_word in args.stop_words:
+                    f.write(f'PARAMETER stop "{stop_word}"')
+        logger.info('Save Modelfile done, you can start ollama by:')
+        logger.info('> ollama serve')
+        logger.info('In another terminal:')
+        logger.info('> ollama create my-custom-model(or another name) '
+                    f'-f {os.path.join(args.ollama_output_dir, "Modelfile")}')
+        logger.info('> ollama run my-custom-model')
+    elif args.quant_bits > 0:
         assert args.quant_output_dir is not None
         _args = args
         # assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
