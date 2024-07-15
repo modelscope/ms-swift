@@ -1,12 +1,12 @@
 # Llava Best Practice
 The document corresponds to the following models:
 
-- [llava1_5-7b-instruct](https://modelscope.cn/models/huangjintao/llava-1.5-7b-hf)
-- [llava1_5-13b-instruct](https://modelscope.cn/models/huangjintao/llava-1.5-13b-hf)
-- [llava1_6-mistral-7b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-mistral-7b-hf)
-- [llava1_6-vicuna-7b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-7b-hf)
-- [llava1_6-vicuna-13b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-13b-hf)
-- [llava1_6-yi-34b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
+- [llava1_5-7b-instruct](https://modelscope.cn/models/swift/llava-1.5-7b-hf)
+- [llava1_5-13b-instruct](https://modelscope.cn/models/swift/llava-1.5-13b-hf)
+- [llava1_6-mistral-7b-instruct](https://modelscope.cn/models/swift/llava-v1.6-mistral-7b-hf)
+- [llava1_6-vicuna-7b-instruct](https://modelscope.cn/models/swift/llava-v1.6-vicuna-7b-hf)
+- [llava1_6-vicuna-13b-instruct](https://modelscope.cn/models/swift/llava-v1.6-vicuna-13b-hf)
+- [llava1_6-yi-34b-instruct](https://modelscope.cn/models/swift/llava-v1.6-34b-hf)
 - [llava-next-72b](https://modelscope.cn/models/AI-Modelscope/llava-next-72b)
 - [llava-next-110b](https://modelscope.cn/models/AI-Modelscope/llava-next-110b)
 

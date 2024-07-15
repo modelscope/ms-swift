@@ -651,7 +651,7 @@
         "tags": ["math", "cot", "en", "quality"]
     },
     "pileval": {
-        "dataset_id": "huangjintao/pile-val-backup",
+        "dataset_id": "swift/pile-val-backup",
         "columns": {"text": "response"},
         "split": ["validation"],
         "tags": ["text-generation", "awq"],
@@ -717,7 +717,7 @@
         "hf_dataset_id": "Flmc/DISC-Med-SFT"
     },
     "medical-en": {
-        "dataset_id": "huangjintao/medical_zh",
+        "dataset_id": "swift/medical_zh",
         "subsets": ["en"],
         "split": ["train", "val", "test"],
         "columns": {
@@ -727,7 +727,7 @@
         "tags": ["chat", "medical"]
     },
     "medical-zh": {
-        "dataset_id": "huangjintao/medical_zh",
+        "dataset_id": "swift/medical_zh",
         "subsets": ["zh"],
         "split": ["train", "val", "test"],
         "columns": {
