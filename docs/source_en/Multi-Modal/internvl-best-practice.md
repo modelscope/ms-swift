@@ -224,12 +224,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
-(Only single-turn dialogue is supported. Each turn of dialogue must contain one image. Local paths or URLs can be passed in.)
+(Supports multi-turn conversations, but the total round of conversations can only contain one image. Supports local path or URL input.)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
 ```
 
 

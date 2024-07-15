@@ -3670,8 +3670,8 @@ def fix_internvl_inplace_bug(model) -> None:
 @register_model(
     ModelType.internvl2_4b,
     'OpenGVLab/InternVL2-4B',
-    LoRATM.internlm2,
-    TemplateType.internvl2,
+    LoRATM.phi3,
+    TemplateType.internvl2_phi3,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
