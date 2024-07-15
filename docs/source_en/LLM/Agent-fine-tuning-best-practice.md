@@ -35,7 +35,7 @@ Supported agent datasets in swift now include::
 - [ms-agent-multirole](https://www.modelscope.cn/datasets/iic/MSAgent-MultiRole)
 - [toolbench-for-alpha-umi](https://www.modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)
 - [damo-agent-zh](https://www.modelscope.cn/datasets/iic/MSAgent-Bench)
-- [agent-instruct-all-en](https://www.modelscope.cn/datasets/swift/AgentInstruct_copy)
+- [agent-instruct-all-en](https://www.modelscope.cn/datasets/huangjintao/AgentInstruct_copy)
 
 You can also train using custom Agent datasets, now supporting two formats
 

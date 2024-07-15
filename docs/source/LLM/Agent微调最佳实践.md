@@ -38,7 +38,7 @@ swift现支持的agent数据集:
 - [ms-agent-multirole](https://www.modelscope.cn/datasets/iic/MSAgent-MultiRole)
 - [toolbench-for-alpha-umi](https://www.modelscope.cn/datasets/shenweizhou/alpha-umi-toolbench-processed-v2)
 - [damo-agent-zh](https://www.modelscope.cn/datasets/iic/MSAgent-Bench)
-- [agent-instruct-all-en](https://www.modelscope.cn/datasets/swift/AgentInstruct_copy)
+- [agent-instruct-all-en](https://www.modelscope.cn/datasets/huangjintao/AgentInstruct_copy)
 
 你也可以使用自定义Agent数据集进行训练, 现支持两种格式
 
