@@ -22,12 +22,12 @@ logger = get_logger()
 
 @contextmanager
 def safe_ddp_context():
-    if is_dist() and not is_local_master():
+    if is_dist() and not is_local_master() and dist.is_initialized():
         dist.barrier()
     yield
-    if is_dist() and is_local_master():
+    if is_dist() and is_local_master() and dist.is_initialized():
         dist.barrier()
-    if is_dist():  # sync
+    if is_dist() and dist.is_initialized():  # sync
         dist.barrier()
 
 
