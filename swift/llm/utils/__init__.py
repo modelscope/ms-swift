@@ -9,7 +9,8 @@ from .dataset import (DATASET_MAPPING, DatasetName, HfDataset, get_dataset, get_
 from .media import MediaCache, MediaTag
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM, ModelType, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type, get_model_tokenizer,
-                    get_model_tokenizer_from_repo, get_model_tokenizer_with_flash_attn, register_model)
+                    get_model_tokenizer_from_repo, get_model_tokenizer_with_flash_attn, git_clone_github,
+                    register_model)
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, SwiftPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)

@@ -3886,7 +3886,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-def _git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> str:
+def git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> str:
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -4006,7 +4006,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
+        local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
     processor = VLChatProcessor.from_pretrained(model_dir)
@@ -4950,7 +4950,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/01-ai/Yi')
+        local_repo_path = git_clone_github('https://github.com/01-ai/Yi')
     sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
@@ -5311,10 +5311,10 @@ def get_model_tokenizer_llava(model_dir: str,
         local_repo_path = kwargs['local_repo_path']
     elif 'next' in llm_model_type:
         repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
-        local_repo_path = _git_clone_github(repo_path)
+        local_repo_path = git_clone_github(repo_path)
     else:
         repo_path = 'https://github.com/haotian-liu/LLaVA'
-        local_repo_path = _git_clone_github(repo_path)
+        local_repo_path = git_clone_github(repo_path)
     sys.path.append(os.path.join(local_repo_path))
 
     if llm_model_type == 'mistral':
@@ -5395,7 +5395,7 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
+        local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
     local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
     sys.path.append(os.path.join(local_repo_path))
 

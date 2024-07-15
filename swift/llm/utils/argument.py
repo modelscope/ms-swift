@@ -406,7 +406,7 @@ class ArgumentsBase:
                 if self.model_cache_dir is not None:
                     self.model_id_or_path = self.model_cache_dir
             else:
-                if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
+                if (isinstance(self, InferArguments) and 'checkpoint-' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
                 if self.model_type is None:

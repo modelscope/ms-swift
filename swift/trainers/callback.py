@@ -35,7 +35,7 @@ class ProgressCallbackNew(ProgressCallback):
             self.prediction_bar.update()
 
     def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
-        logs['steps[global_step/max_steps]'] = f'{state.global_step}/{state.max_steps}'
+        logs['global_step/max_steps'] = f'{state.global_step}/{state.max_steps}'
         train_percentage = state.global_step / state.max_steps if state.max_steps else 0.
         logs['percentage'] = f'{train_percentage * 100:.2f}%'
         elapsed = time.time() - self.start_time

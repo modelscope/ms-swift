@@ -1975,7 +1975,7 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 
 register_dataset(
     DatasetName.agent_instruct_all_en,
-    'swift/AgentInstruct_copy', ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
+    'huangjintao/AgentInstruct_copy', ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
     ConversationsPreprocessor('human', 'gpt', repair_conversations=_repair_conversations_agent_instruct),
     get_dataset_from_repo,
     tags=['chat', 'agent', 'multi-round'])
