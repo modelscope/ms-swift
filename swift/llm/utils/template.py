@@ -61,6 +61,7 @@ class TemplateType:
     internvl = 'internvl'
     internvl2 = 'internvl2'
     internvl_phi3 = 'internvl-phi3'
+    internvl2_phi3 = 'internvl2-phi3'
     florence = 'florence'
     yi = 'yi'
     yi1_5 = 'yi1_5'
@@ -1469,6 +1470,14 @@ class InternvlPhi3Template(InternvlTemplate):
                           self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
 
+class Internvl2Phi3Template(Internvl2Template):
+    system = 'You are an AI assistant whose name is Phi-3.'
+
+    def __init__(self):
+        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+                          self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+
 register_template(
     TemplateType.internvl,
     InternvlTemplate(),
@@ -1490,6 +1499,15 @@ register_template(
 register_template(
     TemplateType.internvl2,
     Internvl2Template(),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.internvl2_phi3,
+    Internvl2Phi3Template(),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
