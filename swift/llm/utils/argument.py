@@ -1455,6 +1455,12 @@ class ExportArguments(InferArguments):
             assert not os.path.exists(
                 self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
         elif self.to_megatron:
+            os.environ['RANK'] = '0'
+            os.environ['LOCAL_RANK'] = '0'
+            os.environ['WORLD_SIZE'] = '1'
+            os.environ['LOCAL_WORLD_SIZE'] = '1'
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
             assert is_dist(), 'Please start in distributed mode.'
             import torch.distributed as dist
             dist.init_process_group(backend='nccl')
