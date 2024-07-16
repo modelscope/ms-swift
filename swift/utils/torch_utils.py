@@ -126,12 +126,14 @@ def is_ddp_plus_mp() -> bool:
 def is_dist_ta() -> bool:
     """Determine if the TorchAcc training is distributed"""
     _, _, world_size, _ = get_dist_setting()
-    if world_size > 1 and not dist.is_initialized():
-        import torchacc as ta
-        # Initialize in advance
-        dist.init_process_group(backend=ta.dist.BACKEND_NAME)
-
-    return use_torchacc() and world_size > 1
+    if use_torchacc() and world_size > 1:
+        if not dist.is_initialized():
+            import torchacc as ta
+            # Initialize in advance
+            dist.init_process_group(backend=ta.dist.BACKEND_NAME)
+        return True
+    else:
+        return False
 
 
 def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
