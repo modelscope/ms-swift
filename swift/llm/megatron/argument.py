@@ -182,7 +182,6 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
 
         return new_args, extra_args
 
-
     def parse_to_megatron(self):
         new_args, extra_args = self._args_to_argv()
         sys._old_argv = sys.argv

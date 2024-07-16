@@ -42,7 +42,9 @@ def is_adapter(sft_type: str) -> bool:
 class ArgumentsBase:
 
     @classmethod
-    def _check_path(cls, value: Union[str, List[str]], k: Optional[str] = None, 
+    def _check_path(cls,
+                    value: Union[str, List[str]],
+                    k: Optional[str] = None,
                     check_exist_path_set: Optional[Set[str]] = None) -> Union[str, List[str]]:
         if check_exist_path_set is None:
             check_exist_path_set = set()

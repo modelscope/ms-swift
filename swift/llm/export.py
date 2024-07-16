@@ -196,11 +196,13 @@ def llm_export(args: ExportArguments) -> None:
         logger.info(f'Successfully quantized the model and saved in {args.quant_output_dir}.')
         args.ckpt_dir = args.quant_output_dir
     elif args.to_megatron:
-        from swift.llm.megatron import load_megatron_config, MegatronArguments, convert_hf_to_megatron, get_model_seires
+        from swift.llm.megatron import (load_megatron_config, MegatronArguments, convert_hf_to_megatron,
+                                        get_model_seires, patch_megatron)
 
         model, tokenizer = get_model_tokenizer(args.model_type, torch.float32, {'device_map': 'cpu'})
         output_dir = f'{args.model_type}-tp{args.tp}-pp{args.pp}'
         output_dir = args._check_path(output_dir)
+        logger.info(f'Setting output_dir: {output_dir}')
         assert not os.path.exists(output_dir), f'output_dir: {output_dir}'
         if not os.path.exists(output_dir):
             res = load_megatron_config(tokenizer.model_dir)
@@ -211,8 +213,7 @@ def llm_export(args: ExportArguments) -> None:
             megatron_args = MegatronArguments(**res)
             extra_args = megatron_args.parse_to_megatron()
             patch_megatron(tokenizer)
-            convert_hf_to_megatron(model, extra_args, True)
-
+            convert_hf_to_megatron(model, extra_args, args.check_model_forward)
 
     if args.push_to_hub:
         ckpt_dir = args.ckpt_dir

@@ -1,11 +1,12 @@
 import os
 import sys
-
-import torch.distributed as dist
 from functools import wraps
+
 import torch
+import torch.distributed as dist
+
 from swift.llm import git_clone_github, is_megatron_available
-from swift.utils import subprocess_run, get_dist_setting
+from swift.utils import get_dist_setting, subprocess_run
 
 
 def init_megatron_env() -> None:
