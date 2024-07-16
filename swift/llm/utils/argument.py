@@ -1454,7 +1454,7 @@ class ExportArguments(InferArguments):
             self.ollama_output_dir = self._check_path(self.ollama_output_dir)
             assert not os.path.exists(
                 self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
-        elif self.to_megatron:
+        elif self.to_megatron or self.to_hf:
             os.environ['RANK'] = '0'
             os.environ['LOCAL_RANK'] = '0'
             os.environ['WORLD_SIZE'] = '1'
