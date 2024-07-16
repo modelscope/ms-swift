@@ -76,7 +76,7 @@ class MegatronMixin:
     rotary_percent: float = 1.
     rotary_seq_len_interpolation_factor: int = 1
 
-    no_bias_swiglu_fusion: bool = False  # ?
+    no_bias_swiglu_fusion: bool = False
     attention_dropout: float = 0.
     hidden_dropout: float = 0.
     # train
