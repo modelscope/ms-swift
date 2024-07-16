@@ -127,6 +127,15 @@ def llm_export(args: ExportArguments) -> None:
             if args.stop_words:
                 for stop_word in args.stop_words:
                     f.write(f'PARAMETER stop "{stop_word}"\n')
+            if args.temperature:
+                f.write(f'PARAMETER temperature "{args.temperature}"\n')
+            if args.top_k:
+                f.write(f'PARAMETER top_k "{args.top_k}"\n')
+            if args.top_p:
+                f.write(f'PARAMETER top_p "{args.top_p}"\n')
+            if args.repetition_penalty:
+                f.write(f'PARAMETER repeat_penalty "{args.repetition_penalty}"\n')
+
         logger.info('Save Modelfile done, you can start ollama by:')
         logger.info('> ollama serve')
         logger.info('In another terminal:')
@@ -136,7 +145,7 @@ def llm_export(args: ExportArguments) -> None:
     elif args.quant_bits > 0:
         assert args.quant_output_dir is not None
         _args = args
-        # assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
+        assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
         assert args.sft_type == 'full', 'you need to merge lora'
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
@@ -150,8 +159,8 @@ def llm_export(args: ExportArguments) -> None:
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
         elif args.quant_method == 'bnb':
-            args.quant_device_map = 'auto'
-            # assert args.quant_bits == 8, 'bnb only support 8 bit serialization.'
+            args.quant_device_map = 'auto'  # cannot use cpu on bnb
+            args.quantization_bit = args.quant_bits
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
             model.save_pretrained(args.quant_output_dir)
         else:
@@ -173,8 +182,6 @@ def llm_export(args: ExportArguments) -> None:
             })
         logger.info(f'Successfully quantized the model and saved in {args.quant_output_dir}.')
         args.ckpt_dir = args.quant_output_dir
-        from modelscope import AutoModelForCausalLM
-        model2 = AutoModelForCausalLM.from_pretrained(args.ckpt_dir, trust_remote_code=True, device_map="auto")
 
     if args.push_to_hub:
         ckpt_dir = args.ckpt_dir

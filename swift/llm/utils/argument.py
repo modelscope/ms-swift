@@ -1097,7 +1097,7 @@ class InferArguments(ArgumentsBase):
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
     # 'awq', 'gptq', 'aqlm' are used for inference on pre-quantized models.
-    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq', 'aqlm'] = None
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq'] = None
     quantization_bit: Literal[0, 1, 2, 3, 4, 8] = 0  # hqq: 1,2,3,4,8. bnb: 4,8
     hqq_axis: Literal[0, 1] = 0
     hqq_dynamic_config_path: Optional[str] = None
