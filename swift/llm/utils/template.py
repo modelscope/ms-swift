@@ -172,7 +172,8 @@ class Template:
                  system_prefix: Optional[Prompt] = None,
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'react_en',
-                 tool_prompt: Optional[Prompt] = None) -> None:
+                 tool_prompt: Optional[Prompt] = None,
+                 padding_side: str = 'right') -> None:
         # check
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
@@ -198,6 +199,7 @@ class Template:
         self.tools_prompt = tools_prompt
         self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
         self._is_vllm = False
+        self.padding_side = padding_side
 
     @staticmethod
     def _replace_system(prefix: Prompt) -> Prompt:
@@ -237,6 +239,7 @@ class Template:
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
         self.tokenizer = tokenizer
+        self.tokenizer.padding_side = self.padding_side
         # if default_system is None. not change self.default_system
         if default_system == '':
             self.default_system = None
@@ -610,7 +613,7 @@ class Template:
         assert len(tokenizer_kwargs) == 0
 
     def pad_sequence(self, sequences, padding_value=0.0):
-        padding_right = self.tokenizer.padding_side == 'right' or not self.tokenizer.padding_side
+        padding_right = self.padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
 
@@ -645,7 +648,7 @@ class Template:
             attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
         labels = [torch.tensor(b['labels']) for b in batch]
         loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
-        padding_right = self.tokenizer.padding_side == 'right' or not self.tokenizer.padding_side
+        padding_right = self.padding_side == 'right'
 
         if padding_to is not None:
             assert input_ids is not None  # inputs_embeds not support padding_to
@@ -1703,6 +1706,10 @@ register_template(
 
 class LlavaHfTemplate(Template):
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.padding_side = 'left'
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
         if self._is_vllm:
@@ -1712,7 +1719,6 @@ class LlavaHfTemplate(Template):
             return ['<image>\n']
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        self.tokenizer.padding_side = 'left'
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
