@@ -320,6 +320,8 @@ export parameters inherit from infer parameters, with the following added parame
 - `--hub_token`: Default is `None`. See `sft.sh command line arguments` for parameter details.
 - `--hub_private_repo`: Default is `False`. See `sft.sh command line arguments` for parameter details.
 - `--commit_message`: Default is `'update files'`.
+- `--to_ollama`: Export to ollama modelfile.
+- `--ollama_output_dir`: ollama output dir. Default is `<modeltype>-ollama`.
 
 ## eval parameters
 
