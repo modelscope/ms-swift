@@ -1314,7 +1314,7 @@ class InternLMXComposer2Template(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         im_mask = [b['im_mask'][0] for b in batch]
-        im_mask = pad_sequence(im_mask, batch_first=True, padding_value=0)
+        im_mask = self.pad_sequence(im_mask, padding_value=0)
         res['im_mask'] = im_mask
         return res
 
@@ -1712,6 +1712,7 @@ class LlavaHfTemplate(Template):
             return ['<image>\n']
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        self.tokenizer.padding_side = 'left'
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1940,7 +1941,7 @@ class PaliGemmaTemplate(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
+        token_type_ids = self.pad_sequence(token_type_ids, padding_value=0)
         res['token_type_ids'] = token_type_ids
         return res
 
@@ -2179,7 +2180,7 @@ class CogTemplate(Template):
             if key in batch[0]:
                 res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
+        token_type_ids = self.pad_sequence(token_type_ids, padding_value=0)
         res['token_type_ids'] = token_type_ids
         return res
 

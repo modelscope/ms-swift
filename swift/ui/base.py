@@ -11,7 +11,6 @@ from swift.llm.utils.model import MODEL_MAPPING, ModelType
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
 base_builder: Type['BaseUI'] = None
-lang = os.environ.get('SWIFT_UI_LANG', all_langs[0])
 
 
 def update_data(fn):
@@ -39,8 +38,8 @@ def update_data(fn):
                 kwargs['value'] = base_builder.default(elem_id)
 
         if builder is not None:
-            if elem_id in builder.locales(lang):
-                values = builder.locale(elem_id, lang)
+            if elem_id in builder.locales(builder.lang):
+                values = builder.locale(elem_id, builder.lang)
                 if 'info' in values:
                     kwargs['info'] = values['info']
                 if 'value' in values:
