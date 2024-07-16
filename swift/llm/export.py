@@ -3,6 +3,7 @@ import os
 from typing import Optional
 
 import torch
+from swift.llm import get_model_tokenizer, get_template
 
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
 from .infer import merge_lora, prepare_model_template, save_checkpoint
@@ -112,7 +113,22 @@ def llm_export(args: ExportArguments) -> None:
         logger.info(f'If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, '
                     f'else SWIFT will use the original(merged) model dir')
         os.makedirs(args.ollama_output_dir, exist_ok=True)
-        model, template = prepare_model_template(args)
+        model, tokenizer = get_model_tokenizer(
+            args.model_type,
+            args.torch_dtype,
+            None,
+            model_id_or_path=args.model_id_or_path,
+            revision=args.model_revision,
+            load_model=False,
+            quant_method=args.quant_method)
+        template = get_template(
+            args.template_type,
+            tokenizer,
+            args.system,
+            args.max_length,
+            args.truncation_strategy,
+            model=model,
+            tools_prompt=args.tools_prompt)
         with open(os.path.join(args.ollama_output_dir, 'Modelfile'), 'w') as f:
             f.write(f'FROM {model_path}\n')
             f.write(f'TEMPLATE """{{{{ if .System }}}}'
