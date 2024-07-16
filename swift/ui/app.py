@@ -4,7 +4,7 @@ import gradio as gr
 from packaging import version
 from transformers.utils import strtobool
 
-from swift.llm.utils.argument import WebuiArguments
+from swift.llm.utils import WebuiArguments
 from swift.ui.llm_eval.llm_eval import LLMEval
 from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_infer.llm_infer import LLMInfer
