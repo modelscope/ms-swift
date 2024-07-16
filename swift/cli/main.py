@@ -53,7 +53,7 @@ def cli_main() -> None:
         argv = ['--rlhf_type', method_name] + argv
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
-    if torchrun_args is None or method_name not in ('sft', 'dpo', 'orpo', 'simpo', 'rlhf', 'pt'):
+    if torchrun_args is None or method_name not in ('sft', 'dpo', 'orpo', 'simpo', 'rlhf', 'pt', 'export'):
         try:
             python_cmd = 'python'
             subprocess.run(

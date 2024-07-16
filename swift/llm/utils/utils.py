@@ -939,6 +939,10 @@ def is_xtuner_available():
     return importlib.util.find_spec('xtuner') is not None
 
 
+def is_megatron_available():
+    return importlib.util.find_spec('megatron') is not None
+
+
 def is_unsloth_available() -> bool:
     return importlib.util.find_spec('unsloth') is not None
 
