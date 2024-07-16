@@ -365,3 +365,10 @@ deploy parameters inherit from infer parameters, with the following added parame
 - `--port`: Default is `8000`.
 - `--ssl_keyfile`: Default is `None`.
 - `--ssl_certfile`: Default is `None`.
+
+## web-ui Parameters
+
+- `--host`: Default `'127.0.0.1'`.
+- `--port`: Default `None`.
+- `--lang`: Default `'zh'`.
+- `--share`: Default `False`.

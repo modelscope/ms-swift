@@ -1530,6 +1530,14 @@ class RLHFArguments(SftArguments):
 
 
 @dataclass
+class WebuiArguments:
+    share: bool = False
+    lang: str = 'zh'
+    host: str = '127.0.0.1'
+    port: Optional[int] = None
+
+
+@dataclass
 class RomeArguments(InferArguments):
     rome_request_file: str = field(
         default=None, metadata={'help': 'The rome request file, please check the documentation '
