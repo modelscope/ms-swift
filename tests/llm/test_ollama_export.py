@@ -1,13 +1,12 @@
 import shutil
 import tempfile
+import unittest
+
+from swift.llm import ExportArguments, export_main
 
 if __name__ == '__main__':
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-import os
-import unittest
-
-from swift.llm import (export_main, ExportArguments)
 
 
 class TestTemplate(unittest.TestCase):

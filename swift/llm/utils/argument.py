@@ -1431,7 +1431,8 @@ class ExportArguments(InferArguments):
                 self.merge_lora = True
             if not self.ollama_output_dir:
                 self.ollama_output_dir = f'{self.model_type}-ollama'
-            assert not os.path.exists(self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
+            assert not os.path.exists(
+                self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
 
 
 @dataclass

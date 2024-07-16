@@ -3,8 +3,8 @@ import os
 from typing import Optional
 
 import torch
-from swift.llm import get_model_tokenizer, get_template
 
+from swift.llm import get_model_tokenizer, get_template
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
 from .infer import merge_lora, prepare_model_template, save_checkpoint
 from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
@@ -99,38 +99,35 @@ def llm_export(args: ExportArguments) -> None:
     if args.to_peft_format:
         assert args.sft_type == 'lora', f'args.sft_type: {args.sft_type}'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
-    model_path = None
+
     if args.merge_lora:
         # fix parameter conflict
         quant_method = args.quant_method
         args.quant_method = None
-        model_path = merge_lora(args, device_map=args.merge_device_map)
+        merge_lora(args, device_map=args.merge_device_map)
         args.quant_method = quant_method
+
     if args.to_ollama:
-        if not model_path:
-            model_path = safe_snapshot_download(args.model_type, args.model_id_or_path, revision=args.model_revision)
-        logger.info(f'Exporting to ollama:')
-        logger.info(f'If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, '
-                    f'else SWIFT will use the original(merged) model dir')
+
+        logger.info('Exporting to ollama:')
+        logger.info('If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, '
+                    'else SWIFT will use the original(merged) model dir')
         os.makedirs(args.ollama_output_dir, exist_ok=True)
-        model, tokenizer = get_model_tokenizer(
-            args.model_type,
-            args.torch_dtype,
-            None,
-            model_id_or_path=args.model_id_or_path,
-            revision=args.model_revision,
-            load_model=False,
-            quant_method=args.quant_method)
-        template = get_template(
+        if args.ckpt_dir is not None:
+            model_dir = args.ckpt_dir
+        else:
+            _, tokenizer = get_model_tokenizer(
+                args.model_type, model_id_or_path=args.model_id_or_path, revision=args.model_revision, load_model=False)
+            model_dir = tokenizer.model_dir
+        template: Template = get_template(
             args.template_type,
             tokenizer,
             args.system,
             args.max_length,
             args.truncation_strategy,
-            model=model,
             tools_prompt=args.tools_prompt)
         with open(os.path.join(args.ollama_output_dir, 'Modelfile'), 'w') as f:
-            f.write(f'FROM {model_path}\n')
+            f.write(f'FROM {model_dir}\n')
             f.write(f'TEMPLATE """{{{{ if .System }}}}'
                     f'{template.system_prefix[0].replace("{{SYSTEM}}", "{{ .System }}")}'
                     f'{{{{ end }}}}')
@@ -155,8 +152,7 @@ def llm_export(args: ExportArguments) -> None:
         logger.info('Save Modelfile done, you can start ollama by:')
         logger.info('> ollama serve')
         logger.info('In another terminal:')
-        logger.info('> ollama create my-custom-model '
-                    f'-f {os.path.join(args.ollama_output_dir, "Modelfile")}')
+        logger.info('> ollama create my-custom-model ' f'-f {os.path.join(args.ollama_output_dir, "Modelfile")}')
         logger.info('> ollama run my-custom-model')
     elif args.quant_bits > 0:
         assert args.quant_output_dir is not None
