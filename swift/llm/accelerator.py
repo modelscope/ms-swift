@@ -30,5 +30,5 @@ def ta_accelerate(model,
         return config
 
     ta_config = get_ta_config()
-    model = ta.accelerate(model, ta_config)
+    model = ta.accelerate(model, config=ta_config)
     return model

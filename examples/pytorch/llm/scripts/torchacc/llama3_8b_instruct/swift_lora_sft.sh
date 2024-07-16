@@ -15,7 +15,7 @@ swift sft \
   --output_dir output \
   --num_train_epochs 1 \
   --max_length 2048 \
-  --batch_size  16 \
+  --batch_size 12 \
   --use_flash_attn true \
   --gradient_accumulation_steps 1 \
   --dataset_test_ratio 0 \
