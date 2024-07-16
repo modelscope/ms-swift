@@ -1611,6 +1611,8 @@ def get_model_tokenizer_glm4v(model_dir: str,
                               load_model: bool = True,
                               **kwargs):
     model, tokenizer = get_model_tokenizer_glm4(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    # fix merge-lora
+    tokenizer.init_kwargs['image_size'] = 1120
     # fix device_map 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
@@ -5467,6 +5469,8 @@ def safe_snapshot_download(model_type: str,
 
     with safe_ddp_context():
         if model_id_or_path is not None and not os.path.exists(model_id_or_path):
+            if model_id_or_path.startswith('/'):
+                raise ValueError(f"path: '{model_id_or_path}' not found")
             ignore_file_pattern = model_info['ignore_file_pattern']
             if download_model is False:
                 if ignore_file_pattern is None:
