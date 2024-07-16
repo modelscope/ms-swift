@@ -1533,7 +1533,7 @@ class RLHFArguments(SftArguments):
 class WebuiArguments:
     share: bool = False
     lang: str = 'zh'
-    server: str = '127.0.0.1'
+    host: str = '127.0.0.1'
     port: Optional[int] = None
 
 

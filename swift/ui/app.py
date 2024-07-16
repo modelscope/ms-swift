@@ -44,7 +44,7 @@ def run_ui(arguments: WebuiArguments):
     lang = os.environ.get('SWIFT_UI_LANG') or arguments.lang
     share_env = os.environ.get('WEBUI_SHARE')
     share = strtobool(share_env) if share_env else arguments.share
-    server = os.environ.get('WEBUI_SERVER') or arguments.server
+    server = os.environ.get('WEBUI_SERVER') or arguments.host
     port_env = os.environ.get('WEBUI_PORT')
     port = int(port_env) if port_env else arguments.port
 

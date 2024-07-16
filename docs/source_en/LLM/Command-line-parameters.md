@@ -368,7 +368,7 @@ deploy parameters inherit from infer parameters, with the following added parame
 
 ## web-ui Parameters
 
-- `--server`: Default `'127.0.0.1`.
+- `--host`: Default `'127.0.0.1'`.
 - `--port`: Default `None`.
-- `--lang`: Default `zh`.
+- `--lang`: Default `'zh'`.
 - `--share`: Default `False`.
