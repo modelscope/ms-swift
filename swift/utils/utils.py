@@ -15,19 +15,19 @@ from transformers import HfArgumentParser, enable_full_determinism, set_seed
 
 from .logger import get_logger
 from .np_utils import stat_array
-from .torch_utils import broadcast_string, is_dist, is_local_master, use_torchacc
+from .torch_utils import broadcast_string, is_dist, is_dist_ta, is_local_master
 
 logger = get_logger()
 
 
 @contextmanager
 def safe_ddp_context():
-    if is_dist() and not is_local_master() and dist.is_initialized():
+    if (is_dist() or is_dist_ta()) and not is_local_master() and dist.is_initialized():
         dist.barrier()
     yield
-    if is_dist() and is_local_master() and dist.is_initialized():
+    if (is_dist() or is_dist_ta()) and is_local_master() and dist.is_initialized():
         dist.barrier()
-    if is_dist() and dist.is_initialized():  # sync
+    if (is_dist() or is_dist_ta()) and dist.is_initialized():  # sync
         dist.barrier()
 
 
@@ -101,14 +101,7 @@ def add_version_to_work_dir(work_dir: str) -> str:
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{time}'
-    if dist.is_initialized() and is_dist():
-        sub_folder = broadcast_string(sub_folder)
-    if use_torchacc():
-        import torchacc as ta
-        # Initialize in advance
-        if not dist.is_initialized():
-            dist.init_process_group(backend=ta.dist.BACKEND_NAME)
-        # Make sure to set the same output_dir when using DDP.
+    if dist.is_initialized() and (is_dist() or is_dist_ta()):
         sub_folder = broadcast_string(sub_folder)
 
     work_dir = os.path.join(work_dir, sub_folder)
