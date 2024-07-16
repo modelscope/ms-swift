@@ -128,13 +128,13 @@ def llm_export(args: ExportArguments) -> None:
                 for stop_word in args.stop_words:
                     f.write(f'PARAMETER stop "{stop_word}"\n')
             if args.temperature:
-                f.write(f'PARAMETER temperature "{args.temperature}"\n')
+                f.write(f'PARAMETER temperature {args.temperature}\n')
             if args.top_k:
-                f.write(f'PARAMETER top_k "{args.top_k}"\n')
+                f.write(f'PARAMETER top_k {args.top_k}\n')
             if args.top_p:
-                f.write(f'PARAMETER top_p "{args.top_p}"\n')
+                f.write(f'PARAMETER top_p {args.top_p}\n')
             if args.repetition_penalty:
-                f.write(f'PARAMETER repeat_penalty "{args.repetition_penalty}"\n')
+                f.write(f'PARAMETER repeat_penalty {args.repetition_penalty}\n')
 
         logger.info('Save Modelfile done, you can start ollama by:')
         logger.info('> ollama serve')
@@ -161,6 +161,7 @@ def llm_export(args: ExportArguments) -> None:
         elif args.quant_method == 'bnb':
             args.quant_device_map = 'auto'  # cannot use cpu on bnb
             args.quantization_bit = args.quant_bits
+            args.bnb_4bit_compute_dtype, args.load_in_4bit, args.load_in_8bit = args.select_bnb()
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
             model.save_pretrained(args.quant_output_dir)
         else:
