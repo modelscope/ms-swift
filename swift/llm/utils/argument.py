@@ -1386,12 +1386,15 @@ class EvalArguments(InferArguments):
 @dataclass
 class ExportArguments(InferArguments):
     to_peft_format: bool = False
+    to_ollama: bool = False
+    ollama_output_dir: Optional[str] = None
+    gguf_file: Optional[str] = None
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['awq', 'gptq'] = 'awq'
+    quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
@@ -1427,6 +1430,14 @@ class ExportArguments(InferArguments):
                                                          f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
+        if self.to_ollama:
+            assert self.sft_type in ('full', 'lora', 'longlora', 'llamapro')
+            if self.sft_type in ('lora', 'longlora', 'llamapro'):
+                self.merge_lora = True
+            if not self.ollama_output_dir:
+                self.ollama_output_dir = f'{self.model_type}-ollama'
+            assert not os.path.exists(
+                self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
 
 
 @dataclass
