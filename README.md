@@ -55,11 +55,11 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
-- 2024.07.08: Support exporting for ollama and bitsandbytes. Use `swift export --model_type xxx --to_ollama true` or `swift export --model_type xxx --quant_method bnb --quant_bits 4`
+- 🔥2024.07.16: Support exporting for ollama and bitsandbytes. Use `swift export --model_type xxx --to_ollama true` or `swift export --model_type xxx --quant_method bnb --quant_bits 4`
 - 2024.07.08: Support cogvlm2-video-13b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/cogvlm2-video-best-practice.md).
 - 2024.07.08: Support internlm-xcomposer2_5-7b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/internlm-xcomposer2-best-practice.md).
-- 2024.07.06: Support for the llava-next-video series models: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-instruct. You can refer to [llava-video best practice](docs/source_en/Multi-Modal/llava-video-best-practice.md) for more information.
-- 2024.07.06: Support internvl2 series: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
+- 🔥2024.07.06: Support for the llava-next-video series models: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-instruct. You can refer to [llava-video best practice](docs/source_en/Multi-Modal/llava-video-best-practice.md) for more information.
+- 🔥2024.07.06: Support internvl2 series: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
 - 2024.07.06: Support codegeex4-9b-chat.
 - 2024.07.04: Support internlm2_5-7b series: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
