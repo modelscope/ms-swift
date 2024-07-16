@@ -1420,6 +1420,7 @@ class ExportArguments(InferArguments):
     to_hf: bool = False
     tp: int = 1
     pp: int = 1
+    check_model_forward: bool = False
 
     def __post_init__(self):
         if self.merge_device_map is None:

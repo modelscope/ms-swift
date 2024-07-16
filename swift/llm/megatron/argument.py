@@ -1,15 +1,9 @@
 import os
 import sys
 from dataclasses import asdict, dataclass
-from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-import torch
-import torch.distributed as dist
 from transformers import AutoConfig
-
-from swift.llm.utils import get_model_tokenizer
-from swift.utils import get_dist_setting
 
 config_mapping = {
     'num_layers': ['num_hidden_layers'],
@@ -61,7 +55,6 @@ class MegatronMixin:
     num_query_groups: Optional[int] = None
     max_position_embeddings: Optional[int] = None
     norm_epsilon: Optional[float] = None
-    untie_embeddings_and_output_weights: Optional[bool] = None
     swiglu: Optional[bool] = None
 
     # train

@@ -2,9 +2,10 @@ import os
 import sys
 
 import torch.distributed as dist
-
+from functools import wraps
+import torch
 from swift.llm import git_clone_github, is_megatron_available
-from swift.utils import subprocess_run
+from swift.utils import subprocess_run, get_dist_setting
 
 
 def init_megatron_env() -> None:
@@ -32,7 +33,6 @@ def get_model_seires(model_type: str) -> str:
 
 
 def patch_megatron(tokenizer):
-    # 
 
     def build_tokenizer(args):
         args.extra_vocab_size = args.padded_vocab_size - tokenizer.vocab_size
