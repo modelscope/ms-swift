@@ -570,6 +570,8 @@ class SwiftMixin:
                 if k == 'loss':
                     self._total_loss_scalar += v_scalar
                 logs[k] = round(v_scalar / (self.state.global_step - self._globalstep_last_logged), 8)
+                if k == 'acc' and self._globalstep_last_logged > 0:
+                    logs[k] *= self.sft_args.acc_steps
             if version.parse(transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
                 if isinstance(grad_norm, torch.Tensor):
