@@ -150,20 +150,10 @@ def llm_export(args: ExportArguments) -> None:
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
         elif args.quant_method == 'bnb':
-            from accelerate import Accelerator
-            from accelerate.utils import load_and_quantize_model
-            accelerator = Accelerator()
-            args.quantization_bit = args.quant_bits
-            assert args.quantization_bit == 8, 'bnb only support 8 bit serialization.'
-            from accelerate.utils import load_and_quantize_model
-            from accelerate.utils import BnbQuantizationConfig
-            args.quantization_bit = 0
-            args.quant_bits = 0
+            args.quant_device_map = 'auto'
+            # assert args.quant_bits == 8, 'bnb only support 8 bit serialization.'
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
-            bnb_quantization_config = BnbQuantizationConfig(load_in_8bit=True)
-            model = load_and_quantize_model(model, bnb_quantization_config=bnb_quantization_config)
-            # model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
-            accelerator.save_model(model, args.quant_output_dir)
+            model.save_pretrained(args.quant_output_dir)
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')
 
@@ -183,6 +173,8 @@ def llm_export(args: ExportArguments) -> None:
             })
         logger.info(f'Successfully quantized the model and saved in {args.quant_output_dir}.')
         args.ckpt_dir = args.quant_output_dir
+        from modelscope import AutoModelForCausalLM
+        model2 = AutoModelForCausalLM.from_pretrained(args.ckpt_dir, trust_remote_code=True, device_map="auto")
 
     if args.push_to_hub:
         ckpt_dir = args.ckpt_dir
