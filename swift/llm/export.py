@@ -115,9 +115,10 @@ def llm_export(args: ExportArguments) -> None:
         if args.ckpt_dir is not None:
             model_dir = args.ckpt_dir
         else:
-            _, tokenizer = get_model_tokenizer(
-                args.model_type, model_id_or_path=args.model_id_or_path, revision=args.model_revision, load_model=False)
-            model_dir = tokenizer.model_dir
+            model_dir = args.model_id_or_path
+        _, tokenizer = get_model_tokenizer(
+            args.model_type, model_id_or_path=model_dir, revision=args.model_revision, load_model=False)
+        model_dir = tokenizer.model_dir
         template = get_template(
             args.template_type,
             tokenizer,
