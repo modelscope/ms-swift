@@ -1097,7 +1097,7 @@ class InferArguments(ArgumentsBase):
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
     # 'awq', 'gptq', 'aqlm' are used for inference on pre-quantized models.
-    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq'] = None
+    quant_method: Literal['bnb', 'hqq', 'eetq', 'awq', 'gptq', 'aqlm'] = None
     quantization_bit: Literal[0, 1, 2, 3, 4, 8] = 0  # hqq: 1,2,3,4,8. bnb: 4,8
     hqq_axis: Literal[0, 1] = 0
     hqq_dynamic_config_path: Optional[str] = None
@@ -1389,7 +1389,7 @@ class ExportArguments(InferArguments):
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['awq', 'gptq', 'bnb', 'eetq', 'hqq'] = 'awq'
+    quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
