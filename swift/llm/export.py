@@ -8,7 +8,6 @@ from swift.llm import get_model_tokenizer, get_template
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
 from .infer import merge_lora, prepare_model_template, save_checkpoint
 from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
-from .utils.model import safe_snapshot_download
 
 logger = get_logger()
 
