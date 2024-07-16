@@ -1729,7 +1729,7 @@ class LlavaHfTemplate(Template):
             images = self._prepare_vllm_images(images)
         if images:
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
-            inputs['pixel_values'] = image_inputs['pixel_values']
+            inputs['pixel_values'] = image_inputs['pixel_values'].squeeze(0)
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
