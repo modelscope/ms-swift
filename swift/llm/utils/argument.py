@@ -1426,7 +1426,6 @@ class ExportArguments(InferArguments):
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token
 
-
     def __post_init__(self):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu' if self.quant_bits > 0 else 'auto'
@@ -1556,6 +1555,7 @@ class RLHFArguments(SftArguments):
             self.loss_type = 'sigmoid'
         elif self.rlhf_type == 'kto':
             self.loss_type = 'kto'
+
 
 @dataclass
 class WebuiArguments:
