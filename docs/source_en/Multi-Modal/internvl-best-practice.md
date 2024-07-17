@@ -28,7 +28,7 @@ The auto device map algorithm in transformers is not friendly to multi-modal mod
 - Alternatively, you can explicitly specify the device map using `--device_map_config_path`.
 
 3. **Differences between the InternVL2 model and its predecessors (InternVL-V1.5 and Mini-InternVL)**
-- The InternVL2 model supports multi-turn multi-image inference and training, meaning multi-turn conversations with images, and supports text and images interleaved within a single turn. For specific formats, refer to [Custom Dataset](#custom-dataset). The predecessors models supported multi-turn conversations but could only have images in a single turn.
+- The InternVL2 model supports multi-turn multi-image inference and training, meaning multi-turn conversations with images, and supports text and images interleaved within a single turn. For details, refer to [Custom Dataset](#custom-dataset) and InternVL2 part in Inference section. The predecessors models supported multi-turn conversations but could only have images in a single turn.
 - The InternVL2 model supports video input. For specific formats, refer to [Custom Dataset](#custom-dataset).
 
 ## Table of Contents
@@ -105,6 +105,44 @@ Leading him through the night.
 The boatman's journey, a tale to tell,
 Of courage, hope, and love as well.
 """
+```
+For the **InternVL2** series models, multi-turn multi-image inference is supported, and within a single turn, images and text can be interleaved. The position of the images needs to be determined by <image> in the input.
+
+Example of multi-turn multi-image input:
+```
+<<< <image> describe the image
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+The image depicts a kitten with striking blue eyes and a mix of white and black fur. The kitten's fur appears soft and fluffy, and its ears are large and pointed. The eyes of the kitten are particularly expressive, giving it a curious and endearing appearance. The background is blurred, drawing attention to the kitten's detailed features. The overall composition of the image highlights the kitten's innocence and charm.
+--------------------------------------------------
+<<< <image> What is the difference from the last picture
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+The difference between the last picture and the one in the image is primarily in the facial expressions and the overall demeanor of the sheep.
+
+In the first picture, the sheep have a calm and curious expression, with large, expressive eyes and a gentle demeanor. The background is blurred, emphasizing the sheep's features.
+
+In the second picture, the sheep have a more serious and focused expression. Their eyes are slightly narrowed, and their ears are perked up, giving them a more alert and attentive appearance. The background remains the same, maintaining the focus on the sheep.
+
+In the third picture, the sheep have a more neutral expression. Their eyes are slightly narrowed, and their ears are perked up, but their overall demeanor is still calm and attentive. The background remains the same, ensuring the focus remains on the sheep.
+
+In the fourth picture, the sheep have a more neutral and calm expression. Their eyes are slightly narrowed, and their ears are perked up, but their overall demeanor is still calm and attentive. The background remains the same, maintaining the focus on the sheep.
+
+Overall, the main difference is the facial expressions and the overall demeanor of the sheep, with the second picture showing a more alert and focused look compared to the other three pictures.
+--------------------------------------------------
+<<< What the two pictures have in common
+Input an image path or URL <<<
+The two pictures have several similarities:
+
+1. **Foreground Sheep**: All four sheep in the images are in the foreground, standing on a grassy field. This creates a sense of unity and focus on the sheep.
+
+2. **Expression and Demeanor**: Each sheep has a distinct expression and demeanor. The first picture shows a curious and calm sheep, the second shows a more alert and focused sheep, the third shows a neutral and calm sheep, and the fourth shows a neutral and calm sheep. Despite the differences in expressions, all four sheep maintain a calm demeanor.
+
+3. **Background**: The background remains consistent in all four pictures. The background features a blurred green field with mountains in the distance, which helps to keep the focus on the sheep.
+
+4. **Art Style**: The art style is consistent across all four pictures. The sheep are depicted in a cartoonish and friendly manner, with large eyes and expressive faces.
+
+5. **Overall Composition**: The composition of the images is similar, with the sheep standing in the foreground and the background featuring a blurred natural landscape.
+
+These similarities create a cohesive and engaging visual experience, despite the differences in expressions and demeanor.
 ```
 
 Example images are as follows:

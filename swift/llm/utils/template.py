@@ -1502,15 +1502,16 @@ class Internvl2Template(InternvlTemplate):
             medias = example.get(media_key)
             if medias:
                 num_media_tag = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
-                num_media = len(medias)
-                res_media = num_media - num_media_tag
-                assert res_media >= 0, \
+                # 计算list medias中非None的元素个数
+                num_media = sum([1 for m in medias if m])  # ignore None
+                num_res_media = num_media - num_media_tag
+                assert num_res_media >= 0, \
                     'The number of media tags {num_media_tag} is greater than the number of media objects {num_media}.'
-                if res_media == 0:
+                if num_res_media == 0:
                     # Each media tag corresponds to an media object.
                     return
                 # process res media, add default media tag
-                if len(example[media_key]) == len(history) + 1:
+                if num_res_media == len(history) + 1:
                     # In this case, add at the beginning of each round's query.
                     for h, m in zip(history, example[media_key][:-1]):
                         if m:
@@ -1520,7 +1521,7 @@ class Internvl2Template(InternvlTemplate):
                     example[media_key] = [m for m in example[media_key] if m]
                 else:
                     # add the res image tag at the beginning of the last query
-                    query = media_tag * res_media + query
+                    query = media_tag * num_res_media + query
                 break
 
         example['query'] = query
@@ -1550,14 +1551,10 @@ register_template(
     TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
+    TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
 
 register_template(
-    TemplateType.internvl2_phi3,
-    Internvl2Phi3Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue')
+    TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
 
 
 class FlorenceTemplate(Template):
