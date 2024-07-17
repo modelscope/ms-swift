@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.07.17: 支持[NuminaMath-7B-TIR](https://www.modelscope.cn/models/AI-ModelScope/NuminaMath-7B-TIR)的训练和推理. model_type可以使用`numina-math-7b`.
 - 🔥2024.07.16: 支持ollama和bitsandbytes导出. 可以使用命令: `swift export --model_type xxx --to_ollama true`或者`swift export --model_type xxx --quant_method bnb --quant_bits 4`.
 - 2024.07.08: 支持cogvlm2-video-13b-chat. 最佳实践可以查看[这里](docs/source/Multi-Modal/cogvlm2-video最佳实践.md).
 - 2024.07.08: 支持internlm-xcomposer2_5-7b-chat. 最佳实践可以查看[这里](docs/source/Multi-Modal/internlm-xcomposer2最佳实践.md).
@@ -545,65 +546,65 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 #### 大语言模型
 
-| 模型类型                                            | 模型介绍                                                     | 语言       | 模型大小                  | 模型类型                                      |
-| --------------------------------------------------- | ------------------------------------------------------------ |----------| ------------------------- |-------------------------------------------|
-| Qwen<br>Qwen1.5<br>Qwen2                              | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)        | 中文<br>英文 | 0.5B-110B<br>包含量化版本     | base模型<br>chat模型<br>MoE模型<br>代码模型             |                          |
-| ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4<br>Codegeex4           | [智谱ChatGLM系列模型](https://github.com/THUDM/)             | 中文<br>英文 | 6B-9B                        | base模型<br>chat模型<br>代码模型<br>长文本模型             |
-| Baichuan<br>Baichuan2                                  | [百川1和百川2](https://github.com/baichuan-inc)              | 中文<br>英文 | 7B-13B<br>包含量化版本         | base模型<br>chat模型                          |
-| Yuan2                                               | [浪潮源系列模型](https://github.com/IEIT-Yuan)               | 中文<br>英文 | 2B-102B                   | instruct模型                                |
-| XVerse                                              | [元象系列模型](https://github.com/xverse-ai)                 | 中文<br>英文 | 7B-65B                    | base模型<br>chat模型<br>长文本模型<br>MoE模型             |                |
-| LLaMA2                                              | [LLaMA2系列模型](https://github.com/facebookresearch/llama)  | 英文       | 7B-70B<br>包含量化版本      | base模型<br>chat模型                          |
-| LLaMA3               | [LLaMA3系列模型](https://github.com/meta-llama/llama3)  | 英文       | 8B-70B<br>包含量化版本      | base模型<br>chat模型              |
-| Mistral<br>Mixtral                                 | [Mistral系列模型](https://github.com/mistralai/mistral-src)  | 英文       | 7B-8x22B | base模型<br>instruct模型<br>MoE模型             |
-| Yi<br>Yi1.5                                    | [01AI的YI系列模型](https://github.com/01-ai)                 | 中文<br>英文 | 6B-34B<br>包含量化版本          | base模型<br>chat模型<br>长文本模型                 |
-| InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5          | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM) | 中文<br>英文 | 1.8B-20B                  | base模型<br>chat模型<br>数学模型                  |
-| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math<br>DeepSeek-V2<br>DeepSeek-Coder-V2       | [幻方系列模型](https://github.com/deepseek-ai)               | 中文<br>英文 | 1.3B-236B                  | base模型<br>chat模型<br>MoE模型<br>代码模型<br>数学模型 |
-| MAMBA                                               | [MAMBA时序卷积模型](https://github.com/state-spaces/mamba)   | 英文       | 130M-2.8B                 | base模型                                    |
-| Gemma<br>Gemma2                                       | [Google Gemma系列模型](https://github.com/google/gemma_pytorch) | 英文       | 2B-27B                     | base模型<br>instruct模型                      |
-| MiniCPM                                             | [OpenBmB MiniCPM系列模型](https://github.com/OpenBMB/MiniCPM) | 中文<br>英文 | 2B-3B                     | chat模型<br>MoE模型                                    |
-| OpenBuddy                                           | [OpenBuddy系列模型](https://github.com/OpenBuddy/OpenBuddy)  | 中文<br>英文 | 7B-70B                    | base模型<br>chat模型                          |
-| Orion                                               | [猎户星空系列模型](https://github.com/OrionStarAI)           | 中文<br>英文 | 14B                       | base模型<br>chat模型                          |
-| BlueLM                                              | [VIVO蓝心大模型](https://github.com/vivo-ai-lab/BlueLM)      | 中文<br>英文 | 7B                        | base模型<br>chat模型                          |
-| Ziya2                                               | [封神榜系列模型](https://github.com/IDEA-CCNL/Fengshenbang-LM) | 中文<br>英文 | 13B                       | base模型<br>chat模型                          |
-| Skywork                                             | [昆仑天工系列模型](https://github.com/SkyworkAI/Skywork)     | 中文<br>英文 | 13B                       | base模型<br>chat模型                          |
-| Zephyr                                | 基于Mistral的zephyr系列模型                     | 英文       | 7B                        | chat模型                                    |
-| PolyLM                                              | [通义实验室自研的PolyLM系列模型](https://github.com/DAMO-NLP-MT/PolyLM) | 多语种      | 13B                       | base模型                                    |
-| SeqGPT                                              | [通义实验室自研的文本理解模型，用于信息抽取和文本分类](https://github.com/Alibaba-NLP/SeqGPT) | 中文       | 560M                      | 语义理解模型                                    |
-| SUS                                                 | [南方科技大学基于YI Fine-Tune的模型](https://github.com/SUSTech-IDEA/SUS-Chat) | 中文<br>英文 | 34B                       | chat模型                                    |
-| Tongyi-Finance                                      | [通义金融系列模型](https://github.com/QwenLM/Qwen)           | 中文<br>英文 | 14B                       | base模型<br>chat模型<br>金融模型                  |
-| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [蚂蚁CodeFuse系列模型](https://github.com/codefuse-ai)       | 中文<br>英文 | 6B-34B                    | chat模型<br>代码模型                            |
-| phi2/phi3                         | 微软PHI2模型                                                 | 英文       | 3B/4B                 | base模型<br>指令模型<br>代码模型               |
-| Grok | [X-ai](https://github.com/xai-org/grok-1) | 英文       | 300B | base模型                                    |
-| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | 中文<br>英文 | 7B-12B | chat模型                                    |
-| dbrx | [databricks](https://github.com/databricks/dbrx) | 英文 | 132B | base模型<br>chat模型  |
-| mengzi3 | [Langboat](https://github.com/Langboat/Mengzi3) | 中文<br>英文 | 13B | base模型  |
-| c4ai-command-r | [c4ai](https://cohere.com/command) | 多语种 | 35B-104B | chat模型  |
-| WizardLM2 | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM) | 多语种 | 7B-8x22B<br>包含量化版本 | chat模型<br>MoE模型 |
-| Atom | [Atom](https://github.com/LlamaFamily/Llama-Chinese) | 中文 | 7B| base模型<br>chat模型|
-| Chinese-LLaMA-Alpaca-2 | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文 | 1.3B-13B| base模型<br>chat模型<br>长文本模型 |
-| Chinese-LLaMA-Alpaca-3 | [Chinese-LLaMA-Alpaca-3](https://github.com/ymcui/Chinese-LLaMA-Alpaca-3) | 中文 | 8B| base模型<br>chat模型|
-| ModelScope-Agent | [ModelScope Agent系列](https://github.com/modelscope/modelscope-agent) | 中文 | 7B-14B| agent模型 |
-
+| 模型类型                                                                                            | 模型介绍                                                                      | 语言       | 模型大小                | 模型类型                                      |
+|-------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|----------|---------------------|-------------------------------------------|
+| Qwen<br>Qwen1.5<br>Qwen2                                                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)                              | 中文<br>英文 | 0.5B-110B<br>包含量化版本 | base模型<br>chat模型<br>MoE模型<br>代码模型         |                          |
+| ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4<br>Codegeex4                                          | [智谱ChatGLM系列模型](https://github.com/THUDM/)                                | 中文<br>英文 | 6B-9B               | base模型<br>chat模型<br>代码模型<br>长文本模型         |
+| Baichuan<br>Baichuan2                                                                           | [百川1和百川2](https://github.com/baichuan-inc)                                | 中文<br>英文 | 7B-13B<br>包含量化版本    | base模型<br>chat模型                          |
+| Yuan2                                                                                           | [浪潮源系列模型](https://github.com/IEIT-Yuan)                                   | 中文<br>英文 | 2B-102B             | instruct模型                                |
+| XVerse                                                                                          | [元象系列模型](https://github.com/xverse-ai)                                    | 中文<br>英文 | 7B-65B              | base模型<br>chat模型<br>长文本模型<br>MoE模型        |                |
+| LLaMA2                                                                                          | [LLaMA2系列模型](https://github.com/facebookresearch/llama)                   | 英文       | 7B-70B<br>包含量化版本    | base模型<br>chat模型                          |
+| LLaMA3                                                                                          | [LLaMA3系列模型](https://github.com/meta-llama/llama3)                        | 英文       | 8B-70B<br>包含量化版本    | base模型<br>chat模型                          |
+| Mistral<br>Mixtral                                                                              | [Mistral系列模型](https://github.com/mistralai/mistral-src)                   | 英文       | 7B-8x22B            | base模型<br>instruct模型<br>MoE模型             |
+| Yi<br>Yi1.5                                                                                     | [01AI的YI系列模型](https://github.com/01-ai)                                   | 中文<br>英文 | 6B-34B<br>包含量化版本    | base模型<br>chat模型<br>长文本模型                 |
+| InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5                                          | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM)                     | 中文<br>英文 | 1.8B-20B            | base模型<br>chat模型<br>数学模型                  |
+| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math<br>DeepSeek-V2<br>DeepSeek-Coder-V2 | [幻方系列模型](https://github.com/deepseek-ai)                                  | 中文<br>英文 | 1.3B-236B           | base模型<br>chat模型<br>MoE模型<br>代码模型<br>数学模型 |
+| MAMBA                                                                                           | [MAMBA时序卷积模型](https://github.com/state-spaces/mamba)                      | 英文       | 130M-2.8B           | base模型                                    |
+| Gemma<br>Gemma2                                                                                 | [Google Gemma系列模型](https://github.com/google/gemma_pytorch)               | 英文       | 2B-27B              | base模型<br>instruct模型                      |
+| MiniCPM                                                                                         | [OpenBmB MiniCPM系列模型](https://github.com/OpenBMB/MiniCPM)                 | 中文<br>英文 | 2B-3B               | chat模型<br>MoE模型                           |
+| OpenBuddy                                                                                       | [OpenBuddy系列模型](https://github.com/OpenBuddy/OpenBuddy)                   | 中文<br>英文 | 7B-70B              | base模型<br>chat模型                          |
+| Orion                                                                                           | [猎户星空系列模型](https://github.com/OrionStarAI)                                | 中文<br>英文 | 14B                 | base模型<br>chat模型                          |
+| BlueLM                                                                                          | [VIVO蓝心大模型](https://github.com/vivo-ai-lab/BlueLM)                        | 中文<br>英文 | 7B                  | base模型<br>chat模型                          |
+| Ziya2                                                                                           | [封神榜系列模型](https://github.com/IDEA-CCNL/Fengshenbang-LM)                   | 中文<br>英文 | 13B                 | base模型<br>chat模型                          |
+| Skywork                                                                                         | [昆仑天工系列模型](https://github.com/SkyworkAI/Skywork)                          | 中文<br>英文 | 13B                 | base模型<br>chat模型                          |
+| Zephyr                                                                                          | 基于Mistral的zephyr系列模型                                                      | 英文       | 7B                  | chat模型                                    |
+| PolyLM                                                                                          | [通义实验室自研的PolyLM系列模型](https://github.com/DAMO-NLP-MT/PolyLM)               | 多语种      | 13B                 | base模型                                    |
+| SeqGPT                                                                                          | [通义实验室自研的文本理解模型，用于信息抽取和文本分类](https://github.com/Alibaba-NLP/SeqGPT)       | 中文       | 560M                | 语义理解模型                                    |
+| SUS                                                                                             | [南方科技大学基于YI Fine-Tune的模型](https://github.com/SUSTech-IDEA/SUS-Chat)       | 中文<br>英文 | 34B                 | chat模型                                    |
+| Tongyi-Finance                                                                                  | [通义金融系列模型](https://github.com/QwenLM/Qwen)                                | 中文<br>英文 | 14B                 | base模型<br>chat模型<br>金融模型                  |
+| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen                                       | [蚂蚁CodeFuse系列模型](https://github.com/codefuse-ai)                          | 中文<br>英文 | 6B-34B              | chat模型<br>代码模型                            |
+| phi2/phi3                                                                                       | 微软PHI2模型                                                                  | 英文       | 3B/4B               | base模型<br>指令模型<br>代码模型                    |
+| Grok                                                                                            | [X-ai](https://github.com/xai-org/grok-1)                                 | 英文       | 300B                | base模型                                    |
+| TeleChat                                                                                        | [Tele-AI](https://github.com/Tele-AI/Telechat)                            | 中文<br>英文 | 7B-12B              | chat模型                                    |
+| dbrx                                                                                            | [databricks](https://github.com/databricks/dbrx)                          | 英文       | 132B                | base模型<br>chat模型                          |
+| mengzi3                                                                                         | [Langboat](https://github.com/Langboat/Mengzi3)                           | 中文<br>英文 | 13B                 | base模型                                    |
+| c4ai-command-r                                                                                  | [c4ai](https://cohere.com/command)                                        | 多语种      | 35B-104B            | chat模型                                    |
+| WizardLM2                                                                                       | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM)                     | 多语种      | 7B-8x22B<br>包含量化版本  | chat模型<br>MoE模型                           |
+| Atom                                                                                            | [Atom](https://github.com/LlamaFamily/Llama-Chinese)                      | 中文       | 7B                  | base模型<br>chat模型                          |
+| Chinese-LLaMA-Alpaca-2                                                                          | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文       | 1.3B-13B            | base模型<br>chat模型<br>长文本模型                 |
+| Chinese-LLaMA-Alpaca-3                                                                          | [Chinese-LLaMA-Alpaca-3](https://github.com/ymcui/Chinese-LLaMA-Alpaca-3) | 中文       | 8B                  | base模型<br>chat模型                          |
+| ModelScope-Agent                                                                                | [ModelScope Agent系列](https://github.com/modelscope/modelscope-agent)      | 中文       | 7B-14B              | agent模型                                   |
+| Numina                                                                                          | [AI-MO](https://huggingface.co/AI-MO)                                     | 英文       | 7B                  | 数学模型                                      |
 
 #### 多模态大模型
 
-| 模型类型                                      | 模型介绍                                                                       | 语言      | 模型大小            | 模型类型          |
-|-------------------------------------------|----------------------------------------------------------------------------| --------- |-----------------| ----------------- |
-| Qwen-VL                                   | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B<br>包含量化版本    | base模型<br>chat模型 |
-| Qwen-Audio                                | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B              | base模型<br>chat模型 |
-| YI-VL                                     | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B          | chat模型          |
-| XComposer2<br>XComposer2.5                | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)                      | 中文<br>英文 | 7B              | chat模型          |
-| DeepSeek-VL                               | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B         | chat模型          |
-| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5 | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM)                  | 中文<br>英文 | 3B-9B           | chat模型          |
-| CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V   | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)                         | 中文<br>英文 | 9B-19B         | chat模型          |
-| Llava1.5<br>Llava1.6                       | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文 | 7B-34B          | chat模型 |
-| Llava-Next<br>Llava-Next-Video                   | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 7B-110B         | chat模型 |
-| mPLUG-Owl                                 | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文 | 11B             | chat模型 |
-| InternVL<br>Mini-Internvl<br>Internvl2                                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 2B-40B<br>包含量化版本 | chat模型 |
-| Llava-llama3                              | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文 | 8B              | chat model |
-| Phi3-Vision                                | 微软              | 英文 | 4B              | chat model |
-| PaliGemma                                  | Google              | 英文 | 3B              | chat model |
-| Florence                                  | 微软              | 英文 | 0.23B-0.77B             | chat model |
+| 模型类型                                                    | 模型介绍                                                                       | 语言       | 模型大小             | 模型类型             |
+|---------------------------------------------------------|----------------------------------------------------------------------------|----------|------------------|------------------|
+| Qwen-VL                                                 | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B<br>包含量化版本     | base模型<br>chat模型 |
+| Qwen-Audio                                              | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B               | base模型<br>chat模型 |
+| YI-VL                                                   | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B           | chat模型           |
+| XComposer2<br>XComposer2.5                              | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)            | 中文<br>英文 | 7B               | chat模型           |
+| DeepSeek-VL                                             | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
+| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5               | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM)                  | 中文<br>英文 | 3B-9B            | chat模型           |
+| CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)                         | 中文<br>英文 | 9B-19B           | chat模型           |
+| Llava1.5<br>Llava1.6                                    | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文       | 7B-34B           | chat模型           |
+| Llava-Next<br>Llava-Next-Video                          | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 7B-110B          | chat模型           |
+| mPLUG-Owl                                               | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 11B              | chat模型           |
+| InternVL<br>Mini-Internvl<br>Internvl2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 2B-40B<br>包含量化版本 | chat模型           |
+| Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文       | 8B               | chat model       |
+| Phi3-Vision                                             | 微软                                                                         | 英文       | 4B               | chat model       |
+| PaliGemma                                               | Google                                                                     | 英文       | 3B               | chat model       |
+| Florence                                                | 微软                                                                         | 英文       | 0.23B-0.77B      | chat model       |
 
 #### 扩散模型
 
@@ -614,22 +615,22 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 ### 支持的开源数据集
 
-| 数据集类型 | 训练任务 | 文档                                                         |
-| ---------- | :------- | ------------------------------------------------------------ |
-| 通用       | 微调     | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
-| Agent      | 微调     | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en. |
-| 通用       | 人类对齐 | hh-rlhf, 🔥hh-rlhf-cn, stack-exchange-paired. |
-| 代码       | 微调     | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh. |
-| 医疗       | 微调     | medical-en, medical-zh, 🔥disc-med-sft-zh.   |
-| 法律       | 微调     | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.          |
-| 数学       | 微调     | 🔥blossom-math-zh, school-math-zh, open-platypus-en.          |
-| SQL        | 微调     | text2sql-en, 🔥sql-create-context-en.                         |
-| 文本生成   | 微调     | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                      |
-| 分类       | 微调     | cmnli-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en. |
-| 量化辅助   | 量化     | pileval.                                                     |
-| 其他       | 微调     | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh. |
-| 视觉       | 微调     | coco-en, 🔥coco-en-mini, coco-en-2, coco-en-2-mini, capcha-images.       |
-| 音频       | 微调     | aishell1-zh, 🔥aishell1-zh-mini.                              |
+| 数据集类型 | 训练任务 | 文档                                                                                                                                                                                                                                           |
+|-------|:-----|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 通用    | 微调   | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
+| Agent | 微调   | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                                                                                             |
+| 通用    | 人类对齐 | hh-rlhf, 🔥hh-rlhf-cn, stack-exchange-paired.                                                                                                                                                                                                |
+| 代码    | 微调   | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.                                                                                                                                                  |
+| 医疗    | 微调   | medical-en, medical-zh, 🔥disc-med-sft-zh.                                                                                                                                                                                                   |
+| 法律    | 微调   | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.                                                                                                                                                                                         |
+| 数学    | 微调   | 🔥blossom-math-zh, school-math-zh, open-platypus-en.                                                                                                                                                                                         |
+| SQL   | 微调   | text2sql-en, 🔥sql-create-context-en.                                                                                                                                                                                                        |
+| 文本生成  | 微调   | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                                                                                                                                                                                                    |
+| 分类    | 微调   | cmnli-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.                                                                                                                                                                                             |
+| 量化辅助  | 量化   | pileval.                                                                                                                                                                                                                                     |
+| 其他    | 微调   | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.                                                                                                                                                       |
+| 视觉    | 微调   | coco-en, 🔥coco-en-mini, coco-en-2, coco-en-2-mini, capcha-images.                                                                                                                                                                           |
+| 音频    | 微调   | aishell1-zh, 🔥aishell1-zh-mini.                                                                                                                                                                                                             |
 
 ### 支持的技术
 
@@ -652,13 +653,13 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 ### 支持的硬件
 
-| 硬件环境              | 备注                      |
-|-------------------|-------------------------|
-| CPU               |                         |
+| 硬件环境               | 备注                      |
+|--------------------|-------------------------|
+| CPU                |                         |
 | RTX20系列/30系列/40系列等 | 30序列之后可使用BF16和FlashAttn |
-| 计算卡系列 T4/V100等    | 不支持BF16和FlashAttn       |
-| 计算卡系列 A10/A100等   | 支持BF16和FlashAttn        |
-| 华为昇腾NPU           |                         |
+| 计算卡系列 T4/V100等     | 不支持BF16和FlashAttn       |
+| 计算卡系列 A10/A100等    | 支持BF16和FlashAttn        |
+| 华为昇腾NPU            |                         |
 
 
 ### 环境变量

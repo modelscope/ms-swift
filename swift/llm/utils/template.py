@@ -74,6 +74,7 @@ class TemplateType:
     zephyr = 'zephyr'
     sus = 'sus'
     deepseek = 'deepseek'
+    numina_math = 'numina-math'
     deepseek_coder = 'deepseek-coder'
     deepseek_vl = 'deepseek-vl'
     deepseek2 = 'deepseek2'
@@ -1128,6 +1129,10 @@ register_template(
     TemplateType.deepseek,
     Template([['bos_token_id']], ['User: {{QUERY}}\n\nAssistant:'], [['eos_token_id']], [['eos_token_id']], None,
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
+register_template(
+    TemplateType.numina_math,
+    Template([['bos_token_id']], ['### Problem: {{QUERY}}\n### Solution: '], ['\n'], [['eos_token_id']], None,
+             [['bos_token_id'], '{{SYSTEM}}']))
 register_template(
     TemplateType.deepseek2,
     Template([[100000]], ['User: {{QUERY}}\n\nAssistant:'], [[100001]], [[100001]], None, [[100000], '{{SYSTEM}}\n\n']))
