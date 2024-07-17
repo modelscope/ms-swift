@@ -1,14 +1,33 @@
+def test_to_megatron():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    from swift.llm import export_main, ExportArguments
+    export_main(ExportArguments(model_type='qwen2-0_5b', to_megatron=True, check_model_forward=True))
+
+
+def test_to_hf():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    from swift.llm import export_main, ExportArguments
+    export_main(
+        ExportArguments(
+            model_type='qwen2-0_5b', to_hf=True, ckpt_dir='/mnt/nas2/huangjintao.hjt/work/swift/qwen2-0_5b-tp1-pp1'))
+
+test_to_megatron()
+# test_to_hf()
+
+exit(0)
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import sys
-from swift.llm.utils.megatron_utils import (
-    MegatronArguments, train_valid_test_datasets_provider,
-    model_provider, forward_step
-)
-from megatron.training import pretrain
-from megatron.core.enums import ModelType
 
+from megatron.core.enums import ModelType
+from megatron.training import pretrain
+
+from swift.llm.utils.megatron_utils import (MegatronArguments, forward_step, model_provider,
+                                            train_valid_test_datasets_provider)
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 # if __name__ == '__main__':
 
@@ -55,14 +74,13 @@ if __name__ == '__main__':
     args = MegatronArguments(
         load='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B',
         save='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1-new',
-        bf16=False,
+        # bf16=False,
         # no_async_tensor_model_parallel_allreduce=True,
         # use_cpu_initialization=True,
         # no_bias_swiglu_fusion=True,
     )
     extra_args = args.parse_to_megatron()
     convert_hf_to_megatron(extra_args)
-
 
 
 def convert_megatron_to_hf(args_defaults):
@@ -95,8 +113,6 @@ def convert_megatron_to_hf(args_defaults):
 #     extra_args = args.parse_to_megatron()
 #     extra_args['hf_ckpt_path'] = '/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B'
 #     convert_megatron_to_hf(extra_args)
-
-
 """
 [INFO:swift] Successfully registered `/mnt/nas2/huangjintao.hjt/work/swift/swift/llm/data/dataset_info.json`
 [INFO:swift] local_repo_path: /mnt/nas2/huangjintao.hjt/.cache/modelscope/_github/megatron-lm
@@ -105,7 +121,7 @@ def convert_megatron_to_hf(args_defaults):
   warnings.warn("The cvcuda environment does not exist. Install cvcuda and use it")
 /mnt/nas2/huangjintao.hjt/.cache/modelscope/_github/megatron-patch/megatron_patch/model/llava/clip_encoder.py:26: UserWarning: The cvcuda environment does not exist. Install cvcuda and use it
   warnings.warn("The cvcuda environment does not exist. Install cvcuda and use it")
-using world size: 2, data-parallel size: 2, context-parallel size: 1 tensor-model-parallel size: 1, pipeline-model-parallel size: 1 
+using world size: 2, data-parallel size: 2, context-parallel size: 1 tensor-model-parallel size: 1, pipeline-model-parallel size: 1
 WARNING: overriding default arguments for use_legacy_models:False                        with use_legacy_models:False
 WARNING: Setting args.overlap_p2p_comm to False since non-interleaved schedule does not support overlapping p2p communication
 accumulate and all-reduce gradients in fp32 for bfloat16 data type.
@@ -423,9 +439,9 @@ using torch.bfloat16 for parameters ...
   vocab_extra_ids ................................. 0
   vocab_file ...................................... None
   vocab_size ...................................... None
-  wandb_exp_name .................................. 
-  wandb_project ................................... 
-  wandb_save_dir .................................. 
+  wandb_exp_name ..................................
+  wandb_project ...................................
+  wandb_save_dir ..................................
   weight_decay .................................... 0.1
   weight_decay_incr_style ......................... constant
   world_size ...................................... 2
@@ -452,7 +468,7 @@ WARNING: constraints for invoking optimized fused softmax kernel are not met. We
 
 [rank0]:[W init.cpp:767] Warning: nvfuser is no longer supported in torch script, use _jit_set_nvfuser_enabled is deprecated and a no-op (function operator())
 time to initialize megatron (seconds): 71.935
-[after megatron is initialized] datetime: 2024-07-15 15:24:49 
+[after megatron is initialized] datetime: 2024-07-15 15:24:49
  > number of parameters on (tensor, pipeline) model parallel rank (0, 0): 630167424
 INFO:megatron.core.distributed.distributed_data_parallel:Setting up DistributedDataParallel with config DistributedDataParallelConfig(grad_reduce_in_fp32=True, overlap_grad_reduce=False, use_distributed_optimizer=True, check_for_nan_in_grad=True, bucket_size=None, average_in_collective=False)
 INFO:megatron.core.distributed.param_and_grad_buffer:Number of buckets for gradient all-reduce / reduce-scatter: 1
@@ -635,7 +651,7 @@ INFO:megatron.core.optimizer:Setting up optimizer with config OptimizerConfig(op
   successfully loaded checkpoint from /mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1-new [ t 0, p 0 ] at iteration 0
 (min, max) time across ranks (ms):
     load-checkpoint ................................: (1267.00, 1267.01)
-[after model, optimizer, and learning rate scheduler are built] datetime: 2024-07-15 15:24:50 
+[after model, optimizer, and learning rate scheduler are built] datetime: 2024-07-15 15:24:50
 > building train, validation, and test datasets ...
  > datasets target sizes (minimum size):
     train:      8000
@@ -649,13 +665,13 @@ Map: 100%|███████████████████████�
 Map: 100%|███████████████████████████████████████████████████████████████████████████████████████| 990/990 [00:00<00:00, 4740.79 examples/s]
 Map: 100%|██████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:00<00:00, 173.64 examples/s]
 Map: 100%|██████████████████████████████████████████████████████████████████████████████████████████| 10/10 [00:00<00:00, 168.47 examples/s]
-[after dataloaders are built] datetime: 2024-07-15 15:24:58 
+[after dataloaders are built] datetime: 2024-07-15 15:24:58
 done with setup ...
 (min, max) time across ranks (ms):
     model-and-optimizer-setup ......................: (1538.42, 1540.23)
     train/valid/test-data-iterators-setup ..........: (8140.10, 8140.19)training ...
 
-[before the start of training step] datetime: 2024-07-15 15:24:59 
+[before the start of training step] datetime: 2024-07-15 15:24:59
 Number of parameters in transformer layers in billions:  0.36
 Number of parameters in embedding layers in billions: 0.27
 Total number of parameters in billions: 0.63
