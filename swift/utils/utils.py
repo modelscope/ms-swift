@@ -42,7 +42,15 @@ def check_json_format(obj: Any) -> Any:
     elif isinstance(obj, Mapping):
         res = {}
         for k, v in obj.items():
-            res[k] = check_json_format(v)
+            if 'hub_token' in k:
+                res[k] = None
+            else:
+                if v.__class__.__name__ in {'TrainingArguments', 'Seq2SeqTrainingArguments'}:
+                    training_args = obj['training_args']
+                    for _k in training_args.__dict__.keys():
+                        if 'hub_token' in _k:
+                            setattr(training_args, _k, None)
+                res[k] = check_json_format(v)
     else:
         res = repr(obj)  # e.g. function
     return res
