@@ -595,25 +595,6 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 #### MLLMs
 
-<<<<<<< HEAD
-| Model Type         | Model Introduction                                                           | Language           | Model Size                         | Model Type         |
-|------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
-| Qwen-VL            | [Tongyi Qwen vision model](https://github.com/QwenLM)                        | Chinese<br>English | 7B<br>including quantized versions | base model<br>chat model |
-| Qwen-Audio         | [Tongyi Qwen speech model](https://github.com/QwenLM)                        | Chinese<br>English | 7B                                 | base model<br>chat model |
-| YI-VL              | [01AI's YI series vision models](https://github.com/01-ai)                   | Chinese<br>English | 6B-34B                             | chat model         |
-| XComposer2<br>XComposer2.5         | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                 | chat model         |
-| DeepSeek-VL        | [DeepSeek series vision models](https://github.com/deepseek-ai)              | Chinese<br>English | 1.3B-7B                            | chat model         |
-| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5  | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM) | Chinese<br>English | 3B-9B            | chat model          |
-| CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | Chinese<br>English | 9B-19B                            | chat model         |
-| Llava1.5<br>Llava1.6           | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English            | 7B-34B                             | chat model |
-| Llava-Next<br>Llava-Next-Video             | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                  | Chinese<br>English | 7B-110B                             | chat model |
-| mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English            | 11B                                | chat model |
-| InternVL<br>Mini-InternVL<br>InternVL2           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 1B-40B<br>including quantized version                              | chat model |
-| Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English            | 8B                                 | chat model |
-| Phi3-Vision                                      | Microsoft                        | English            | 4B              | chat model |
-| PaliGemma                                  | Google              | English | 3B              | chat model |
-| Florence                                  | Microsoft              | English | 0.23B-0.77B             | chat model |
-=======
 | Model Type                                              | Model Introduction                                                                     | Language           | Model Size                            | Model Type               |
 |---------------------------------------------------------|----------------------------------------------------------------------------------------|--------------------|---------------------------------------|--------------------------|
 | Qwen-VL                                                 | [Tongyi Qwen vision model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B<br>including quantized versions    | base model<br>chat model |
@@ -626,12 +607,11 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llava1.5<br>Llava1.6                                    | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
 | mPLUG-Owl                                               | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
-| InternVL<br>Mini-Internvl<br>Internvl2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 2B-40B<br>including quantized version | chat model               |
+| InternVL<br>Mini-InternVL<br>InternVL2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 1B-40B<br>including quantized version | chat model               |
 | Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)             | English            | 8B                                    | chat model               |
 | Phi3-Vision                                             | Microsoft                                                                              | English            | 4B                                    | chat model               |
 | PaliGemma                                               | Google                                                                                 | English            | 3B                                    | chat model               |
 | Florence                                                | Microsoft                                                                              | English            | 0.23B-0.77B                           | chat model               |
->>>>>>> origin/main
 
 
 #### Diffusion Models
