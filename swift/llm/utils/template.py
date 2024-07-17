@@ -1384,14 +1384,11 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         images_path = example.get('images') or []
-        if images_path:
-            from .vision_utils import load_image
-
-            pixel_values = []
-            if isinstance(images_path, str):
-                images_path = [images_path]
-            for image_path in images_path:
-                pixel_values.append(load_image(image_path))
+        if isinstance(images_path, str):
+            images_path = [images_path]
+        from .vision_utils import load_image
+        pixel_values = _read_batch(images_path, load_image)
+        if pixel_values:
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
 
@@ -1447,15 +1444,16 @@ class Internvl2Template(InternvlTemplate):
         labels = inputs.get('labels')
         images_path = example.get('images') or []
         videos_path = example.get('videos') or []
-        if images_path:
-            from .vision_utils import load_image
-            pixel_values = []
-            if isinstance(images_path, str):
-                images_path = [images_path]
-            for image_path in images_path:
-                pixel_values.append(load_image(image_path))
-
-            assert len(images_path) == len(idx_list)
+        if isinstance(images_path, str):
+            images_path = [images_path]
+        if isinstance(videos_path, str):
+            videos_path = [videos_path]
+        from .vision_utils import load_image, load_video
+        pixel_values_images = _read_batch(images_path, load_image)
+        videos_path = [path for path in videos_path if path is not None]
+        if pixel_values_images:
+            pixel_values = pixel_values_images
+            assert len(pixel_values) == len(idx_list)
             added_tokens_len = 0
             patches = 0
             for idx, pv in zip(idx_list, pixel_values):
@@ -1472,11 +1470,8 @@ class Internvl2Template(InternvlTemplate):
             inputs['labels'] = labels
             inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
             inputs['image_flags'] = torch.ones(patches)
-        if videos_path:
-            if not isinstance(videos_path, (list, tuple)):
-                videos_path = [videos_path]
+        elif videos_path:
             assert len(videos_path) == 1
-            from swift.llm.utils.vision_utils import load_video
             pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
             assert len(num_patches) == len(idx_list)
             added_tokens_len = 0
@@ -1518,40 +1513,20 @@ class Internvl2Phi3Template(Internvl2Template):
 
 
 register_template(
-    TemplateType.internvl,
-    InternvlTemplate(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl, InternvlTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl_phi3,
-    InternvlPhi3Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl2,
-    Internvl2Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
     TemplateType.internvl2_phi3,
     Internvl2Phi3Template(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    infer_media_type='dialogue')
 
 
 class FlorenceTemplate(Template):
