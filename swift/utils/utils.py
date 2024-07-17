@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
+from transformers.trainer import TrainingArguments
 
 from .logger import get_logger
 from .np_utils import stat_array
@@ -45,11 +46,10 @@ def check_json_format(obj: Any) -> Any:
             if 'hub_token' in k:
                 res[k] = None
             else:
-                if v.__class__.__name__ in {'TrainingArguments', 'Seq2SeqTrainingArguments'}:
-                    training_args = obj['training_args']
-                    for _k in training_args.__dict__.keys():
+                if isinstance(v, TrainingArguments):
+                    for _k in v.__dict__.keys():
                         if 'hub_token' in _k:
-                            setattr(training_args, _k, None)
+                            setattr(v, _k, None)
                 res[k] = check_json_format(v)
     else:
         res = repr(obj)  # e.g. function
