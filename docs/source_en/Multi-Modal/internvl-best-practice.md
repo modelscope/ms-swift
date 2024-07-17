@@ -27,10 +27,15 @@ The auto device map algorithm in transformers is not friendly to multi-modal mod
 - You can set the memory usage for each card using the `--device_max_memory parameter`, for example, in a four-card environment, you can set `--device_map_memory 15GB 15GB 15GB 15GB`.
 - Alternatively, you can explicitly specify the device map using `--device_map_config_path`.
 
+3. **Differences between the InternVL2 model and its predecessors (InternVL-V1.5 and Mini-InternVL)**
+- The InternVL2 model supports multi-turn multi-image inference and training, meaning multi-turn conversations with images, and supports text and images interleaved within a single turn. For specific formats, refer to [Custom Dataset](#custom-dataset). The predecessors models supported multi-turn conversations but could only have images in a single turn.
+- The InternVL2 model supports video input. For specific formats, refer to [Custom Dataset](#custom-dataset).
+
 ## Table of Contents
 - [Environment Setup](#environment-setup)
 - [Inference](#inference)
 - [Fine-tuning](#fine-tuning)
+- [Custom Dataset](#custom-dataset)
 - [Inference after Fine-tuning](#inference-after-fine-tuning)
 
 ## Environment Setup
@@ -238,9 +243,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --max_length 4096
 ```
 
+### Custom Dataset
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
-(Supports multi-turn conversations, Images support for local path or URL input, multiple images separated by commas ',')
+Supports multi-turn conversations, Images support for local path or URL input, multiple images separated by commas ','
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
@@ -253,6 +259,16 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 {"query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+
+The **InternVL2** model supports multi-image multi-turn training. It uses the tag `<image>` to indicate the position of images in the conversation. If the tag `<image>` is not present in the dataset, the images are placed at the beginning of the last round's query by default.
+```jsonl
+{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+```
+
+The **InternVL2** model supports training with video datasets without the need to specify a tag.
+```jsonl
+{"query": "Describe this video in detail. Don't repeat", "response": "xxxxxxxxx", "history": [], "videos": ["video_path"]}
 ```
 
 ## Inference after Fine-tuning

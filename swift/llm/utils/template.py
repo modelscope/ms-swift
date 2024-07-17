@@ -1364,8 +1364,8 @@ class InternvlTemplate(Template):
     num_image_token = 256
 
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1421,6 +1421,11 @@ class InternvlTemplate(Template):
 class Internvl2Template(InternvlTemplate):
 
     video_segments = 8
+
+    def __init__(self):
+        self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
+        Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                          ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if media_type == 'image':
@@ -1490,18 +1495,43 @@ class Internvl2Template(InternvlTemplate):
         inputs.pop('loss_scale', None)
         return inputs, {}
 
-    def __init__(self):
-        self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
-        Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                          ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+    def add_default_tags(self, example: Dict[str, Any]) -> None:
+        history: History = deepcopy(example.get('history') or [])
+        query: str = example.get('query') or ''
+        for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>')]:
+            medias = example.get(media_key)
+            if medias:
+                num_media_tag = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
+                num_media = len(medias)
+                res_media = num_media - num_media_tag
+                assert res_media >= 0, \
+                    'The number of media tags {num_media_tag} is greater than the number of media objects {num_media}.'
+                if res_media == 0:
+                    # Each media tag corresponds to an media object.
+                    return
+                # process res media, add default media tag
+                if len(example[media_key]) == len(history) + 1:
+                    # In this case, add at the beginning of each round's query.
+                    for h, m in zip(history, example[media_key][:-1]):
+                        if m:
+                            h[0] = media_tag + h[0]
+                    if example[media_key][-1]:
+                        query = media_tag + query
+                    example[media_key] = [m for m in example[media_key] if m]
+                else:
+                    # add the res image tag at the beginning of the last query
+                    query = media_tag * res_media + query
+
+        example['query'] = query
+        example['history'] = history
 
 
 class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+        Template.__init__(self, [], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+                          self.system, ['<|system|>\n{{SYSTEM}}<|end|>'])
 
 
 class Internvl2Phi3Template(Internvl2Template):
@@ -1535,7 +1565,7 @@ register_template(
     Internvl2Template(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='dialogue',
+    infer_media_type='round',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
@@ -1544,7 +1574,7 @@ register_template(
     Internvl2Phi3Template(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='dialogue',
+    infer_media_type='round',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 

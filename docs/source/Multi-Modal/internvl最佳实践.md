@@ -31,10 +31,16 @@ transformers的auto device map算法对多模态模型支持不友好, 这可能
 - 可以通过参数`--device_max_memory`设置每张卡的显存使用, 比如四卡环境, 可以设置`--device_map_memory 15GB 15GB 15GB 15GB`
 - 或者通过`--device_map_config_path`显式指定device map
 
+3. **InternVL2模型与前系列(InternVL-V1.5和Mini-InternVL)模型的区别**
+- InternVL2模型支持多轮多图推理和训练, 即多轮对话带有图片, 且单轮中支持文字图片交错,具体格式参考[自定义数据集](#自定义数据集)。前系列模型支持多轮对话, 但只能有单轮带有图片
+- InternVL2模型支持视频输入, 具体格式参考[自定义数据集](#自定义数据集)
+
+
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
 - [微调](#微调)
+- [自定义数据集](#自定义数据集)
 - [微调后推理](#微调后推理)
 
 
@@ -262,7 +268,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --sft_type full \
 ```
 
-
+## 自定义数据集
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (支持多轮对话, 图片支持传入本地路径或URL, 多张图片用逗号','分割)
@@ -278,6 +284,16 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 {"query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+
+**InternVL2**模型支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如何数据集中没有tag `<image>`, 默认放在最后一轮query的开头
+```jsonl
+{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+```
+
+**InternVL2**模型支持视频数据集训练, 无需标明tag
+```jsonl
+{"query": "Describe this video in detail. Don't repeat", "response": "xxxxxxxxx", "history": [], "videos": ["video_path"]}
 ```
 
 ## 微调后推理
