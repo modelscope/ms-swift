@@ -172,7 +172,8 @@ class Template:
                  system_prefix: Optional[Prompt] = None,
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'react_en',
-                 tool_prompt: Optional[Prompt] = None) -> None:
+                 tool_prompt: Optional[Prompt] = None,
+                 padding_side: str = 'right') -> None:
         # check
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
@@ -198,6 +199,7 @@ class Template:
         self.tools_prompt = tools_prompt
         self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
         self._is_vllm = False
+        self.padding_side = padding_side
 
     @staticmethod
     def _replace_system(prefix: Prompt) -> Prompt:
@@ -237,6 +239,7 @@ class Template:
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
         self.tokenizer = tokenizer
+        self.tokenizer.padding_side = self.padding_side
         # if default_system is None. not change self.default_system
         if default_system == '':
             self.default_system = None
@@ -609,6 +612,22 @@ class Template:
     def _concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any], curr_tokenizer_kwargs: Dict[str, Any]) -> None:
         assert len(tokenizer_kwargs) == 0
 
+    def pad_sequence(self, sequences, padding_value=0.0):
+        padding_right = self.padding_side == 'right'
+        if padding_right:
+            return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
+
+        max_len = max([s.size(0) for s in sequences])
+
+        padded_sequences = []
+        for seq in sequences:
+            pad_length = max_len - seq.size(0)
+            pad_tuple = [0] * ((seq.dim() - 1) * 2) + [pad_length, 0]
+            padded_seq = F.pad(seq, tuple(pad_tuple), 'constant', padding_value)
+            padded_sequences.append(padded_seq)
+
+        return torch.stack(padded_sequences)
+
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -629,36 +648,49 @@ class Template:
             attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
         labels = [torch.tensor(b['labels']) for b in batch]
         loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
+        padding_right = self.padding_side == 'right'
 
         if padding_to is not None:
             assert input_ids is not None  # inputs_embeds not support padding_to
             padding_len = padding_to - input_ids[0].shape[-1]
             if padding_len > 0:
-                input_ids[0] = F.pad(input_ids[0], (0, padding_len), 'constant', tokenizer.pad_token_id)
-                attention_mask[0] = F.pad(attention_mask[0], (0, padding_len), 'constant', 0)
-                labels[0] = F.pad(labels[0], (0, padding_len), 'constant', -100)
+                input_ids[0] = F.pad(input_ids[0], (0, padding_len) if padding_right else (padding_len, 0), 'constant',
+                                     tokenizer.pad_token_id)
+                attention_mask[0] = F.pad(attention_mask[0], (0, padding_len) if padding_right else (padding_len, 0),
+                                          'constant', 0)
+                labels[0] = F.pad(labels[0], (0, padding_len) if padding_right else (padding_len, 0), 'constant', -100)
                 if loss_scale:
-                    loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]), 'constant', 0.)
+                    loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]) if padding_right else
+                                          (padding_to - labels[0].shape[-1], 0), 'constant', 0.)
 
         if input_ids is None:
-            inputs_embeds = pad_sequence(inputs_embeds, batch_first=True, padding_value=0)
+            inputs_embeds = self.pad_sequence(inputs_embeds, padding_value=0)
         else:
-            input_ids = pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-        attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
+            input_ids = self.pad_sequence(input_ids, padding_value=tokenizer.pad_token_id)
+        attention_mask = self.pad_sequence(attention_mask, padding_value=0)
         if loss_scale:
-            loss_scale = pad_sequence(loss_scale, batch_first=True, padding_value=0.)
-        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+            loss_scale = self.pad_sequence(loss_scale, padding_value=0.)
+        labels = self.pad_sequence(labels, padding_value=-100)
 
         if use_torchacc():
             rank, _, world_size, _ = get_dist_setting()
-            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(padding_to, input_ids, attention_mask,
-                                                                                labels, loss_scale, self.max_length,
-                                                                                self.tokenizer, rank, world_size)
+            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
+                padding_to,
+                input_ids,
+                attention_mask,
+                labels,
+                loss_scale,
+                self.max_length,
+                self.tokenizer,
+                rank,
+                world_size,
+                padding_right=padding_right)
         if input_ids is not None:
             bs, seq_len = input_ids.shape
             position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
 
             if self.sequence_parallel_size > 1:
+                assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
                 from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
                 if get_xtuner_sequence_parallel_world_size() > 1:
                     from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
@@ -1285,7 +1317,7 @@ class InternLMXComposer2Template(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         im_mask = [b['im_mask'][0] for b in batch]
-        im_mask = pad_sequence(im_mask, batch_first=True, padding_value=0)
+        im_mask = self.pad_sequence(im_mask, padding_value=0)
         res['im_mask'] = im_mask
         return res
 
@@ -1674,6 +1706,10 @@ register_template(
 
 class LlavaHfTemplate(Template):
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.padding_side = 'left'
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
         if self._is_vllm:
@@ -1693,7 +1729,7 @@ class LlavaHfTemplate(Template):
             images = self._prepare_vllm_images(images)
         if images:
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
-            inputs['pixel_values'] = image_inputs['pixel_values']
+            inputs['pixel_values'] = image_inputs['pixel_values'].squeeze(0)
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
@@ -1911,7 +1947,7 @@ class PaliGemmaTemplate(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
+        token_type_ids = self.pad_sequence(token_type_ids, padding_value=0)
         res['token_type_ids'] = token_type_ids
         return res
 
@@ -2150,7 +2186,7 @@ class CogTemplate(Template):
             if key in batch[0]:
                 res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = pad_sequence(token_type_ids, batch_first=True, padding_value=0)
+        token_type_ids = self.pad_sequence(token_type_ids, padding_value=0)
         res['token_type_ids'] = token_type_ids
         return res
 

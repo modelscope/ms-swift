@@ -255,7 +255,9 @@ class LLMInfer(BaseUI):
             raise gr.Error(cls.locale('port_alert', cls.lang)['value'])
         params = ''
         for e in kwargs:
-            if e in kwargs_is_list and kwargs_is_list[e]:
+            if isinstance(kwargs[e], list):
+                params += f'--{e} {" ".join(kwargs[e])} '
+            elif e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '

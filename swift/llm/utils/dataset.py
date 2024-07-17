@@ -2357,6 +2357,8 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[str]:
         if os.path.isfile(d_id_or_path):
             d_info['dataset_path'] = d_id_or_path
         else:
+            if d_id_or_path.startswith('/'):
+                raise ValueError(f"path: '{d_id_or_path}' not found")
             if use_hf:
                 d_info['hf_dataset_id'] = d_id_or_path
             else:

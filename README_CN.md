@@ -56,10 +56,11 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.07.16: 支持ollama和bitsandbytes导出. 可以使用命令: `swift export --model_type xxx --to_ollama true`或者`swift export --model_type xxx --quant_method bnb --quant_bits 4`.
 - 2024.07.08: 支持cogvlm2-video-13b-chat. 最佳实践可以查看[这里](docs/source/Multi-Modal/cogvlm2-video最佳实践.md).
 - 2024.07.08: 支持internlm-xcomposer2_5-7b-chat. 最佳实践可以查看[这里](docs/source/Multi-Modal/internlm-xcomposer2最佳实践.md).
-- 2024.07.06: 支持llava-next-video系列模型: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-instruct. 可以查看[llava-video最佳实践](docs/source/Multi-Modal/llava-video最佳实践.md)了解更多.
-- 2024.07.06: 支持internvl-2系列: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
+- 🔥2024.07.06: 支持llava-next-video系列模型: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-instruct. 可以查看[llava-video最佳实践](docs/source/Multi-Modal/llava-video最佳实践.md)了解更多.
+- 🔥2024.07.06: 支持internvl-2系列: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
 - 2024.07.06: 支持codegeex4-9b-chat.
 - 2024.07.04: 支持internlm2_5-7b系列: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: 支持使用vllm对多模态大模型: llava系列, phi3-vision模型进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.

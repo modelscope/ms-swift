@@ -42,17 +42,18 @@ def _get_closet_bucket(bucket_sizes, data_length):
 
 
 def pad_and_split_batch(padding_to, input_ids, attention_mask, labels, loss_scale, max_length, tokenizer, rank,
-                        world_size):
+                        world_size, padding_right):
     if padding_to is None:
         longest_len = input_ids.shape[-1]
         bucket_sizes = get_bucket_sizes(max_length)
         bucket_data_length = _get_closet_bucket(bucket_sizes, longest_len)
         padding_length = bucket_data_length - input_ids.shape[1]
-        input_ids = F.pad(input_ids, (0, padding_length), 'constant', tokenizer.pad_token_id)
-        attention_mask = F.pad(attention_mask, (0, padding_length), 'constant', 0)
+        pad_tuple = (0, padding_length) if padding_right else (padding_length, 0)
+        input_ids = F.pad(input_ids, pad_tuple, 'constant', tokenizer.pad_token_id)
+        attention_mask = F.pad(attention_mask, pad_tuple, 'constant', 0)
         if loss_scale:
-            loss_scale = F.pad(loss_scale, (0, padding_length), 'constant', 0.)
-        labels = F.pad(labels, (0, padding_length), 'constant', -100)
+            loss_scale = F.pad(loss_scale, pad_tuple, 'constant', 0.)
+        labels = F.pad(labels, pad_tuple, 'constant', -100)
 
     # manully split the batch to different DP rank.
     batch_size = input_ids.shape[0] // world_size
