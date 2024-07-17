@@ -62,6 +62,7 @@ class TemplateType:
     internvl2 = 'internvl2'
     internvl_phi3 = 'internvl-phi3'
     internvl2_phi3 = 'internvl2-phi3'
+    internvl2_llama3 = 'internvl2-llama3'
     florence = 'florence'
     yi = 'yi'
     yi1_5 = 'yi1_5'
@@ -1506,11 +1507,11 @@ class InternvlPhi3Template(InternvlTemplate):
 
 
 class Internvl2Phi3Template(Internvl2Template):
-    system = 'You are an AI assistant whose name is Phi-3.'
+    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+        Template.__init__(self, [], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>'], ['<|end|>'],
+                          self.system, ['<|system|>\n{{SYSTEM}}<|end|>'])
 
 
 register_template(

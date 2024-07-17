@@ -272,6 +272,7 @@ class ModelType:
     internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
     mini_internvl_chat_2b_v1_5 = 'mini-internvl-chat-2b-v1_5'
     mini_internvl_chat_4b_v1_5 = 'mini-internvl-chat-4b-v1_5'
+    internvl2_1b = 'internvl2-1b'
     internvl2_2b = 'internvl2-2b'
     internvl2_4b = 'internvl2-4b'
     internvl2_8b = 'internvl2-8b'
@@ -3619,9 +3620,11 @@ def fix_internvl_inplace_bug(model) -> None:
         embedding.__old_forward = old_forward
         embedding.forward = _new_forward
 
+
 def _patch_internvl_forward(forward_func):
     from transformers.modeling_outputs import CausalLMOutputWithPast
     from torch.nn import CrossEntropyLoss
+
     def wrapper(
         self,
         pixel_values: torch.FloatTensor = None,
@@ -3663,8 +3666,8 @@ def _patch_internvl_forward(forward_func):
                 shift_labels = shift_labels.to(shift_logits.device)
                 loss = loss_fct(shift_logits, shift_labels)
             if return_dict:
-                output = (logits,) + outputs[1:]
-                return (loss,) + output if loss is not None else output
+                output = (logits, ) + outputs[1:]
+                return (loss, ) + output if loss is not None else output
             return CausalLMOutputWithPast(
                 loss=loss,
                 logits=logits,
@@ -3672,22 +3675,24 @@ def _patch_internvl_forward(forward_func):
                 hidden_states=outputs.hidden_states,
                 attentions=outputs.attentions,
             )
-        else: 
+        else:
+            # 检查forward_func的入参
             return forward_func(
-            self,
-            pixel_values,
-            input_ids,
-            attention_mask,
-            position_ids,
-            image_flags,
-            past_key_values,
-            labels,
-            use_cache,
-            output_attentions,
-            output_hidden_states,
-            return_dict,
-        )
+                pixel_values,
+                input_ids,
+                attention_mask,
+                position_ids,
+                image_flags,
+                past_key_values,
+                labels,
+                use_cache,
+                output_attentions,
+                output_hidden_states,
+                return_dict,
+            )
+
     return wrapper
+
 
 def patch_internvl_forward(model) -> None:
     if not hasattr(model, '__old_forward'):  # Avoid double patching
@@ -3736,6 +3741,16 @@ def patch_internvl_forward(model) -> None:
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
+@register_model(
+    ModelType.internvl2_1b,
+    'OpenGVLab/InternVL2-1B',
+    LoRATM.llama,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-1B')
 @register_model(
     ModelType.internvl2_2b,
     'OpenGVLab/InternVL2-2B',

@@ -5,12 +5,27 @@ The document corresponds to the following models:
 - [internvl-chat-v1_5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
 - [mini-internvl-chat-2b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
 - [mini-internvl-chat-4b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-4B-V1-5)
+- [internvl2-1b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-1B)
 - [internvl2-2b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-2B)
 - [internvl2-4b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-4B)
 - [internvl2-8b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-8B)
 - [internvl2-26b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-26B)
+- [internvl2-40b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-40B)
+- [internvl2-llama3-76b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-Llama3-76B)
 
 The following practice takes `internvl-chat-v1_5` as an example, and you can also switch to other models by specifying `--model_type`.
+
+**FAQ**
+1. **Model shows `The request model does not exist!`**
+This issue often arises when attempting to use the mini-internvl or InternVL2 models, as the corresponding models on modelscope are subject to an application process. To resolve this, you need to log in to modelscope and go to the respective model page to apply for download. After approval, you can obtain the model through either of the following methods:
+- Use `snap_download` to download the model locally (the relevant code is available in the model download section of the model file), and then specify the local model file path using `--model_id_or_path`.
+- Obtain the SDK token for your account from the [modelscope account homepage](https://www.modelscope.cn/my/myaccesstoken), and specify it using the `--hub_token` parameter or the `MODELSCOPE_API_TOKEN` environment variable.
+
+2. **Why is the distribution uneven across multiple GPU cards when running models, leading to OOM?**
+The auto device map algorithm in transformers is not friendly to multi-modal models, which may result in uneven memory allocation across different GPU cards.
+
+- You can set the memory usage for each card using the `--device_max_memory parameter`, for example, in a four-card environment, you can set `--device_map_memory 15GB 15GB 15GB 15GB`.
+- Alternatively, you can explicitly specify the device map using `--device_map_config_path`.
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
@@ -109,6 +124,7 @@ poem:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['MODELSCOPE_API_TOKEN'] = 'Your API Token' # If the message "The request model does not exist!" appears.
 
 from swift.llm import (
     get_model_tokenizer, get_template, inference,
@@ -224,14 +240,20 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
-(Supports multi-turn conversations, but the total round of conversations can only contain one image. Supports local path or URL input.)
+(Supports multi-turn conversations, Images support for local path or URL input, multiple images separated by commas ',')
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
 ```
 
+(Supports data without images)
+```jsonl
+{"query": "55555", "response": "66666"}
+{"query": "eeeee", "response": "fffff", "history": []}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
 
 ## Inference after Fine-tuning
 Direct inference:

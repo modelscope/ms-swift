@@ -6,13 +6,30 @@
 - [internvl-chat-v1_5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
 - [mini-internvl-chat-2b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
 - [mini-internvl-chat-4b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-4B-V1-5)
+- [internvl2-1b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-1B)
 - [internvl2-2b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-2B)
 - [internvl2-4b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-4B)
 - [internvl2-8b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-8B)
 - [internvl2-26b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-26B)
+- [internvl2-40b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-40B)
+- [internvl2-llama3-76b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-Llama3-76B)
 
 
 以下实践以`internvl-chat-v1_5`为例，你也可以通过指定`--model_type`切换为其他模型.
+
+**FAQ**
+
+1. **模型显示 `The request model does not exist!`**
+这种情况通常发生在尝试使用mini-internvl或InternVL2模型, 原因是因为modelscope上相应模型是申请制。解决这个问题，你需要登录modelscope, 并前往相应的模型页面进行**申请下载**, 申请成功后可以通过以下任意一种方式获取模型：
+- 使用`snap_download`将模型下载到本地(在模型文件中的模型下载中有相应代码), 然后使用`--model_id_or_path`指定本地模型文件路径
+- 在[modelscope账号主页](https://www.modelscope.cn/my/myaccesstoken)获取账号的SDK token, 使用参数`--hub_token`或者环境变量`MODELSCOPE_API_TOKEN`指定
+
+也可以设置环境变量`USE_HF`, 从hugging face处下载模型
+
+2. **多卡运行模型时, 为什么不同卡的分布不均匀, 导致OOM?**
+transformers的auto device map算法对多模态模型支持不友好, 这可能导致不同 GPU 卡之间的显存分配不均匀。
+- 可以通过参数`--device_max_memory`设置每张卡的显存使用, 比如四卡环境, 可以设置`--device_map_memory 15GB 15GB 15GB 15GB`
+- 或者通过`--device_map_config_path`显式指定device map
 
 ## 目录
 - [环境准备](#环境准备)
@@ -133,6 +150,7 @@ ocr:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['MODELSCOPE_API_TOKEN'] = 'Your API Token' # If the message "The request model does not exist!" appears.
 
 from swift.llm import (
     get_model_tokenizer, get_template, inference,
@@ -140,6 +158,7 @@ from swift.llm import (
 )
 from swift.utils import seed_everything
 import torch
+
 
 model_type = "internvl-chat-v1_5"
 template_type = get_default_template_type(model_type)
@@ -246,12 +265,19 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
+(支持多轮对话, 图片支持传入本地路径或URL, 多张图片用逗号','分割)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+```
+
+(支持纯文本数据)
+```jsonl
+{"query": "55555", "response": "66666"}
+{"query": "eeeee", "response": "fffff", "history": []}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
 ## 微调后推理
