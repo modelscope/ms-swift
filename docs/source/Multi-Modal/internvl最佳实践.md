@@ -98,8 +98,9 @@ PEFT提供的轻量训练方案外，也提供了一个完整的Adapters库以�
 器库可以脱离训练脚本直接使用在自已的自定义流程中。
 为了方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui
 于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入
-此外，我们也正在拓展其他模态的能力，目前我们支持了AnimateDiff的全参
-数训练和LoRA训练。
+门。
+此外，我们也正在拓展其他模态的能力，目前我们支持了AnimateDiff的全
+参数训练和LoRA训练。
 SWIFT具有丰富的文档体系，如有使用问题请查看这里：
 可以在Huggingface space和ModelScope创空间中体验SWIFT web-
 ui功能了。
@@ -157,7 +158,7 @@ template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = '距离各城市多远？'
+query = '距离各城市多远'
 response, history = inference(model, template, query, images=images) # chat with image
 print(f'query: {query}')
 print(f'response: {response}')
@@ -174,17 +175,17 @@ for response, history in gen:
 print()
 print(f'history: {history}')
 """
-query: 距离各城市多远？
-response: 这张图片显示的是一个路标，上面标示了三个目的地及其距离：
+query: 距离各城市多远
+response: 根据图片，距离各城市如下：
 
-- 马踏（Mata）：14公里
-- 阳江（Yangjiang）：62公里
-- 广州（Guangzhou）：293公里
+- 马踏：14公里
+- 阳江：62公里
+- 广州：293公里
 
-这些距离是按照路标上的指示来计算的。
+请注意，这些距离可能不是最新的，因为道路建设和交通状况可能会影响实际距离。
 query: 距离最远的城市是哪？
-response: 根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。
-history: [['距离各城市多远？', '这张图片显示的是一个路标，上面标示了三个目的地及其距离：\n\n- 马踏（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些距离是按照路标上的指示来计算的。 '], ['距离最远的城市是哪？', '根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。 ']]
+response: 根据图片，距离最远的城市是广州，距离为293公里。
+history: [['距离各城市多远', '根据图片，距离各城市如下：\n\n- 马踏：14公里\n- 阳江：62公里\n- 广州：293公里\n\n请注意，这些距离可能不是最新的，因为道路建设和交通状况可能会影响实际距离。 '], ['距离最远的城市是哪？', '根据图片，距离最远的城市是广州，距离为293公里。 ']]
 """
 ```
 
