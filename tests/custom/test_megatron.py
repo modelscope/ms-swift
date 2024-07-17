@@ -13,106 +13,52 @@ def test_to_hf():
         ExportArguments(
             model_type='qwen2-0_5b', to_hf=True, ckpt_dir='/mnt/nas2/huangjintao.hjt/work/swift/qwen2-0_5b-tp1-pp1'))
 
-test_to_megatron()
-# test_to_hf()
 
-exit(0)
+def test_pretrain():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    import torch.distributed as dist
+    dist.init_process_group(backend='nccl')
+    from swift.llm import get_model_tokenizer
+    from swift.llm.megatron import (load_megatron_config, MegatronArguments, convert_megatron_to_hf,
+                                    get_model_seires, patch_megatron, model_provider)
+    res = {
+        'load': '/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1-new',
+        'bf16': True,
+    }
 
-import os
-import sys
+    model_type = 'qwen2-0_5b'
+    _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+    res = load_megatron_config(tokenizer.model_dir)
+    res['model_series'] = get_model_seires(model_type)
+    res.update({
+        'train_iters': 1000,
+        'eval_iters': 100,
+        'lr_warmup_iters': 100,
+        'save': 'output/megatron',
+        'tensorboard_dir': 'output/megatron/runs',
+        'bf16': True,
+        'load': '/mnt/nas2/huangjintao.hjt/work/swift/qwen2-0_5b-tp1-pp1',
+    })
+    megatron_args = MegatronArguments(**res)
+    extra_args = megatron_args.parse_to_megatron()
+    extra_args['dataset'] = 'alpaca-zh#10000'
+    extra_args['template_type'] = 'default-generation'
+    from swift.llm.utils.megatron_utils import forward_step, train_valid_test_datasets_provider
+    from megatron.core.enums import ModelType
+    from megatron.training import pretrain
 
-from megatron.core.enums import ModelType
-from megatron.training import pretrain
+    train_valid_test_datasets_provider.is_distributed = True
+    patch_megatron(tokenizer)
+    pretrain(
+        train_valid_test_datasets_provider,
+        model_provider,
+        ModelType.encoder_or_decoder,
+        forward_step,
+        args_defaults=extra_args)
 
-from swift.llm.utils.megatron_utils import (MegatronArguments, forward_step, model_provider,
-                                            train_valid_test_datasets_provider)
+test_pretrain()
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-# if __name__ == '__main__':
-
-#     args = MegatronArguments(
-#         load='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1-new',
-#         dataset=['alpaca-zh#1000'],
-#     )
-#     extra_args = args.parse_to_megatron()
-#     train_valid_test_datasets_provider.is_distributed = True
-
-#     pretrain(
-#         train_valid_test_datasets_provider,
-#         model_provider,
-#         ModelType.encoder_or_decoder,
-#         forward_step,
-#         args_defaults=extra_args)
-
-
-def convert_hf_to_megatron(args_defaults={}):
-    sys.path.append('/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/toolkits/model_checkpoints_convertor/qwen')
-    from megatron.training.initialize import initialize_megatron
-    from megatron.training import get_args
-    from hf2mcore_qwen2_dense_and_moe_gqa import convert_checkpoint_from_transformers_to_megatron, check_hf_mg_forward, save_mgmodel
-    initialize_megatron(args_defaults=args_defaults)
-    args = get_args()
-
-    # if args.convert_checkpoint_from_megatron_to_transformers:
-    #     hf_model = AutoModelForCausalLM.from_pretrained(args.hf_ckpt_path)
-    #     mg_model = load_megatron_model(args)
-    #     convert_checkpoint_from_megatron_to_transformers(mg_model, hf_model, args)
-    #     save_hfmodel(args, hf_model)
-    # else:
-    from transformers import AutoModelForCausalLM
-    hf_model = AutoModelForCausalLM.from_pretrained(args.load)
-    mg_model = model_provider()
-    convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
-    check_hf_mg_forward(hf_model, mg_model, args)
-    save_mgmodel(mg_model, args)
-
-
-# NPROC_PER_NODE=2 swift export --model_type qwen2-7b-instruct --to_mergatron true
-if __name__ == '__main__':
-
-    args = MegatronArguments(
-        load='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B',
-        save='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1-new',
-        # bf16=False,
-        # no_async_tensor_model_parallel_allreduce=True,
-        # use_cpu_initialization=True,
-        # no_bias_swiglu_fusion=True,
-    )
-    extra_args = args.parse_to_megatron()
-    convert_hf_to_megatron(extra_args)
-
-
-def convert_megatron_to_hf(args_defaults):
-    sys.path.append('/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/toolkits/model_checkpoints_convertor/qwen')
-    from megatron.training.initialize import initialize_megatron
-    from megatron.training import get_args
-    from hf2mcore_qwen2_dense_and_moe_gqa import convert_checkpoint_from_megatron_to_transformers, load_megatron_model, save_hfmodel
-    initialize_megatron(args_defaults=args_defaults)
-    args = get_args()
-
-    from transformers import AutoModelForCausalLM
-    import hf2mcore_qwen2_dense_and_moe_gqa
-    hf2mcore_qwen2_dense_and_moe_gqa.model_provider = model_provider
-    hf_model = AutoModelForCausalLM.from_pretrained(args.hf_ckpt_path)
-    mg_model = load_megatron_model(args)
-    convert_checkpoint_from_megatron_to_transformers(mg_model, hf_model, args)
-    save_hfmodel(args, hf_model)
-
-
-# if __name__ == '__main__':
-
-#     args = MegatronArguments(
-#         load='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-hf-to-mcore-te-tp1-pp1-new',
-#         save='/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B-HF',
-#         bf16=False,
-#         # no_async_tensor_model_parallel_allreduce=True,
-#         # use_cpu_initialization=True,
-#         # no_bias_swiglu_fusion=True,
-#     )
-#     extra_args = args.parse_to_megatron()
-#     extra_args['hf_ckpt_path'] = '/mnt/nas2/huangjintao.hjt/work/Pai-Megatron-Patch/qwen-ckpts/Qwen2-0.5B'
-#     convert_megatron_to_hf(extra_args)
 """
 [INFO:swift] Successfully registered `/mnt/nas2/huangjintao.hjt/work/swift/swift/llm/data/dataset_info.json`
 [INFO:swift] local_repo_path: /mnt/nas2/huangjintao.hjt/.cache/modelscope/_github/megatron-lm

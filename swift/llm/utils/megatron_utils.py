@@ -78,7 +78,7 @@ def forward_step(data_iterator, model: GPTModel):
 
     output_tensor = model(**inputs)
 
-    return output_tensor, partial(loss_func, inputs['attention_mask'])
+    return output_tensor, partial(loss_func, inputs['labels'])
 
 
 def train_valid_test_datasets_provider(train_val_test_num_samples):
