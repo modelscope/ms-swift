@@ -1502,7 +1502,6 @@ class Internvl2Template(InternvlTemplate):
             medias = example.get(media_key)
             if medias:
                 num_media_tag = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
-                # 计算list medias中非None的元素个数
                 num_media = sum([1 for m in medias if m])  # ignore None
                 num_res_media = num_media - num_media_tag
                 assert num_res_media >= 0, \
