@@ -1,11 +1,20 @@
-def test_megatron_load_config():
+def test_to_megatron():
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     from swift.llm import export_main, ExportArguments
-    export_main(ExportArguments(model_type='qwen2-7b', to_megatron=True))
+    export_main(ExportArguments(model_type='qwen2-0_5b', to_megatron=True, check_model_forward=True))
 
 
-test_megatron_load_config()
+def test_to_hf():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    from swift.llm import export_main, ExportArguments
+    export_main(
+        ExportArguments(
+            model_type='qwen2-0_5b', to_hf=True, ckpt_dir='/mnt/nas2/huangjintao.hjt/work/swift/qwen2-0_5b-tp1-pp1'))
+
+test_to_megatron()
+# test_to_hf()
 
 exit(0)
 
