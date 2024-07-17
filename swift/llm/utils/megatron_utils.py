@@ -6,31 +6,23 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from megatron.core import mpu
-from megatron.core.datasets.blended_megatron_dataset_builder import BlendedMegatronDatasetBuilder
-from megatron.core.datasets.gpt_dataset import GPTDataset, GPTDatasetConfig, MockGPTDataset
 from megatron.core.datasets.utils import get_blend_from_list
 from megatron.core.enums import ModelType
 from megatron.training import get_args, get_timers, get_tokenizer, pretrain
 from megatron.training.utils import (average_losses_across_data_parallel_group, get_batch_on_this_cp_rank,
-                                     get_batch_on_this_tp_rank)
-from megatron_patch.data import build_pretrain_dataset_from_original
-from megatron_patch.data.utils import get_batch_on_this_tp_rank_original
-from megatron_patch.model.qwen2.layer_specs import get_gpt_layer_local_spec, get_gpt_layer_with_transformer_engine_spec
+                                     get_batch_on_this_tp_rank, get_ltor_masks_and_position_ids)
 from megatron_patch.model.qwen2.model import GPTModel
-from megatron_patch.model.qwen2.transformer_config import Qwen2TransformerConfig
 
 from swift.utils import get_dist_setting, get_logger, subprocess_run
 from .dataset import get_dataset
 from .template import get_template
 from .utils import LazyLLMDataset, to_device
 
-os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
-
 logger = get_logger()
 
 
 def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
-    """Loss function.
+    """Loss function. copy from Pai-Megatron-Patch
 
     Args:
         loss_mask (torch.Tensor): Used to mask out some portions of the loss
@@ -56,37 +48,20 @@ def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):
     # Reduce loss for logging.
     averaged_loss = average_losses_across_data_parallel_group([loss])
 
-    return loss * args.context_parallel_size, {'lm loss': averaged_loss[0]}
+    return loss * args.context_parallel_size, {'loss': averaged_loss[0]}
 
 
 def forward_step(data_iterator, model: GPTModel):
-    """Forward training step.
-
-    Args:
-        data_iterator : Input data iterator
-        model (GPTModel): The GPT Model
-    """
-    timers = get_timers()
-
-    # Get the batch.
-    timers('batch-generator', log_level=2).start()
-    inputs = next(data_iterator)
-    input_ids = inputs['input_ids']
-    inputs['position_ids'] = torch.arange(input_ids.shape[1], device=input_ids.device)[None].expand_as(input_ids)
-    timers('batch-generator').stop()
-    inputs = to_device(inputs, torch.cuda.current_device())
-
-    output_tensor = model(**inputs)
-
-    return output_tensor, partial(loss_func, inputs['labels'])
+    batch = get_batch_on_this_tp_rank(data_iterator)
+    batch = get_batch_on_this_cp_rank(batch)
+    tokens, labels, loss_mask, attention_mask, position_ids = batch.values()
+    output_tensor = model(tokens, position_ids, attention_mask,
+                          labels=labels)
+    return output_tensor, partial(loss_func, loss_mask)
 
 
 def train_valid_test_datasets_provider(train_val_test_num_samples):
-    """Build the train test and validation datasets.
-
-    Args:
-        train_val_test_num_samples : A list containing the number of samples in train test and validation.
-    """
+    # train_val_test_num_samples: ignored
     args = get_args()
     tokenizer = get_tokenizer()
     logger.info('> building train, validation, and test datasets for GPT ...')
@@ -101,11 +76,26 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     assert not hasattr(training, '_old_build_pretraining_data_loader')
     _old_build_pretraining_data_loader = training.build_pretraining_data_loader
 
+    def data_collator(batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = template.data_collator(batch, padding_to)
+        labels = res['labels']
+        new_labels = torch.zeros_like(labels)
+        new_labels[:, :-1] = labels[:, 1:]
+        new_labels[:, -1] = -100
+        attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(new_labels, -100, False, False, True)
+        return {
+            'tokens': res['input_ids'],
+            'labels': new_labels,
+            'attention_mask': attention_mask,
+            'loss_mask': loss_mask,
+            'position_ids': position_ids
+        }
+
     @wraps(_old_build_pretraining_data_loader)
     def build_pretraining_data_loader(*args, **kwargs):
         res = _old_build_pretraining_data_loader(*args, **kwargs)
         if res is not None:
-            res.collate_fn = template.data_collator
+            res.collate_fn = data_collator
         return res
 
     training.build_pretraining_data_loader = build_pretraining_data_loader

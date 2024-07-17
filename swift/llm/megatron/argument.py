@@ -114,7 +114,7 @@ class MegatronMixin:
     num_workers: int = 4
 
     seq_length: int = 1
-    # eod_mask_loss: bool = True
+    eod_mask_loss: bool = True
 
     # num_experts: Optional[int] = None
     # expert_model_parallel_size: int = 1
