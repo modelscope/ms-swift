@@ -449,6 +449,7 @@ class ArgumentsBase:
             api.login(hub_token)
         if not hasattr(self, 'push_to_hub') or not self.push_to_hub:
             return
+        self.hub_token = hub_token
         assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-{self.sft_type}'
