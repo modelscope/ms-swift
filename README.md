@@ -55,7 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
-- 2024.07.17: Support newly released Internvl2 models: `model_type` are internvl2-1b, internvl2-40b, internvl2-llama3-76b. For best practices, refer to [here](docs/source_en/Multi-Modal/internvl-best-practice.md).
+- 2024.07.17: Support newly released InternVL2 models: `model_type` are internvl2-1b, internvl2-40b, internvl2-llama3-76b. For best practices, refer to [here](docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 🔥2024.07.16: Support exporting for ollama and bitsandbytes. Use `swift export --model_type xxx --to_ollama true` or `swift export --model_type xxx --quant_method bnb --quant_bits 4`
 - 2024.07.08: Support cogvlm2-video-13b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/cogvlm2-video-best-practice.md).
 - 2024.07.08: Support internlm-xcomposer2_5-7b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/internlm-xcomposer2-best-practice.md).

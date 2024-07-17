@@ -56,7 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
-- 2024.07.17: 支持InternVL-2系列新模型: `model_type`分别为internvl2-1b, internvl2-40b, internvl2-llama3-76b. 最佳实践可以查看[这里](docs/source/Multi-Modal/internvl最佳实践.md).
+- 2024.07.17: 支持InternVL2系列新模型: `model_type`分别为internvl2-1b, internvl2-40b, internvl2-llama3-76b. 最佳实践可以查看[这里](docs/source/Multi-Modal/internvl最佳实践.md).
 - 🔥2024.07.16: 支持ollama和bitsandbytes导出. 可以使用命令: `swift export --model_type xxx --to_ollama true`或者`swift export --model_type xxx --quant_method bnb --quant_bits 4`.
 - 2024.07.08: 支持cogvlm2-video-13b-chat. 最佳实践可以查看[这里](docs/source/Multi-Modal/cogvlm2-video最佳实践.md).
 - 2024.07.08: 支持internlm-xcomposer2_5-7b-chat. 最佳实践可以查看[这里](docs/source/Multi-Modal/internlm-xcomposer2最佳实践.md).
