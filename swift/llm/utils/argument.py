@@ -42,17 +42,24 @@ def is_adapter(sft_type: str) -> bool:
 class ArgumentsBase:
 
     @classmethod
-    def _check_path(cls, k: str, value: Union[str, List[str]],
-                    check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+    def _check_path(cls,
+                    value: Union[str, List[str]],
+                    k: Optional[str] = None,
+                    check_exist_path_set: Optional[Set[str]] = None) -> Union[str, List[str]]:
+        if check_exist_path_set is None:
+            check_exist_path_set = set()
         if isinstance(value, str):
             value = os.path.expanduser(value)
             value = os.path.abspath(value)
             if k in check_exist_path_set and not os.path.exists(value):
-                raise FileNotFoundError(f"`{k}`: '{value}'")
+                if k is not None:
+                    raise FileNotFoundError(f"`{k}`: '{value}'")
+                else:
+                    raise FileNotFoundError(f"path: '{value}'")
         elif isinstance(value, list):
             res = []
             for v in value:
-                res.append(cls._check_path(k, v, check_exist_path_set))
+                res.append(cls._check_path(v, k, check_exist_path_set))
             value = res
         return value
 
@@ -81,7 +88,7 @@ class ArgumentsBase:
             value = getattr(self, k, None)
             if value is None:
                 continue
-            value = self._check_path(k, value, check_exist_path_set)
+            value = self._check_path(value, k, check_exist_path_set)
             setattr(self, k, value)
 
     def check_flash_attn(self: Union['SftArguments', 'InferArguments']) -> None:
@@ -1428,14 +1435,16 @@ class ExportArguments(InferArguments):
                     ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
                     self.quant_output_dir = os.path.join(ckpt_dir,
                                                          f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
+                self.quant_output_dir = self._check_path(self.quant_output_dir)
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
-        if self.to_ollama:
+        elif self.to_ollama:
             assert self.sft_type in ('full', 'lora', 'longlora', 'llamapro')
             if self.sft_type in ('lora', 'longlora', 'llamapro'):
                 self.merge_lora = True
             if not self.ollama_output_dir:
                 self.ollama_output_dir = f'{self.model_type}-ollama'
+            self.ollama_output_dir = self._check_path(self.ollama_output_dir)
             assert not os.path.exists(
                 self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
 

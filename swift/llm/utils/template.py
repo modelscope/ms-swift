@@ -173,7 +173,7 @@ class Template:
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'react_en',
                  tool_prompt: Optional[Prompt] = None,
-                 padding_side: str = 'right') -> None:
+                 padding_side: Literal['left', 'right'] = 'right') -> None:
         # check
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
@@ -239,7 +239,6 @@ class Template:
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
         self.tokenizer = tokenizer
-        self.tokenizer.padding_side = self.padding_side
         # if default_system is None. not change self.default_system
         if default_system == '':
             self.default_system = None
@@ -612,8 +611,11 @@ class Template:
     def _concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any], curr_tokenizer_kwargs: Dict[str, Any]) -> None:
         assert len(tokenizer_kwargs) == 0
 
-    def pad_sequence(self, sequences, padding_value=0.0):
-        padding_right = self.padding_side == 'right'
+    @staticmethod
+    def pad_sequence(sequences: List[Tensor],
+                     padding_value: float = 0.,
+                     padding_side: Literal['right', 'left'] = 'right'):
+        padding_right = padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
 
@@ -664,13 +666,13 @@ class Template:
                                           (padding_to - labels[0].shape[-1], 0), 'constant', 0.)
 
         if input_ids is None:
-            inputs_embeds = self.pad_sequence(inputs_embeds, padding_value=0)
+            inputs_embeds = self.pad_sequence(inputs_embeds, 0, self.padding_side)
         else:
-            input_ids = self.pad_sequence(input_ids, padding_value=tokenizer.pad_token_id)
-        attention_mask = self.pad_sequence(attention_mask, padding_value=0)
+            input_ids = self.pad_sequence(input_ids, tokenizer.pad_token_id, self.padding_side)
+        attention_mask = self.pad_sequence(attention_mask, 0, self.padding_side)
         if loss_scale:
-            loss_scale = self.pad_sequence(loss_scale, padding_value=0.)
-        labels = self.pad_sequence(labels, padding_value=-100)
+            loss_scale = self.pad_sequence(loss_scale, 0., self.padding_side)
+        labels = self.pad_sequence(labels, -100, self.padding_side)
 
         if use_torchacc():
             rank, _, world_size, _ = get_dist_setting()
@@ -1317,7 +1319,7 @@ class InternLMXComposer2Template(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         im_mask = [b['im_mask'][0] for b in batch]
-        im_mask = self.pad_sequence(im_mask, padding_value=0)
+        im_mask = self.pad_sequence(im_mask, 0, self.padding_side)
         res['im_mask'] = im_mask
         return res
 
@@ -1947,7 +1949,7 @@ class PaliGemmaTemplate(Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = self.pad_sequence(token_type_ids, padding_value=0)
+        token_type_ids = self.pad_sequence(token_type_ids, 0, self.padding_side)
         res['token_type_ids'] = token_type_ids
         return res
 
@@ -2186,7 +2188,7 @@ class CogTemplate(Template):
             if key in batch[0]:
                 res[key] = [b[key][0] for b in batch]
         token_type_ids = [torch.tensor(b['token_type_ids']) for b in batch]
-        token_type_ids = self.pad_sequence(token_type_ids, padding_value=0)
+        token_type_ids = self.pad_sequence(token_type_ids, 0, self.padding_side)
         res['token_type_ids'] = token_type_ids
         return res
 

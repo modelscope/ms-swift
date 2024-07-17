@@ -29,8 +29,10 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     target_dir: str,
                     *,
                     save_safetensors: bool = True,
-                    sft_args_kwargs: Dict[str, Any],
+                    sft_args_kwargs: Optional[Dict[str, Any]] = None,
                     **kwargs) -> None:
+    if sft_args_kwargs is None:
+        sft_args_kwargs = {}
     if model is not None:
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
     if hasattr(tokenizer, 'processor'):

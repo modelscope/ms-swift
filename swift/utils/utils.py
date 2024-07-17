@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
+from transformers.trainer import TrainingArguments
 
 from .logger import get_logger
 from .np_utils import stat_array
@@ -42,7 +43,14 @@ def check_json_format(obj: Any) -> Any:
     elif isinstance(obj, Mapping):
         res = {}
         for k, v in obj.items():
-            res[k] = check_json_format(v)
+            if 'hub_token' in k:
+                res[k] = None
+            else:
+                if isinstance(v, TrainingArguments):
+                    for _k in v.__dict__.keys():
+                        if 'hub_token' in _k:
+                            setattr(v, _k, None)
+                res[k] = check_json_format(v)
     else:
         res = repr(obj)  # e.g. function
     return res
