@@ -440,7 +440,7 @@ class ArgumentsBase:
         for require in requires:
             require_version(require)
 
-    def prepare_push_ms_hub(self: Union['SftArguments', 'InferArguments']) -> None:
+    def prepare_ms_hub(self: Union['SftArguments', 'InferArguments']) -> None:
         hub_token = self.hub_token
         if hub_token is None:
             hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
@@ -897,7 +897,7 @@ class SftArguments(ArgumentsBase):
             self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
                 else 'transformers'
 
-        self.prepare_push_ms_hub()
+        self.prepare_ms_hub()
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
             if self.predict_with_generate:
@@ -1195,7 +1195,7 @@ class InferArguments(ArgumentsBase):
         self.check_flash_attn()
         self.handle_generation_config()
         self.is_multimodal = self._is_multimodal(self.model_type)
-        self.prepare_push_ms_hub()
+        self.prepare_ms_hub()
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
