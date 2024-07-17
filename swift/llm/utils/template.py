@@ -1346,7 +1346,7 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         images_path = example.get('images') or []
-        if images_path:
+        if images_path and None not in images_path:
             from .vision_utils import load_image
 
             pixel_values = []
@@ -1374,10 +1374,11 @@ class InternvlTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
-        image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
-        if image_flags:
-            res['image_flags'] = torch.concat(image_flags)
+        # assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
+        if any('pixel_values' in b for b in batch):
+            image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
+            if image_flags:
+                res['image_flags'] = torch.concat(image_flags)
         return res
 
     @staticmethod
@@ -1409,7 +1410,7 @@ class Internvl2Template(InternvlTemplate):
         labels = inputs.get('labels')
         images_path = example.get('images') or []
         videos_path = example.get('videos') or []
-        if images_path:
+        if images_path and None not in images_path:
             from .vision_utils import load_image
             pixel_values = []
             if isinstance(images_path, str):
