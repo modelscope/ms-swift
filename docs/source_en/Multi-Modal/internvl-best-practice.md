@@ -109,6 +109,10 @@ Of courage, hope, and love as well.
 For the **InternVL2** series models, multi-turn multi-image inference is supported, and within a single turn, images and text can be interleaved. The position of the images needs to be determined by <image> in the input.
 
 Example of multi-turn multi-image input:
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b
+```
+
 ```
 <<< <image> describe the image
 Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png

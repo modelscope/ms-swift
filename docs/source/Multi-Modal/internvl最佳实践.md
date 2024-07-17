@@ -132,6 +132,10 @@ ui功能了。
 
 对于**InternVL2**系列模型, 支持多轮多图推理, 且单轮中支持图像文本交错, 需要在输入通过`<image>`确定图像位置
 多轮多图示例
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b
+```
+
 ```
 <<< <image>描述图片
 Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
@@ -177,9 +181,6 @@ Input an image path or URL <<<
 这些共同点使得两张图片在视觉上存在显著的差异，但它们都展示了可爱的动物形象。
 ```
 
-```shell
-CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b
-```
 
 示例图片如下:
 
