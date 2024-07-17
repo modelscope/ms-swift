@@ -1565,7 +1565,7 @@ register_template(
     Internvl2Template(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='round',
+    infer_media_type='dialogue',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
@@ -1574,7 +1574,7 @@ register_template(
     Internvl2Phi3Template(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='round',
+    infer_media_type='dialogue',
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
