@@ -1407,7 +1407,6 @@ class InternvlTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        # assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
         if any('pixel_values' in b for b in batch):
             image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
             if image_flags:
