@@ -1557,6 +1557,13 @@ class RLHFArguments(SftArguments):
         elif self.rlhf_type == 'kto':
             self.loss_type = 'kto'
 
+@dataclass
+class WebuiArguments:
+    share: bool = False
+    lang: str = 'zh'
+    host: str = '127.0.0.1'
+    port: Optional[int] = None
+
 
 @dataclass
 class RomeArguments(InferArguments):
