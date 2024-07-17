@@ -298,6 +298,8 @@ class ModelType:
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
     deepseek_math_7b_chat = 'deepseek-math-7b-chat'
+    # numina-math
+    numina_math_7b = 'numina-math-7b'
     # deepseek-vl
     deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
@@ -1855,6 +1857,15 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     tags=['math'],
     hf_model_id='deepseek-ai/deepseek-math-7b-instruct')
+@register_model(
+    ModelType.numina_math_7b,
+    'AI-ModelScope/NuminaMath-7B-TIR',
+    LoRATM.llama,
+    TemplateType.numina_math,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['math'],
+    hf_model_id='AI-MO/NuminaMath-7B-TIR')
 @register_model(
     ModelType.deepseek_math_7b_chat,
     'deepseek-ai/deepseek-math-7b-rl',
