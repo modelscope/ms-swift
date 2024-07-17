@@ -1526,6 +1526,7 @@ class Internvl2Template(InternvlTemplate):
                 else:
                     # add the res image tag at the beginning of the last query
                     query = media_tag * res_media + query
+                break
 
         example['query'] = query
         example['history'] = history
