@@ -3676,7 +3676,6 @@ def _patch_internvl_forward(forward_func):
                 attentions=outputs.attentions,
             )
         else:
-            # 检查forward_func的入参
             return forward_func(
                 pixel_values,
                 input_ids,

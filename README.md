@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.07.17: Support new internvl2 models: internvl2-1b, internvl2-40b, internvl2-llama3-76b. For best practices, refer to [here](docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 🔥2024.07.16: Support exporting for ollama and bitsandbytes. Use `swift export --model_type xxx --to_ollama true` or `swift export --model_type xxx --quant_method bnb --quant_bits 4`
 - 2024.07.08: Support cogvlm2-video-13b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/cogvlm2-video-best-practice.md).
 - 2024.07.08: Support internlm-xcomposer2_5-7b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/internlm-xcomposer2-best-practice.md).
@@ -604,7 +605,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llava1.5<br>Llava1.6           | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English            | 7B-34B                             | chat model |
 | Llava-Next<br>Llava-Next-Video             | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                  | Chinese<br>English | 7B-110B                             | chat model |
 | mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English            | 11B                                | chat model |
-| InternVL<br>Mini-Internvl<br>Internvl2           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 2B-40B<br>including quantized version                              | chat model |
+| InternVL<br>Mini-Internvl<br>Internvl2           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 1B-40B<br>including quantized version                              | chat model |
 | Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English            | 8B                                 | chat model |
 | Phi3-Vision                                      | Microsoft                        | English            | 4B              | chat model |
 | PaliGemma                                  | Google              | English | 3B              | chat model |
