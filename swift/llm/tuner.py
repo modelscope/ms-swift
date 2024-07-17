@@ -103,9 +103,12 @@ def prepare_model(model, args: SftArguments):
             handle_modules_to_save(model, args)
             if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
+            if args.lora_target_regex:
+                logger.info(f'Value of lora_target_modules: {args.lora_target_modules} will have no effect '
+                            f'because lora_target_regex value: {args.lora_target_regex} exists.')
             lora_kwargs = {
                 'r': args.lora_rank,
-                'target_modules': args.lora_target_modules,
+                'target_modules': args.lora_target_regex or args.lora_target_modules,
                 'lora_alpha': args.lora_alpha,
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,

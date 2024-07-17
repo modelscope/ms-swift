@@ -4,7 +4,6 @@ import shutil
 from typing import Any, Dict, Literal, Optional, Union
 
 import numpy as np
-from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.utils import get_logger
@@ -143,6 +142,7 @@ class MediaCache:
             The local dir contains the extracted files.
         """
         from swift.utils import safe_ddp_context
+        from datasets.utils.filelock import FileLock
         file_path = hashlib.md5(media_type_or_url.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(MediaCache.lock_dir, file_path)
         with safe_ddp_context():

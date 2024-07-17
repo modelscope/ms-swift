@@ -246,12 +246,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+(支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
 ```
 
 ## 微调后推理

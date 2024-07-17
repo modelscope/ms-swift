@@ -80,6 +80,16 @@ class Model(BaseUI):
                 'en': 'Only available when sft_type=lora'
             }
         },
+        'lora_modules': {
+            'label': {
+                'zh': '外部lora模块',
+                'en': 'More lora modules'
+            },
+            'info': {
+                'zh': '空格分割的name=/path1/path2键值对',
+                'en': 'name=/path1/path2 split by blanks'
+            }
+        },
         'more_params': {
             'label': {
                 'zh': '更多参数',
@@ -117,6 +127,7 @@ class Model(BaseUI):
             system = gr.Textbox(elem_id='system', lines=4, scale=20)
         Generate.build_ui(base_tab)
         with gr.Row():
+            gr.Textbox(elem_id='lora_modules', lines=1, is_list=True, scale=40)
             gr.Textbox(elem_id='more_params', lines=1, scale=20)
             gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
 

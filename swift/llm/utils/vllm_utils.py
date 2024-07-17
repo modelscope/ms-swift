@@ -115,6 +115,9 @@ def get_vllm_engine(
         pass
     # fix HTTPError bug (use model_dir)
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
+    if version.parse(vllm.__version__) >= version.parse('0.5.1'):
+        os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
+
     llm_engine = llm_engine_cls.from_engine_args(engine_args)
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir

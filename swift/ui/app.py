@@ -4,13 +4,12 @@ import gradio as gr
 from packaging import version
 from transformers.utils import strtobool
 
-from swift.ui.base import all_langs
+from swift.llm.utils import WebuiArguments
 from swift.ui.llm_eval.llm_eval import LLMEval
 from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_infer.llm_infer import LLMInfer
 from swift.ui.llm_train.llm_train import LLMTrain
-
-lang = os.environ.get('SWIFT_UI_LANG', all_langs[0])
+from swift.utils import get_main
 
 locale_dict = {
     'title': {
@@ -41,7 +40,14 @@ else:
     is_shared_ui = False
 
 
-def run_ui():
+def run_ui(arguments: WebuiArguments):
+    lang = os.environ.get('SWIFT_UI_LANG') or arguments.lang
+    share_env = os.environ.get('WEBUI_SHARE')
+    share = strtobool(share_env) if share_env else arguments.share
+    server = os.environ.get('WEBUI_SERVER') or arguments.host
+    port_env = os.environ.get('WEBUI_PORT')
+    port = int(port_env) if port_env else arguments.port
+
     LLMTrain.set_lang(lang)
     LLMInfer.set_lang(lang)
     LLMExport.set_lang(lang)
@@ -66,13 +72,10 @@ def run_ui():
                 LLMExport.build_ui(LLMExport)
                 LLMEval.build_ui(LLMEval)
 
-    port = os.environ.get('WEBUI_PORT', None)
     concurrent = {}
     if version.parse(gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
         concurrent = {'concurrency_count': 5}
-    app.queue(**concurrent).launch(
-        server_name=os.environ.get('WEBUI_SERVER', None),
-        inbrowser=True,
-        server_port=port if port is None else int(port),
-        height=800,
-        share=strtobool(os.environ.get('WEBUI_SHARE', '0')))
+    app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
+
+
+webui_main = get_main(WebuiArguments, run_ui)

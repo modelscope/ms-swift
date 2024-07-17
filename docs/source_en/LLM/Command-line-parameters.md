@@ -63,6 +63,7 @@
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization for 4bit quantization, default is `True`. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_storage`: Default vlaue `None`.This sets the storage type to pack the quanitzed 4-bit prarams. Has no effect when quantization_bit is 0.
 - `--lora_target_modules`: Specify lora modules, default is `['DEFAULT']`. If lora_target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `lora_target_modules` in `MODEL_MAPPING` based on `model_type` (default specifies qkv). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'.
+- `--lora_target_regex`: The lora target regex in `Optional[str]`. default is `None`. If this argument is specified, the `lora_target_modules` will have no effect.
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_dropout_p`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
@@ -134,7 +135,8 @@
   - The application priority of matching rules is as follows, from highest to lowest: query fields > specific response fields > regular expression matching rules.
 - `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
 - `--custom_dataset_info`: Default is `None`. Pass in the path to an external `dataset_info.json`, a JSON string, or a dictionary. Used to register custom datasets. The format example: https://github.com/modelscope/swift/blob/main/swift/llm/data/dataset_info.json
-- `device_map_config_path`: Manually configure the model's device map from a local file, defaults to None.
+- `--device_map_config_path`: Manually configure the model's device map from a local file, defaults to None.
+- `--device_max_memory`: The max memory of each device can use for `device_map`, `List`, default is `[]`, The number of values must equal to the device count. Like `10GB 10GB`.
 
 ### Long Context
 
@@ -252,7 +254,8 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--load_args_from_ckpt_dir`: Whether to read model configuration info from `sft_args.json` file in `ckpt_dir`. Default is `True`.
 - `--load_dataset_config`: This parameter only takes effect when `--load_args_from_ckpt_dir true`. I.e. whether to read dataset related configuration from `sft_args.json` file in `ckpt_dir`. Default is `False`.
 - `--eval_human`: Whether to evaluate using validation set portion of dataset or manual evaluation. Default is `None`, for intelligent selection, if no datasets (including custom datasets) are passed, manual evaluation will be used. If datasets are passed, dataset evaluation will be used.
-- `device_map_config_path`: Manually configure the model's device map from a local file, defaults to None.
+- `--device_map_config_path`: Manually configure the model's device map from a local file, defaults to None.
+- `--device_max_memory`: The max memory of each device can use for `device_map`, `List`, default is `[]`, The number of values must equal to the device count. Like `10GB 10GB`.
 - `--seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
 - `--dtype`: Default is `'AUTO`, see `sft.sh command line arguments` for parameter details.
 - `--dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
@@ -309,7 +312,7 @@ export parameters inherit from infer parameters, with the following added parame
 - `--to_peft_format`: Default is `False`. Convert the swift format of LoRA (`--tuner_backend swift`) to peft format.
 - `--merge_lora`: Default is `False`. This parameter is already defined in InferArguments, not a new parameter. Whether to merge lora weights into base model and save full weights. Weights will be saved in the same level directory as `ckpt_dir`, e.g. `'/path/to/your/vx-xxx/checkpoint-xxx-merged'` directory.
 - `--quant_bits`: Number of bits for quantization. Default is `0`, i.e. no quantization. If you set `--quant_method awq`, you can set this to `4` for 4bits quantization. If you set `--quant_method gptq`, you can set this to `2`,`3`,`4`,`8` for corresponding bits quantization. If quantizing original model, weights will be saved in `f'{args.model_type}-{args.quant_method}-int{args.quant_bits}'` directory. If quantizing fine-tuned model, weights will be saved in the same level directory as `ckpt_dir`, e.g. `f'/path/to/your/vx-xxx/checkpoint-xxx-{args.quant_method}-int{args.quant_bits}'` directory.
-- `--quant_method`: Quantization method, default is `'awq'`. Options are 'awq', 'gptq'.
+- `--quant_method`: Quantization method, default is `'awq'`. Options are 'awq', 'gptq', 'bnb'.
 - `--dataset`: This parameter is already defined in InferArguments, for export it means quantization dataset. Default is `[]`. More details: including how to customize quantization dataset, can be found in [LLM Quantization Documentation](LLM-quantization.md).
 - `--quant_n_samples`: Quantization parameter, default is `256`. When set to `--quant_method awq`, if OOM occurs during quantization, you can moderately reduce `--quant_n_samples` and `--quant_seqlen`. `--quant_method gptq` generally does not encounter quantization OOM.
 - `--quant_seqlen`: Quantization parameter, default is `2048`.
@@ -320,6 +323,8 @@ export parameters inherit from infer parameters, with the following added parame
 - `--hub_token`: Default is `None`. See `sft.sh command line arguments` for parameter details.
 - `--hub_private_repo`: Default is `False`. See `sft.sh command line arguments` for parameter details.
 - `--commit_message`: Default is `'update files'`.
+- `--to_ollama`: Export to ollama modelfile.
+- `--ollama_output_dir`: ollama output dir. Default is `<modeltype>-ollama`.
 
 ## eval parameters
 
@@ -360,3 +365,10 @@ deploy parameters inherit from infer parameters, with the following added parame
 - `--port`: Default is `8000`.
 - `--ssl_keyfile`: Default is `None`.
 - `--ssl_certfile`: Default is `None`.
+
+## web-ui Parameters
+
+- `--host`: Default `'127.0.0.1'`.
+- `--port`: Default `None`.
+- `--lang`: Default `'zh'`.
+- `--share`: Default `False`.

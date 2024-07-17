@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 from typing import Optional
 
 import torch
 
+from swift.llm import get_model_tokenizer, get_template
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
 from .infer import merge_lora, prepare_model_template, save_checkpoint
 from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
@@ -96,13 +98,63 @@ def llm_export(args: ExportArguments) -> None:
     if args.to_peft_format:
         assert args.sft_type == 'lora', f'args.sft_type: {args.sft_type}'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
+
     if args.merge_lora:
         # fix parameter conflict
         quant_method = args.quant_method
         args.quant_method = None
         merge_lora(args, device_map=args.merge_device_map)
         args.quant_method = quant_method
-    if args.quant_bits > 0:
+
+    if args.to_ollama:
+
+        logger.info('Exporting to ollama:')
+        logger.info('If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, '
+                    'else SWIFT will use the original(merged) model dir')
+        os.makedirs(args.ollama_output_dir, exist_ok=True)
+        if args.ckpt_dir is not None:
+            model_dir = args.ckpt_dir
+        else:
+            model_dir = args.model_id_or_path
+        _, tokenizer = get_model_tokenizer(
+            args.model_type, model_id_or_path=model_dir, revision=args.model_revision, load_model=False)
+        model_dir = tokenizer.model_dir
+        template = get_template(
+            args.template_type,
+            tokenizer,
+            args.system,
+            args.max_length,
+            args.truncation_strategy,
+            tools_prompt=args.tools_prompt)
+        with open(os.path.join(args.ollama_output_dir, 'Modelfile'), 'w') as f:
+            f.write(f'FROM {model_dir}\n')
+            f.write(f'TEMPLATE """{{{{ if .System }}}}'
+                    f'{template.system_prefix[0].replace("{{SYSTEM}}", "{{ .System }}")}'
+                    f'{{{{ end }}}}')
+            f.write(f'{{{{ if .Prompt }}}}'
+                    f'{template.prompt[0].replace("{{QUERY}}", "{{ .Prompt }}")}'
+                    f'{{{{ end }}}}')
+            f.write('{{ .Response }}')
+            f.write(template.suffix[0] + '"""\n')
+            f.write(f'PARAMETER stop "{template.suffix[0]}"\n')
+            if args.stop_words:
+                for stop_word in args.stop_words:
+                    f.write(f'PARAMETER stop "{stop_word}"\n')
+            if args.temperature:
+                f.write(f'PARAMETER temperature {args.temperature}\n')
+            if args.top_k:
+                f.write(f'PARAMETER top_k {args.top_k}\n')
+            if args.top_p:
+                f.write(f'PARAMETER top_p {args.top_p}\n')
+            if args.repetition_penalty:
+                f.write(f'PARAMETER repeat_penalty {args.repetition_penalty}\n')
+
+        logger.info('Save Modelfile done, you can start ollama by:')
+        logger.info('> ollama serve')
+        logger.info('In another terminal:')
+        logger.info('> ollama create my-custom-model ' f'-f {os.path.join(args.ollama_output_dir, "Modelfile")}')
+        logger.info('> ollama run my-custom-model')
+    elif args.quant_bits > 0:
         assert args.quant_output_dir is not None
         _args = args
         assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
@@ -118,6 +170,12 @@ def llm_export(args: ExportArguments) -> None:
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
+        elif args.quant_method == 'bnb':
+            args.quant_device_map = 'auto'  # cannot use cpu on bnb
+            args.quantization_bit = args.quant_bits
+            args.bnb_4bit_compute_dtype, args.load_in_4bit, args.load_in_8bit = args.select_bnb()
+            model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
+            model.save_pretrained(args.quant_output_dir)
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')
 

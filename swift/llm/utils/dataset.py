@@ -341,12 +341,10 @@ def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Option
         return dataset
     if random_state is None:
         random_state = RandomState()
-    # Sample the part that exceeds the length of the dataset.
-    idx = random_state.permutation(len(dataset))[:dataset_sample]
-    dataset_sample -= len(idx)
-    if dataset_sample > 0:
-        idx2 = random_state.choice(len(dataset), dataset_sample)
-        idx = np.concatenate([idx, idx2], axis=0)
+
+    idx_repeat = np.tile(range(len(dataset)), dataset_sample // len(dataset))
+    idx_random = random_state.permutation(len(dataset))[:dataset_sample % len(dataset)]
+    idx = np.concatenate([idx_repeat, idx_random])
     dataset = dataset.select(idx)
     return dataset
 
@@ -719,7 +717,7 @@ register_dataset(
 
 
 def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
-    url = 'https://modelscope.cn/datasets/huangjintao/VideoChatGPT/resolve/master/videos.zip'
+    url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
     local_dir = MediaCache.download(url, 'video_chatgpt')
     local_dir = os.path.join(local_dir, 'Test_Videos')
     # only `.mp4`
@@ -742,7 +740,7 @@ def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.video_chatgpt,
-    'huangjintao/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
+    'swift/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
     _preprocess_video_chatgpt,
     get_dataset_from_repo,
     split=['test'],
@@ -1832,7 +1830,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.sharegpt,
-    'huangjintao/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
+    'swift/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
     preprocess_sharegpt,
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round'])
@@ -2359,6 +2357,8 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[str]:
         if os.path.isfile(d_id_or_path):
             d_info['dataset_path'] = d_id_or_path
         else:
+            if d_id_or_path.startswith('/'):
+                raise ValueError(f"path: '{d_id_or_path}' not found")
             if use_hf:
                 d_info['hf_dataset_id'] = d_id_or_path
             else:

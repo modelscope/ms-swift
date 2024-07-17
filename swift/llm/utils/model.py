@@ -1612,6 +1612,8 @@ def get_model_tokenizer_glm4v(model_dir: str,
                               load_model: bool = True,
                               **kwargs):
     model, tokenizer = get_model_tokenizer_glm4(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    # fix merge-lora
+    tokenizer.init_kwargs['image_size'] = 1120
     # fix device_map 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
@@ -2443,7 +2445,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     hf_model_id='mistralai/Mistral-7B-v0.1')
 @register_model(
     ModelType.codestral_22b,
-    'huangjintao/Codestral-22B-v0.1',
+    'swift/Codestral-22B-v0.1',
     LoRATM.llama,
     TemplateType.default_generation,
     requires=['transformers>=4.34'],
@@ -3747,8 +3749,8 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_4b,
     'OpenGVLab/InternVL2-4B',
-    LoRATM.internlm2,
-    TemplateType.internvl2,
+    LoRATM.phi3,
+    TemplateType.internvl2_phi3,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -3777,7 +3779,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_40b,
     'OpenGVLab/InternVL2-40B',
-    LoRATM.internlm2,
+    LoRATM.llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3964,7 +3966,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-def _git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> str:
+def git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> str:
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -4084,7 +4086,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
+        local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
     processor = VLChatProcessor.from_pretrained(model_dir)
@@ -4111,7 +4113,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 @register_model(
     ModelType.llama3_70b_instruct_awq,
-    'huangjintao/Meta-Llama-3-70B-Instruct-AWQ',
+    'swift/Meta-Llama-3-70B-Instruct-AWQ',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['autoawq'],
@@ -4122,7 +4124,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_70b_instruct_int8,
-    'huangjintao/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
+    'swift/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4133,7 +4135,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_70b_instruct_int4,
-    'huangjintao/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
+    'swift/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4144,7 +4146,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.llama3_8b_instruct_awq,
-    'huangjintao/Meta-Llama-3-8B-Instruct-AWQ',
+    'swift/Meta-Llama-3-8B-Instruct-AWQ',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['autoawq'],
@@ -4155,7 +4157,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_8b_instruct_int8,
-    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
+    'swift/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4166,7 +4168,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_8b_instruct_int4,
-    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
+    'swift/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -5028,7 +5030,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/01-ai/Yi')
+        local_repo_path = git_clone_github('https://github.com/01-ai/Yi')
     sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
@@ -5184,7 +5186,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 
 @register_model(
     ModelType.llava1_5_13b_instruct,
-    'huangjintao/llava-1.5-13b-hf',
+    'swift/llava-1.5-13b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
@@ -5201,7 +5203,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     hf_model_id='llava-hf/llava-1.5-13b-hf')
 @register_model(
     ModelType.llava1_5_7b_instruct,
-    'huangjintao/llava-1.5-7b-hf',
+    'swift/llava-1.5-7b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
@@ -5225,7 +5227,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 @register_model(
     ModelType.llava1_6_vicuna_7b_instruct,
-    'huangjintao/llava-v1.6-vicuna-7b-hf',
+    'swift/llava-v1.6-vicuna-7b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
@@ -5241,7 +5243,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
 @register_model(
     ModelType.llava1_6_vicuna_13b_instruct,
-    'huangjintao/llava-v1.6-vicuna-13b-hf',
+    'swift/llava-v1.6-vicuna-13b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
@@ -5257,7 +5259,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
 @register_model(
     ModelType.llava1_6_mistral_7b_instruct,
-    'huangjintao/llava-v1.6-mistral-7b-hf',
+    'swift/llava-v1.6-mistral-7b-hf',
     LoRATM.llama,
     TemplateType.llava_mistral,
     support_vllm=True,
@@ -5280,7 +5282,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 
 @register_model(
     ModelType.llava1_6_yi_34b_instruct,
-    'huangjintao/llava-v1.6-34b-hf',
+    'swift/llava-v1.6-34b-hf',
     LoRATM.llama,
     TemplateType.llava_yi,
     support_vllm=True,
@@ -5304,7 +5306,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 
 @register_model(
     ModelType.llava_next_video_7b_dpo_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-DPO-hf',
+    'swift/LLaVA-NeXT-Video-7B-DPO-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5313,7 +5315,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-DPO-hf')
 @register_model(
     ModelType.llava_next_video_7b_32k_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-32K-hf',
+    'swift/LLaVA-NeXT-Video-7B-32K-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5322,7 +5324,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-32K-hf')
 @register_model(
     ModelType.llava_next_video_7b_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-hf',
+    'swift/LLaVA-NeXT-Video-7B-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5337,7 +5339,7 @@ def get_model_tokenizer_llava_next_video(*args, **kwargs):
 
 @register_model(
     ModelType.llava_next_video_34b_instruct,
-    'huangjintao/LLaVA-NeXT-Video-34B-hf',
+    'swift/LLaVA-NeXT-Video-34B-hf',
     LoRATM.llama,
     TemplateType.llava_next_video_yi,
     support_flash_attn=True,
@@ -5389,10 +5391,10 @@ def get_model_tokenizer_llava(model_dir: str,
         local_repo_path = kwargs['local_repo_path']
     elif 'next' in llm_model_type:
         repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
-        local_repo_path = _git_clone_github(repo_path)
+        local_repo_path = git_clone_github(repo_path)
     else:
         repo_path = 'https://github.com/haotian-liu/LLaVA'
-        local_repo_path = _git_clone_github(repo_path)
+        local_repo_path = git_clone_github(repo_path)
     sys.path.append(os.path.join(local_repo_path))
 
     if llm_model_type == 'mistral':
@@ -5473,7 +5475,7 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
+        local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
     local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
     sys.path.append(os.path.join(local_repo_path))
 
@@ -5545,6 +5547,8 @@ def safe_snapshot_download(model_type: str,
 
     with safe_ddp_context():
         if model_id_or_path is not None and not os.path.exists(model_id_or_path):
+            if model_id_or_path.startswith('/'):
+                raise ValueError(f"path: '{model_id_or_path}' not found")
             ignore_file_pattern = model_info['ignore_file_pattern']
             if download_model is False:
                 if ignore_file_pattern is None:

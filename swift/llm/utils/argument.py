@@ -42,17 +42,24 @@ def is_adapter(sft_type: str) -> bool:
 class ArgumentsBase:
 
     @classmethod
-    def _check_path(cls, k: str, value: Union[str, List[str]],
-                    check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+    def _check_path(cls,
+                    value: Union[str, List[str]],
+                    k: Optional[str] = None,
+                    check_exist_path_set: Optional[Set[str]] = None) -> Union[str, List[str]]:
+        if check_exist_path_set is None:
+            check_exist_path_set = set()
         if isinstance(value, str):
             value = os.path.expanduser(value)
             value = os.path.abspath(value)
             if k in check_exist_path_set and not os.path.exists(value):
-                raise FileNotFoundError(f"`{k}`: '{value}'")
+                if k is not None:
+                    raise FileNotFoundError(f"`{k}`: '{value}'")
+                else:
+                    raise FileNotFoundError(f"path: '{value}'")
         elif isinstance(value, list):
             res = []
             for v in value:
-                res.append(cls._check_path(k, v, check_exist_path_set))
+                res.append(cls._check_path(v, k, check_exist_path_set))
             value = res
         return value
 
@@ -81,7 +88,7 @@ class ArgumentsBase:
             value = getattr(self, k, None)
             if value is None:
                 continue
-            value = self._check_path(k, value, check_exist_path_set)
+            value = self._check_path(value, k, check_exist_path_set)
             setattr(self, k, value)
 
     def check_flash_attn(self: Union['SftArguments', 'InferArguments']) -> None:
@@ -406,7 +413,7 @@ class ArgumentsBase:
                 if self.model_cache_dir is not None:
                     self.model_id_or_path = self.model_cache_dir
             else:
-                if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
+                if (isinstance(self, InferArguments) and 'checkpoint-' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
                 if self.model_type is None:
@@ -492,6 +499,7 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    lora_target_regex: Optional[str] = None
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
@@ -634,6 +642,7 @@ class SftArguments(ArgumentsBase):
     custom_dataset_info: Optional[str] = None  # .json
 
     device_map_config_path: Optional[str] = None
+    device_max_memory: List[str] = field(default_factory=list)
 
     # generation config
     max_new_tokens: int = 2048
@@ -1115,7 +1124,7 @@ class InferArguments(ArgumentsBase):
     top_p: float = 0.7
     repetition_penalty: float = 1.
     num_beams: int = 1
-    stop_words: List[str] = None
+    stop_words: List[str] = field(default_factory=list)
 
     # rope-scaling
     rope_scaling: Literal['linear', 'dynamic'] = None
@@ -1133,6 +1142,7 @@ class InferArguments(ArgumentsBase):
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
     device_map_config_path: Optional[str] = None
+    device_max_memory: List[str] = field(default_factory=list)
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -1383,12 +1393,15 @@ class EvalArguments(InferArguments):
 @dataclass
 class ExportArguments(InferArguments):
     to_peft_format: bool = False
+    to_ollama: bool = False
+    ollama_output_dir: Optional[str] = None
+    gguf_file: Optional[str] = None
     # The parameter has been defined in InferArguments.
     # merge_lora: bool = False
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['awq', 'gptq'] = 'awq'
+    quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
@@ -1422,8 +1435,18 @@ class ExportArguments(InferArguments):
                     ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
                     self.quant_output_dir = os.path.join(ckpt_dir,
                                                          f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
+                self.quant_output_dir = self._check_path(self.quant_output_dir)
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
+        elif self.to_ollama:
+            assert self.sft_type in ('full', 'lora', 'longlora', 'llamapro')
+            if self.sft_type in ('lora', 'longlora', 'llamapro'):
+                self.merge_lora = True
+            if not self.ollama_output_dir:
+                self.ollama_output_dir = f'{self.model_type}-ollama'
+            self.ollama_output_dir = self._check_path(self.ollama_output_dir)
+            assert not os.path.exists(
+                self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
 
 
 @dataclass
@@ -1513,6 +1536,14 @@ class RLHFArguments(SftArguments):
             self.loss_type = 'sigmoid'
         elif self.rlhf_type == 'kto':
             self.loss_type = 'kto'
+
+
+@dataclass
+class WebuiArguments:
+    share: bool = False
+    lang: str = 'zh'
+    host: str = '127.0.0.1'
+    port: Optional[int] = None
 
 
 @dataclass
