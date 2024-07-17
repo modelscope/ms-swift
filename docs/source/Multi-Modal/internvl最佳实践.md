@@ -20,7 +20,7 @@
 **FAQ**
 
 1. **模型显示 `The request model does not exist!`**
-这种情况通常发生在尝试使用mini-internvl或InternVL2模型, 原因是因为modelscope上相应模型是申请制。解决这个问题，你需要登录modelscope, 并前往相应的模型页面进行**申请下载**, 申请成功后可以通过以下任意一种方式获取模型：
+这种情况通常发生在尝试使用mini-internvl或InternVL2模型, 原因是modelscope上相应模型是申请制。解决这个问题，你需要登录modelscope, 并前往相应的模型页面进行**申请下载**, 申请成功后可以通过以下任意一种方式获取模型：
 - 使用`snap_download`将模型下载到本地(在模型文件中的模型下载中有相应代码), 然后使用`--model_id_or_path`指定本地模型文件路径
 - 在[modelscope账号主页](https://www.modelscope.cn/my/myaccesstoken)获取账号的SDK token, 使用参数`--hub_token`或者环境变量`MODELSCOPE_API_TOKEN`指定
 
