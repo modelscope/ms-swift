@@ -1129,7 +1129,7 @@ register_template(
              [['bos_token_id'], '{{SYSTEM}}\n\n']))
 register_template(
     TemplateType.numina_math,
-    Template([['bos_token_id']], ['### Problem: {{QUERY}}\n### Solution: '], [['\n']], [['eos_token_id']], None,
+    Template([['bos_token_id']], ['### Problem: {{QUERY}}\n### Solution: '], ['\n'], [['eos_token_id']], None,
              [['bos_token_id'], '{{SYSTEM}}']))
 register_template(
     TemplateType.deepseek2,
