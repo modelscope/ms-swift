@@ -1417,13 +1417,6 @@ class ExportArguments(InferArguments):
     hub_private_repo: bool = False
     commit_message: str = 'update files'
 
-    # megatron
-    to_megatron: bool = False
-    to_hf: bool = False
-    tp: int = 1
-    pp: int = 1
-    check_model_forward: bool = False
-
     def __post_init__(self):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu' if self.quant_bits > 0 else 'auto'
