@@ -440,6 +440,22 @@ class ArgumentsBase:
         for require in requires:
             require_version(require)
 
+    def prepare_ms_hub(self: Union['SftArguments', 'InferArguments']) -> None:
+        hub_token = self.hub_token
+        if hub_token is None:
+            hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+        if hub_token is not None:
+            api = HubApi()
+            api.login(hub_token)
+        if not hasattr(self, 'push_to_hub') or not self.push_to_hub:
+            return
+        self.hub_token = hub_token
+        assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
+        if self.hub_model_id is None:
+            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
+            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
+        logger.info('hub login successful!')
+
 
 @dataclass
 class SftArguments(ArgumentsBase):
@@ -706,22 +722,6 @@ class SftArguments(ArgumentsBase):
                 continue
             setattr(self, key, sft_args.get(key))
 
-    def prepare_push_ms_hub(self) -> None:
-        if not self.push_to_hub:
-            return
-        if self.hub_model_id is None:
-            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
-            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
-
-        api = HubApi()
-        if self.hub_token is None:
-            self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if self.hub_token is not None:
-            api.login(self.hub_token)
-        else:
-            assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
-        logger.info('hub login successful!')
-
     def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
@@ -897,7 +897,7 @@ class SftArguments(ArgumentsBase):
             self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
                 else 'transformers'
 
-        self.prepare_push_ms_hub()
+        self.prepare_ms_hub()
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
             if self.predict_with_generate:
@@ -1143,6 +1143,9 @@ class InferArguments(ArgumentsBase):
     custom_dataset_info: Optional[str] = None  # .json
     device_map_config_path: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -1192,6 +1195,7 @@ class InferArguments(ArgumentsBase):
         self.check_flash_attn()
         self.handle_generation_config()
         self.is_multimodal = self._is_multimodal(self.model_type)
+        self.prepare_ms_hub()
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
@@ -1396,8 +1400,6 @@ class ExportArguments(InferArguments):
     to_ollama: bool = False
     ollama_output_dir: Optional[str] = None
     gguf_file: Optional[str] = None
-    # The parameter has been defined in InferArguments.
-    # merge_lora: bool = False
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
@@ -1411,11 +1413,11 @@ class ExportArguments(InferArguments):
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
-    # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = field(
-        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     hub_private_repo: bool = False
     commit_message: str = 'update files'
+
+    # The parameter has been defined in InferArguments.
+    # merge_lora, hub_token
 
     def __post_init__(self):
         if self.merge_device_map is None:
