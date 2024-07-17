@@ -62,7 +62,6 @@ class TemplateType:
     internvl2 = 'internvl2'
     internvl_phi3 = 'internvl-phi3'
     internvl2_phi3 = 'internvl2-phi3'
-    internvl2_llama3 = 'internvl2-llama3'
     florence = 'florence'
     yi = 'yi'
     yi1_5 = 'yi1_5'
