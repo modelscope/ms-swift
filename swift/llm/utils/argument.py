@@ -441,19 +441,15 @@ class ArgumentsBase:
             require_version(require)
 
     def prepare_push_ms_hub(self: Union['SftArguments', 'InferArguments']) -> None:
-        if not hasattr(self, 'push_to_hub') or not self.push_to_hub:
-            if self.hub_token is not None:
-                api = HubApi()
-                api.login(self.hub_token)
-            return
-
-        if self.hub_token is None:
-            self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if self.hub_token is not None:
+        hub_token = self.hub_token
+        if hub_token is None:
+            hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+        if hub_token is not None:
             api = HubApi()
-            api.login(self.hub_token)
-        else:
-            assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
+            api.login(hub_token)
+        if not hasattr(self, 'push_to_hub') or not self.push_to_hub:
+            return
+        assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
         if self.hub_model_id is None:
             self.hub_model_id = f'{self.model_type}-{self.sft_type}'
             logger.info(f'Setting hub_model_id: {self.hub_model_id}')
