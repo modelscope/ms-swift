@@ -708,18 +708,21 @@ class SftArguments(ArgumentsBase):
 
     def prepare_push_ms_hub(self) -> None:
         if not self.push_to_hub:
+            if self.hub_token is not None:
+                api = HubApi()
+                api.login(self.hub_token)
             return
-        if self.hub_model_id is None:
-            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
-            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
 
-        api = HubApi()
         if self.hub_token is None:
             self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
         if self.hub_token is not None:
+            api = HubApi()
             api.login(self.hub_token)
         else:
             assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
+        if self.hub_model_id is None:
+            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
+            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
         logger.info('hub login successful!')
 
     def _prepare_target_modules(self, target_modules) -> List[str]:
@@ -1143,6 +1146,9 @@ class InferArguments(ArgumentsBase):
     custom_dataset_info: Optional[str] = None  # .json
     device_map_config_path: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -1192,6 +1198,7 @@ class InferArguments(ArgumentsBase):
         self.check_flash_attn()
         self.handle_generation_config()
         self.is_multimodal = self._is_multimodal(self.model_type)
+        self.prepare_push_ms_hub()
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
@@ -1396,8 +1403,6 @@ class ExportArguments(InferArguments):
     to_ollama: bool = False
     ollama_output_dir: Optional[str] = None
     gguf_file: Optional[str] = None
-    # The parameter has been defined in InferArguments.
-    # merge_lora: bool = False
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
@@ -1411,11 +1416,11 @@ class ExportArguments(InferArguments):
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
-    # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = field(
-        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     hub_private_repo: bool = False
     commit_message: str = 'update files'
+
+    # The parameter has been defined in InferArguments.
+    # merge_lora, hub_token
 
     def __post_init__(self):
         if self.merge_device_map is None:
