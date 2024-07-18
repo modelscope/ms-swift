@@ -5206,9 +5206,11 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     processor = AutoProcessor.from_pretrained(model_dir)
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     if not hasattr(model_config, 'hidden_size'):
+        # Currently all models without hidden_size config is 4096
         if hasattr(model_config, 'text_config'):
-            model_config.hidden_size = model_config.text_config.hidden_size
-        model_config.hidden_size = 4096
+            model_config.hidden_size = getattr(model_config.text_config, 'hidden_size', 4096)
+        else:
+            model_config.hidden_size = 4096
 
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, model_config=model_config, **kwargs)
     tokenizer.processor = processor
