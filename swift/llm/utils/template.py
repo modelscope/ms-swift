@@ -1895,6 +1895,12 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
 
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
+
 
 register_template(
     TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
@@ -1909,6 +1915,12 @@ class LLavaYiTemplate(LlavaHfTemplate):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
 
 
 register_template(
