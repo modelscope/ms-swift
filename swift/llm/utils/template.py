@@ -1755,7 +1755,7 @@ class LlavaHfTemplate(Template):
             images = self._prepare_vllm_images(images)
         if images:
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
-            inputs['pixel_values'] = image_inputs['pixel_values'].squeeze(0)
+            inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
@@ -1879,6 +1879,12 @@ class Llava1_6MistralTemplate(LlavaHfTemplate):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
+
 
 class Llava1_6VicunaTemplate(LlavaHfTemplate):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
@@ -1888,6 +1894,12 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
 
 
 register_template(
@@ -1903,6 +1915,12 @@ class LLavaYiTemplate(LlavaHfTemplate):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
 
 
 register_template(
