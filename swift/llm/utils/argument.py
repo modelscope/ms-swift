@@ -561,6 +561,13 @@ class SftArguments(ArgumentsBase):
     galore_proj_type: str = 'std'
     galore_optim_per_parameter: bool = False
     galore_with_embedding: bool = False
+    galore_quantization: bool = False
+    galore_proj_quant: bool = False
+    galore_proj_bits: int = 4
+    galore_proj_group_size: int = 256
+    galore_cos_threshold: float = 0.4
+    galore_gamma_proj: int = 2
+    galore_queue_size: int = 5
 
     # adalora
     adalora_target_r: int = 8
