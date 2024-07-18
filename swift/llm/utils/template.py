@@ -1370,7 +1370,9 @@ class InternvlTemplate(Template):
 
     def __init__(self):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+                         ['<|im_end|>'],
+                         self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
+                         auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1426,8 +1428,10 @@ class Internvl2Template(InternvlTemplate):
 
     def __init__(self):
         self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
-        Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                          ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+        Template.__init__(
+            self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
+            self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
+            auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if media_type == 'image':
@@ -1441,13 +1445,19 @@ class Internvl2Template(InternvlTemplate):
             return context_list
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<image>')
+        if images_path and example.get('images'):
+            example['images'].extend(images_path)
         inputs, _ = super(InternvlTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
-        images_path = example.get('images') or []
         videos_path = example.get('videos') or []
         if isinstance(images_path, str):
             images_path = [images_path]
@@ -1531,16 +1541,20 @@ class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
     def __init__(self):
-        Template.__init__(self, [], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          self.system, ['<|system|>\n{{SYSTEM}}<|end|>'])
+        Template.__init__(
+            self, [], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            auto_add_bos=True)
 
 
 class Internvl2Phi3Template(Internvl2Template):
     system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
-        Template.__init__(self, [], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-                          self.system, ['<|system|>\n{{SYSTEM}}<|end|>'])
+        Template.__init__(
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
+            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            auto_add_bos=True)
 
 
 register_template(
@@ -1657,8 +1671,8 @@ class FlorenceTemplate(Template):
             return {}, {}
         inputs['input_ids'] = inputs['input_ids'][:self.max_length]
         inputs['attention_mask'] = inputs['attention_mask'][:self.max_length]
-        if inputs['labels'] is not None:
-            labels = labels[:self.max_length]
+        if inputs.get('labels'):
+            inputs['labels'] = inputs['labels'][:self.max_length]
 
         return inputs, {}
 

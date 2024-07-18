@@ -112,7 +112,7 @@ Example of multi-turn multi-image input:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b
 ```
-
+image1: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img> image2: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img> What is the difference bewteen the two images?
 ```
 <<< <image> describe the image
 Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
@@ -147,6 +147,13 @@ The two pictures have several similarities:
 5. **Overall Composition**: The composition of the images is similar, with the sheep standing in the foreground and the background featuring a blurred natural landscape.
 
 These similarities create a cohesive and engaging visual experience, despite the differences in expressions and demeanor.
+```
+
+Example of single-turn multi-image input:
+```
+<<< image1: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img> image2: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img> What is the difference bewteen the two images?
+Input an image path or URL <<<
+The two images are of the same kitten, but the first image is a close-up shot, while the second image is a more distant, artistic illustration. The close-up image captures the kitten in detail, showing its fur, eyes, and facial features in sharp focus. In contrast, the artistic illustration is more abstract and stylized, with a blurred background and a different color palette. The distant illustration gives the kitten a more whimsical and dreamy appearance, while the close-up image emphasizes the kitten's realism and detail.
 ```
 
 Example images are as follows:
@@ -306,6 +313,12 @@ Supports multi-turn conversations, Images support for local path or URL input, m
 The **InternVL2** model supports multi-image multi-turn training. It uses the tag `<image>` to indicate the position of images in the conversation. If the tag `<image>` is not present in the dataset, the images are placed at the beginning of the last round's query by default.
 ```jsonl
 {"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+```
+Alternatively, use `<img>image_path</img>` to represent the image path and image location.
+
+""
+```jsonl
+{"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], }
 ```
 
 The **InternVL2** model supports training with video datasets without the need to specify a tag.

@@ -181,6 +181,12 @@ Input an image path or URL <<<
 这些共同点使得两张图片在视觉上存在显著的差异，但它们都展示了可爱的动物形象。
 ```
 
+单轮多图示例
+```
+<<< image1: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img> image2: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img> What is the difference bewteen the two images?
+Input an image path or URL <<<
+The two images are of the same kitten, but the first image is a close-up shot, while the second image is a more distant, artistic illustration. The close-up image captures the kitten in detail, showing its fur, eyes, and facial features in sharp focus. In contrast, the artistic illustration is more abstract and stylized, with a blurred background and a different color palette. The distant illustration gives the kitten a more whimsical and dreamy appearance, while the close-up image emphasizes the kitten's realism and detail.
+```
 
 示例图片如下:
 
@@ -339,9 +345,14 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
-**InternVL2**模型支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如何数据集中没有tag `<image>`, 默认放在最后一轮query的开头
+**InternVL2**模型支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如果数据集中没有tag `<image>`, 默认放在最后一轮query的开头
 ```jsonl
 {"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+```
+或者用`<img>image_path</img>` 表示图像路径和图像位置
+""
+```jsonl
+{"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], }
 ```
 
 **InternVL2**模型支持视频数据集训练, 无需标明tag
