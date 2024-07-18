@@ -1450,8 +1450,11 @@ class Internvl2Template(InternvlTemplate):
         if history is None:
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<image>')
-        if images_path and example.get('images'):
-            example['images'].extend(images_path)
+        if images_path:
+            images = example.get('images') or []
+            images.extend(images_path)
+            example['images'] = images
+        images_path = example['images']
         inputs, _ = super(InternvlTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
