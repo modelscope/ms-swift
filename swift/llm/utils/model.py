@@ -5112,6 +5112,9 @@ def _patch_llava(model):
 def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if not hasattr(model_config, 'hidden_size'):
+        model_config.hidden_size = 4096
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer

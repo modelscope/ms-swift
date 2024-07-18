@@ -41,6 +41,7 @@ class GaLoreConfig:
     galore_scale: float = 1.0
     proj_type: str = 'std'
     optim_per_parameter: bool = False
+    quantize: bool = False
 
 
 class GaloreOptimizerWrapper(Optimizer):
