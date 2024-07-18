@@ -272,11 +272,13 @@ class ModelType:
     internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
     mini_internvl_chat_2b_v1_5 = 'mini-internvl-chat-2b-v1_5'
     mini_internvl_chat_4b_v1_5 = 'mini-internvl-chat-4b-v1_5'
+    internvl2_1b = 'internvl2-1b'
     internvl2_2b = 'internvl2-2b'
     internvl2_4b = 'internvl2-4b'
     internvl2_8b = 'internvl2-8b'
     internvl2_26b = 'internvl2-26b'
     internvl2_40b = 'internvl2-40b'
+    internvl2_llama3_76b = 'internvl2-llama3-76b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -3630,6 +3632,85 @@ def fix_internvl_inplace_bug(model) -> None:
         embedding.forward = _new_forward
 
 
+def _patch_internvl_forward(forward_func):
+    from transformers.modeling_outputs import CausalLMOutputWithPast
+    from torch.nn import CrossEntropyLoss
+
+    def wrapper(
+        self,
+        pixel_values: torch.FloatTensor = None,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        image_flags: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+    ) -> Union[Tuple, CausalLMOutputWithPast]:
+        if pixel_values is None:
+            inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
+            outputs = self.language_model(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            logits = outputs.logits
+            loss = None
+            if labels is not None:
+                # Shift so that tokens < n predict n
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss()
+                shift_logits = shift_logits.view(-1, self.language_model.config.vocab_size)
+                shift_labels = shift_labels.view(-1)
+                # Enable model parallelism
+                shift_labels = shift_labels.to(shift_logits.device)
+                loss = loss_fct(shift_logits, shift_labels)
+            if return_dict:
+                output = (logits, ) + outputs[1:]
+                return (loss, ) + output if loss is not None else output
+            return CausalLMOutputWithPast(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+            )
+        else:
+            return forward_func(
+                pixel_values,
+                input_ids,
+                attention_mask,
+                position_ids,
+                image_flags,
+                past_key_values,
+                labels,
+                use_cache,
+                output_attentions,
+                output_hidden_states,
+                return_dict,
+            )
+
+    return wrapper
+
+
+def patch_internvl_forward(model) -> None:
+    if not hasattr(model, '__old_forward'):  # Avoid double patching
+        forward = model.forward
+        model.__old_forward = forward
+        model.forward = MethodType(_patch_internvl_forward(model.forward), model)
+
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -3670,6 +3751,16 @@ def fix_internvl_inplace_bug(model) -> None:
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
+@register_model(
+    ModelType.internvl2_1b,
+    'OpenGVLab/InternVL2-1B',
+    LoRATM.llama,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-1B')
 @register_model(
     ModelType.internvl2_2b,
     'OpenGVLab/InternVL2-2B',
@@ -3720,6 +3811,16 @@ def fix_internvl_inplace_bug(model) -> None:
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-40B')
+@register_model(
+    ModelType.internvl2_llama3_76b,
+    'OpenGVLab/InternVL2-Llama3-76B',
+    LoRATM.llama,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-Llama3-76B')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -3756,16 +3857,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         model.config.max_position_embeddings = model.language_model.config.max_position_embeddings
         _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         fix_internvl_inplace_bug(model)
-        if not hasattr(model, '__old_forward'):  # Avoid double patching
-            forward = model.forward
-            model.__old_forward = forward
-
-            @wraps(forward)
-            def _new_forward(*args, **kwargs):
-                kwargs.pop('inputs_embeds', None)
-                return forward(*args, **kwargs)
-
-            model.forward = _new_forward
+        patch_internvl_forward(model)
 
         if not hasattr(model, '__old_generate'):
             generate = model.generate
