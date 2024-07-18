@@ -1542,7 +1542,7 @@ class InternvlPhi3Template(InternvlTemplate):
 
     def __init__(self):
         Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
 
