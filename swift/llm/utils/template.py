@@ -1454,7 +1454,7 @@ class Internvl2Template(InternvlTemplate):
             images = example.get('images') or []
             images.extend(images_path)
             example['images'] = images
-        images_path = example['images']
+        images_path = example.get('images') or []
         inputs, _ = super(InternvlTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
