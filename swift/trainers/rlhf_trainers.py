@@ -23,12 +23,7 @@ class RLHFTrainerFactory:
         trainer_kwargs['test_oom_error'] = args.test_oom_error
 
         if args.rlhf_type in ['dpo']:
-            trainer_kwargs['beta'] = args.beta
-            trainer_kwargs['label_smoothing'] = args.label_smoothing
-            trainer_kwargs['loss_type'] = args.loss_type
             trainer_kwargs['sft_beta'] = args.sft_beta
-            trainer_kwargs['max_length'] = args.max_length
-            trainer_kwargs['max_prompt_length'] = args.max_prompt_length
 
         if args.rlhf_type == 'simpo':
             trainer_kwargs['gamma'] = args.simpo_gamma

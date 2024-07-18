@@ -1369,8 +1369,10 @@ class InternvlTemplate(Template):
     num_image_token = 256
 
     def __init__(self):
-        super().__init__(['<s>'], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'], self.system, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+                         ['<|im_end|>'],
+                         self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
+                         auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1384,14 +1386,11 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         images_path = example.get('images') or []
-        if images_path:
-            from .vision_utils import load_image
-
-            pixel_values = []
-            if isinstance(images_path, str):
-                images_path = [images_path]
-            for image_path in images_path:
-                pixel_values.append(load_image(image_path))
+        if isinstance(images_path, str):
+            images_path = [images_path]
+        from .vision_utils import load_image
+        pixel_values = _read_batch(images_path, load_image)
+        if pixel_values:
             pixel_values = torch.cat(pixel_values, dim=0)
             image_bs = pixel_values.shape[0]
 
@@ -1412,10 +1411,10 @@ class InternvlTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        assert all('pixel_values' in b for b in batch), 'Temporarily, Interval only supports data with images'
-        image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
-        if image_flags:
-            res['image_flags'] = torch.concat(image_flags)
+        if any('pixel_values' in b for b in batch):
+            image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
+            if image_flags:
+                res['image_flags'] = torch.concat(image_flags)
         return res
 
     @staticmethod
@@ -1426,6 +1425,13 @@ class InternvlTemplate(Template):
 class Internvl2Template(InternvlTemplate):
 
     video_segments = 8
+
+    def __init__(self):
+        self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
+        Template.__init__(
+            self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
+            self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
+            auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if media_type == 'image':
@@ -1439,23 +1445,33 @@ class Internvl2Template(InternvlTemplate):
             return context_list
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = example.copy()
+        history = example.pop('history', None)
+        if history is None:
+            history = []
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<image>')
+        if images_path:
+            images = example.get('images') or []
+            images.extend(images_path)
+            example['images'] = images
+        images_path = example.get('images') or []
         inputs, _ = super(InternvlTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
-        images_path = example.get('images') or []
         videos_path = example.get('videos') or []
-        if images_path:
-            from .vision_utils import load_image
-            pixel_values = []
-            if isinstance(images_path, str):
-                images_path = [images_path]
-            for image_path in images_path:
-                pixel_values.append(load_image(image_path))
-
-            assert len(images_path) == len(idx_list)
+        if isinstance(images_path, str):
+            images_path = [images_path]
+        if isinstance(videos_path, str):
+            videos_path = [videos_path]
+        from .vision_utils import load_image, load_video
+        pixel_values_images = _read_batch(images_path, load_image)
+        videos_path = [path for path in videos_path if path is not None]
+        if pixel_values_images:
+            pixel_values = pixel_values_images
+            assert len(pixel_values) == len(idx_list)
             added_tokens_len = 0
             patches = 0
             for idx, pv in zip(idx_list, pixel_values):
@@ -1472,11 +1488,8 @@ class Internvl2Template(InternvlTemplate):
             inputs['labels'] = labels
             inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
             inputs['image_flags'] = torch.ones(patches)
-        if videos_path:
-            if not isinstance(videos_path, (list, tuple)):
-                videos_path = [videos_path]
+        elif videos_path:
             assert len(videos_path) == 1
-            from swift.llm.utils.vision_utils import load_video
             pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
             assert len(num_patches) == len(idx_list)
             added_tokens_len = 0
@@ -1495,63 +1508,69 @@ class Internvl2Template(InternvlTemplate):
         inputs.pop('loss_scale', None)
         return inputs, {}
 
-    def __init__(self):
-        self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
-        Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                          ['<|im_end|>'], self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+    def add_default_tags(self, example: Dict[str, Any]) -> None:
+        history: History = deepcopy(example.get('history') or [])
+        query: str = example.get('query') or ''
+        for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>')]:
+            medias = example.get(media_key)
+            if medias:
+                num_media_tag = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
+                num_media = sum([1 for m in medias if m])  # ignore None
+                num_res_media = num_media - num_media_tag
+                assert num_res_media >= 0, \
+                    'The number of media tags {num_media_tag} is greater than the number of media objects {num_media}.'
+                if num_res_media == 0:
+                    # Each media tag corresponds to an media object.
+                    return
+                # process res media, add default media tag
+                if num_res_media == len(history) + 1:
+                    # In this case, add at the beginning of each round's query.
+                    for h, m in zip(history, example[media_key][:-1]):
+                        if m:
+                            h[0] = media_tag + h[0]
+                    if example[media_key][-1]:
+                        query = media_tag + query
+                    example[media_key] = [m for m in example[media_key] if m]
+                else:
+                    # add the res image tag at the beginning of the last query
+                    query = media_tag * num_res_media + query
+                break
+
+        example['query'] = query
+        example['history'] = history
 
 
 class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+        Template.__init__(
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            auto_add_bos=True)
 
 
 class Internvl2Phi3Template(Internvl2Template):
-    system = 'You are an AI assistant whose name is Phi-3.'
+    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          self.system, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+        Template.__init__(
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
+            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            auto_add_bos=True)
 
 
 register_template(
-    TemplateType.internvl,
-    InternvlTemplate(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl, InternvlTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl_phi3,
-    InternvlPhi3Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl2,
-    Internvl2Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
 
 register_template(
-    TemplateType.internvl2_phi3,
-    Internvl2Phi3Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
 
 
 class FlorenceTemplate(Template):
@@ -1655,8 +1674,8 @@ class FlorenceTemplate(Template):
             return {}, {}
         inputs['input_ids'] = inputs['input_ids'][:self.max_length]
         inputs['attention_mask'] = inputs['attention_mask'][:self.max_length]
-        if inputs['labels'] is not None:
-            labels = labels[:self.max_length]
+        if inputs.get('labels'):
+            inputs['labels'] = inputs['labels'][:self.max_length]
 
         return inputs, {}
 
@@ -1736,7 +1755,7 @@ class LlavaHfTemplate(Template):
             images = self._prepare_vllm_images(images)
         if images:
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
-            inputs['pixel_values'] = image_inputs['pixel_values'].squeeze(0)
+            inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
@@ -1860,6 +1879,12 @@ class Llava1_6MistralTemplate(LlavaHfTemplate):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
+
 
 class Llava1_6VicunaTemplate(LlavaHfTemplate):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
@@ -1869,6 +1894,12 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
 
 
 register_template(
@@ -1884,6 +1915,12 @@ class LLavaYiTemplate(LlavaHfTemplate):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
 
 
 register_template(
