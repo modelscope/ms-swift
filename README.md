@@ -55,12 +55,13 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.07.17: Support newly released InternVL2 models: `model_type` are internvl2-1b, internvl2-40b, internvl2-llama3-76b. For best practices, refer to [here](docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 2024.07.17: Support the training and inference of [NuminaMath-7B-TIR](https://huggingface.co/AI-MO/NuminaMath-7B-TIR). Use with model_type `numina-math-7b`.
 - 🔥2024.07.16: Support exporting for ollama and bitsandbytes. Use `swift export --model_type xxx --to_ollama true` or `swift export --model_type xxx --quant_method bnb --quant_bits 4`
 - 2024.07.08: Support cogvlm2-video-13b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/cogvlm2-video-best-practice.md).
 - 2024.07.08: Support internlm-xcomposer2_5-7b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/internlm-xcomposer2-best-practice.md).
 - 🔥2024.07.06: Support for the llava-next-video series models: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-instruct. You can refer to [llava-video best practice](docs/source_en/Multi-Modal/llava-video-best-practice.md) for more information.
-- 🔥2024.07.06: Support internvl2 series: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
+- 🔥2024.07.06: Support InternVL2 series: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
 - 2024.07.06: Support codegeex4-9b-chat.
 - 2024.07.04: Support internlm2_5-7b series: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
@@ -606,7 +607,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llava1.5<br>Llava1.6                                    | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
 | mPLUG-Owl                                               | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
-| InternVL<br>Mini-Internvl<br>Internvl2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 2B-40B<br>including quantized version | chat model               |
+| InternVL<br>Mini-InternVL<br>InternVL2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 1B-40B<br>including quantized version | chat model               |
 | Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)             | English            | 8B                                    | chat model               |
 | Phi3-Vision                                             | Microsoft                                                                              | English            | 4B                                    | chat model               |
 | PaliGemma                                               | Google                                                                                 | English            | 3B                                    | chat model               |
