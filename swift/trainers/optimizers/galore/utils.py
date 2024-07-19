@@ -189,7 +189,8 @@ def get_optimizer(args: TrainingArguments, config: GaLoreConfig) -> Tuple[Any, A
             from swift.utils import get_dist_setting
             _, _, world_size, _ = get_dist_setting()
             if world_size > 1:
-                from q_galore_torch import QGaLoreAdamW8bit_simulate as GaLoreAdamW
+                # from q_galore_torch import QGaLoreAdamW8bit_simulate as GaLoreAdamW
+                from q_galore_torch import QGaLoreAdamW8bit as GaLoreAdamW
             else:
                 from q_galore_torch import QGaLoreAdamW8bit as GaLoreAdamW
         else:
