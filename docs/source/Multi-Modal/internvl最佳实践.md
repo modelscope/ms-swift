@@ -20,6 +20,7 @@
 **FAQ**
 
 1. **模型显示 `The request model does not exist!`**
+
 这种情况通常发生在尝试使用mini-internvl或InternVL2模型, 原因是modelscope上相应模型是申请制。解决这个问题，你需要登录modelscope, 并前往相应的模型页面进行**申请下载**, 申请成功后可以通过以下任意一种方式获取模型：
 - 使用`snap_download`将模型下载到本地(在模型文件中的模型下载中有相应代码), 然后使用`--model_id_or_path`指定本地模型文件路径
 - 在[modelscope账号主页](https://www.modelscope.cn/my/myaccesstoken)获取账号的SDK token, 使用参数`--hub_token`或者环境变量`MODELSCOPE_API_TOKEN`指定
@@ -27,11 +28,13 @@
 也可以设置环境变量`USE_HF`, 从hugging face处下载模型
 
 2. **多卡运行模型时, 为什么不同卡的分布不均匀, 导致OOM?**
+
 transformers的auto device map算法对多模态模型支持不友好, 这可能导致不同 GPU 卡之间的显存分配不均匀。
 - 可以通过参数`--device_max_memory`设置每张卡的显存使用, 比如四卡环境, 可以设置`--device_map_memory 15GB 15GB 15GB 15GB`
 - 或者通过`--device_map_config_path`显式指定device map
 
 3. **InternVL2模型与前系列(InternVL-V1.5和Mini-InternVL)模型的区别**
+
 - InternVL2模型支持多轮多图推理和训练, 即多轮对话带有图片, 且单轮中支持文字图片交错,具体参考[自定义数据集](#自定义数据集)和推理的InternVL2部分。前系列模型支持多轮对话, 但只能有单轮带有图片
 - InternVL2模型支持视频输入, 具体格式参考[自定义数据集](#自定义数据集)
 
@@ -60,7 +63,6 @@ pip install Pillow
 - 如果你的GPU不支持flash attention, 使用参数`--use_flash_attn false`。且对于int8模型，推理时需要指定`dtype --bf16`, 否则可能会出现乱码
 - 模型本身config中的max_length较小，为2048，可以设置`--max_length`来修改
 - 可以使用参数`--gradient_checkpoting true`减少显存占用
-- InternVL系列模型的**训练**只支持带有图片的数据集
 
 ```shell
 # Experimental environment: A100
@@ -345,12 +347,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
-**InternVL2**模型支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如果数据集中没有tag `<image>`, 默认放在最后一轮query的开头
+**InternVL2**模型除了以上数据格式外, 还支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如果数据集中没有tag `<image>`, 默认放在最后一轮query的开头
 ```jsonl
 {"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
 ```
 或者用`<img>image_path</img>` 表示图像路径和图像位置
-""
+
 ```jsonl
 {"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], }
 ```
