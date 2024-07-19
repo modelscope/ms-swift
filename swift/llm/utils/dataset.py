@@ -1808,7 +1808,7 @@ def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
     def preprocess(row):
         sql_prompt = row['sql_prompt']
         sql_context = row['sql_context']
-        sql = row['sql_context']
+        sql = row['sql']
         sql_explanation = row['sql_explanation']
         query = f'Sql Table information:\n{sql_context}\n{sql_prompt}'
         response = f'Let\'s think step by step:\n{sql_explanation}\nSo the final sql is:\n{sql}'
