@@ -332,6 +332,8 @@ class LLMTrain(BaseUI):
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
         cmd = 'rlhf' if do_rlhf else 'sft'
+        if kwargs.get('deepspeed'):
+            more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
         sft_args = RLHFArguments(
             **{
                 key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
