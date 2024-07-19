@@ -72,8 +72,8 @@ class Advanced(BaseUI):
                 'en': 'Other params'
             },
             'info': {
-                'zh': '以json格式输入其他超参数',
-                'en': 'Input in the json format'
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
             }
         },
         'custom_train_dataset_path': {

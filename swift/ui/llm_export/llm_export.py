@@ -10,6 +10,7 @@ import gradio as gr
 import json
 import torch
 from gradio import Accordion, Tab
+from json import JSONDecodeError
 from modelscope import snapshot_download
 
 from swift.llm import ExportArguments
@@ -37,8 +38,8 @@ class LLMExport(BaseUI):
                 'en': 'More params'
             },
             'info': {
-                'zh': '以json格式填入',
-                'en': 'Fill in with json format'
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
             }
         },
         'export': {
@@ -111,6 +112,7 @@ class LLMExport(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
+        more_params_cmd = ''
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
             compare_value = export_args.get(key)
@@ -128,7 +130,10 @@ class LLMExport(BaseUI):
             else:
                 other_kwargs[key] = value
             if key == 'more_params' and value:
-                more_params = json.loads(value)
+                try:
+                    more_params = json.loads(value)
+                except (JSONDecodeError or TypeError):
+                    more_params_cmd = value
 
         kwargs.update(more_params)
         if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
@@ -151,6 +156,7 @@ class LLMExport(BaseUI):
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
+        params += more_params_cmd + ' '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
