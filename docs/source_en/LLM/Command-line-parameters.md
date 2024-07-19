@@ -183,6 +183,13 @@
 - `--galore_proj_type: str` : Default `std`, GaLore matrix decomposition type.
 - `--galore_optim_per_parameter: bool` : Default False, whether to set a separate optimizer for each Galore target Parameter.
 - `--galore_with_embedding: bool` : Default False, whether to apply GaLore to embedding.
+- `--galore_quantization`: Whether to use q-galore. Default value `False`.
+- `--galore_proj_quant`: Whether to quantize the SVD decomposition matrix, default `False`.
+- `--galore_proj_bits`: Number of bits for SVD quantization.
+- `--galore_proj_group_size`: Number of groups for SVD quantization.
+- `--galore_cos_threshold`: Cosine similarity threshold for updating the projection matrix. Default value 0.4.
+- `--galore_gamma_proj`: When the projection matrix gradually becomes similar, this parameter is the coefficient for extending the update interval each time, default value 2.
+- `--galore_queue_size`: Queue length for calculating projection matrix similarity, default value 5.
 
 ### LISA Fine-tuning Parameters
 

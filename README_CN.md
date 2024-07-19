@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.07.19: 支持[Q-Galore](https://arxiv.org/abs/2407.08296)算法, 该算法可以减少显存使用约60% (qwen-7b-chat, full, 80G -> 35G), 使用命令行:`swift sft --model_type xxx --use_galore true --galore_quantization true`来开始训练!
 - 2024.07.17: 支持InternVL2系列新模型: `model_type`分别为internvl2-1b, internvl2-40b, internvl2-llama3-76b. 最佳实践可以查看[这里](docs/source/Multi-Modal/internvl最佳实践.md).
 - 2024.07.17: 支持[NuminaMath-7B-TIR](https://www.modelscope.cn/models/AI-ModelScope/NuminaMath-7B-TIR)的训练和推理. model_type可以使用`numina-math-7b`.
 - 🔥2024.07.16: 支持ollama和bitsandbytes导出. 可以使用命令: `swift export --model_type xxx --to_ollama true`或者`swift export --model_type xxx --quant_method bnb --quant_bits 4`.
@@ -448,7 +449,7 @@ swift sft \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift pt \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen1half-7b \
     --dataset chinese_c4#10000 \
     --num_train_epochs 1 \
     --sft_type full \
