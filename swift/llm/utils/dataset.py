@@ -2468,7 +2468,7 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
         assert isinstance(dataset_path, str)
         df: DataFrame
         if dataset_path.endswith('.csv'):
-            df = pd.read_csv(dataset_path, na_filter=False)
+            df = pd.read_csv(dataset_path, na_filter=False, dtype=str)
         elif dataset_path.endswith('.jsonl'):
             df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
         elif dataset_path.endswith('.json'):
