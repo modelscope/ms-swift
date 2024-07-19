@@ -139,6 +139,39 @@
         }
       },
       {
+        "name": "full+galore128+quantize",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "sft_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false",
+          "galore_quantization": "true"
+        }
+      },
+      {
+        "name": "full+galore128+quantize+proj_quant",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "sft_type": "full",
+          "use_galore": "true",
+          "galore_rank": "128",
+          "galore_update_proj_gap": "200",
+          "galore_optim_per_parameter": "false",
+          "galore_with_embedding": "false",
+          "galore_quantization": "true",
+          "galore_proj_quant": "true"
+        }
+      },
+      {
         "name": "full+galore128",
         "requirements":{
           "gpu": "1",

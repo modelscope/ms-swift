@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.07.19: Support [Q-Galore](https://arxiv.org/abs/2407.08296), this algorithm can reduce the training memory cost by 60% (qwen-7b-chat, full, 80G -> 35G), use `swift sft --model_type xxx --use_galore true --galore_quantization true` to begin!
 - 2024.07.17: Support newly released InternVL2 models: `model_type` are internvl2-1b, internvl2-40b, internvl2-llama3-76b. For best practices, refer to [here](docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 2024.07.17: Support the training and inference of [NuminaMath-7B-TIR](https://huggingface.co/AI-MO/NuminaMath-7B-TIR). Use with model_type `numina-math-7b`.
 - 🔥2024.07.16: Support exporting for ollama and bitsandbytes. Use `swift export --model_type xxx --to_ollama true` or `swift export --model_type xxx --quant_method bnb --quant_bits 4`
@@ -454,7 +455,7 @@ swift sft \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift pt \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen1half-7b \
     --dataset chinese_c4#10000 \
     --num_train_epochs 1 \
     --sft_type full \
