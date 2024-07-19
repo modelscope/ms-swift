@@ -187,7 +187,7 @@ def get_optimizer(args: TrainingArguments, config: GaLoreConfig) -> Tuple[Any, A
         optimizer_kwargs.update({'scale_parameter': False, 'relative_step': False})
     elif args.optim in ('adamw_hf', 'adamw_torch'):
         if config.quantize:
-            assert importlib.util.find_spec("q_galore_torch") is not None, \
+            assert importlib.util.find_spec('q_galore_torch') is not None, \
                 'Please install q-galore by `pip install q_galore_torch`'
             from swift.utils import get_dist_setting
             _, _, world_size, _ = get_dist_setting()

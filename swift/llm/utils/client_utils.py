@@ -168,6 +168,8 @@ def _pre_inference_client(model_type: str,
                           history: Optional[History] = None,
                           system: Optional[str] = None,
                           images: Optional[List[str]] = None,
+                          tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,
+                          tool_choice: Optional[Union[str, Dict]] = 'auto',
                           *,
                           is_chat_request: Optional[bool] = None,
                           request_config: Optional[XRequestConfig] = None,
@@ -212,7 +214,10 @@ def _pre_inference_client(model_type: str,
     data['model'] = model_type
     if len(images) > 0:
         data['images'] = images
-
+    if tools and len(tools) > 0:
+        data['tools'] = tools
+    if tool_choice:
+        data['tool_choice'] = tool_choice
     return url, data, is_chat_request
 
 
@@ -222,6 +227,8 @@ def inference_client(
     history: Optional[History] = None,
     system: Optional[str] = None,
     images: Optional[List[str]] = None,
+    tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,
+    tool_choice: Optional[Union[str, Dict]] = 'auto',
     *,
     is_chat_request: Optional[bool] = None,
     request_config: Optional[XRequestConfig] = None,
@@ -238,6 +245,8 @@ def inference_client(
         history,
         system,
         images,
+        tools,
+        tool_choice,
         is_chat_request=is_chat_request,
         request_config=request_config,
         host=host,
@@ -280,6 +289,8 @@ async def inference_client_async(
     history: Optional[History] = None,
     system: Optional[str] = None,
     images: Optional[List[str]] = None,
+    tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,
+    tool_choice: Optional[Union[str, Dict]] = 'auto',
     *,
     is_chat_request: Optional[bool] = None,
     request_config: Optional[XRequestConfig] = None,
@@ -296,6 +307,8 @@ async def inference_client_async(
         history,
         system,
         images,
+        tools,
+        tool_choice,
         is_chat_request=is_chat_request,
         request_config=request_config,
         host=host,
