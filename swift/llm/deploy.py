@@ -347,7 +347,7 @@ class _GenerationConfig(GenerationConfig):
         return f'GenerationConfig({gen_kwargs})'
 
 
-def _check_api_key(raw_request, api_key: str) -> bool:
+def _check_api_key(raw_request: Request, api_key: str) -> bool:
     authorization = dict(raw_request.headers).get('authorization')
     if authorization is None:
         return False
