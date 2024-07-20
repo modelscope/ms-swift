@@ -350,6 +350,8 @@ class ModelType:
     mistral_7b_instruct = 'mistral-7b-instruct'
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
     mistral_7b_instruct_v3 = 'mistral-7b-instruct-v3'
+    mistral_nemo_instruct_2407 = 'mistral-nemo-instruct-2407'
+    mistral_nemo_base_2407 = 'mistral-nemo-base-2407'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
@@ -2505,6 +2507,24 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
+@register_model(
+    ModelType.mistral_nemo_instruct_2407,
+    'AI-ModelScope/Mistral-Nemo-Instruct-2407',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.43.0.dev0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Instruct-2407')
+@register_model(
+    ModelType.mistral_nemo_base_2407,
+    'AI-ModelScope/Mistral-Nemo-Base-2407',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.43.0.dev0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Base-2407')
 @register_model(
     ModelType.dbrx_base,
     'AI-ModelScope/dbrx-base',
