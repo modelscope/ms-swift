@@ -562,7 +562,10 @@ class Template:
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
                 loss_scale_list.append(0.)
-        if system is None or any(['{{SYSTEM}}' in context for context in self.prompt]):
+        prompt = self.prompt.copy()
+        if system is None:
+            prompt = [context for context in prompt if '{{SYSTEM}}' not in context]
+        if system is None or any(['{{SYSTEM}}' in context for context in prompt]):
             prefix = self.prefix
         else:
             prefix = self.system_prefix
@@ -572,7 +575,7 @@ class Template:
         history_roles.append([query_role, 'assistant'])
 
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
-            context_list = self.tool_prompt.copy() if qr == 'tool' else self.prompt.copy()
+            context_list = self.tool_prompt.copy() if qr == 'tool' else prompt
             if i < len(history) - 1:
                 context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
                 context_list.append('{{RESPONSE}}')
@@ -1155,7 +1158,7 @@ register_template(
 
 register_template(
     TemplateType.mistral_nemo,
-    Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}} [/INST]'], ['[INST] '], ['</s>'], 'You are a helpful assistant!'))
+    Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}} [/INST]'], ['[INST] '], ['</s>']))
 
 
 register_template(
