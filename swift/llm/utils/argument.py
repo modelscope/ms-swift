@@ -742,7 +742,10 @@ class SftArguments(ArgumentsBase):
             target_modules.append('DEFAULT')
         if 'DEFAULT' in target_modules:
             target_modules.remove('DEFAULT')
-            target_modules += get_default_lora_target_modules(self.model_type)
+            default_lora_tm = get_default_lora_target_modules(self.model_type)
+            if isinstance(default_lora_tm, str):
+                return default_lora_tm
+            target_modules += default_lora_tm
         if 'EMBEDDING' in target_modules:
             target_modules.remove('EMBEDDING')
             self.lora_use_embedding = True

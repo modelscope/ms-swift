@@ -160,8 +160,8 @@ road:
 
 (默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`. 支持全参数微调.)
 ```shell
-# Experimental environment: A100
-# 32GB GPU memory
+# Experimental environment: 3090
+# 20GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type minicpm-v-v2_5-chat \
     --dataset coco-en-2-mini \

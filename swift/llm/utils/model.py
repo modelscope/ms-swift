@@ -517,6 +517,7 @@ class LoRATM(NamedTuple):
         'kv_b_proj',
         'o_proj',
     ]
+    minicpm_llama = r'.*model\.layers\.(?:[0-9]|[12][0-9]|3[01])\.(?:self_attn\.(?:q_proj|k_proj|v_proj))'
     # compat
     llama2 = llama
 
@@ -5171,7 +5172,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 @register_model(
     ModelType.minicpm_v_v2_5_chat,
     'OpenBMB/MiniCPM-Llama3-V-2_5',
-    LoRATM.llama,
+    LoRATM.minicpm_llama,
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
     requires=['timm'],
