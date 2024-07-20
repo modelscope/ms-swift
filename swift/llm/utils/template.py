@@ -575,7 +575,7 @@ class Template:
         history_roles.append([query_role, 'assistant'])
 
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
-            context_list = self.tool_prompt.copy() if qr == 'tool' else prompt
+            context_list = self.tool_prompt.copy() if qr == 'tool' else prompt.copy()
             if i < len(history) - 1:
                 context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
                 context_list.append('{{RESPONSE}}')
