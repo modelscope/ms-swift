@@ -8,7 +8,7 @@ swift web-ui
 
 This command starts the interface for training and inference.
 
-The web-ui command doesn't accept parameters; all controllable parts are handled within the interface. However, there are a few environment variables that can be used:
+The web-ui command has two ways to control the UI behaviour. The first way is to use environment variable:
 
 > WEBUI_SHARE=1/0: Default is 0. Controls whether gradio is in share mode.
 >
@@ -19,3 +19,5 @@ The web-ui command doesn't accept parameters; all controllable parts are handled
 > WEBUI_PORT: The port number for web-ui.
 >
 > USE_INFERENCE=1/0: Default is 0. Controls whether the gradio inference page directly loads the model for inference or deployment (USE_INFERENCE=0).
+
+The second way is to use [parameter](../LLM/Command-line-parameters.md#web-ui-parameters).

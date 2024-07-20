@@ -1,12 +1,12 @@
 # Llava 最佳实践
 本篇文档涉及的模型如下:
 
-- [llava1_5-7b-instruct](https://modelscope.cn/models/huangjintao/llava-1.5-7b-hf)
-- [llava1_5-13b-instruct](https://modelscope.cn/models/huangjintao/llava-1.5-13b-hf)
-- [llava1_6-mistral-7b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-mistral-7b-hf)
-- [llava1_6-vicuna-7b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-7b-hf)
-- [llava1_6-vicuna-13b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-vicuna-13b-hf)
-- [llava1_6-yi-34b-instruct](https://modelscope.cn/models/huangjintao/llava-v1.6-34b-hf)
+- [llava1_5-7b-instruct](https://modelscope.cn/models/swift/llava-1.5-7b-hf)
+- [llava1_5-13b-instruct](https://modelscope.cn/models/swift/llava-1.5-13b-hf)
+- [llava1_6-mistral-7b-instruct](https://modelscope.cn/models/swift/llava-v1.6-mistral-7b-hf)
+- [llava1_6-vicuna-7b-instruct](https://modelscope.cn/models/swift/llava-v1.6-vicuna-7b-hf)
+- [llava1_6-vicuna-13b-instruct](https://modelscope.cn/models/swift/llava-v1.6-vicuna-13b-hf)
+- [llava1_6-yi-34b-instruct](https://modelscope.cn/models/swift/llava-v1.6-34b-hf)
 - [llava-next-72b](https://modelscope.cn/models/AI-Modelscope/llava-next-72b)
 - [llava-next-110b](https://modelscope.cn/models/AI-Modelscope/llava-next-110b)
 
@@ -200,7 +200,7 @@ LoRA微调:
 # Experimental environment: A10, 3090, V100...
 # 21GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model_type llava1_6-mistral-7b-instruct\
+    --model_type llava1_6-mistral-7b-instruct \
     --dataset coco-en-2-mini \
 
 # Experimental environment: 2*A100...
@@ -215,7 +215,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 # Experimental environment: 4 * A100
 # 4 * 70 GPU memory
 NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
-    --model_type llava1_6-mistral-7b-instruct\
+    --model_type llava1_6-mistral-7b-instruct \
     --dataset coco-en-2-mini \
     --sft_type full \
     --deepspeed default-zero2
@@ -230,7 +230,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+(每轮对话须包含一张图片或不含图片, 支持传入本地路径或URL)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}

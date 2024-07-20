@@ -37,7 +37,7 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## 微调
-如果你要使用界面的方式进行微调与推理, 可以查看[界面训练与推理文档](https://github.com/modelscope/swift/blob/main/docs/source/GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
+如果你要使用界面的方式进行微调与推理, 可以查看[界面训练与推理文档](../GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
 
 ### 使用python
 ```python
@@ -100,6 +100,7 @@ swift sft \
     --output_dir output \
 
 # 多机多卡
+# 如果多机共用磁盘请在各机器sh中额外指定`--save_on_each_node false`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NNODES=2 \
@@ -246,6 +247,7 @@ print(f'history: {history}')
 
 使用**数据集**评估:
 ```bash
+# 如果要推理所有数据集样本, 请额外指定`--show_dataset_sample -1`
 # 直接推理
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \

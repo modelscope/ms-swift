@@ -103,9 +103,12 @@ def prepare_model(model, args: SftArguments):
             handle_modules_to_save(model, args)
             if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
+            if args.lora_target_regex:
+                logger.info(f'Value of lora_target_modules: {args.lora_target_modules} will have no effect '
+                            f'because lora_target_regex value: {args.lora_target_regex} exists.')
             lora_kwargs = {
                 'r': args.lora_rank,
-                'target_modules': args.lora_target_modules,
+                'target_modules': args.lora_target_regex or args.lora_target_modules,
                 'lora_alpha': args.lora_alpha,
                 'lora_dropout': args.lora_dropout_p,
                 'bias': args.lora_bias_trainable,
@@ -281,6 +284,13 @@ def prepare_model(model, args: SftArguments):
             galore_scale=args.galore_scale,
             proj_type=args.galore_proj_type,
             optim_per_parameter=args.galore_optim_per_parameter,
+            quantize=args.galore_quantization,
+            proj_quant=args.galore_proj_quant,
+            proj_bits=args.galore_proj_bits,
+            proj_group_size=args.galore_proj_group_size,
+            cos_threshold=args.galore_cos_threshold,
+            gamma_proj=args.galore_gamma_proj,
+            queue_size=args.galore_queue_size,
         )
 
     callbacks = []

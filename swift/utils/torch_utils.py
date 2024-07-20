@@ -123,6 +123,19 @@ def is_ddp_plus_mp() -> bool:
     return True
 
 
+def is_dist_ta() -> bool:
+    """Determine if the TorchAcc training is distributed"""
+    _, _, world_size, _ = get_dist_setting()
+    if use_torchacc() and world_size > 1:
+        if not dist.is_initialized():
+            import torchacc as ta
+            # Initialize in advance
+            dist.init_process_group(backend=ta.dist.BACKEND_NAME)
+        return True
+    else:
+        return False
+
+
 def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
     named_p = list(model.named_parameters())
     for i, (n, p) in enumerate(named_p):
@@ -164,8 +177,6 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     assert dist.is_initialized()
     rank, local_rank, _, _ = get_dist_setting()
     device = f'npu:{local_rank}' if is_torch_npu_available() else f'cuda:{local_rank}'
-    if use_torchacc():
-        device = 'xla'
     assert rank >= 0
     if rank == 0:
         assert string is not None
@@ -174,8 +185,6 @@ def broadcast_string(string: Optional[str], buffer_size: int = 1024) -> str:
     else:
         tensor = torch.zeros(buffer_size, dtype=torch.int64, device=device)
     dist.broadcast(tensor, 0)
-    if use_torchacc():
-        tensor = tensor.to('cpu')
     first_zero = (tensor == 0).nonzero()[0].item()
     res = tensor.tolist()[:first_zero]
     return ''.join([chr(x) for x in res])

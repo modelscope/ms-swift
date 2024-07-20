@@ -24,16 +24,16 @@ pip install -r requirements/llm.txt -U
 ```
 
 ## Inference Acceleration
-vllm does not support bnb quantized models. The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
+The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
 
-### qwen-7b-chat
+### Using Python
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
     ModelType, get_vllm_engine, get_default_template_type,
-    get_template, inference_vllm
+    get_template, inference_vllm, inference_stream_vllm
 )
 
 model_type = ModelType.qwen_7b_chat
@@ -42,119 +42,44 @@ template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer)
 # Similar to `transformers.GenerationConfig` interface
 llm_engine.generation_config.max_new_tokens = 256
-
-request_list = [{'query': 'Hello!'}, {'query': 'Where is the capital of Zhejiang?'} ]
-resp_list = inference_vllm(llm_engine, template, request_list)
-for request, resp in zip(request_list, resp_list):
-    print(f"query: {request['query']}")
-    print(f"response: {resp['response']}")
-
-history1 = resp_list[1]['history']
-request_list = [{'query': 'What delicious food is there', 'history': history1}]
-resp_list = inference_vllm(llm_engine, template, request_list)
-for request, resp in zip(request_list, resp_list):
-    print(f"query: {request['query']}")
-    print(f"response: {resp['response']}")
-    print(f"history: {resp['history']}")
-
-"""Out[0]
-query: Hello!
-response: Hello! I'm happy to be of service. Is there anything I can help you with?
-query: Where is the capital of Zhejiang?
-response: Hangzhou is the capital of Zhejiang Province.
-query: What delicious food is there
-response: Hangzhou is a city of gastronomy, with many famous dishes and snacks such as West Lake Vinegar Fish, Dongpo Pork, Beggar's Chicken, etc. In addition, Hangzhou has many snack shops where you can taste a variety of local delicacies.
-history: [('Where is the capital of Zhejiang?', 'Hangzhou is the capital of Zhejiang Province.'), ('What delicious food is there', "Hangzhou is a city of gastronomy, with many famous dishes and snacks such as West Lake Vinegar Fish, Dongpo Pork, Beggar's Chicken, etc. In addition, Hangzhou has many snack shops where you can taste a variety of local delicacies.")]
-"""
-```
-
-### Streaming Output
-```python
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-from swift.llm import (
-    ModelType, get_vllm_engine, get_default_template_type,
-    get_template, inference_stream_vllm
-)
-
-model_type = ModelType.qwen_7b_chat
-llm_engine = get_vllm_engine(model_type)
-template_type = get_default_template_type(model_type)
-template = get_template(template_type, llm_engine.hf_tokenizer)
-# Similar to `transformers.GenerationConfig` interface
-llm_engine.generation_config.max_new_tokens = 256
+generation_info = {}
 
 request_list = [{'query': 'Hello!'}, {'query': 'Where is the capital of Zhejiang?'}]
-gen = inference_stream_vllm(llm_engine, template, request_list)
-query_list = [request['query'] for request in request_list]
-print(f"query_list: {query_list}")
-for resp_list in gen:
-    response_list = [resp['response'] for resp in resp_list]
-    print(f'response_list: {response_list}')
+resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info)
+for request, resp in zip(request_list, resp_list):
+    print(f"query: {request['query']}")
+    print(f"response: {resp['response']}")
+print(generation_info)
 
+# stream
 history1 = resp_list[1]['history']
-request_list = [{'query': 'What delicious food is there', 'history': history1}]
-gen = inference_stream_vllm(llm_engine, template, request_list)
+request_list = [{'query': 'Is there anything tasty here?', 'history': history1}]
+gen = inference_stream_vllm(llm_engine, template, request_list, generation_info=generation_info)
 query = request_list[0]['query']
-print(f"query: {query}")
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
 for resp_list in gen:
-    response = resp_list[0]['response']
-    print(f'response: {response}')
+    resp = resp_list[0]
+    response = resp['response']
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
 
 history = resp_list[0]['history']
 print(f'history: {history}')
-
-"""Out[0]
-query_list: ['Hello!', 'Where is the capital of Zhejiang?']
-...
-response_list: ['Hello! I'm happy to be of service. Is there anything I can help you with?', 'Hangzhou is the capital of Zhejiang Province.']
-query: What delicious food is there
-...
-response: Hangzhou is a city of gastronomy, with many famous dishes and snacks such as West Lake Vinegar Fish, Dongpo Pork, Beggar's Chicken, etc. In addition, Hangzhou has many snack shops where you can taste a variety of local delicacies.
-history: [('Where is the capital of Zhejiang?', 'Hangzhou is the capital of Zhejiang Province.'), ('What delicious food is there', "Hangzhou is a city of gastronomy, with many famous dishes and snacks such as West Lake Vinegar Fish, Dongpo Pork, Beggar's Chicken, etc. In addition, Hangzhou has many snack shops where you can taste a variety of local delicacies.")]
-"""
-```
-
-### chatglm3
-```python
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-from swift.llm import (
-    ModelType, get_vllm_engine, get_default_template_type,
-    get_template, inference_vllm
-)
-
-model_type = ModelType.chatglm3_6b
-llm_engine = get_vllm_engine(model_type)
-template_type = get_default_template_type(model_type)
-template = get_template(template_type, llm_engine.hf_tokenizer)
-# Similar to `transformers.GenerationConfig` interface
-llm_engine.generation_config.max_new_tokens = 256
-
-request_list = [{'query': 'Hello!'}, {'query': 'Where is the capital of Zhejiang?'}]
-resp_list = inference_vllm(llm_engine, template, request_list)
-for request, resp in zip(request_list, resp_list):
-    print(f"query: {request['query']}")
-    print(f"response: {resp['response']}")
-
-history1 = resp_list[1]['history']
-request_list = [{'query': 'What delicious food is there', 'history': history1}]
-resp_list = inference_vllm(llm_engine, template, request_list)
-for request, resp in zip(request_list, resp_list):
-    print(f"query: {request['query']}")
-    print(f"response: {resp['response']}")
-    print(f"history: {resp['history']}")
+print(generation_info)
 
 """Out[0]
 query: Hello!
-response: Hello, I am an AI assistant. I'm very pleased to serve you! Do you have any questions I can help you answer?
+response: Hello! How can I assist you today? Is there something on your mind that you would like to talk about or ask me about? I'm here to help answer any questions you may have.
 query: Where is the capital of Zhejiang?
-response: The capital of Zhejiang is Hangzhou.
-query: What delicious food is there
-response: Zhejiang has many delicious foods, some of the most famous ones include Longjing Shrimp from Hangzhou, Dongpo Pork, West Lake Vinegar Fish, Beggar's Chicken, etc. In addition, Zhejiang also has many specialty snacks and pastries, such as Tang Yuan and Nian Gao from Ningbo, stir-fried crab and Wenzhou meatballs from Wenzhou, etc.
-history: [('Where is the capital of Zhejiang?', 'The capital of Zhejiang is Hangzhou.'), ('What delicious food is there', 'Zhejiang has many delicious foods, some of the most famous ones include Longjing Shrimp from Hangzhou, Dongpo Pork, West Lake Vinegar Fish, Beggar's Chicken, etc. In addition, Zhejiang also has many specialty snacks and pastries, such as Tang Yuan and Nian Gao from Ningbo, stir-fried crab and Wenzhou meatballs from Wenzhou, etc.')]
+response: The capital of Zhejiang is Hangzhou. It is located in eastern China, on the southern bank of the Qiantang River. Hangzhou is known for its beautiful natural scenery, historic landmarks, and cultural heritage, including the West Lake, Lingyin Temple, and the Longjing tea plantations. It is also an important economic center, with a thriving technology industry and a strong presence in finance and commerce.
+{'num_prompt_tokens': 49, 'num_generated_tokens': 126, 'runtime': 1.1199991840112489, 'samples/s': 1.7857155867177066, 'tokens/s': 112.50008196321552}
+query: Is there anything tasty here?
+response: Yes, Hangzhou is famous for its delicious food! One of the most popular dishes from Hangzhou is the "Dongpo pork", which is made from slow-cooked pork that has been marinated in a sweet and savory sauce made from soy sauce, rice wine, and sugar. Another popular dish is "West Lake fish in vinegar sauce", which features fresh fish fillets cooked in a tangy vinegar sauce and served with steamed buns. There are many other delicious local specialties to try, such as "Longjing tea eggs" (steamed eggs boiled in Longjing tea), "Jiashan bamboo shoots" (a type of vegetable dish), and "Zhouguyu" (a soup made with fermented tofu). Hangzhou's cuisine is known for its delicate flavors and use of fresh ingredients, making it a must-try for any food lover visiting the city.
+history: [['Where is the capital of Zhejiang?', 'The capital of Zhejiang is Hangzhou. It is located in eastern China, on the southern bank of the Qiantang River. Hangzhou is known for its beautiful natural scenery, historic landmarks, and cultural heritage, including the West Lake, Lingyin Temple, and the Longjing tea plantations. It is also an important economic center, with a thriving technology industry and a strong presence in finance and commerce.'], ['Is there anything tasty here?', 'Yes, Hangzhou is famous for its delicious food! One of the most popular dishes from Hangzhou is the "Dongpo pork", which is made from slow-cooked pork that has been marinated in a sweet and savory sauce made from soy sauce, rice wine, and sugar. Another popular dish is "West Lake fish in vinegar sauce", which features fresh fish fillets cooked in a tangy vinegar sauce and served with steamed buns. There are many other delicious local specialties to try, such as "Longjing tea eggs" (steamed eggs boiled in Longjing tea), "Jiashan bamboo shoots" (a type of vegetable dish), and "Zhouguyu" (a soup made with fermented tofu). Hangzhou\'s cuisine is known for its delicate flavors and use of fresh ingredients, making it a must-try for any food lover visiting the city.']]
+{'num_prompt_tokens': 129, 'num_generated_tokens': 181, 'runtime': 2.307140746997902, 'samples/s': 0.43343692893518526, 'tokens/s': 78.45208413726853}
 """
 ```
 
@@ -205,6 +130,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --merge_lora true
 
 # Evaluate using dataset
+# If you want to infer all dataset samples, please additionally specify `--show_dataset_sample -1`.
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged' \
     --infer_backend vllm \
@@ -309,7 +235,12 @@ print(f'model_type: {model_type}')
 
 query = 'Where is the capital of Zhejiang?'
 request_config = XRequestConfig(seed=42)
-resp = asyncio.run(inference_client_async(model_type, query, request_config=request_config))
+tasks = [inference_client_async(model_type, query, request_config=request_config) for _ in range(5)]
+async def _batch_run(tasks):
+    return await asyncio.gather(*tasks)
+
+resp_list = asyncio.run(_batch_run(tasks))
+resp = resp_list[0]
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
@@ -330,9 +261,9 @@ asyncio.run(_stream())
 """Out[0]
 model_type: qwen-7b-chat
 query: Where is the capital of Zhejiang?
-response: The capital of Zhejiang Province is Hangzhou.
+response: The capital of Zhejiang is Hangzhou.
 query: What delicious food is there?
-response: Hangzhou has many delicious foods, such as West Lake Vinegar Fish, Dongpo Pork, Longjing Shrimp, Beggar's Chicken, etc. In addition, Hangzhou also has many specialty snacks, such as West Lake Lotus Root Powder, Hangzhou Xiao Long Bao, Hangzhou You Tiao, etc.
+response: Hangzhou is famous for its delicious food, such as West Lake Fish in Vinegar Gravy, Dongpo Pork, and Longjing Tea.
 """
 ```
 

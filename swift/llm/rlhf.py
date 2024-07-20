@@ -20,6 +20,13 @@ logger = get_logger()
 
 
 def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
+    if args.rlhf_type == 'simpo':
+        import trl
+        from packaging import version
+        assert version.parse(trl.__version__) <= version.parse('0.9.4'), \
+            'Please ensure to update `trl` to the latest version using the following command:' \
+            'pip install trl==0.9.6 --index-url https://pypi.org/simple.'
+
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
@@ -53,6 +60,14 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             model_kwargs['device_map'] = 'cuda:0'
         else:
             model_kwargs['device_map'] = 'auto'
+
+    if args.device_max_memory:
+        n_gpu = torch.cuda.device_count()
+        assert len(args.device_max_memory) == n_gpu // local_world_size
+        model_kwargs['max_memory'] = {
+            i: mem
+            for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
+        }
 
     # quantization
     if args.quant_method == 'hqq':
@@ -228,11 +243,8 @@ You can also use the --model_type parameter to specify the  template.')
         for args_obj, fname in zip([args, training_args], ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
             logger.info(f'The {args_obj.__class__.__name__} will be saved in: {fpath}')
-            args_dict = args_obj.__dict__
-            args_dict.pop('hub_token', None)
-            args_dict.pop('push_to_hub_token', None)
             with open(fpath, 'w', encoding='utf-8') as f:
-                json.dump(check_json_format(args_dict), f, ensure_ascii=False, indent=2)
+                json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
     trainer.train(training_args.resume_from_checkpoint)

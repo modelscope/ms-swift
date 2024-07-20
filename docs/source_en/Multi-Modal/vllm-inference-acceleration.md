@@ -17,7 +17,8 @@ cd swift
 pip install -e '.[llm]'
 
 # vllm version corresponds to cuda version, please select version according to `https://docs.vllm.ai/en/latest/getting_started/installation.html`
-pip install "vllm>=0.5"
+# In version 0.5.1, there have been major changes to multimodal support in VLLM, and it now only supports one image. We will not update immediately and will wait until VLLM is stable before updating.
+pip install "vllm==0.5.0.*"
 pip install openai -U
 ```
 
@@ -107,8 +108,6 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 
 ## Deployment
 
-### Llava Series
-
 **Server**:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-instruct --infer_backend vllm
@@ -142,43 +141,47 @@ print(f'model_type: {model_type}')
 # import base64
 # with open('cat.png', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# images = [img_base64]
+# image_url = f'data:image/jpeg;base64,{img_base64}'
 
 # use local_path
 # from swift.llm import convert_to_base64
-# images = ['cat.png']
-# images = convert_to_base64(images=images)['images']
+# image_url = convert_to_base64(images=['cat.png'])['images'][0]
+# image_url = f'data:image/jpeg;base64,{image_url}'
 
 # use url
-images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+image_url = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'
 
 query = 'Describe this image.'
 messages = [{
     'role': 'user',
-    'content': query
+    'content': [
+        {'type': 'text', 'text': query},
+        {'type': 'image_url', 'image_url': {'url': image_url}},
+    ]
 }]
+
 resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
-    temperature=0,
-    extra_body={'images': images})
+    temperature=0)
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
 
-# Streaming
-images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+# 流式
 query = 'How many sheep are in the picture?'
 messages = [{
     'role': 'user',
-    'content': query
+    'content': [
+        {'type': 'text', 'text': query},
+        {'type': 'image_url', 'image_url': {'url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'}}
+    ]
 }]
 stream_resp = client.chat.completions.create(
     model=model_type,
     messages=messages,
     stream=True,
-    temperature=0,
-    extra_body={'images': images})
+    temperature=0)
 
 print(f'query: {query}')
 print('response: ', end='')
@@ -188,93 +191,10 @@ print()
 """
 model_type: llava1_6-vicuna-13b-instruct
 query: Describe this image.
-response: The image shows a close-up of a person's hands playing a guitar. The hands are positioned on the neck of the guitar, with the fingers pressing down on the strings to produce music. The guitar has a wooden body and a glossy finish, and the strings are clearly visible. The background is blurred, but it appears to be an indoor setting with warm lighting. The focus of the image is on the hands and the guitar, with the background serving to highlight the subject. There are no visible texts or distinctive brands in the image. The style of the image is a realistic photograph with a shallow depth of field, which is a common technique in portrait photography to draw attention to the subject.
+response: In the image, a kitten with striking blue eyes is the main subject. The kitten, with its fur in shades of gray and white, is sitting on a white surface. Its head is slightly tilted to the left, giving it a curious and endearing expression. The kitten's eyes are wide open, and its mouth is slightly open, as if it's in the middle of a meow or perhaps just finished one. The background is blurred, drawing focus to the kitten, but it appears to be a room with a window, suggesting an indoor setting. The overall image gives a sense of warmth and cuteness.
 query: How many sheep are in the picture?
-response: There are two sheep in the picture.
+response: There are four sheep in the picture.
 """
 ```
 
 You can check out more client usage methods in the [MLLM Deployment Documentation](mutlimodal-deployment.md#yi-vl-6b-chat).
-
-### phi3-vision
-
-**Server**:
-```shell
-# vllm>=0.5.1 or build from source
-CUDA_VISIBLE_DEVICES=0 swift deploy --model_type phi3-vision-128k-instruct --infer_backend vllm --max_model_len 8192
-```
-
-**Client**:
-
-Test:
-```bash
-curl http://localhost:8000/v1/chat/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "phi3-vision-128k-instruct",
-"messages": [{"role": "user", "content": "<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What is the difference between these two pictures?"}],
-"temperature": 0
-}'
-```
-
-Using openai:
-```python
-from openai import OpenAI
-client = OpenAI(
-    api_key='EMPTY',
-    base_url='http://localhost:8000/v1',
-)
-model_type = client.models.list().data[0].id
-print(f'model_type: {model_type}')
-
-# use base64
-# import base64
-# with open('cat.png', 'rb') as f:
-#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# images = [img_base64]
-
-# use local_path
-# from swift.llm import convert_to_base64
-# images = ['cat.png']
-# images = convert_to_base64(images=images)['images']
-
-# use url
-
-query = '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What is the difference between these two pictures?'
-messages = [{
-    'role': 'user',
-    'content': query
-}]
-resp = client.chat.completions.create(
-    model=model_type,
-    messages=messages,
-    temperature=0)
-response = resp.choices[0].message.content
-print(f'query: {query}')
-print(f'response: {response}')
-
-# Streaming
-query = 'How many sheep are in the picture?'
-messages = [{
-    'role': 'user',
-    'content': query
-}]
-stream_resp = client.chat.completions.create(
-    model=model_type,
-    messages=messages,
-    stream=True,
-    temperature=0)
-
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].delta.content, end='', flush=True)
-print()
-"""
-model_type: phi3-vision-128k-instruct
-query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What is the difference between these two pictures?
-response: The first picture shows a group of four sheep standing in a field, while the second picture is a close-up of a kitten with big eyes. The main difference between these two pictures is the subjects and the setting. The first image features animals typically found in a pastoral or rural environment, whereas the second image focuses on a small domestic animal, a kitten, which is usually found indoors. Additionally, the first picture has a more peaceful and serene atmosphere, while the second image has a more intimate and detailed view of the kitten.
-query: How many sheep are in the picture?
-response: There are three sheep in the picture.
-"""
-```

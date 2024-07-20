@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -26,6 +26,7 @@ from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, 
 from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
+from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
@@ -41,22 +42,31 @@ def is_adapter(sft_type: str) -> bool:
 class ArgumentsBase:
 
     @classmethod
-    def _check_path(cls, k: str, value: Union[str, List[str]],
-                    check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+    def _check_path(cls,
+                    value: Union[str, List[str]],
+                    k: Optional[str] = None,
+                    check_exist_path_set: Optional[Set[str]] = None) -> Union[str, List[str]]:
+        if check_exist_path_set is None:
+            check_exist_path_set = set()
         if isinstance(value, str):
             value = os.path.expanduser(value)
             value = os.path.abspath(value)
             if k in check_exist_path_set and not os.path.exists(value):
-                raise FileNotFoundError(f"`{k}`: '{value}'")
+                if k is not None:
+                    raise FileNotFoundError(f"`{k}`: '{value}'")
+                else:
+                    raise FileNotFoundError(f"path: '{value}'")
         elif isinstance(value, list):
             res = []
             for v in value:
-                res.append(cls._check_path(k, v, check_exist_path_set))
+                res.append(cls._check_path(v, k, check_exist_path_set))
             value = res
         return value
 
     @staticmethod
-    def _is_multimodal(model_type: str) -> bool:
+    def _is_multimodal(model_type: Optional[str] = None) -> bool:
+        if model_type is None:
+            return False
         model_info = MODEL_MAPPING[model_type]
         tags = model_info.get('tags') or []
         return 'multi-modal' in tags
@@ -78,7 +88,7 @@ class ArgumentsBase:
             value = getattr(self, k, None)
             if value is None:
                 continue
-            value = self._check_path(k, value, check_exist_path_set)
+            value = self._check_path(value, k, check_exist_path_set)
             setattr(self, k, value)
 
     def check_flash_attn(self: Union['SftArguments', 'InferArguments']) -> None:
@@ -403,7 +413,7 @@ class ArgumentsBase:
                 if self.model_cache_dir is not None:
                     self.model_id_or_path = self.model_cache_dir
             else:
-                if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
+                if (isinstance(self, InferArguments) and 'checkpoint-' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
                 if self.model_type is None:
@@ -429,6 +439,22 @@ class ArgumentsBase:
         requires = model_info['requires']
         for require in requires:
             require_version(require)
+
+    def prepare_ms_hub(self: Union['SftArguments', 'InferArguments']) -> None:
+        hub_token = self.hub_token
+        if hub_token is None:
+            hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+        if hub_token is not None:
+            api = HubApi()
+            api.login(hub_token)
+        if not hasattr(self, 'push_to_hub') or not self.push_to_hub:
+            return
+        self.hub_token = hub_token
+        assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
+        if self.hub_model_id is None:
+            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
+            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
+        logger.info('hub login successful!')
 
 
 @dataclass
@@ -489,6 +515,7 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    lora_target_regex: Optional[str] = None
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
@@ -534,6 +561,13 @@ class SftArguments(ArgumentsBase):
     galore_proj_type: str = 'std'
     galore_optim_per_parameter: bool = False
     galore_with_embedding: bool = False
+    galore_quantization: bool = False
+    galore_proj_quant: bool = False
+    galore_proj_bits: int = 4
+    galore_proj_group_size: int = 256
+    galore_cos_threshold: float = 0.4
+    galore_gamma_proj: int = 2
+    galore_queue_size: int = 5
 
     # adalora
     adalora_target_r: int = 8
@@ -578,7 +612,9 @@ class SftArguments(ArgumentsBase):
     max_grad_norm: float = 0.5
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
+    lr_scheduler_kwargs: Optional[str] = None  # json
     warmup_ratio: float = 0.05
+    warmup_steps: int = 0  # Overrides any effect of `warmup_ratio` if warmup_steps > 0
 
     eval_steps: int = 50
     save_steps: Optional[int] = None
@@ -629,6 +665,7 @@ class SftArguments(ArgumentsBase):
     custom_dataset_info: Optional[str] = None  # .json
 
     device_map_config_path: Optional[str] = None
+    device_max_memory: List[str] = field(default_factory=list)
 
     # generation config
     max_new_tokens: int = 2048
@@ -692,22 +729,6 @@ class SftArguments(ArgumentsBase):
                 continue
             setattr(self, key, sft_args.get(key))
 
-    def prepare_push_ms_hub(self) -> None:
-        if not self.push_to_hub:
-            return
-        if self.hub_model_id is None:
-            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
-            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
-
-        api = HubApi()
-        if self.hub_token is None:
-            self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if self.hub_token is not None:
-            api.login(self.hub_token)
-        else:
-            assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
-        logger.info('hub login successful!')
-
     def _prepare_target_modules(self, target_modules) -> List[str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
@@ -729,6 +750,12 @@ class SftArguments(ArgumentsBase):
             target_modules.remove('ALL')
             self.lora_use_all = True
         return target_modules
+
+    def handle_lr_scheduler_kwargs(self):
+        if self.lr_scheduler_kwargs is None:
+            self.lr_scheduler_kwargs = {}
+        elif isinstance(self.lr_scheduler_kwargs, str):
+            self.lr_scheduler_kwargs = json.loads(self.lr_scheduler_kwargs)
 
     def _prepare_modules_to_save(self, modules_to_save) -> List[str]:
         if isinstance(modules_to_save, str):
@@ -780,6 +807,7 @@ class SftArguments(ArgumentsBase):
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
+        self.handle_lr_scheduler_kwargs()
         self.is_multimodal = self._is_multimodal(self.model_type)
 
         self.lora_use_embedding = False
@@ -876,7 +904,7 @@ class SftArguments(ArgumentsBase):
             self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
                 else 'transformers'
 
-        self.prepare_push_ms_hub()
+        self.prepare_ms_hub()
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
             if self.predict_with_generate:
@@ -973,7 +1001,9 @@ class SftArguments(ArgumentsBase):
             num_train_epochs=self.num_train_epochs,
             max_steps=self.max_steps,
             lr_scheduler_type=self.lr_scheduler_type,
+            lr_scheduler_kwargs=self.lr_scheduler_kwargs,
             warmup_ratio=self.warmup_ratio,
+            warmup_steps=self.warmup_steps,
             logging_steps=self.logging_steps,
             save_strategy=self.save_strategy,
             save_steps=self.save_steps,
@@ -1101,7 +1131,7 @@ class InferArguments(ArgumentsBase):
     top_p: float = 0.7
     repetition_penalty: float = 1.
     num_beams: int = 1
-    stop_words: List[str] = None
+    stop_words: List[str] = field(default_factory=list)
 
     # rope-scaling
     rope_scaling: Literal['linear', 'dynamic'] = None
@@ -1119,6 +1149,10 @@ class InferArguments(ArgumentsBase):
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
     device_map_config_path: Optional[str] = None
+    device_max_memory: List[str] = field(default_factory=list)
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -1168,6 +1202,7 @@ class InferArguments(ArgumentsBase):
         self.check_flash_attn()
         self.handle_generation_config()
         self.is_multimodal = self._is_multimodal(self.model_type)
+        self.prepare_ms_hub()
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
@@ -1237,6 +1272,8 @@ class InferArguments(ArgumentsBase):
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        self.media_type = template_info.get('media_type', 'image')
+        self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 
@@ -1367,12 +1404,13 @@ class EvalArguments(InferArguments):
 @dataclass
 class ExportArguments(InferArguments):
     to_peft_format: bool = False
-    # The parameter has been defined in InferArguments.
-    # merge_lora: bool = False
+    to_ollama: bool = False
+    ollama_output_dir: Optional[str] = None
+    gguf_file: Optional[str] = None
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['awq', 'gptq'] = 'awq'
+    quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
@@ -1382,11 +1420,11 @@ class ExportArguments(InferArguments):
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
-    # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = field(
-        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     hub_private_repo: bool = False
     commit_message: str = 'update files'
+
+    # The parameter has been defined in InferArguments.
+    # merge_lora, hub_token
 
     def __post_init__(self):
         if self.merge_device_map is None:
@@ -1406,8 +1444,18 @@ class ExportArguments(InferArguments):
                     ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
                     self.quant_output_dir = os.path.join(ckpt_dir,
                                                          f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
+                self.quant_output_dir = self._check_path(self.quant_output_dir)
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
+        elif self.to_ollama:
+            assert self.sft_type in ('full', 'lora', 'longlora', 'llamapro')
+            if self.sft_type in ('lora', 'longlora', 'llamapro'):
+                self.merge_lora = True
+            if not self.ollama_output_dir:
+                self.ollama_output_dir = f'{self.model_type}-ollama'
+            self.ollama_output_dir = self._check_path(self.ollama_output_dir)
+            assert not os.path.exists(
+                self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
 
 
 @dataclass
@@ -1421,10 +1469,11 @@ class RLHFArguments(SftArguments):
     max_prompt_length: int = 1024
     beta: Optional[float] = None
     label_smoothing: float = 0.0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'kto_pair', 'robust', 'bco_pair', 'sppo_hard', 'nca_pair', 'simpo',
-                       'kto', 'bco'] = None
+    loss_type: Optional[str] = None
     sft_beta: float = 0.1
+    # SimPO
     simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
+    cpo_alpha: float = 1.0
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
@@ -1434,8 +1483,7 @@ class RLHFArguments(SftArguments):
         # without reference model
         self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
         if self.rlhf_type == 'simpo':
-            self.loss_type = 'simpo'  # compatibility with trl > 0.9.5
-            self.gamma = self.simpo_gamma  # compatibility with trl <= 0.9.4
+            self.loss_type = 'simpo'
         self.set_default_beta()
         self.set_default_loss_type()
         self.set_default_config()
@@ -1458,10 +1506,6 @@ class RLHFArguments(SftArguments):
             'cpo': 'trl.trainer.cpo_config.CPOConfig',
             'dpo': 'trl.trainer.dpo_config.DPOConfig'
         }
-        import trl
-        if version.parse(trl.__version__) <= version.parse('0.9.4'):
-            CONFIG_MAPPING['simpo'] = 'trl.trainer.dpo_config.DPOConfig'
-
         if self.rlhf_type in CONFIG_MAPPING:
             config_path = CONFIG_MAPPING[self.rlhf_type]
             module_path, config_name = config_path.rsplit('.', 1)
@@ -1480,10 +1524,16 @@ class RLHFArguments(SftArguments):
 
     def check_loss_type(self):
         supported_loss_types = {
-            'dpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust'],
-            'cpo': ['sigmoid', 'hinge', 'ipo', 'kto_pair', 'simpo'],
+            'dpo':
+            ['sigmoid', 'hinge', 'ipo', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust', 'aot', 'aot_pair', 'exo_pair'],
+            'cpo': ['sigmoid', 'hinge', 'ipo', 'simpo'],
             'kto': ['kto', 'bco']
         }
+        if self.loss_type == 'kto_pair':
+            import trl
+            from packaging import version
+            if version.parse(trl.__version__) <= version.parse('0.9.4'):
+                return
         if self.rlhf_type in supported_loss_types:
             assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
                 f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
@@ -1495,6 +1545,14 @@ class RLHFArguments(SftArguments):
             self.loss_type = 'sigmoid'
         elif self.rlhf_type == 'kto':
             self.loss_type = 'kto'
+
+
+@dataclass
+class WebuiArguments:
+    share: bool = False
+    lang: str = 'zh'
+    host: str = '127.0.0.1'
+    port: Optional[int] = None
 
 
 @dataclass

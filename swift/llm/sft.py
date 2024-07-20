@@ -18,9 +18,8 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          plot_images, preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset,
-                    get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+from .utils import (LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset, get_model_tokenizer, get_template,
+                    get_time_info, print_example, set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -42,7 +41,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
     # Loading Model and Tokenizer
-    if is_deepspeed_zero3_enabled():
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
         model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
@@ -60,6 +59,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
             model_kwargs['device_map'] = 'cuda:0'
         elif not use_torchacc():
             model_kwargs['device_map'] = 'auto'
+
+    if args.device_max_memory:
+        n_gpu = torch.cuda.device_count()
+        assert len(args.device_max_memory) == n_gpu // local_world_size
+        model_kwargs['max_memory'] = {
+            i: mem
+            for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
+        }
 
     if args.quant_method == 'hqq':
         from transformers import HqqConfig
@@ -307,11 +314,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
         for args_obj, fname in zip([args, training_args], ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
             logger.info(f'The {args_obj.__class__.__name__} will be saved in: {fpath}')
-            args_dict = args_obj.__dict__
-            args_dict.pop('hub_token', None)
-            args_dict.pop('push_to_hub_token', None)
             with open(fpath, 'w', encoding='utf-8') as f:
-                json.dump(check_json_format(args_dict), f, ensure_ascii=False, indent=2)
+                json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
     trainer.train(training_args.resume_from_checkpoint)

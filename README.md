@@ -27,26 +27,43 @@
 
 ## 📖 Table of Contents
 - [Introduction](#-introduction)
+- [Groups](#-Groups)
 - [News](#-news)
 - [Installation](#%EF%B8%8F-installation)
 - [Getting Started](#-getting-started)
-- [Documentation](#-documentation)
+- [Classroom](#-Classroom)
 - [License](#-License)
 - [Citation](#-citation)
-- [WeChat Group](#-Wechat-Group)
 
 ## 📝 Introduction
-SWIFT supports training, inference, evaluation and deployment of **300+ LLMs and 40+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
+SWIFT supports training(PreTraining/Fine-tuning/RLHF), inference, evaluation and deployment of **300+ LLMs and 50+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
 
-To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners.
+To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners. SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
-Additionally, we are expanding capabilities for other modalities. Currently, we support full-parameter training and LoRA training for AnimateDiff.
+SWIFT has rich documentations for users, please feel free to check our documentation website:
+<p align="center">
+        <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
+</p>
 
-SWIFT has rich documentations for users, please check [here](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/index.md).
+## ☎ Groups
 
-SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
+You can contact us and communicate with us by adding our group:
+
+
+[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  微信群
+:-------------------------:|:-------------------------:
+<img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.07.19: Support [Q-Galore](https://arxiv.org/abs/2407.08296), this algorithm can reduce the training memory cost by 60% (qwen-7b-chat, full, 80G -> 35G), use `swift sft --model_type xxx --use_galore true --galore_quantization true` to begin!
+- 2024.07.17: Support newly released InternVL2 models: `model_type` are internvl2-1b, internvl2-40b, internvl2-llama3-76b. For best practices, refer to [here](docs/source_en/Multi-Modal/internvl-best-practice.md).
+- 2024.07.17: Support the training and inference of [NuminaMath-7B-TIR](https://huggingface.co/AI-MO/NuminaMath-7B-TIR). Use with model_type `numina-math-7b`.
+- 🔥2024.07.16: Support exporting for ollama and bitsandbytes. Use `swift export --model_type xxx --to_ollama true` or `swift export --model_type xxx --quant_method bnb --quant_bits 4`
+- 2024.07.08: Support cogvlm2-video-13b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/cogvlm2-video-best-practice.md).
+- 2024.07.08: Support internlm-xcomposer2_5-7b-chat. You can check the best practice [here](docs/source_en/Multi-Modal/internlm-xcomposer2-best-practice.md).
+- 🔥2024.07.06: Support for the llava-next-video series models: llava-next-video-7b-instruct, llava-next-video-7b-32k-instruct, llava-next-video-7b-dpo-instruct, llava-next-video-34b-instruct. You can refer to [llava-video best practice](docs/source_en/Multi-Modal/llava-video-best-practice.md) for more information.
+- 🔥2024.07.06: Support InternVL2 series: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
+- 2024.07.06: Support codegeex4-9b-chat.
 - 2024.07.04: Support internlm2_5-7b series: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
 - 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.07.02: Support for `llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct` and other llava-hf models. For best practices, refer to [here](docs/source_en/Multi-Modal/llava-best-practice.md).
@@ -61,6 +78,8 @@ SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spa
 - 🔥2024.06.01: Supports **SimPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/SimPO.md) to start training!
 - 🔥2024.06.01: Support for deploying large multimodal models, please refer to the [Multimodal Deployment Documentation](docs/source_en/Multi-Modal/mutlimodal-deployment.md) for more information.
 - 2024.05.31: Supports Mini-Internvl model, Use model_type `mini-internvl-chat-2b-v1_5` and `mini-internvl-chat-4b-v1_5`to train.
+<details><summary>More</summary>
+
 - 2024.05.24: Supports Phi3-vision model, Use model_type `phi3-vision-128k-instruct` to train.
 - 2024.05.22: Supports DeepSeek-V2-Lite series models, model_type are `deepseek-v2-lite` and `deepseek-v2-lite-chat`
 - 2024.05.22: Supports TeleChat-12B-v2 model with quantized version, model_type are `telechat-12b-v2` and `telechat-12b-v2-gptq-int4`
@@ -77,8 +96,6 @@ SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spa
 - 2024.04.29: Supports inference and fine-tuning of InternVL-Chat-V1.5 model. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 🔥2024.04.26: Support **LISA** and **unsloth** training! Specify `--lisa_activated_layers=2` to use LISA(to reduce the memory cost to 30 percent!), specify `--tuner_backend unsloth` to use unsloth to train a huge model(full or lora) with lesser memory(30 percent or lesser) and faster speed(5x)!
 - 🔥2024.04.26: Support the fine-tuning and inference of Qwen1.5-110B and Qwen1.5-110B-Chat model, use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_110b_chat/lora_ddp_ds/sft.sh) to start training!
-<details><summary>More</summary>
-
 - 2024.04.24: Support for inference and fine-tuning of Phi3 series models. Including: [phi3-4b-4k-instruct](examples/pytorch/llm/scripts/phi3_4b_4k_instruct/lora), phi3-4b-128k-instruct.
 - 2024.04.22: Support for inference, fine-tuning, and deployment of **chinese-llama-alpaca-2** series models. This includes：chinese-llama-2-1.3b, chinese-llama-2-7b, chinese-llama-2-13b, chinese-alpaca-2-1.3b, chinese-alpaca-2-7b and chinese-alpaca-2-13b along with their corresponding 16k and 64k long text versions.
 - 2024.04.22: Support for inference and fine-tuning of Llama3 GPTQ-Int4, GPTQ-Int8, and AWQ series models. Support for inference and fine-tuning of chatglm3-6b-128k, Openbuddy-Llama3.
@@ -213,7 +230,7 @@ docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.
 
 ## 🚀 Getting Started
 
-This section introduces basic usage, see the [Documentation](#-documentation) section for more ways to use.
+This section introduces basic usage, see the [Documentation](https://swift.readthedocs.io/en/latest/) section for more ways to use.
 
 ### Web-UI
 
@@ -387,6 +404,7 @@ swift sft \
 
 #### Multi-node Multi-GPU
 ```shell
+# If multiple machines share a disk, please additionally specify `--save_on_each_node false`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NNODES=2 \
@@ -426,6 +444,38 @@ swift sft \
     --dataset blossom-math-zh \
     --output_dir output \
     --deepspeed default-zero3
+```
+
+#### Pretraining
+
+```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 30GB
+# Runtime: 0.8 hours
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+swift pt \
+    --model_type qwen1half-7b \
+    --dataset chinese_c4#10000 \
+    --num_train_epochs 1 \
+    --sft_type full \
+    --deepspeed default-zero3 \
+    --output_dir output \
+```
+
+
+#### RLHF
+
+```shell
+# We support rlhf_type dpo/cpo/simpo/orpo/kto
+CUDA_VISIBLE_DEVICES=0 \
+swift rlhf \
+    --rlhf_type dpo \
+    --model_type qwen1half-7b-chat \
+    --dataset shareai-llama3-dpo-zh-en-emoji \
+    --num_train_epochs 5 \
+    --sft_type lora \
+    --output_dir output \
 ```
 
 
@@ -504,64 +554,65 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 #### LLMs
 
-| Model Type                                     | Model Introduction                                                     | Language           | Model Size                             | Model Type                                 |
-|------------------------------------------------|------------------------------------------------------------------------|--------------------|----------------------------------------|------------------------------------------- |
-| Qwen<br>Qwen1.5<br>Qwen2                            | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)  | Chinese<br>English    | 0.5B-110B<br>including quantized versions | base model<br>chat model<br>MoE model<br>code model                      |
-| ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4           | [Zhipu ChatGLM series models](https://github.com/THUDM)               | Chinese<br>English    | 6B-9B                                     | base model<br>chat model<br>code model<br>long text model  |
-| Baichuan<br>Baichuan2                             | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)           | Chinese<br>English    | 7B-13B<br>including quantized versions             | base model<br>chat model                       |
-| Yuan2                                          | [Langchao Yuan series models](https://github.com/IEIT-Yuan)             | Chinese<br>English    | 2B-102B                                | instruct model                                 |
-| XVerse                                         | [XVerse series models](https://github.com/xverse-ai)                    | Chinese<br>English    | 7B-65B                                 | base model<br>chat model<br>long text model<br>MoE model                |
-| LLaMA2                                         | [LLaMA2 series models](https://github.com/facebookresearch/llama)       | English            | 7B-70B<br>including quantized versions   | base model<br>chat model                       |
-| LLaMA3                   | [LLaMA3 series models](https://github.com/meta-llama/llama3)  | English       | 8B-70B<br>including quantized versions      | base model<br>chat model              |
-| Mistral<br>Mixtral                            | [Mistral series models](https://github.com/mistralai/mistral-src)       | English            | 7B-22B     | base model<br>instruct model<br>MoE model                     |
-| Yi<br>Yi1.5                                      | [01AI's YI series models](https://github.com/01-ai)                     | Chinese<br>English    | 6B-34B<br>including quantized             | base model<br>chat model<br>long text model            |
-| InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5         | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM) | Chinese<br>English | 1.8B-20B                            | base model<br>chat model<br>math model            |
-| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math<br>DeepSeek-V2<br>DeepSeek-Coder-V2          | [DeepSeek series models](https://github.com/deepseek-ai)       | Chinese<br>English    | 1.3B-236B                               | base model<br>chat model<br>MoE model<br>code model<br>math model |
-| MAMBA                                          | [MAMBA temporal convolution model](https://github.com/state-spaces/mamba) | English          | 130M-2.8B                              | base model                                 |
-| Gemma<br>Gemma2                                     | [Google Gemma series models](https://github.com/google/gemma_pytorch)   | English            | 2B-27B                                  | base model<br>instruct model                       |
-| MiniCPM                                        | [OpenBmB MiniCPM series models](https://github.com/OpenBMB/MiniCPM)     | Chinese<br>English    | 2B-3B                                  | chat model<br>MoE model                                 |
-| OpenBuddy                                      | [OpenBuddy series models](https://github.com/OpenBuddy/OpenBuddy)       | Chinese<br>English    | 7B-70B                                 | base model<br>chat model                       |
-| Orion                                          | [OrionStar AI series models](https://github.com/OrionStarAI)            | Chinese<br>English    | 14B                                    | base model<br>chat model                       |
-| BlueLM                                         | [VIVO BlueLM large model](https://github.com/vivo-ai-lab/BlueLM)        | Chinese<br>English    | 7B                                     | base model<br>chat model                       |
-| Ziya2                                          | [Fengshenbang series models](https://github.com/IDEA-CCNL/Fengshenbang-LM) | Chinese<br>English  | 13B                                    | base model<br>chat model                       |
-| Skywork                                        | [Skywork series models](https://github.com/SkyworkAI/Skywork) | Chinese<br>English    | 13B                                    | base model<br>chat model                       |
-| Zephyr                                         | Zephyr series models based on Mistral                                  | English            | 7B                                     | chat model                                 |
-| PolyLM                                         | [Tongyi Lab self-developed PolyLM series models](https://github.com/DAMO-NLP-MT/PolyLM) | Multilingual | 13B                                 | base model                                 |
-| SeqGPT                                         | [Tongyi Lab self-developed text understanding model for information extraction and text classification](https://github.com/Alibaba-NLP/SeqGPT) | Chinese | 560M                               | semantic understanding model                |
-| SUS                                            | [Southern University of Science and Technology model fine-tuned on YI](https://github.com/SUSTech-IDEA/SUS-Chat) | Chinese<br>English | 34B                              | chat model                                 |
-| Tongyi-Finance                                 | [Tongyi finance series models](https://github.com/QwenLM/Qwen)          | Chinese<br>English    | 14B                                    | base model<br>chat model<br>financial model        |
-| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen | [Ant CodeFuse series models](https://github.com/codefuse-ai)        | Chinese<br>English    | 6B-34B                                 | chat model<br>code model                      |
-| phi2/phi3                                | Microsoft's PHI series models    | English            | 3B/4B                               | base model<br>instruct model<br>code model      |
-| Grok | [X-ai](https://github.com/xai-org/grok-1) | English | 300B | base model |
-| TeleChat | [Tele-AI](https://github.com/Tele-AI/Telechat) | Chinese<br>English | 7B-12B | chat model |
-| dbrx | [databricks](https://github.com/databricks/dbrx) | English | 132B | base model<br>chat model  |
-| mengzi3 | [Langboat](https://github.com/Langboat/Mengzi3) | Chinese<br>English | 13B | base model  |
-| c4ai-command-r | [c4ai](https://cohere.com/command) | Multilingual | 35B-104B | chat model  |
-| WizardLM2 | [WizardLM2 series models](https://github.com/nlpxucan/WizardLM) | English | 7B-8x22B<br>including quantized versions | chat model<br>MoE model |
-| Atom | [Atom](https://github.com/LlamaFamily/Llama-Chinese) | Chinese | 7B| base model<br>chat model|
-| Chinese-LLaMA-Alpaca-2 | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | Chinese | 1.3B-13B| base model<br>chat model<br>long text model |
-| Chinese-LLaMA-Alpaca-3 | [Chinese-LLaMA-Alpaca-3](https://github.com/ymcui/Chinese-LLaMA-Alpaca-3) | Chinese | 8B| base model<br>chat model|
-| ModelScope-Agent | [ModelScope Agent series models](https://github.com/modelscope/modelscope-agent) | Chinese | 7B-14B| agent model |
+| Model Type                                                                                      | Model Introduction                                                                                                                             | Language           | Model Size                                | Model Type                                                        |
+|-------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|--------------------|-------------------------------------------|-------------------------------------------------------------------|
+| Qwen<br>Qwen1.5<br>Qwen2                                                                        | [Tongyi Qwen 1.0 and 1.5 series models](https://github.com/QwenLM)                                                                             | Chinese<br>English | 0.5B-110B<br>including quantized versions | base model<br>chat model<br>MoE model<br>code model               |
+| ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4<br>Codegeex4                                          | [Zhipu ChatGLM series models](https://github.com/THUDM)                                                                                        | Chinese<br>English | 6B-9B                                     | base model<br>chat model<br>code model<br>long text model         |
+| Baichuan<br>Baichuan2                                                                           | [Baichuan 1 and Baichuan 2](https://github.com/baichuan-inc)                                                                                   | Chinese<br>English | 7B-13B<br>including quantized versions    | base model<br>chat model                                          |
+| Yuan2                                                                                           | [Langchao Yuan series models](https://github.com/IEIT-Yuan)                                                                                    | Chinese<br>English | 2B-102B                                   | instruct model                                                    |
+| XVerse                                                                                          | [XVerse series models](https://github.com/xverse-ai)                                                                                           | Chinese<br>English | 7B-65B                                    | base model<br>chat model<br>long text model<br>MoE model          |
+| LLaMA2                                                                                          | [LLaMA2 series models](https://github.com/facebookresearch/llama)                                                                              | English            | 7B-70B<br>including quantized versions    | base model<br>chat model                                          |
+| LLaMA3                                                                                          | [LLaMA3 series models](https://github.com/meta-llama/llama3)                                                                                   | English            | 8B-70B<br>including quantized versions    | base model<br>chat model                                          |
+| Mistral<br>Mixtral                                                                              | [Mistral series models](https://github.com/mistralai/mistral-src)                                                                              | English            | 7B-22B                                    | base model<br>instruct model<br>MoE model                         |
+| Yi<br>Yi1.5                                                                                     | [01AI's YI series models](https://github.com/01-ai)                                                                                            | Chinese<br>English | 6B-34B<br>including quantized             | base model<br>chat model<br>long text model                       |
+| InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5                                          | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM)                                                                  | Chinese<br>English | 1.8B-20B                                  | base model<br>chat model<br>math model                            |
+| DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math<br>DeepSeek-V2<br>DeepSeek-Coder-V2 | [DeepSeek series models](https://github.com/deepseek-ai)                                                                                       | Chinese<br>English | 1.3B-236B                                 | base model<br>chat model<br>MoE model<br>code model<br>math model |
+| MAMBA                                                                                           | [MAMBA temporal convolution model](https://github.com/state-spaces/mamba)                                                                      | English            | 130M-2.8B                                 | base model                                                        |
+| Gemma<br>Gemma2                                                                                 | [Google Gemma series models](https://github.com/google/gemma_pytorch)                                                                          | English            | 2B-27B                                    | base model<br>instruct model                                      |
+| MiniCPM                                                                                         | [OpenBmB MiniCPM series models](https://github.com/OpenBMB/MiniCPM)                                                                            | Chinese<br>English | 2B-3B                                     | chat model<br>MoE model                                           |
+| OpenBuddy                                                                                       | [OpenBuddy series models](https://github.com/OpenBuddy/OpenBuddy)                                                                              | Chinese<br>English | 7B-70B                                    | base model<br>chat model                                          |
+| Orion                                                                                           | [OrionStar AI series models](https://github.com/OrionStarAI)                                                                                   | Chinese<br>English | 14B                                       | base model<br>chat model                                          |
+| BlueLM                                                                                          | [VIVO BlueLM large model](https://github.com/vivo-ai-lab/BlueLM)                                                                               | Chinese<br>English | 7B                                        | base model<br>chat model                                          |
+| Ziya2                                                                                           | [Fengshenbang series models](https://github.com/IDEA-CCNL/Fengshenbang-LM)                                                                     | Chinese<br>English | 13B                                       | base model<br>chat model                                          |
+| Skywork                                                                                         | [Skywork series models](https://github.com/SkyworkAI/Skywork)                                                                                  | Chinese<br>English | 13B                                       | base model<br>chat model                                          |
+| Zephyr                                                                                          | Zephyr series models based on Mistral                                                                                                          | English            | 7B                                        | chat model                                                        |
+| PolyLM                                                                                          | [Tongyi Lab self-developed PolyLM series models](https://github.com/DAMO-NLP-MT/PolyLM)                                                        | Multilingual       | 13B                                       | base model                                                        |
+| SeqGPT                                                                                          | [Tongyi Lab self-developed text understanding model for information extraction and text classification](https://github.com/Alibaba-NLP/SeqGPT) | Chinese            | 560M                                      | semantic understanding model                                      |
+| SUS                                                                                             | [Southern University of Science and Technology model fine-tuned on YI](https://github.com/SUSTech-IDEA/SUS-Chat)                               | Chinese<br>English | 34B                                       | chat model                                                        |
+| Tongyi-Finance                                                                                  | [Tongyi finance series models](https://github.com/QwenLM/Qwen)                                                                                 | Chinese<br>English | 14B                                       | base model<br>chat model<br>financial model                       |
+| CodeFuse-CodeLLaMA<br>CodeFuse-Codegeex2<br>CodeFuse-Qwen                                       | [Ant CodeFuse series models](https://github.com/codefuse-ai)                                                                                   | Chinese<br>English | 6B-34B                                    | chat model<br>code model                                          |
+| phi2/phi3                                                                                       | Microsoft's PHI series models                                                                                                                  | English            | 3B/4B                                     | base model<br>instruct model<br>code model                        |
+| Grok                                                                                            | [X-ai](https://github.com/xai-org/grok-1)                                                                                                      | English            | 300B                                      | base model                                                        |
+| TeleChat                                                                                        | [Tele-AI](https://github.com/Tele-AI/Telechat)                                                                                                 | Chinese<br>English | 7B-12B                                    | chat model                                                        |
+| dbrx                                                                                            | [databricks](https://github.com/databricks/dbrx)                                                                                               | English            | 132B                                      | base model<br>chat model                                          |
+| mengzi3                                                                                         | [Langboat](https://github.com/Langboat/Mengzi3)                                                                                                | Chinese<br>English | 13B                                       | base model                                                        |
+| c4ai-command-r                                                                                  | [c4ai](https://cohere.com/command)                                                                                                             | Multilingual       | 35B-104B                                  | chat model                                                        |
+| WizardLM2                                                                                       | [WizardLM2 series models](https://github.com/nlpxucan/WizardLM)                                                                                | English            | 7B-8x22B<br>including quantized versions  | chat model<br>MoE model                                           |
+| Atom                                                                                            | [Atom](https://github.com/LlamaFamily/Llama-Chinese)                                                                                           | Chinese            | 7B                                        | base model<br>chat model                                          |
+| Chinese-LLaMA-Alpaca-2                                                                          | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2)                                                                      | Chinese            | 1.3B-13B                                  | base model<br>chat model<br>long text model                       |
+| Chinese-LLaMA-Alpaca-3                                                                          | [Chinese-LLaMA-Alpaca-3](https://github.com/ymcui/Chinese-LLaMA-Alpaca-3)                                                                      | Chinese            | 8B                                        | base model<br>chat model                                          |
+| ModelScope-Agent                                                                                | [ModelScope Agent series models](https://github.com/modelscope/modelscope-agent)                                                               | Chinese            | 7B-14B                                    | agent model                                                       |
+| Numina                                                                                          | [AI-MO](https://huggingface.co/AI-MO)                                                                                                          | English            | 7B                                        | Math                                                              |
 
 #### MLLMs
 
-| Model Type         | Model Introduction                                                           | Language           | Model Size                         | Model Type         |
-|------------------|------------------------------------------------------------------------|--------------------|-------------------|------------------- |
-| Qwen-VL            | [Tongyi Qwen vision model](https://github.com/QwenLM)                        | Chinese<br>English | 7B<br>including quantized versions | base model<br>chat model |
-| Qwen-Audio         | [Tongyi Qwen speech model](https://github.com/QwenLM)                        | Chinese<br>English | 7B                                 | base model<br>chat model |
-| YI-VL              | [01AI's YI series vision models](https://github.com/01-ai)                   | Chinese<br>English | 6B-34B                             | chat model         |
-| XComposer2         | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM) | Chinese<br>English | 7B                                 | chat model         |
-| DeepSeek-VL        | [DeepSeek series vision models](https://github.com/deepseek-ai)              | Chinese<br>English | 1.3B-7B                            | chat model         |
-| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5  | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM) | Chinese<br>English | 3B-9B            | chat model          |
-| CogVLM<br>CogVLM2<br>CogAgent<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)         | Chinese<br>English | 9B-19B                            | chat model         |
-| Llava1.5<br>Llava1.6           | [Llava series models](https://github.com/haotian-liu/LLaVA)                  | English            | 7B-34B                             | chat model |
-| Llava-Next              | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                  | Chinese<br>English | 8B-110B                             | chat model |
-| mPLUG-Owl          | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)               | English            | 11B                                | chat model |
-| InternVL           | [InternVL](https://github.com/OpenGVLab/InternVL)                            | Chinese<br>English | 2B-25.5B<br>including quantized version                              | chat model |
-| Llava-llama3       | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)   | English            | 8B                                 | chat model |
-| Phi3-Vision                                      | Microsoft                        | English            | 4B              | chat model |
-| PaliGemma                                  | Google              | English | 3B              | chat model |
-| Florence                                  | Microsoft              | English | 0.23B-0.77B             | chat model |
+| Model Type                                              | Model Introduction                                                                     | Language           | Model Size                            | Model Type               |
+|---------------------------------------------------------|----------------------------------------------------------------------------------------|--------------------|---------------------------------------|--------------------------|
+| Qwen-VL                                                 | [Tongyi Qwen vision model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B<br>including quantized versions    | base model<br>chat model |
+| Qwen-Audio                                              | [Tongyi Qwen speech model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B                                    | base model<br>chat model |
+| YI-VL                                                   | [01AI's YI series vision models](https://github.com/01-ai)                             | Chinese<br>English | 6B-34B                                | chat model               |
+| XComposer2<br>XComposer2.5                              | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                    | chat model               |
+| DeepSeek-VL                                             | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
+| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5               | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)                     | Chinese<br>English | 3B-9B                                 | chat model               |
+| CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)                   | Chinese<br>English | 9B-19B                                | chat model               |
+| Llava1.5<br>Llava1.6                                    | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
+| Llava-Next<br>Llava-Next-Video                          | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
+| mPLUG-Owl                                               | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
+| InternVL<br>Mini-InternVL<br>InternVL2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 1B-40B<br>including quantized version | chat model               |
+| Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)             | English            | 8B                                    | chat model               |
+| Phi3-Vision                                             | Microsoft                                                                              | English            | 4B                                    | chat model               |
+| PaliGemma                                               | Google                                                                                 | English            | 3B                                    | chat model               |
+| Florence                                                | Microsoft                                                                              | English            | 0.23B-0.77B                           | chat model               |
 
 
 #### Diffusion Models
@@ -573,41 +624,41 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 ### Supported Open Source Datasets
 
-| Dataset Type | Training Task  | Documentation                                                                                                                                                                                                                                                                                                        |
-|--------------|:---------------|--------------------------------------------------------------- |
-| General      | Fine-tuning    | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
-| Agent        | Fine-tuning    | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                    |
-| General      | Human Alignment | hh-rlhf, 🔥hh-rlhf-cn, stack-exchange-paired.                            |
-| Code         | Fine-tuning    | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.    |
-| Medical      | Fine-tuning    | medical-en, medical-zh, 🔥disc-med-sft-zh.               |
-| Legal        | Fine-tuning    | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.               |
-| Math         | Fine-tuning    | 🔥blossom-math-zh, school-math-zh, open-platypus-en.                      |
-| SQL          | Fine-tuning    | text2sql-en, 🔥sql-create-context-en.                                    |
-| Text Generation | Fine-tuning | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                            |
-| Classification | Fine-tuning  | cmnli-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.           |
-| Quantization Assist | Quantization | pileval.  |
-| Other        | Fine-tuning    | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.   |
-| Vision       | Fine-tuning    | coco-en, 🔥coco-en-mini, coco-en-2, coco-en-2-mini, capcha-images.         |
-| Audio        | Fine-tuning    | aishell1-zh, 🔥aishell1-zh-mini.       |
+| Dataset Type        | Training Task   | Documentation                                                                                                                                                                                                                                |
+|---------------------|:----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| General             | Fine-tuning     | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
+| Agent               | Fine-tuning     | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                                                                                             |
+| General             | Human Alignment | hh-rlhf, 🔥hh-rlhf-cn, stack-exchange-paired.                                                                                                                                                                                                |
+| Code                | Fine-tuning     | code-alpaca-en, 🔥leetcode-python-en, 🔥codefuse-python-en, 🔥codefuse-evol-instruction-zh.                                                                                                                                                  |
+| Medical             | Fine-tuning     | medical-en, medical-zh, 🔥disc-med-sft-zh.                                                                                                                                                                                                   |
+| Legal               | Fine-tuning     | lawyer-llama-zh, tigerbot-law-zh, 🔥disc-law-sft-zh.                                                                                                                                                                                         |
+| Math                | Fine-tuning     | 🔥blossom-math-zh, school-math-zh, open-platypus-en.                                                                                                                                                                                         |
+| SQL                 | Fine-tuning     | text2sql-en, 🔥sql-create-context-en.                                                                                                                                                                                                        |
+| Text Generation     | Fine-tuning     | 🔥advertise-gen-zh, 🔥dureader-robust-zh.                                                                                                                                                                                                    |
+| Classification      | Fine-tuning     | cmnli-zh, 🔥jd-sentiment-zh, 🔥hc3-zh, 🔥hc3-en.                                                                                                                                                                                             |
+| Quantization Assist | Quantization    | pileval.                                                                                                                                                                                                                                     |
+| Other               | Fine-tuning     | finance-en, poetry-zh, webnovel-zh, generated-chat-zh, cls-fudan-news-zh, ner-jave-zh.                                                                                                                                                       |
+| Vision              | Fine-tuning     | coco-en, 🔥coco-en-mini, coco-en-2, coco-en-2-mini, capcha-images.                                                                                                                                                                           |
+| Audio               | Fine-tuning     | aishell1-zh, 🔥aishell1-zh-mini.                                                                                                                                                                                                             |
 
 ### Supported Technologies
 
-| Technology Name                                              |
-| ------------------------------------------------------------ |
-| 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685) |
-| 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf) |
-| 🔥GaLore:[GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/abs/2403.03507) |
-| 🔥LISA: [LISA: Layerwise Importance Sampling for Memory-Efficient Large Language Model Fine-Tuning](https://arxiv.org/abs/2403.17919) |
-| 🔥UnSloth: https://github.com/unslothai/unsloth               |
-| 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf) |
+| Technology Name                                                                                                                                                                         |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 🔥LoRA: [LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS](https://arxiv.org/abs/2106.09685)                                                                                          |
+| 🔥LoRA+: [LoRA+: Efficient Low Rank Adaptation of Large Models](https://arxiv.org/pdf/2402.12354.pdf)                                                                                   |
+| 🔥GaLore:[GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/abs/2403.03507)                                                                      |
+| 🔥LISA: [LISA: Layerwise Importance Sampling for Memory-Efficient Large Language Model Fine-Tuning](https://arxiv.org/abs/2403.17919)                                                   |
+| 🔥UnSloth: https://github.com/unslothai/unsloth                                                                                                                                         |
+| 🔥LLaMA PRO: [LLAMA PRO: Progressive LLaMA with Block Expansion](https://arxiv.org/pdf/2401.02415.pdf)                                                                                  |
 | 🔥SCEdit: [SCEdit: Efficient and Controllable Image Diffusion Generation via Skip Connection Editing](https://arxiv.org/abs/2312.11392)  < [arXiv](https://arxiv.org/abs/2312.11392)  \ |
-| 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914) |
-| LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307) |
-| Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751) |
-| Vision Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119) |
-| Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503) |
-| Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  \ |
-| Tuners provided by [PEFT](https://github.com/huggingface/peft), such as IA3, AdaLoRA, etc. |
+| 🔥NEFTune: [Noisy Embeddings Improve Instruction Finetuning](https://arxiv.org/abs/2310.05914)                                                                                          |
+| LongLoRA: [Efficient Fine-tuning of Long-Context Large Language Models](https://arxiv.org/abs/2309.12307)                                                                               |
+| Adapter: [Parameter-Efficient Transfer Learning for NLP](http://arxiv.org/abs/1902.00751)                                                                                               |
+| Vision Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)                                                                                                          |
+| Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)                                                                     |
+| Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  \  |
+| Tuners provided by [PEFT](https://github.com/huggingface/peft), such as IA3, AdaLoRA, etc.                                                                                              |
 
 ### Supported Hardware
 
@@ -619,67 +670,33 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Computing cards A10/A100, etc. | Support BF16 and FlashAttn                      |
 | Huawei Ascend NPU              |                                                 |
 
-## 📃 Documentation
+### Environment variables
 
-### Documentation Compiling
+- DATASET_ENABLE_CACHE: Enable cache when preprocess dataset, you can use `1/True` or `0/False`, default `False`
+- WEBUI_SHARE: Share your web-ui, you can use `1/True` or `0/False`, default `False`
+- SWIFT_UI_LANG: web-ui language, you can use `en` or `zh`, default `zh`
+- WEBUI_SERVER: web-ui host ip，`0.0.0.0` for all routes，`127.0.0.1` for local network only. Default `127.0.0.1`
+- WEBUI_PORT: web-ui port
+- USE_HF: Use huggingface endpoint or ModelScope endpoint to download models and datasets. you can use `1/True` or `0/False`, default `False`
+- FORCE_REDOWNLOAD: Force to re-download the dataset
 
-```shell
-make docs
-# Check docs/build/html/index.html in web-browser
-```
-
-### User Guide
-
-| Document Name                                                |
-| ------------------------------------------------------------ |
-| [Using Web-UI](docs/source_en/GetStarted/Web-ui.md)          |
-| [Using Tuners](docs/source_en/GetStarted/Tuners.md)          |
-| [LLM Inference](docs/source_en/LLM/LLM-inference.md)         |
-| [LLM Fine-tuning](docs/source_en/LLM/LLM-fine-tuning.md)     |
-| [LLM Evaluation](docs/source_en/LLM/LLM-eval.md)     |
-| [LLM Quantization](docs/source_en/LLM/LLM-quantization.md)   |
-| [LLM Deployment](docs/source_en/LLM/VLLM-inference-acceleration-and-deployment.md) |
-| [AnimateDiff Training](docs/source_en/AIGC/AnimateDiff-train-infer.md) |
-| [Human Preference Alignment Training Documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md) |
-
-### Reference Documentation
-| Document Name                                                |
-| ------------------------------------------------------------ |
-| [Command Line Arguments](docs/source_en/LLM/Command-line-parameters.md) |
-| [Supported Models and Datasets List](docs/source_en/LLM/Supported-models-datasets.md) |
-| [Customizing New Models and Datasets](docs/source_en/LLM/Customization.md) |
-| [Runtime Speed and Memory Benchmark](docs/source_en/LLM/Benchmark.md) |
+Other variables like `CUDA_VISIBLE_DEVICES` are also supported, which are not listed here.
 
 
-### Best Practices
+## 📚 Classroom
 
-| Best Practices Name                                                |
-| ------------------------------------------------------------ |
-| [Agent Fine-Tuning Best Practice](docs/source_en/LLM/Agent-fine-tuning-best-practice.md) |
-| [Agent Deployment Best Practice](docs/source_en/LLM/Agent-deployment-best-practice.md) |
-| [Self-Cognition Fine-Tuning Best Practice](docs/source_en/LLM/Self-cognition-best-practice.md) |
-|  [Qwen1.5 Best Practice](docs/source_en/LLM/Qwen1.5-best-practice.md) |
-|  [Multi-Modal Model Training Best Practice](docs/source_en/Multi-Modal/index.md) |
-|  [NPU Best Practice](docs/source_en/LLM/NPU-best-practice.md) |
-| [DPO Human Alignment Training](docs/source_en/LLM/DPO.md)   |
-| [ORPO Human Alignment Training](docs/source_en/LLM/ORPO.md)   |
-| [SimPO Human Alignment Training](docs/source_en/LLM/SimPO.md)   |
-
-
-### Deep Learning Tutorials
-
-| Tutorial Name                                                |
-|-------------------------------------------------------------- |
-| [Introduction to Deep Learning](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/A.%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E5%85%A5%E9%97%A8%E4%BB%8B%E7%BB%8D.md) |
-| [Large Model Basics](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/B.%E9%AD%94%E6%90%AD%E7%A4%BE%E5%8C%BA%E5%92%8CLLM%E5%A4%A7%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86.md) |
-| [Prompt Engineering](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/C.%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%B7%A5%E7%A8%8B-prompt%20engineering.md) |
-| [Transformer Architecture Introduction](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/D.Transformer%E7%BB%93%E6%9E%84.md) |
-| [Training Technique Selection](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/E.%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B.md) |
-| [Data Preprocessing](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/F.%E6%95%B0%E6%8D%AE%E9%A2%84%E5%A4%84%E7%90%86.md) |
-| [Quantization](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/G.%E9%87%8F%E5%8C%96.md) |
-| [Training](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/H.%E8%AE%AD%E7%BB%83.md) |
-| [Inference](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/I.LLM%E5%92%8C%E5%A4%9A%E6%A8%A1%E6%80%81%E6%A8%A1%E5%9E%8B%E9%AB%98%E6%95%88%E6%8E%A8%E7%90%86%E5%AE%9E%E8%B7%B5.md) |
-| [Deployment](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/J.%E9%83%A8%E7%BD%B2.md) |
+| Tutorial Name                                                                                                                                                                                                                           |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [Introduction to Deep Learning](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/A.%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E5%85%A5%E9%97%A8%E4%BB%8B%E7%BB%8D.md)                                                |
+| [Large Model Basics](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/B.%E9%AD%94%E6%90%AD%E7%A4%BE%E5%8C%BA%E5%92%8CLLM%E5%A4%A7%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86.md)                    |
+| [Prompt Engineering](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/C.%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%B7%A5%E7%A8%8B-prompt%20engineering.md)                                                                 |
+| [Transformer Architecture Introduction](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/D.Transformer%E7%BB%93%E6%9E%84.md)                                                                                   |
+| [Training Technique Selection](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/E.%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B.md)                                                                                     |
+| [Data Preprocessing](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/F.%E6%95%B0%E6%8D%AE%E9%A2%84%E5%A4%84%E7%90%86.md)                                                                                      |
+| [Quantization](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/G.%E9%87%8F%E5%8C%96.md)                                                                                                                       |
+| [Training](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/H.%E8%AE%AD%E7%BB%83.md)                                                                                                                           |
+| [Inference](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/I.LLM%E5%92%8C%E5%A4%9A%E6%A8%A1%E6%80%81%E6%A8%A1%E5%9E%8B%E9%AB%98%E6%95%88%E6%8E%A8%E7%90%86%E5%AE%9E%E8%B7%B5.md)                             |
+| [Deployment](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/J.%E9%83%A8%E7%BD%B2.md)                                                                                                                         |
 | [Evaluation](https://github.com/modelscope/modelscope-classroom/blob/main/LLM-tutorial/K.%E5%A4%A7%E6%A8%A1%E5%9E%8B%E8%87%AA%E5%8A%A8%E8%AF%84%E4%BC%B0%E7%90%86%E8%AE%BA%E5%92%8C%E5%AE%9E%E6%88%98--LLM%20Automatic%20Evaluation.md) |
 
 ## 🏛 License
@@ -696,14 +713,6 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
   year = {2024}
 }
 ```
-
-## ☎ Wechat Group
-
-You can contact us and communicate with us by adding our WeChat group:
-
-<p align="left">
-<img src="asset/wechat.png" width="250" style="display: inline-block;">
-</p>
 
 ## Star History
 

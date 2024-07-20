@@ -1,14 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import os
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
+from transformers.utils import strtobool
 
 from .media import MediaTag
 from .template import History
 
 PreprocessFunc = Callable[[HfDataset], HfDataset]
+dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
 
 def _reduce_columns(cls: type) -> type:
@@ -21,7 +24,7 @@ def _reduce_columns(cls: type) -> type:
     cls._patching = True
 
     def new_call_func(self, dataset: HfDataset) -> HfDataset:
-        self.column_state = set()
+        self.column_state = set(['images', 'videos', 'audios'])
         dataset = call_func(self, dataset)
         for k in dataset.features.keys():
             if k not in self.column_state:
@@ -160,11 +163,14 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         if self.media_type:
             if not isinstance(self.media_key, str):
                 row[self.media_name] = medias
+            else:
+                row[self.media_key] = medias
         return row
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
         dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('response') is not None)
+            self.preprocess,
+            load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response') is not None)
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -234,6 +240,7 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 hr.append([q[self.from_key], r[self.from_key]])
             query = conversations[-2][self.value_key]
             query_role = conversations[-2][self.from_key]
+            query_role = query_role if query_role == 'tool' else 'user'
             response = conversations[-1][self.value_key]
             system = sys
             history = h
@@ -250,6 +257,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             if self.media_type:
                 if not isinstance(self.media_key, str):
                     row[self.media_name] = medias
+                else:
+                    row[self.media_key] = medias
             return row
         except (AssertionError, SyntaxError):
             if self.error_strategy == 'raise':
@@ -259,7 +268,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
         dataset = dataset.map(
-            self.preprocess, load_from_cache_file=False).filter(lambda row: row.get('response') is not None)
+            self.preprocess,
+            load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response') is not None)
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -305,6 +315,8 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
             if self.media_type:
                 if not isinstance(self.media_key, str):
                     row[self.media_name] = medias
+                else:
+                    row[self.media_key] = medias
         except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
@@ -313,7 +325,8 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
         return row
 
     def __call__(self, dataset: HfDataset):
-        dataset = dataset.map(self.preprocess, load_from_cache_file=False).filter(lambda d: d.get('response'))
+        dataset = dataset.map(
+            self.preprocess, load_from_cache_file=dataset_enable_cache).filter(lambda d: d.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset

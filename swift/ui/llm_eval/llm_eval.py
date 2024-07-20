@@ -10,6 +10,7 @@ import gradio as gr
 import json
 import torch
 from gradio import Accordion, Tab
+from json import JSONDecodeError
 from modelscope import snapshot_download
 
 from swift.llm import EvalArguments
@@ -39,8 +40,8 @@ class LLMEval(BaseUI):
                 'en': 'More params'
             },
             'info': {
-                'zh': '以json格式填入',
-                'en': 'Fill in with json format'
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
             }
         },
         'evaluate': {
@@ -113,6 +114,7 @@ class LLMEval(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
+        more_params_cmd = ''
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
             compare_value = eval_args.get(key)
@@ -126,11 +128,14 @@ class LLMEval(BaseUI):
                 elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
                     value = True if value.lower() == 'true' else False
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
-                kwargs_is_list[key] = isinstance(value, list)
+                kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
                 other_kwargs[key] = value
             if key == 'more_params' and value:
-                more_params = json.loads(value)
+                try:
+                    more_params = json.loads(value)
+                except (JSONDecodeError or TypeError):
+                    more_params_cmd = value
 
         kwargs.update(more_params)
         if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
@@ -146,10 +151,13 @@ class LLMEval(BaseUI):
             })
         params = ''
         for e in kwargs:
-            if e in kwargs_is_list and kwargs_is_list[e]:
+            if isinstance(kwargs[e], list):
+                params += f'--{e} {" ".join(kwargs[e])} '
+            elif e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
+        params += more_params_cmd + ' '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)

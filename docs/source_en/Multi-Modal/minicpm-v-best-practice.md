@@ -9,6 +9,7 @@ Using minicpm-v-3b-chat as an example, if you want to use the updated version of
 
 ## Environment Setup
 ```shell
+# Please use 'ms-swift>=2.2' or the main branch.
 pip install 'ms-swift[llm]' -U
 ```
 
@@ -135,7 +136,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-en-2-mini \
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments)  support json and jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json and jsonl formats. Here is an example of a custom dataset:
 
 (Supports multi-turn conversations, but the total round of conversations can only contain one image. Supports local path or URL input.)
 

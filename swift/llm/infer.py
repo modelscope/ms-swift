@@ -15,7 +15,7 @@ from transformers.utils import is_torch_npu_available
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
-from .utils import (DeployArguments, InferArguments, Template, get_additional_saved_files, get_dataset,
+from .utils import (DeployArguments, InferArguments, MediaTag, Template, get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, inference, inference_stream, is_adapter, is_quant_model,
                     sample_dataset, set_generation_config)
 
@@ -29,8 +29,10 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     target_dir: str,
                     *,
                     save_safetensors: bool = True,
-                    sft_args_kwargs: Dict[str, Any],
+                    sft_args_kwargs: Optional[Dict[str, Any]] = None,
                     **kwargs) -> None:
+    if sft_args_kwargs is None:
+        sft_args_kwargs = {}
     if model is not None:
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
     if hasattr(tokenizer, 'processor'):
@@ -146,6 +148,9 @@ def prepare_model_template(args: InferArguments,
     if device_map == 'auto':
         model_kwargs['low_cpu_mem_usage'] = True
     model_kwargs['device_map'] = device_map
+    if args.device_max_memory:
+        assert len(args.device_max_memory) == torch.cuda.device_count()
+        model_kwargs['max_memory'] = {i: mem for i, mem in enumerate(args.device_max_memory)}
 
     # Loading Model and Tokenizer
     if hasattr(args, 'quant_config'):
@@ -210,7 +215,7 @@ def prepare_model_template(args: InferArguments,
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        if is_quant_model(args.model_type, model):
+        if args.lora_request_list is not None and (is_quant_model(args.model_type, model) or args.is_multimodal):
             # gptq awq does not support lora switching
             args.lora_request_list = None
             logger.warning('The current model does not support LoRA switching. '
@@ -242,16 +247,18 @@ def prepare_model_template(args: InferArguments,
     return model, template
 
 
-def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue']) -> None:
-    text = 'Input a media path or URL <<< '
-    images = infer_kwargs.get('images') or []
+def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue'],
+                    media_type: Literal['image', 'video', 'audio']) -> None:
+    media_key = MediaTag.media_keys[media_type]
+    a_an = 'an' if media_type[0] in {'i', 'a'} else 'a'
+    text = f'Input {a_an} {media_type} path or URL <<< '
+    media_files = infer_kwargs.get(media_key) or []
     if infer_media_type == 'none':
         return
-    if infer_media_type == 'round' or len(images) == 0:
-        image = input(text)
-        images += [image or None]
-    if len(images) > 0:
-        infer_kwargs['images'] = images
+    if infer_media_type == 'round' or len(media_files) == 0:
+        media_files += [input(text) or None]
+    if len(media_files) > 0:
+        infer_kwargs[media_key] = media_files
 
 
 def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
@@ -365,7 +372,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 history = []
                 infer_kwargs = {}
 
-            read_media_file(infer_kwargs, args.infer_media_type)
+            read_media_file(infer_kwargs, args.infer_media_type, args.media_type)
             infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:
                 system = template.default_system
@@ -407,9 +414,10 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 'response': response,
                 'history': history,
             }
-            images = infer_kwargs.get('images')
-            if images is not None:
-                obj['images'] = images
+            for media_key in MediaTag.media_keys.values():
+                media_files = infer_kwargs.get(media_key)
+                if media_files is not None:
+                    obj[media_key] = media_files
             history = new_history
             if jsonl_path is not None:
                 append_to_jsonl(jsonl_path, obj)
@@ -456,15 +464,16 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 request = {'query': data['query']}
                 history = data.get('history')
                 system = data.get('system')
-                images = data.get('images')
                 if history is None:
                     history = []
                 request['history'] = history
                 if system is None and template.use_default_system:
                     system = template.default_system
                 request['system'] = system
-                if images is not None:
-                    request['images'] = images
+                for media_key in MediaTag.media_keys.values():
+                    media_files = data.get(media_key)
+                    if media_files is not None:
+                        request[media_key] = media_files
                 request['truncation_strategy'] = args.truncation_strategy
                 request_list.append(request)
             resp_list = inference_vllm(llm_engine, template, request_list, use_tqdm=True)
@@ -480,9 +489,10 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     'label': request.pop('label', None),
                     'history': request['history'],
                 }
-                images = request.get('images')
-                if images is not None:
-                    obj['images'] = images
+                for media_key in MediaTag.media_keys.values():
+                    media_files = request.get(media_key)
+                    if media_files is not None:
+                        obj[media_key] = media_files
                 if jsonl_path is not None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)
@@ -493,7 +503,6 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 kwargs = {'query': data['query']}
                 history = data.get('history')
                 system = data.get('system')
-                images = data.get('images')
                 tools = data.get('tools')
                 objects = data.get('objects')
                 if args.verbose and system is not None:
@@ -504,8 +513,10 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 if system is None and template.use_default_system:
                     system = template.default_system
                 kwargs['system'] = system
-                if images is not None:
-                    kwargs['images'] = images
+                for media_key in MediaTag.media_keys.values():
+                    media_files = data.get(media_key)
+                    if media_files is not None:
+                        kwargs[media_key] = media_files
                 if tools is not None:
                     kwargs['tools'] = tools
                 if objects is not None:
@@ -534,17 +545,22 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     'label': label,
                     'history': kwargs['history'],
                 }
-                if images is not None:
-                    obj['images'] = images
+                for media_key in MediaTag.media_keys.values():
+                    media_files = kwargs.get(media_key)
+                    if media_files is not None:
+                        obj[media_key] = media_files
                 if jsonl_path is not None:
                     append_to_jsonl(jsonl_path, obj)
                 result.append(obj)
                 if args.verbose:
                     print()
                     print(f'[LABELS]{label}')
-                    if images is not None:
-                        print(f'[IMAGES]{images}')
+                    for media_key in MediaTag.media_keys.values():
+                        media_files = kwargs.get(media_key)
+                        if media_files is not None:
+                            print(f'[{media_key.upper()}]{media_files}')
                     print('-' * 50, flush=True)
+
     if jsonl_path is not None:
         logger.info(f'save_result_path: {jsonl_path}')
     if not args.eval_human and args.show_dataset_sample == 10:  # is default
