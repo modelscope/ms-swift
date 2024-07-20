@@ -52,6 +52,7 @@ class TemplateType:
     llama_llava_next = 'llama-llava-next'
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
+    mistral_nemo = 'mistral-nemo'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -573,6 +574,7 @@ class Template:
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
             context_list = self.tool_prompt.copy() if qr == 'tool' else self.prompt.copy()
             if i < len(history) - 1:
+                context_list = [context for context in context_list if '{{SYSTEM}}' in context]
                 context_list.append('{{RESPONSE}}')
                 if history[i + 1][0]:
                     context_list += self.chat_sep
@@ -582,7 +584,7 @@ class Template:
                 context_list += self.suffix
             if q or r:
                 self._concat_context_list(
-                    context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
+                    context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
@@ -1150,6 +1152,11 @@ register_template(
     TemplateType.llama,
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+
+register_template(
+    TemplateType.mistral_nemo,
+    Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}} [/INST]'], ['[INST] '], ['</s>']))
+
 
 register_template(
     TemplateType.llama3,
