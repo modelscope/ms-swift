@@ -188,7 +188,7 @@ class Template:
             prefix = self._replace_system(prefix)
         self.prefix = prefix
         self.system_prefix = system_prefix
-        if self.system_prefix is None:
+        if self.system_prefix is None and not any(['{{SYSTEM}}' in context for context in prompt]):
             assert default_system is None, 'The template does not support `system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
@@ -562,7 +562,7 @@ class Template:
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
                 loss_scale_list.append(0.)
-        if system is None:
+        if system is None or any(['{{SYSTEM}}' in context for context in self.prompt]):
             prefix = self.prefix
         else:
             prefix = self.system_prefix
@@ -574,7 +574,7 @@ class Template:
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
             context_list = self.tool_prompt.copy() if qr == 'tool' else self.prompt.copy()
             if i < len(history) - 1:
-                context_list = [context for context in context_list if '{{SYSTEM}}' in context]
+                context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
                 context_list.append('{{RESPONSE}}')
                 if history[i + 1][0]:
                     context_list += self.chat_sep
@@ -1155,7 +1155,7 @@ register_template(
 
 register_template(
     TemplateType.mistral_nemo,
-    Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}} [/INST]'], ['[INST] '], ['</s>']))
+    Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}} [/INST]'], ['[INST] '], ['</s>'], 'You are a helpful assistant!'))
 
 
 register_template(
