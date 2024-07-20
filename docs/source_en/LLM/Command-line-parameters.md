@@ -370,6 +370,7 @@ deploy parameters inherit from infer parameters, with the following added parame
 
 - `--host`: Default is `'127.0.0.1`.
 - `--port`: Default is `8000`.
+- `--api_key`: The default is `None`, meaning that the request will not be subjected to api_key verification.
 - `--ssl_keyfile`: Default is `None`.
 - `--ssl_certfile`: Default is `None`.
 

@@ -18,13 +18,19 @@ from .template import TEMPLATE_MAPPING, History
 from .utils import Messages, history_to_messages
 
 
-def get_model_list_client(host: str = '127.0.0.1', port: str = '8000', **kwargs) -> ModelList:
+def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:
+    if api_key is None:
+        return {}
+    return {'headers': {'Authorization': f'Bearer {api_key}'}}
+
+
+def get_model_list_client(host: str = '127.0.0.1', port: str = '8000', api_key: str = 'EMPTY', **kwargs) -> ModelList:
     url = kwargs.pop('url', None)
     if url is None:
         url = f'http://{host}:{port}/v1'
     url = url.rstrip('/')
     url = f'{url}/models'
-    resp_obj = requests.get(url).json()
+    resp_obj = requests.get(url, **_get_request_kwargs(api_key)).json()
     return from_dict(ModelList, resp_obj)
 
 
@@ -175,6 +181,7 @@ def _pre_inference_client(model_type: str,
                           request_config: Optional[XRequestConfig] = None,
                           host: str = '127.0.0.1',
                           port: str = '8000',
+                          api_key: str = 'EMPTY',
                           **kwargs) -> Tuple[str, Dict[str, Any], bool]:
     if images is None:
         images = []
@@ -234,6 +241,7 @@ def inference_client(
     request_config: Optional[XRequestConfig] = None,
     host: str = '127.0.0.1',
     port: str = '8000',
+    api_key: str = 'EMPTY',
     **kwargs
 ) -> Union[ChatCompletionResponse, CompletionResponse, Iterator[ChatCompletionStreamResponse],
            Iterator[CompletionStreamResponse]]:
@@ -251,6 +259,7 @@ def inference_client(
         request_config=request_config,
         host=host,
         port=port,
+        api_key=api_key,
         **kwargs)
 
     if request_config.stream:
@@ -258,7 +267,7 @@ def inference_client(
             ret_cls = ChatCompletionStreamResponse
         else:
             ret_cls = CompletionStreamResponse
-        resp = requests.post(url, json=data, stream=True)
+        resp = requests.post(url, json=data, stream=True, **_get_request_kwargs(api_key))
 
         def _gen_stream() -> Union[Iterator[ChatCompletionStreamResponse], Iterator[CompletionStreamResponse]]:
             for data in resp.iter_lines():
@@ -273,7 +282,7 @@ def inference_client(
 
         return _gen_stream()
     else:
-        resp_obj = requests.post(url, json=data).json()
+        resp_obj = requests.post(url, json=data, **_get_request_kwargs(api_key)).json()
         if is_chat_request:
             ret_cls = ChatCompletionResponse
         else:
@@ -296,6 +305,7 @@ async def inference_client_async(
     request_config: Optional[XRequestConfig] = None,
     host: str = '127.0.0.1',
     port: str = '8000',
+    api_key: str = 'EMPTY',
     **kwargs
 ) -> Union[ChatCompletionResponse, CompletionResponse, AsyncIterator[ChatCompletionStreamResponse],
            AsyncIterator[CompletionStreamResponse]]:
@@ -313,6 +323,7 @@ async def inference_client_async(
         request_config=request_config,
         host=host,
         port=port,
+        api_key=api_key,
         **kwargs)
 
     if request_config.stream:
@@ -324,7 +335,7 @@ async def inference_client_async(
         async def _gen_stream(
         ) -> Union[AsyncIterator[ChatCompletionStreamResponse], AsyncIterator[CompletionStreamResponse]]:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=data) as resp:
+                async with session.post(url, json=data, **_get_request_kwargs(api_key)) as resp:
                     async for _data in resp.content:
                         _data = _parse_stream_data(_data)
                         if _data == '[DONE]':
@@ -342,7 +353,7 @@ async def inference_client_async(
         else:
             ret_cls = CompletionResponse
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=data) as resp:
+            async with session.post(url, json=data, **_get_request_kwargs(api_key)) as resp:
                 resp_obj = await resp.json()
                 if resp_obj['object'] == 'error':
                     raise HTTPError(resp_obj['message'])

@@ -92,8 +92,13 @@ def is_generation_template(template_type: str) -> bool:
     return is_generation
 
 
-async def _prepare_request(request: Union[ChatCompletionRequest, CompletionRequest]):
+async def _prepare_request(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global template, model, llm_engine, _args
+    if _args.api_key is not None:
+        is_valid = _check_api_key(raw_request, _args.api_key)
+        if not is_valid:
+            return create_error_response(HTTPStatus.BAD_REQUEST, 'API key error')
+
     if _args.infer_backend == 'vllm':
         from .utils import vllm_context
         model_or_engine = llm_engine
@@ -176,7 +181,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     global llm_engine, template, _args
     from .utils import VllmGenerationConfig
 
-    result = await _prepare_request(request)
+    result = await _prepare_request(request, raw_request)
     if isinstance(result, JSONResponse):
         return result
 
@@ -342,10 +347,20 @@ class _GenerationConfig(GenerationConfig):
         return f'GenerationConfig({gen_kwargs})'
 
 
+def _check_api_key(raw_request: Request, api_key: str) -> bool:
+    authorization = dict(raw_request.headers).get('authorization')
+    if authorization is None:
+        return False
+    if not authorization.startswith('Bearer '):
+        return False
+    request_api_key = authorization[7:]
+    return request_api_key == api_key
+
+
 @torch.inference_mode()
 async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global model, template, _args
-    result = await _prepare_request(request)
+    result = await _prepare_request(request, raw_request)
     if isinstance(result, JSONResponse):
         return result
 
