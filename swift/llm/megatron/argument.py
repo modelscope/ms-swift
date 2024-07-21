@@ -18,21 +18,6 @@ config_mapping = {
 }
 
 
-def load_megatron_config(model_dir: str) -> Dict[str, Any]:
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    megatron_config = {}
-    for k, value in config_mapping.items():
-        for v in value:
-            assert hasattr(model_config, v)
-            if k == 'rotary_base':
-                megatron_config[k] = int(getattr(model_config, v))
-            else:
-                megatron_config[k] = getattr(model_config, v)
-    assert getattr(model_config, 'hidden_act') == 'silu'
-    megatron_config['swiglu'] = True
-    return megatron_config
-
-
 @dataclass
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
@@ -156,6 +141,27 @@ class MegatronMixin:
 
 @dataclass
 class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
+
+
+    @staticmethod
+    def load_megatron_config(model_dir: str) -> Dict[str, Any]:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        megatron_config = {}
+        for k, value in config_mapping.items():
+            for v in value:
+                assert hasattr(model_config, v)
+                if k == 'rotary_base':
+                    megatron_config[k] = int(getattr(model_config, v))
+                else:
+                    megatron_config[k] = getattr(model_config, v)
+        assert getattr(model_config, 'hidden_act') == 'silu'
+        megatron_config['swiglu'] = True
+        return megatron_config
+
+    @staticmethod
+    def from_sft_args(args):
+        pass
+
 
     def __post_init__(self):
         if self.group_query_attention is None:

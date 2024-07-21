@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
+import torch.distributed as dist
 import numpy as np
 import torch
 import transformers
@@ -476,6 +477,11 @@ class SftArguments(ArgumentsBase):
     ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl', 'hccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
+    # megatron
+    train_backend: Literal['transformers', 'megatron'] = 'transformers'
+    megatron_ckpt_dir: Optional[str] = None
+    tp: int = 1
+    pp: int = 1
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
@@ -959,7 +965,15 @@ class SftArguments(ArgumentsBase):
         if use_torchacc():
             self.dataloader_drop_last = True
 
-        self._init_training_args()
+        if self.train_backend == 'transformers':
+            self._init_training_args()
+        else:
+            assert is_dist(), 'Please start in distributed mode.'
+            dist.init_process_group(backend=self.ddp_backend)
+            if self.megatron_ckpt_dir is None:
+                self.megatron_ckpt_dir = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
+            self.megatron_ckpt_dir = self._check_path(self.megatron_ckpt_dir)
+            logger.info(f'Setting args.megatron_ckpt_dir: {self.megatron_ckpt_dir}')
 
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
@@ -967,12 +981,13 @@ class SftArguments(ArgumentsBase):
             self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
-            self.training_args.output_dir = self.output_dir
-            self.training_args.run_name = self.output_dir
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
+        if self.train_backend == 'transformers':
+            self.training_args.output_dir = self.output_dir
+            self.training_args.run_name = self.output_dir
             self.training_args.logging_dir = self.logging_dir
 
     def _init_training_args(self) -> None:
@@ -1430,9 +1445,11 @@ class ExportArguments(InferArguments):
     # megatron
     to_megatron: bool = False
     to_hf: bool = False
+    megatron_output_dir: Optional[str] = None
+    hf_output_dir: Optional[str] = None
     tp: int = 1
     pp: int = 1
-    check_model_forward: bool = False
+    check_model_forward: bool = True
 
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token
@@ -1475,9 +1492,17 @@ class ExportArguments(InferArguments):
             os.environ['MASTER_ADDR'] = '127.0.0.1'
             os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
             assert is_dist(), 'Please start in distributed mode.'
-            import torch.distributed as dist
             dist.init_process_group(backend='nccl')
-
+        if self.to_megatron:
+            if self.megatron_output_dir is None:
+                self.megatron_output_dir = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
+            self.megatron_output_dir = self._check_path(self.megatron_output_dir)
+            logger.info(f'Setting args.megatron_output_dir: {self.megatron_output_dir}')
+        if self.to_hf:
+            if self.hf_output_dir is None:
+                self.hf_output_dir = f'{args.model_type}-hf'
+            self.hf_output_dir = self._check_path(self.hf_output_dir)
+            logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
 
 @dataclass
 class RLHFArguments(SftArguments):

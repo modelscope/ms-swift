@@ -44,7 +44,7 @@ def model_provider(pre_process=True, post_process=True):
 def convert_hf_to_megatron(
     hf_model,
     extra_args: Dict[str, Any],
-    check_model_forward: bool = False,
+    check_model_forward: bool = True,
 ) -> None:
     megatron_patch_path = os.environ['PAI_MEGATRON_PATCH_PATH']
     from megatron.training.initialize import initialize_megatron

@@ -4,7 +4,9 @@ from functools import partial
 from typing import Any, Dict, Union
 
 import json
+import sys
 import torch
+import torch.distributed as dist
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -15,7 +17,7 @@ from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
                          get_logger, get_main, get_model_info, is_ddp_plus_mp, is_dist, is_local_master, is_master,
-                         plot_images, preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
+                         plot_images, preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc, subprocess_run, safe_ddp_context)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset, get_model_tokenizer, get_template,
@@ -24,10 +26,53 @@ from .utils import (LazyLLMDataset, SftArguments, Template, dataset_map, get_dat
 logger = get_logger()
 
 
-def llm_sft(args: SftArguments) -> Dict[str, Union[str, Any]]:
+def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
+    assert os.path.exists(args.megatron_ckpt_dir), (
+        f'Please run `CUDA_VISIBLE_DEVICES=0 swift export --model_type {args.model_type} --tp {args.tp} --pp {args.pp} '
+        f'--megatron_output_dir {args.megatron_ckpt_dir} --to_megatron true`to convert the weights to Megatron format.'
+    )
+    from swift.llm import get_model_tokenizer
+    from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf, get_model_seires,
+                                    patch_megatron, model_provider)
+    model_type = 'qwen2-0_5b'
+    _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+    res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
+    res['model_series'] = get_model_seires(model_type)
+    res.update(MegatronArguments.to_megatron_args(args))
+    res.update({
+        'train_iters': 1000,
+        'eval_iters': 100,
+        'lr_warmup_iters': 100,
+        'save': 'output/megatron',
+        'tensorboard_dir': 'output/megatron/runs',
+        'bf16': args.bf16,
+        'load': args.megatron_ckpt_dir,
+    })
+    megatron_args = MegatronArguments(**res)
+    extra_args = megatron_args.parse_to_megatron()
+    extra_args['dataset'] = 'alpaca-zh#10000'
+    extra_args['template_type'] = 'default-generation'
+    from swift.llm.utils.megatron_utils import forward_step, train_valid_test_datasets_provider
+    from megatron.core.enums import ModelType
+    from megatron.training import pretrain
+
+    train_valid_test_datasets_provider.is_distributed = True
+    patch_megatron(tokenizer)
+    pretrain(
+        train_valid_test_datasets_provider,
+        model_provider,
+        ModelType.encoder_or_decoder,
+        forward_step,
+        args_defaults=extra_args)
+
+
+def llm_sft(args: SftArguments) -> Dict[str, Any]:
 
     logger.info(f'args: {args}')
     seed_everything(args.seed)
+    if args.train_backend == 'megatron':
+        return llm_sft_megatron(args)
+
     training_args = args.training_args
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
