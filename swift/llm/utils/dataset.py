@@ -1458,7 +1458,6 @@ register_dataset(
     hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
     tags=['zhihu', 'qa'])
 
-
 register_dataset(
     DatasetName.zhihu_kol,
     'swift/Zhihu-KOL', ['default'],
