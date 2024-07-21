@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
-import torch.distributed as dist
 import numpy as np
 import torch
+import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
@@ -1503,6 +1503,7 @@ class ExportArguments(InferArguments):
                 self.hf_output_dir = f'{args.model_type}-hf'
             self.hf_output_dir = self._check_path(self.hf_output_dir)
             logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
+
 
 @dataclass
 class RLHFArguments(SftArguments):

@@ -142,7 +142,6 @@ class MegatronMixin:
 @dataclass
 class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
 
-
     @staticmethod
     def load_megatron_config(model_dir: str) -> Dict[str, Any]:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
@@ -161,7 +160,6 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
     @staticmethod
     def from_sft_args(args):
         pass
-
 
     def __post_init__(self):
         if self.group_query_attention is None:

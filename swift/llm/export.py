@@ -200,10 +200,9 @@ def llm_export(args: ExportArguments) -> None:
     elif args.to_megatron:
         if os.path.exists(args.megatron_output_dir):
             logger.info(f'The file in Megatron format already exists in the directory: {args.megatron_output_dir}. '
-                         'Skipping the conversion process.')
+                        'Skipping the conversion process.')
         else:
-            from swift.llm.megatron import (MegatronArguments, convert_hf_to_megatron,
-                                           get_model_seires, patch_megatron)
+            from swift.llm.megatron import (MegatronArguments, convert_hf_to_megatron, get_model_seires, patch_megatron)
             model, tokenizer = get_model_tokenizer(args.model_type, torch.float32, {'device_map': 'cpu'})
             res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
             res['model_series'] = get_model_seires(args.model_type)
@@ -220,10 +219,9 @@ def llm_export(args: ExportArguments) -> None:
     elif args.to_hf:
         if os.path.exists(args.hf_output_dir):
             logger.info(f'The file in HF format already exists in the directory: {args.hf_output_dir}. '
-                         'Skipping the conversion process.')
+                        'Skipping the conversion process.')
         else:
-            from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf,
-                                            get_model_seires, patch_megatron)
+            from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf, get_model_seires, patch_megatron)
             model, tokenizer = get_model_tokenizer(args.model_type, torch.float32, {'device_map': 'cpu'})
             res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
             res['model_series'] = get_model_seires(args.model_type)
