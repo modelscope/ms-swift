@@ -52,6 +52,7 @@ class TemplateType:
     llama_llava_next = 'llama-llava-next'
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
+    mistral_nemo = 'mistral-nemo'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -187,7 +188,7 @@ class Template:
             prefix = self._replace_system(prefix)
         self.prefix = prefix
         self.system_prefix = system_prefix
-        if self.system_prefix is None:
+        if self.system_prefix is None and not any(['{{SYSTEM}}' in context for context in prompt]):
             assert default_system is None, 'The template does not support `system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
@@ -561,7 +562,10 @@ class Template:
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
                 loss_scale_list.append(0.)
+        prompt = self.prompt.copy()
         if system is None:
+            prompt = [context for context in prompt if '{{SYSTEM}}' not in context]
+        if system is None or any(['{{SYSTEM}}' in context for context in prompt]):
             prefix = self.prefix
         else:
             prefix = self.system_prefix
@@ -571,8 +575,9 @@ class Template:
         history_roles.append([query_role, 'assistant'])
 
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
-            context_list = self.tool_prompt.copy() if qr == 'tool' else self.prompt.copy()
+            context_list = self.tool_prompt.copy() if qr == 'tool' else prompt.copy()
             if i < len(history) - 1:
+                context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
                 context_list.append('{{RESPONSE}}')
                 if history[i + 1][0]:
                     context_list += self.chat_sep
@@ -582,7 +587,7 @@ class Template:
                 context_list += self.suffix
             if q or r:
                 self._concat_context_list(
-                    context_list, res_context_list, loss_scale_list, query=q, response=r, round0=i)
+                    context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
@@ -1151,6 +1156,9 @@ register_template(
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
+register_template(TemplateType.mistral_nemo,
+                  Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}} [/INST]'], ['[INST] '], ['</s>']))
+
 register_template(
     TemplateType.llama3,
     Template(['<|begin_of_text|>'], [
@@ -1450,8 +1458,11 @@ class Internvl2Template(InternvlTemplate):
         if history is None:
             history = []
         example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<image>')
-        if images_path and example.get('images'):
-            example['images'].extend(images_path)
+        if images_path:
+            images = example.get('images') or []
+            images.extend(images_path)
+            example['images'] = images
+        images_path = example.get('images') or []
         inputs, _ = super(InternvlTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1752,7 +1763,7 @@ class LlavaHfTemplate(Template):
             images = self._prepare_vllm_images(images)
         if images:
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
-            inputs['pixel_values'] = image_inputs['pixel_values'].squeeze(0)
+            inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
@@ -1876,6 +1887,12 @@ class Llava1_6MistralTemplate(LlavaHfTemplate):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
+
 
 class Llava1_6VicunaTemplate(LlavaHfTemplate):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
@@ -1885,6 +1902,12 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
 
 
 register_template(
@@ -1900,6 +1923,12 @@ class LLavaYiTemplate(LlavaHfTemplate):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super().encode(example)
+        if 'pixel_values' in inputs:
+            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
+        return inputs, {}
 
 
 register_template(

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import importlib
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple, Union
 
@@ -41,6 +42,13 @@ class GaLoreConfig:
     galore_scale: float = 1.0
     proj_type: str = 'std'
     optim_per_parameter: bool = False
+    quantize: bool = False
+    proj_quant: bool = False
+    proj_bits: int = 4
+    proj_group_size: int = 256
+    cos_threshold: float = 0.4
+    gamma_proj: int = 2
+    queue_size: int = 5
 
 
 class GaloreOptimizerWrapper(Optimizer):
@@ -82,6 +90,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments, co
 
         logger.info(f'Enable GaLore for weights in module: {module_name}')
         galore_params.append(module.weight)
+
     id_galore_params = [id(p) for p in galore_params]
     galore_defaults = {
         'rank': config.rank,
@@ -90,9 +99,17 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments, co
         'proj_type': config.proj_type,
         **defaults
     }
-    optim_cls, optim_kwargs = get_optimizer(args)
+    if config.quantize:
+        galore_defaults['quant'] = config.proj_quant
+        galore_defaults['quant_n_bit'] = config.proj_bits
+        galore_defaults['quant_group_size'] = config.proj_group_size
+        galore_defaults['cos_threshold'] = config.cos_threshold
+        galore_defaults['gamma_proj'] = config.gamma_proj
+        galore_defaults['queue_size'] = config.queue_size
+    optim_cls, optim_kwargs = get_optimizer(args, config)
 
-    if config.optim_per_parameter:
+    if config.optim_per_parameter and not config.quantize:
+        # q-galore does not support optim_per_parameter
         optimizer_dict = {}
         galore_defaults['update_proj_gap'] = galore_defaults['update_proj_gap'] * 2
         for p in model.parameters():
@@ -150,7 +167,7 @@ def create_optimizer_and_scheduler(model: nn.Module, args: TrainingArguments, co
         return optim, scheduler
 
 
-def get_optimizer(args: TrainingArguments) -> Tuple[Any, Any]:
+def get_optimizer(args: TrainingArguments, config: GaLoreConfig) -> Tuple[Any, Any]:
     # parse args.optim_args
     optim_args = {}
     if args.optim_args:
@@ -169,7 +186,18 @@ def get_optimizer(args: TrainingArguments) -> Tuple[Any, Any]:
         optimizer_cls = GaLoreAdafactor
         optimizer_kwargs.update({'scale_parameter': False, 'relative_step': False})
     elif args.optim in ('adamw_hf', 'adamw_torch'):
-        from .adamw import GaLoreAdamW
+        if config.quantize:
+            assert importlib.util.find_spec('q_galore_torch') is not None, \
+                'Please install q-galore by `pip install q_galore_torch`'
+            from swift.utils import get_dist_setting
+            _, _, world_size, _ = get_dist_setting()
+            if world_size > 1:
+                # from q_galore_torch import QGaLoreAdamW8bit_simulate as GaLoreAdamW
+                from q_galore_torch import QGaLoreAdamW8bit as GaLoreAdamW
+            else:
+                from q_galore_torch import QGaLoreAdamW8bit as GaLoreAdamW
+        else:
+            from .adamw import GaLoreAdamW
         optimizer_cls = GaLoreAdamW
         optimizer_kwargs.update(adam_kwargs)
     elif 'adamw' in args.optim and '8bit' in args.optim:

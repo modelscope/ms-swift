@@ -10,6 +10,7 @@ import gradio as gr
 import json
 import torch
 from gradio import Accordion, Tab
+from json import JSONDecodeError
 from modelscope import GenerationConfig, snapshot_download
 
 from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, XRequestConfig, inference_client,
@@ -215,6 +216,7 @@ class LLMInfer(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
+        more_params_cmd = ''
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
             compare_value = deploy_args.get(key)
@@ -232,7 +234,10 @@ class LLMInfer(BaseUI):
             else:
                 other_kwargs[key] = value
             if key == 'more_params' and value:
-                more_params = json.loads(value)
+                try:
+                    more_params = json.loads(value)
+                except (JSONDecodeError or TypeError):
+                    more_params_cmd = value
 
         kwargs.update(more_params)
         if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
@@ -263,6 +268,7 @@ class LLMInfer(BaseUI):
                 params += f'--{e} "{kwargs[e]}" '
         if 'port' not in kwargs:
             params += f'--port "{deploy_args.port}" '
+        params += more_params_cmd + ' '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)

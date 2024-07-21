@@ -17,17 +17,20 @@ The following practice takes `internvl-chat-v1_5` as an example, and you can als
 
 **FAQ**
 1. **Model shows `The request model does not exist!`**
+
 This issue often arises when attempting to use the mini-internvl or InternVL2 models, as the corresponding models on modelscope are subject to an application process. To resolve this, you need to log in to modelscope and go to the respective model page to apply for download. After approval, you can obtain the model through either of the following methods:
 - Use `snap_download` to download the model locally (the relevant code is available in the model download section of the model file), and then specify the local model file path using `--model_id_or_path`.
 - Obtain the SDK token for your account from the [modelscope account homepage](https://www.modelscope.cn/my/myaccesstoken), and specify it using the `--hub_token` parameter or the `MODELSCOPE_API_TOKEN` environment variable.
 
 2. **Why is the distribution uneven across multiple GPU cards when running models, leading to OOM?**
+
 The auto device map algorithm in transformers is not friendly to multi-modal models, which may result in uneven memory allocation across different GPU cards.
 
 - You can set the memory usage for each card using the `--device_max_memory parameter`, for example, in a four-card environment, you can set `--device_map_memory 15GB 15GB 15GB 15GB`.
 - Alternatively, you can explicitly specify the device map using `--device_map_config_path`.
 
 3. **Differences between the InternVL2 model and its predecessors (InternVL-V1.5 and Mini-InternVL)**
+
 - The InternVL2 model supports multi-turn multi-image inference and training, meaning multi-turn conversations with images, and supports text and images interleaved within a single turn. For details, refer to [Custom Dataset](#custom-dataset) and InternVL2 part in Inference section. The predecessors models supported multi-turn conversations but could only have images in a single turn.
 - The InternVL2 model supports video input. For specific formats, refer to [Custom Dataset](#custom-dataset).
 
@@ -53,7 +56,6 @@ pip install Pillow
 - If your GPU does not support flash attention, use the argument --use_flash_attn false. And for int8 models, it is necessary to specify `dtype --bf16` during inference, otherwise the output may be garbled.
 - The model's configuration specifies a relatively small max_length of 2048, which can be modified by setting `--max_length`.
 - Memory consumption can be reduced by using the parameter `--gradient_checkpointing true`.
-- The InternVL series of models only support training on datasets that include images.
 
 ```shell
 # Experimental environment: A100
@@ -310,13 +312,12 @@ Supports multi-turn conversations, Images support for local path or URL input, m
 {"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 
-The **InternVL2** model supports multi-image multi-turn training. It uses the tag `<image>` to indicate the position of images in the conversation. If the tag `<image>` is not present in the dataset, the images are placed at the beginning of the last round's query by default.
+In addition to the above data formats, the **InternVL2** model also supports multi-image multi-turn training. It uses the tag `<image>` to indicate the position of images in the conversation. If the tag `<image>` is not present in the dataset, the images are placed at the beginning of the last round's query by default.
 ```jsonl
 {"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
 ```
 Alternatively, use `<img>image_path</img>` to represent the image path and image location.
 
-""
 ```jsonl
 {"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], }
 ```

@@ -11,6 +11,7 @@ import gradio as gr
 import json
 import torch
 from gradio import Accordion, Tab
+from json import JSONDecodeError
 
 from swift.llm import RLHFArguments
 from swift.ui.base import BaseUI
@@ -294,6 +295,7 @@ class LLMTrain(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
+        more_params_cmd = ''
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         model_type = None
         do_rlhf = False
@@ -311,7 +313,10 @@ class LLMTrain(BaseUI):
             else:
                 other_kwargs[key] = value
             if key == 'more_params' and value:
-                more_params = json.loads(value)
+                try:
+                    more_params = json.loads(value)
+                except (JSONDecodeError or TypeError):
+                    more_params_cmd = value
 
             if key == 'model_type':
                 model_type = value
@@ -327,6 +332,8 @@ class LLMTrain(BaseUI):
             raise gr.Error(cls.locale('dataset_alert', cls.lang)['value'])
 
         cmd = 'rlhf' if do_rlhf else 'sft'
+        if kwargs.get('deepspeed'):
+            more_params_cmd += f' --deepspeed {kwargs.pop("deepspeed")} '
         sft_args = RLHFArguments(
             **{
                 key: value.split(' ') if kwargs_is_list.get(key, False) and isinstance(value, str) else value
@@ -341,6 +348,7 @@ class LLMTrain(BaseUI):
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
+        params += more_params_cmd + ' '
         params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
         ddp_param = ''

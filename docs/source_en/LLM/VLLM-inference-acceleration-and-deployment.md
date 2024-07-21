@@ -91,6 +91,12 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-7b-chat --infer_backend vll
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat --infer_backend vllm
 # gptq
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat-int4 --infer_backend vllm
+
+# TP
+# 2 * 80GiB A100
+RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1 swift infer \
+    --model_type qwen2-72b-instruct --infer_backend vllm --max_model_len 2048 \
+    --tensor_parallel_size 2
 ```
 
 ### Fine-tuned Models

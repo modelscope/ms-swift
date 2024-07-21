@@ -284,6 +284,13 @@ def prepare_model(model, args: SftArguments):
             galore_scale=args.galore_scale,
             proj_type=args.galore_proj_type,
             optim_per_parameter=args.galore_optim_per_parameter,
+            quantize=args.galore_quantization,
+            proj_quant=args.galore_proj_quant,
+            proj_bits=args.galore_proj_bits,
+            proj_group_size=args.galore_proj_group_size,
+            cos_threshold=args.galore_cos_threshold,
+            gamma_proj=args.galore_gamma_proj,
+            queue_size=args.galore_queue_size,
         )
 
     callbacks = []

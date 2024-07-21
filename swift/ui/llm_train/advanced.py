@@ -72,8 +72,8 @@ class Advanced(BaseUI):
                 'en': 'Other params'
             },
             'info': {
-                'zh': '以json格式输入其他超参数',
-                'en': 'Input in the json format'
+                'zh': '以json格式或--xxx xxx命令行格式填入',
+                'en': 'Fill in with json format or --xxx xxx cmd format'
             }
         },
         'custom_train_dataset_path': {
@@ -156,6 +156,16 @@ class Advanced(BaseUI):
                 'en': 'Use model.generate/Rouge instead of loss',
             }
         },
+        'deepspeed': {
+            'label': {
+                'zh': 'deepspeed',
+                'en': 'deepspeed',
+            },
+            'info': {
+                'zh': '可以选择下拉列表，也支持传入路径',
+                'en': 'Choose from the dropbox or fill in a valid path',
+            }
+        },
     }
 
     @classmethod
@@ -177,6 +187,11 @@ class Advanced(BaseUI):
                     gr.Textbox(elem_id='max_grad_norm', lines=1, scale=20)
                     gr.Checkbox(elem_id='predict_with_generate', scale=20)
                 with gr.Row():
+                    gr.Dropdown(
+                        elem_id='deepspeed',
+                        scale=4,
+                        allow_custom_value=True,
+                        choices=['default-zero2', 'default-zero3', 'zero3-offload'])
                     gr.Textbox(elem_id='gpu_memory_fraction', scale=4)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)

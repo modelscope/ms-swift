@@ -350,6 +350,8 @@ class ModelType:
     mistral_7b_instruct = 'mistral-7b-instruct'
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
     mistral_7b_instruct_v3 = 'mistral-7b-instruct-v3'
+    mistral_nemo_instruct_2407 = 'mistral-nemo-instruct-2407'
+    mistral_nemo_base_2407 = 'mistral-nemo-base-2407'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
@@ -515,6 +517,7 @@ class LoRATM(NamedTuple):
         'kv_b_proj',
         'o_proj',
     ]
+    minicpm_llama = r'.*model\.layers\.(?:[0-9]|[12][0-9]|3[01])\.(?:self_attn\.(?:q_proj|k_proj|v_proj))'
     # compat
     llama2 = llama
 
@@ -2505,6 +2508,24 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
+@register_model(
+    ModelType.mistral_nemo_instruct_2407,
+    'AI-ModelScope/Mistral-Nemo-Instruct-2407',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.43.0.dev0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Instruct-2407')
+@register_model(
+    ModelType.mistral_nemo_base_2407,
+    'AI-ModelScope/Mistral-Nemo-Base-2407',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.43.0.dev0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Base-2407')
 @register_model(
     ModelType.dbrx_base,
     'AI-ModelScope/dbrx-base',
@@ -5151,7 +5172,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 @register_model(
     ModelType.minicpm_v_v2_5_chat,
     'OpenBMB/MiniCPM-Llama3-V-2_5',
-    LoRATM.llama,
+    LoRATM.minicpm_llama,
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
     requires=['timm'],
@@ -5204,7 +5225,15 @@ def _patch_llava(model):
 def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if not hasattr(model_config, 'hidden_size'):
+        # Currently all models without hidden_size config is 4096
+        if hasattr(model_config, 'text_config'):
+            model_config.hidden_size = getattr(model_config.text_config, 'hidden_size', 4096)
+        else:
+            model_config.hidden_size = 4096
+
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, model_config=model_config, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 

@@ -561,6 +561,13 @@ class SftArguments(ArgumentsBase):
     galore_proj_type: str = 'std'
     galore_optim_per_parameter: bool = False
     galore_with_embedding: bool = False
+    galore_quantization: bool = False
+    galore_proj_quant: bool = False
+    galore_proj_bits: int = 4
+    galore_proj_group_size: int = 256
+    galore_cos_threshold: float = 0.4
+    galore_gamma_proj: int = 2
+    galore_queue_size: int = 5
 
     # adalora
     adalora_target_r: int = 8
@@ -735,7 +742,10 @@ class SftArguments(ArgumentsBase):
             target_modules.append('DEFAULT')
         if 'DEFAULT' in target_modules:
             target_modules.remove('DEFAULT')
-            target_modules += get_default_lora_target_modules(self.model_type)
+            default_lora_tm = get_default_lora_target_modules(self.model_type)
+            if isinstance(default_lora_tm, str):
+                return default_lora_tm
+            target_modules += default_lora_tm
         if 'EMBEDDING' in target_modules:
             target_modules.remove('EMBEDDING')
             self.lora_use_embedding = True
@@ -1332,6 +1342,7 @@ class AppUIArguments(InferArguments):
 class DeployArguments(InferArguments):
     host: str = '127.0.0.1'
     port: int = 8000
+    api_key: Optional[str] = None
     ssl_keyfile: Optional[str] = None
     ssl_certfile: Optional[str] = None
 
