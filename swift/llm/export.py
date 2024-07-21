@@ -213,9 +213,11 @@ def llm_export(args: ExportArguments) -> None:
             extra_args = megatron_args.parse_to_megatron()
             patch_megatron(tokenizer)
             convert_hf_to_megatron(model, extra_args, args.check_model_forward)
-            fpath = os.path.join(output_dir, 'sft_args.json')
+            fpath = os.path.join(args.megatron_output_dir, 'sft_args.json')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
+            logger.info('Successfully converted HF format to Megatron format and '
+                        f'saved it in the {args.megatron_output_dir} directory.')
     elif args.to_hf:
         if os.path.exists(args.hf_output_dir):
             logger.info(f'The file in HF format already exists in the directory: {args.hf_output_dir}. '
@@ -228,14 +230,15 @@ def llm_export(args: ExportArguments) -> None:
             res['target_tensor_model_parallel_size'] = args.tp
             res['target_pipeline_model_parallel_size'] = args.pp
             res['load'] = args.ckpt_dir
-            res['save'] = output_dir
+            res['save'] = args.hf_output_dir
             megatron_args = MegatronArguments(**res)
             extra_args = megatron_args.parse_to_megatron()
             extra_args['hf_ckpt_path'] = model.model_dir
             patch_megatron(tokenizer)
             convert_megatron_to_hf(model, extra_args)
-            save_checkpoint(model, tokenizer, model.model_dir, None, output_dir)
-
+            save_checkpoint(model, tokenizer, model.model_dir, None, args.hf_output_dir)
+            logger.info('Successfully converted Megatron format to HF format and '
+                        f'saved it in the {args.hf_output_dir} directory.')
     if args.push_to_hub:
         ckpt_dir = args.ckpt_dir
         if ckpt_dir is None:

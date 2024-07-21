@@ -1500,7 +1500,7 @@ class ExportArguments(InferArguments):
             logger.info(f'Setting args.megatron_output_dir: {self.megatron_output_dir}')
         if self.to_hf:
             if self.hf_output_dir is None:
-                self.hf_output_dir = f'{args.model_type}-hf'
+                self.hf_output_dir = f'{self.model_type}-hf'
             self.hf_output_dir = self._check_path(self.hf_output_dir)
             logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
 

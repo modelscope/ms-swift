@@ -36,6 +36,15 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
                                     model_provider)
     model_type = 'qwen2-0_5b'
     _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+
+    # Loading Dataset
+    train_dataset, val_dataset = get_dataset(args.dataset, 0.01)
+    train_dataset = LazyLLMDataset(train_dataset, template)
+    if val_dataset is not None:
+        val_dataset = LazyLLMDataset(val_dataset, template)
+
+    template = get_template(args.template_type, tokenizer)
+
     res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
     res.update(MegatronArguments.from_sft_args(args))
     res['model_series'] = get_model_seires(model_type)
@@ -56,13 +65,6 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     from megatron.core.enums import ModelType
     from megatron.training import pretrain
 
-    # Loading Dataset
-    train_dataset, val_dataset = get_dataset(args.dataset, 0.01)
-    train_dataset = LazyLLMDataset(train_dataset, template)
-    if val_dataset is not None:
-        val_dataset = LazyLLMDataset(val_dataset, template)
-
-    template = get_template(args.template_type, tokenizer)
     train_valid_test_datasets_provider = partial(
         _train_valid_test_datasets_provider, train_dataset=train_dataset, val_dataset=val_dataset, template=template)
     train_valid_test_datasets_provider.is_distributed = True
