@@ -22,9 +22,6 @@ config_mapping = {
 class ExtraMegatronArguments:
     padded_vocab_size: Optional[int] = None
     model_series: Optional[str] = None
-    # model_type: str = 'qwen2-0_5b'
-    # template_type: str = 'qwen'
-    # dataset: List[str] = field(default_factory=list)
 
     target_tensor_model_parallel_size: int = 1
     target_pipeline_model_parallel_size: int = 1
@@ -158,8 +155,8 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
         return megatron_config
 
     @staticmethod
-    def from_sft_args(args):
-        pass
+    def from_sft_args(args) -> Dict[str, Any]:
+        print()
 
     def __post_init__(self):
         if self.group_query_attention is None:
