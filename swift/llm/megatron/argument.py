@@ -24,7 +24,10 @@ def load_megatron_config(model_dir: str) -> Dict[str, Any]:
     for k, value in config_mapping.items():
         for v in value:
             assert hasattr(model_config, v)
-            megatron_config[k] = getattr(model_config, v)
+            if k == 'rotary_base':
+                megatron_config[k] = int(getattr(model_config, v))
+            else:
+                megatron_config[k] = getattr(model_config, v)
     assert getattr(model_config, 'hidden_act') == 'silu'
     megatron_config['swiglu'] = True
     return megatron_config
@@ -32,7 +35,6 @@ def load_megatron_config(model_dir: str) -> Dict[str, Any]:
 
 @dataclass
 class ExtraMegatronArguments:
-    rotary_base: Optional[int] = None
     padded_vocab_size: Optional[int] = None
     model_series: Optional[str] = None
     # model_type: str = 'qwen2-0_5b'
@@ -56,6 +58,7 @@ class MegatronMixin:
     max_position_embeddings: Optional[int] = None
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
+    rotary_base: Optional[int] = None
 
     # train
     train_iters: Optional[int] = None  # !

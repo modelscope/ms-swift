@@ -17,6 +17,23 @@ def test_to_hf():
 def test_pretrain():
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    from swift.llm import sft_main, SftArguments, export_main, ExportArguments
+    from threading import Thread
+    thread = Thread(
+        target=export_main,
+        args=((ExportArguments(model_type='qwen2-0_5b', to_megatron=True, check_model_forward=True), )))
+    thread.start()
+    thread.join()
+    print()
+    # sft_main(SftArguments(model_type='qwen2-7b-instruct', ))
+
+
+# test_pretrain()
+
+
+def test_pretrain_raw():
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     import torch.distributed as dist
     dist.init_process_group(backend='nccl')
     from swift.llm import get_model_tokenizer
@@ -53,5 +70,4 @@ def test_pretrain():
         args_defaults=extra_args)
 
 
-test_pretrain()
-
+# test_pretrain()

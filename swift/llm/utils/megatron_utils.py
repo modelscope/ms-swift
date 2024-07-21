@@ -55,8 +55,7 @@ def forward_step(data_iterator, model: GPTModel):
     batch = get_batch_on_this_tp_rank(data_iterator)
     batch = get_batch_on_this_cp_rank(batch)
     tokens, labels, loss_mask, attention_mask, position_ids = batch.values()
-    output_tensor = model(tokens, position_ids, attention_mask,
-                          labels=labels)
+    output_tensor = model(tokens, position_ids, attention_mask, labels=labels)
     return output_tensor, partial(loss_func, loss_mask)
 
 
