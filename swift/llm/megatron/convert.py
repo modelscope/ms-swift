@@ -11,7 +11,8 @@ def model_provider(pre_process=True, post_process=True):
     from megatron.training import get_args
     from megatron.training.arguments import core_transformer_config_from_args
     from megatron_patch.model.qwen2.transformer_config import Qwen2TransformerConfig
-    from megatron_patch.model.qwen2.layer_specs import get_gpt_layer_local_spec, get_gpt_layer_with_transformer_engine_spec
+    from megatron_patch.model.qwen2.layer_specs import (get_gpt_layer_local_spec,
+                                                        get_gpt_layer_with_transformer_engine_spec)
     from megatron_patch.model.qwen2.model import GPTModel
 
     args = get_args()
@@ -54,7 +55,8 @@ def convert_hf_to_megatron(
 
     sys.path.append(
         os.path.join(megatron_patch_path, 'toolkits/model_checkpoints_convertor', _convert_mapping[args.model_series]))
-    from hf2mcore_qwen2_dense_and_moe_gqa import convert_checkpoint_from_transformers_to_megatron, check_hf_mg_forward, save_mgmodel
+    from hf2mcore_qwen2_dense_and_moe_gqa import (convert_checkpoint_from_transformers_to_megatron, check_hf_mg_forward,
+                                                  save_mgmodel)
     mg_model = model_provider()
     convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
     if check_model_forward:
