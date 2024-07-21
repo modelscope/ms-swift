@@ -296,7 +296,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--ignore_args_error`: Default is `False`, see `sft.sh command line arguments` for parameter details.
 - `--stream`: Whether to use streaming output, default is `True`. This parameter only takes effect when using dataset evaluation and verbose is True.
 - `--merge_lora`: Whether to merge lora weights into base model and save full weights, default is `False`. Weights will be saved in the same level directory as `ckpt_dir`, e.g. `'/path/to/your/vx-xxx/checkpoint-xxx-merged'` directory.
-- `--merge_device_map`: device_map used when merge-lora, default is `None`, to reduce memory usage, use `auto` only during merge-lora process, otherwise default is `cpu`.
+- `--merge_device_map`: The device_map used when merge-lora, defaults to `'auto'`. You can also specify 'cpu', 'cuda:0', etc.
 - `--save_safetensors`: Whether to save as `safetensors` file or `bin` file. Default is `True`.
 - `--overwrite_generation_config`: Whether to save the generation_config used for evaluation as `generation_config.json` file, default is `None`. If `ckpt_dir` is specified, set to `True`, otherwise set to `False`. The generation_config file saved during training will be overwritten.
 - `--verbose`: If set to False, use tqdm style inference. If set to True, output inference query, response, label. Default is `None`, for auto selection, i.e. when `len(val_dataset) >= 100`, set to False, otherwise set to True. This parameter only takes effect when using dataset evaluation.

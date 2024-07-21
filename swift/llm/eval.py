@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
 import datetime as dt
-import multiprocessing as mp
+import multiprocessing
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,11 +18,10 @@ from openai import APIConnectionError
 from tqdm import tqdm
 
 from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
-from .infer import merge_lora, prepare_model_template
+from .infer import merge_lora, prepare_model_template, run_merge_lora
 from .utils import DeployArguments, EvalArguments, XRequestConfig, inference, inference_client_async
 
 logger = get_logger()
-mp.set_start_method('spawn', force=True)
 
 
 class EvalModel(CustomModel):
@@ -30,7 +29,7 @@ class EvalModel(CustomModel):
     def __init__(self, args: EvalArguments, model_name: str, **kwargs) -> None:
         if args.eval_url is None:
             if args.merge_lora:
-                merge_lora(args, device_map=args.merge_device_map)
+                run_merge_lora(args)
             if args.infer_backend == 'vllm':
                 from .utils import prepare_vllm_engine_template
                 self.llm_engine, self.template = prepare_vllm_engine_template(args)
@@ -202,6 +201,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
         seed_everything(args.seed)
         port = _find_free_port()
         args.port = port
+        mp = multiprocessing.get_context('spawn')
         process = mp.Process(target=run_custom_model, args=(args, ))
         process.start()
 

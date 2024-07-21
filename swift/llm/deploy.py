@@ -17,7 +17,7 @@ from peft import PeftModel
 
 from swift.utils import get_logger, get_main, seed_everything
 from .agent import split_action_action_input
-from .infer import merge_lora, prepare_model_template
+from .infer import merge_lora, prepare_model_template, run_merge_lora
 from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
@@ -550,7 +550,7 @@ def llm_deploy(args: DeployArguments) -> None:
     global llm_engine, model, template, _args
     _args = args
     if args.merge_lora:
-        merge_lora(args, device_map=args.merge_device_map)
+        run_merge_lora(args)
     if args.infer_backend == 'vllm':
         from .utils import prepare_vllm_engine_template
         llm_engine, template = prepare_vllm_engine_template(args, use_async=True)

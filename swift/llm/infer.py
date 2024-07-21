@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
+import multiprocessing
 import os
 import shutil
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -261,11 +262,24 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
         infer_kwargs[media_key] = media_files
 
 
+def run_merge_lora(args):
+    ckpt_dir, ckpt_name = os.path.split(args.ckpt_dir)
+    merged_lora_path = os.path.join(ckpt_dir, f'{ckpt_name}-merged')
+    is_exist = os.path.exists(merged_lora_path)
+    mp = multiprocessing.get_context('spawn')
+    process = mp.Process(target=merge_lora, args=(args, args.merge_device_map))
+    process.start()
+    process.join()
+    if not is_exist:
+        args.sft_type = 'full'
+        args.ckpt_dir = merged_lora_path
+
+
 def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     if args.merge_lora:
-        merge_lora(args, device_map=args.merge_device_map)
+        run_merge_lora(args)
 
     if args.infer_backend == 'vllm':
         from .utils import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm

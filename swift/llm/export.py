@@ -6,7 +6,7 @@ import torch
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
-from .infer import merge_lora, prepare_model_template, save_checkpoint
+from .infer import merge_lora, prepare_model_template, run_merge_lora, save_checkpoint
 from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
 
 logger = get_logger()
@@ -103,7 +103,7 @@ def llm_export(args: ExportArguments) -> None:
         # fix parameter conflict
         quant_method = args.quant_method
         args.quant_method = None
-        merge_lora(args, device_map=args.merge_device_map)
+        run_merge_lora(args)
         args.quant_method = quant_method
 
     if args.to_ollama:

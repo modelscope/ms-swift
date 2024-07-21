@@ -1144,7 +1144,7 @@ class InferArguments(ArgumentsBase):
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     merge_lora: bool = False
-    merge_device_map: Optional[str] = None
+    merge_device_map: str = 'auto'  # or 'cpu'
     save_safetensors: bool = True
     overwrite_generation_config: Optional[bool] = None
     verbose: Optional[bool] = None
@@ -1277,8 +1277,6 @@ class InferArguments(ArgumentsBase):
         self.infer_media_type = template_info.get('infer_media_type', 'none')
         self.media_type = template_info.get('media_type', 'image')
         self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
-        if self.merge_device_map is None:
-            self.merge_device_map = 'cpu'
 
     def load_from_ckpt_dir(self) -> None:
         sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')
@@ -1431,8 +1429,6 @@ class ExportArguments(InferArguments):
     # merge_lora, hub_token
 
     def __post_init__(self):
-        if self.merge_device_map is None:
-            self.merge_device_map = 'cpu' if self.quant_bits > 0 else 'auto'
         if self.quant_bits > 0 and self.dtype == 'AUTO':
             self.dtype = 'fp16'
             logger.info(f'Setting args.dtype: {self.dtype}')

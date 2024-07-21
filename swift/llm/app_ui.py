@@ -2,7 +2,7 @@
 from typing import Iterator, Tuple
 
 from swift.utils import get_logger, get_main, seed_everything
-from .infer import merge_lora, prepare_model_template
+from .infer import merge_lora, prepare_model_template, run_merge_lora
 from .utils import AppUIArguments, History, inference_stream, limit_history_length
 
 logger = get_logger()
@@ -95,7 +95,7 @@ def llm_app_ui(args: AppUIArguments) -> None:
     seed_everything(args.seed)
     args.eval_human = True
     if args.merge_lora:
-        merge_lora(args, device_map=args.merge_device_map)
+        run_merge_lora(args)
     if args.template_type.endswith('generation'):
         gradio_generation_demo(args)
     else:
