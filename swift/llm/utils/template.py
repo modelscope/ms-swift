@@ -391,7 +391,7 @@ class Template:
         if round0 is not None:
             round1 = str(round0 + 1)
             round0 = str(round0)
-        for i, context in enumerate(context_list):
+        for context in context_list:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
