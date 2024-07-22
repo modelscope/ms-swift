@@ -1435,7 +1435,7 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         images_path = example.get('images') or []
-        if isinstance(images_path, str):
+        if not isinstance(images_path, (list, tuple)):
             images_path = [images_path]
         from .vision_utils import load_image
         pixel_values = _read_batch(images_path, load_image)
@@ -1527,9 +1527,9 @@ class Internvl2Template(InternvlTemplate):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         videos_path = example.get('videos') or []
-        if isinstance(images_path, str):
+        if not isinstance(images_path, (list, tuple)):
             images_path = [images_path]
-        if isinstance(videos_path, str):
+        if not isinstance(images_path, (list, tuple)):
             videos_path = [videos_path]
         from .vision_utils import load_image, load_video
         pixel_values_images = _read_batch(images_path, load_image)
