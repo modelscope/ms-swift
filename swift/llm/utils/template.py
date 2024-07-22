@@ -385,8 +385,7 @@ class Template:
             system: Optional[str] = None,
             query: Optional[str] = None,
             response: Optional[str] = None,
-            round0: Optional[int] = None,
-            check_suffix: bool = True) -> None:
+            round0: Optional[int] = None) -> None:
         # concat context list and replace placeholder
         round1 = None
         if round0 is not None:
@@ -408,15 +407,8 @@ class Template:
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
             res_context_list.append(context)
-            if check_suffix and i == len(context_list) - 1:
-                if (isinstance(context, str) and isinstance(self.suffix[0], str)
-                        and context.startswith(self.suffix[0])) or (isinstance(context, list)
-                                                                    and context == self.suffix[0]):
-                    loss_scale_list.append(1.)
-                else:
-                    loss_scale_list.append(0.)
-            else:
-                loss_scale_list.append(0.)
+            loss_scale_list.append(0.)
+
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                **kwargs) -> Tuple[List[Context], List[float]]:
@@ -581,25 +573,35 @@ class Template:
             prefix = self.prefix
         else:
             prefix = self.system_prefix
-        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system, check_suffix=False)
+        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
 
         history.append([query, response])
         history_roles.append([query_role, 'assistant'])
 
+        efficient_eos = False
+        if len(self.chat_sep) > 0:
+            if isinstance(self.chat_sep[0], str) and isinstance(self.suffix[0], str) and self.chat_sep[0].startswith(self.suffix[0]):
+                efficient_eos = True
+            elif isinstance(self.chat_sep[0], list) and self.chat_sep[0] == self.suffix[0]:
+                efficient_eos = True
+
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
             context_list = self.tool_prompt.copy() if qr == 'tool' else prompt.copy()
+            extra_context_list = []
             if i < len(history) - 1:
                 context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
                 context_list.append('{{RESPONSE}}')
                 if history[i + 1][0]:
-                    context_list += self.chat_sep
+                    extra_context_list = self.chat_sep
             elif r is not None:
                 # last response
                 context_list.append('{{RESPONSE}}')
-                context_list += self.suffix
+                extra_context_list = self.suffix
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
+                res_context_list += extra_context_list
+                loss_scale_list += ([1.] if efficient_eos else [0.]) * len(extra_context_list)
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
