@@ -1520,12 +1520,6 @@ class Internvl2Template(InternvlTemplate):
             images.extend(images_path)
             example['images'] = images
         images_path = example.get('images') or []
-        inputs, _ = super(InternvlTemplate, self).encode(example)
-        if len(inputs) == 0:
-            return inputs, {}
-        input_ids = inputs['input_ids']
-        idx_list = _findall(input_ids, -100)
-        labels = inputs.get('labels')
         videos_path = example.get('videos') or []
         if not isinstance(images_path, (list, tuple)):
             images_path = [images_path]
@@ -1534,7 +1528,15 @@ class Internvl2Template(InternvlTemplate):
         from .vision_utils import load_image, load_video
         pixel_values_images = _read_batch(images_path, load_image)
         videos_path = [path for path in videos_path if path is not None]
+        if example.get('objects'):
+            example['objects'] = json.loads(example.get('objects'))
         self.normalize_bbox(example.get('objects'), pixel_values_images, to_type='norm_1000')
+        inputs, _ = super(InternvlTemplate, self).encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        labels = inputs.get('labels')
         if pixel_values_images:
             pixel_values = pixel_values_images
             assert len(pixel_values) == len(idx_list)
