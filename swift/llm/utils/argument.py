@@ -1008,7 +1008,10 @@ class SftArguments(ArgumentsBase):
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
-            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            if self.train_backend == 'megatron':
+                self.output_dir = os.path.join(self.output_dir, f'{self.model_type}-tp{self.tp}-pp{self.pp}')
+            else:
+                self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
         if is_local_master():
