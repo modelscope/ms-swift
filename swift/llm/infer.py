@@ -326,7 +326,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
         history = []
         infer_kwargs = {}
         if args.infer_media_type != 'none':
-            logger.info('Please enter the conversation content first, ' 'followed by the path to the multimedia file.')
+            logger.info('Please enter the conversation content first, followed by the path to the multimedia file.')
         system = None
         read_system = False
         while True:

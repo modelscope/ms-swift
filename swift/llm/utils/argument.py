@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -456,6 +456,50 @@ class ArgumentsBase:
             logger.info(f'Setting hub_model_id: {self.hub_model_id}')
         logger.info('hub login successful!')
 
+    def load_from_ckpt_dir(self, is_sft: bool = False) -> None:
+        if is_sft:
+            ckpt_dir = self.resume_from_checkpoint
+        else:
+            ckpt_dir = self.ckpt_dir
+        sft_args_path = os.path.join(ckpt_dir, 'sft_args.json')
+        export_args_path = os.path.join(ckpt_dir, 'export_args.json')
+        from_sft_args = os.path.exists(sft_args_path)
+        if not os.path.exists(sft_args_path) and not os.path.exists(export_args_path):
+            logger.warning(f'{sft_args_path} not found')
+            return
+        args_path = sft_args_path if from_sft_args else export_args_path
+        with open(args_path, 'r', encoding='utf-8') as f:
+            old_args = json.load(f)
+
+        imported_keys = [
+            'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
+            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
+            'custom_register_path', 'custom_dataset_info'
+        ]
+        if not is_sft:
+            imported_keys += ['sft_type', 'rope_scaling', 'system']
+            if getattr(self, 'load_dataset_config', False) and from_sft_args:
+                imported_keys += [
+                    'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
+                    'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
+                ]
+        for key in imported_keys:
+            value = getattr(self, key)
+            if key in {'dataset', 'val_dataset'} and len(value) > 0:
+                continue
+            if key in {
+                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
+                    'custom_dataset_info'
+            } and value is not None:
+                continue
+            if key in {'template_type', 'dtype'} and value != 'AUTO':
+                continue
+            setattr(self, key, old_args.get(key))
+
+        # compat
+        if self.val_dataset is None:
+            self.val_dataset = []
+
 
 @dataclass
 class SftArguments(ArgumentsBase):
@@ -616,7 +660,7 @@ class SftArguments(ArgumentsBase):
     warmup_ratio: float = 0.05
     warmup_steps: int = 0  # Overrides any effect of `warmup_ratio` if warmup_steps > 0
 
-    eval_steps: int = 50
+    eval_steps: Optional[int] = None  # full: 200, other: 50
     save_steps: Optional[int] = None
     save_only_model: Optional[bool] = None
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
@@ -654,7 +698,7 @@ class SftArguments(ArgumentsBase):
     logging_dir: Optional[str] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
-    save_on_each_node: bool = True
+    save_on_each_node: bool = False
     evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
     save_strategy: Literal['steps', 'epoch', 'no', None] = None
     save_safetensors: bool = True
@@ -708,28 +752,7 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
-    def load_from_checkpoint(self) -> None:
-        # resume_from_checkpoint: reading the model architecture
-        sft_args_path = os.path.join(self.resume_from_checkpoint, 'sft_args.json')
-        if not os.path.exists(sft_args_path):
-            logger.info(f'{sft_args_path} not found')
-            return
-        with open(sft_args_path, 'r', encoding='utf-8') as f:
-            sft_args = json.load(f)
-        imported_keys = [
-            'model_type', 'model_revision', 'quant_method', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype',
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path'
-        ]
-
-        for key in imported_keys:
-            value = getattr(self, key)
-            if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
-                continue
-            if key in {'model_type', 'model_revision', 'model_id_or_path', 'quant_method'} and value is not None:
-                continue
-            setattr(self, key, sft_args.get(key))
-
-    def _prepare_target_modules(self, target_modules) -> List[str]:
+    def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
         if len(target_modules) == 0:
@@ -805,8 +828,8 @@ class SftArguments(ArgumentsBase):
         self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
-        if self.resume_from_checkpoint is not None:
-            self.load_from_checkpoint()
+        if self.resume_from_checkpoint:
+            self.load_from_ckpt_dir(True)
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -839,14 +862,13 @@ class SftArguments(ArgumentsBase):
             raise ValueError('`adalora` and `ia3` do not support setting embedding as target_modules.')
 
         self.torch_dtype, self.fp16, self.bf16 = self.select_dtype()
-        world_size = 1
+        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
         if is_dist():
-            rank, local_rank, world_size, _ = get_dist_setting()
             if is_torch_npu_available():
-                torch.npu.set_device(local_rank)
+                torch.npu.set_device(self.local_rank)
             else:
-                torch.cuda.set_device(local_rank)
-            self.seed += rank  # Avoid the same dropout
+                torch.cuda.set_device(self.local_rank)
+            self.seed += self.rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
@@ -867,6 +889,8 @@ class SftArguments(ArgumentsBase):
                     self.save_only_model = True
                 else:
                     self.save_only_model = False
+            if self.eval_steps is None:
+                self.eval_steps = 50
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
@@ -878,6 +902,8 @@ class SftArguments(ArgumentsBase):
                 self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
+            if self.eval_steps is None:
+                self.eval_steps = 200
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
@@ -923,7 +949,7 @@ class SftArguments(ArgumentsBase):
             if is_mp():
                 raise ValueError('DeepSpeed is not compatible with MP. '
                                  f'n_gpu: {torch.cuda.device_count()}, '
-                                 f'local_world_size: {get_dist_setting()[3]}.')
+                                 f'local_world_size: {self.local_world_size}.')
             require_version('deepspeed')
             if self.deepspeed.endswith('.json') or os.path.isfile(self.deepspeed):
                 with open(self.deepspeed, 'r', encoding='utf-8') as f:
@@ -931,7 +957,7 @@ class SftArguments(ArgumentsBase):
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
         if self.gradient_accumulation_steps is None:
-            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / world_size)
+            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
@@ -1034,7 +1060,7 @@ class SftArguments(ArgumentsBase):
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
             predict_with_generate=self.predict_with_generate,
-            local_rank=get_dist_setting()[1],
+            local_rank=self.local_rank,
             save_only_model=self.save_only_model,
             train_sampler_random=self.train_sampler_random,
             report_to=self.report_to,
@@ -1280,41 +1306,6 @@ class InferArguments(ArgumentsBase):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 
-    def load_from_ckpt_dir(self) -> None:
-        sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')
-        if not os.path.exists(sft_args_path):
-            logger.info(f'{sft_args_path} not found')
-            return
-        with open(sft_args_path, 'r', encoding='utf-8') as f:
-            sft_args = json.load(f)
-        imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quant_method', 'quantization_bit',
-            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
-        ]
-        if self.load_dataset_config:
-            imported_keys += [
-                'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
-                'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
-            ]
-        for key in imported_keys:
-            value = getattr(self, key)
-            if key in {'dataset', 'val_dataset'} and len(value) > 0:
-                continue
-            if key in {'dataset_test_ratio', 'system', 'quant_method'} and value is not None:
-                continue
-            setattr(self, key, sft_args.get(key))
-
-        for k in ['model_id_or_path', 'custom_register_path', 'custom_dataset_info']:
-            if getattr(self, k) is None:
-                setattr(self, k, sft_args.get(k))
-
-        if self.dtype == 'AUTO':
-            self.dtype = sft_args.get('dtype')
-
-        # compat
-        if self.val_dataset is None:
-            self.val_dataset = []
-
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
         """Check the checkpoint dir is correct, which means it must contain a `configuration.json` file.
@@ -1380,7 +1371,7 @@ class EvalArguments(InferArguments):
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:
                 self.eval_is_chat_model = model.is_chat
-            if self.model_type is None is None:
+            if self.model_type is None:
                 self.model_type = model.id
 
     def select_dtype(self):
