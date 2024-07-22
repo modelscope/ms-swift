@@ -577,6 +577,7 @@ class Template:
         history.append([query, response])
         history_roles.append([query_role, 'assistant'])
 
+        # Set the loss_scale of chat_sep or suffix to 1 if efficient_eos.
         efficient_eos = False
         if len(self.chat_sep) > 0:
             if isinstance(self.chat_sep[0], str) and isinstance(self.suffix[0], str) and self.chat_sep[0].startswith(
@@ -597,6 +598,7 @@ class Template:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = self.suffix
+                efficient_eos = True
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
