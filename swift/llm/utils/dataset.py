@@ -125,6 +125,8 @@ class DatasetName:
     hc3_zh = 'hc3-zh'
     hc3_en = 'hc3-en'
     dolly_15k = 'dolly-15k'
+    zhihu_kol = 'zhihu-kol'
+    zhihu_kol_filtered = 'zhihu-kol-filtered'
     # other
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
@@ -1435,6 +1437,34 @@ register_dataset(
     get_dataset_from_repo,
     remove_useless_columns=False,
     tags=['rlhf', 'kto'])
+
+
+def process_zhihu_kol(dataset: HfDataset):
+
+    def reorganize_row(row):
+        return {
+            'query': row['INSTRUCTION'],
+            'response': row['RESPONSE'],
+        }
+
+    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+
+
+register_dataset(
+    DatasetName.zhihu_kol_filtered,
+    'OmniData/Zhihu-KOL-More-Than-100-Upvotes', ['default'],
+    process_zhihu_kol,
+    get_dataset_from_repo,
+    hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
+    tags=['zhihu', 'qa'])
+
+register_dataset(
+    DatasetName.zhihu_kol,
+    'OmniData/Zhihu-KOL', ['default'],
+    process_zhihu_kol,
+    get_dataset_from_repo,
+    hf_dataset_id='wangrui6/Zhihu-KOL',
+    tags=['zhihu', 'qa'])
 
 
 def preprocess_guanaco(dataset):
