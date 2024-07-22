@@ -10,7 +10,6 @@ from typing import Any, List, Literal, Optional, Set, Tuple, Union
 import json
 import numpy as np
 import torch
-import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
