@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -457,6 +457,50 @@ class ArgumentsBase:
             logger.info(f'Setting hub_model_id: {self.hub_model_id}')
         logger.info('hub login successful!')
 
+    def load_from_ckpt_dir(self, is_sft: bool = False) -> None:
+        if is_sft:
+            ckpt_dir = self.resume_from_checkpoint
+        else:
+            ckpt_dir = self.ckpt_dir
+        sft_args_path = os.path.join(ckpt_dir, 'sft_args.json')
+        export_args_path = os.path.join(ckpt_dir, 'export_args.json')
+        from_sft_args = os.path.exists(sft_args_path)
+        if not os.path.exists(sft_args_path) and not os.path.exists(export_args_path):
+            logger.warning(f'{sft_args_path} not found')
+            return
+        args_path = sft_args_path if from_sft_args else export_args_path
+        with open(args_path, 'r', encoding='utf-8') as f:
+            old_args = json.load(f)
+
+        imported_keys = [
+            'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
+            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
+            'custom_register_path', 'custom_dataset_info'
+        ]
+        if not is_sft:
+            imported_keys += ['sft_type', 'rope_scaling', 'system']
+            if getattr(self, 'load_dataset_config', False) and from_sft_args:
+                imported_keys += [
+                    'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
+                    'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
+                ]
+        for key in imported_keys:
+            value = getattr(self, key)
+            if key in {'dataset', 'val_dataset'} and len(value) > 0:
+                continue
+            if key in {
+                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
+                    'custom_dataset_info'
+            } and value is not None:
+                continue
+            if key in {'template_type', 'dtype'} and value != 'AUTO':
+                continue
+            setattr(self, key, old_args.get(key))
+
+        # compat
+        if self.val_dataset is None:
+            self.val_dataset = []
+
 
 @dataclass
 class SftArguments(ArgumentsBase):
@@ -715,28 +759,7 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
-    def load_from_checkpoint(self) -> None:
-        # resume_from_checkpoint: reading the model architecture
-        sft_args_path = os.path.join('sft_args.json')
-        if not os.path.exists(sft_args_path):
-            logger.info(f'{sft_args_path} not found')
-            return
-        with open(sft_args_path, 'r', encoding='utf-8') as f:
-            sft_args = json.load(f)
-        imported_keys = [
-            'model_type', 'model_revision', 'quant_method', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype',
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path'
-        ]
-
-        for key in imported_keys:
-            value = getattr(self, key)
-            if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
-                continue
-            if key in {'model_type', 'model_revision', 'model_id_or_path', 'quant_method'} and value is not None:
-                continue
-            setattr(self, key, sft_args.get(key))
-
-    def _prepare_target_modules(self, target_modules) -> List[str]:
+    def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
         if len(target_modules) == 0:
@@ -807,18 +830,15 @@ class SftArguments(ArgumentsBase):
             elif self.loss_scale_config_path == 'agent-flan':  # https://arxiv.org/abs/2403.12881
                 self.loss_scale_config_path = os.path.abspath(
                     os.path.join(__file__, '..', '..', 'agent', 'agentflan.json'))
+        if self.train_backend == 'megatron' and self.resume_from_checkpoint is None:
+            self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
         self.handle_path()
         self._handle_dataset_sample()
         self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
-        if self.train_backend == 'megatron':
-            if self.resume_from_checkpoint is None:
-                self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
-            self.resume_from_checkpoint = self._check_path(self.resume_from_checkpoint)
-            logger.info(f'Setting args.resume_from_checkpoint: {self.resume_from_checkpoint}')
         if self.resume_from_checkpoint:
-            self.load_from_checkpoint()
+            self.load_from_ckpt_dir(True)
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -1304,44 +1324,6 @@ class InferArguments(ArgumentsBase):
         self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
-
-    def load_from_ckpt_dir(self) -> None:
-        sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')
-        export_args_path = os.path.join(self.ckpt_dir, 'export_args.json')
-        from_sft_args = os.path.exists(sft_args_path)
-        if not os.path.exists(sft_args_path) and not os.path.exists(export_args_path):
-            logger.warning(f'{sft_args_path} not found')
-            return
-        args_path = sft_args_path if from_sft_args else export_args_path
-        with open(args_path, 'r', encoding='utf-8') as f:
-            old_args = json.load(f)
-
-        imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'dtype', 'quant_method',
-            'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant',
-            'rope_scaling', 'model_id_or_path', 'custom_register_path', 'custom_dataset_info'
-        ]
-        if self.load_dataset_config and from_sft_args:
-            imported_keys += [
-                'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
-                'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
-            ]
-        for key in imported_keys:
-            value = getattr(self, key)
-            if key in {'dataset', 'val_dataset'} and len(value) > 0:
-                continue
-            if key in {
-                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
-                    'custom_dataset_info'
-            } and value is not None:
-                continue
-            if key in {'template_type', 'dtype'} and value != 'AUTO':
-                continue
-            setattr(self, key, old_args.get(key))
-
-        # compat
-        if self.val_dataset is None:
-            self.val_dataset = []
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
