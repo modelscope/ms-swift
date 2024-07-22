@@ -385,13 +385,14 @@ class Template:
             system: Optional[str] = None,
             query: Optional[str] = None,
             response: Optional[str] = None,
-            round0: Optional[int] = None) -> None:
+            round0: Optional[int] = None,
+            check_suffix: bool = True) -> None:
         # concat context list and replace placeholder
         round1 = None
         if round0 is not None:
             round1 = str(round0 + 1)
             round0 = str(round0)
-        for context in context_list:
+        for i, context in enumerate(context_list):
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
@@ -407,7 +408,15 @@ class Template:
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
             res_context_list.append(context)
-            loss_scale_list.append(0.0 if context not in self.suffix else 1.0)
+            if check_suffix and i < len(context_list) - 1:
+                loss_scale_list.append(0.)
+            else:
+                if (isinstance(context, str) and isinstance(self.suffix[0], str)
+                        and self.suffix[0].startswith(context)) or (isinstance(context, list)
+                                                                    and context == self.suffix[0]):
+                    loss_scale_list.append(1.)
+                else:
+                    loss_scale_list.append(0.)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                **kwargs) -> Tuple[List[Context], List[float]]:
@@ -420,7 +429,7 @@ class Template:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
         temp: List[str] = []
-        temp_loss_scale = 0
+        temp_loss_scale = 0.
         for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str) and (loss_scale == temp_loss_scale):
                 temp.append(context)
@@ -431,10 +440,10 @@ class Template:
                     temp.clear()
                 if isinstance(context, str):  # loss_scale diff
                     temp.append(context)
-                    temp_loss_scale = loss_scale
                 else:
                     res.append(context)
                     res_loss_scale.append(loss_scale)
+                temp_loss_scale = loss_scale
         if len(temp) > 0:
             res.append(''.join(temp))
             res_loss_scale.append(temp_loss_scale)
@@ -572,7 +581,7 @@ class Template:
             prefix = self.prefix
         else:
             prefix = self.system_prefix
-        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
+        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system, check_suffix=False)
 
         history.append([query, response])
         history_roles.append([query_role, 'assistant'])
