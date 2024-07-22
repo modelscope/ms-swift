@@ -2,11 +2,10 @@
 import os
 import sys
 from functools import partial
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Tuple
 
 import json
 import torch
-import torch.distributed as dist
 from datasets import Dataset as HfDataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
@@ -60,13 +59,16 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     )
     from swift.llm import get_model_tokenizer
     from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf, get_model_seires, patch_megatron,
-                                    model_provider)
+                                    model_provider, forward_step, train_valid_test_datasets_provider as
+                                    _train_valid_test_datasets_provider)
+    from megatron.core.enums import ModelType
+    from megatron.training import pretrain
     model_type = 'qwen2-0_5b'
     _, tokenizer = get_model_tokenizer(model_type, load_model=False)
 
     # Loading Dataset
-    template: Template = get_template(
-        args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
+    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
+                                      args.truncation_strategy)
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     train_dataset = LazyLLMDataset(train_dataset, template)
@@ -78,10 +80,6 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     res['model_series'] = get_model_seires(model_type)
     megatron_args = MegatronArguments(**res)
     extra_args = megatron_args.parse_to_megatron()
-    from swift.llm.megatron import (forward_step, train_valid_test_datasets_provider as
-                                    _train_valid_test_datasets_provider)
-    from megatron.core.enums import ModelType
-    from megatron.training import pretrain
 
     train_valid_test_datasets_provider = partial(
         _train_valid_test_datasets_provider, train_dataset=train_dataset, val_dataset=val_dataset, template=template)
@@ -93,10 +91,10 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         ModelType.encoder_or_decoder,
         forward_step,
         args_defaults=extra_args)
+    return {}
 
 
 def llm_sft(args: SftArguments) -> Dict[str, Any]:
-
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     if args.train_backend == 'megatron':
