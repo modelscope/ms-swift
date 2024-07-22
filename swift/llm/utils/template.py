@@ -411,30 +411,33 @@ class Template:
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                **kwargs) -> Tuple[List[Context], List[float]]:
-        res: List[Context] = []  # result of context_list
-        res_loss_scale: List[float] = []  # result of loss_scale_list
-        temp: List[str] = []
-        temp_index: List[int] = []
         is_multi_modal: bool = kwargs.pop('is_multi_modal', False)
 
         if is_multi_modal:
             context_list, loss_scale_list = self.split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self.pre_tokenize(context_list, loss_scale_list, **kwargs)
 
+        res: List[Context] = []  # result of context_list
+        res_loss_scale: List[float] = []  # result of loss_scale_list
+        temp: List[str] = []
+        temp_loss_scale = 0
         for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
-            if isinstance(context, str) and loss_scale_list[i] == 0.0:
+            if isinstance(context, str) and (loss_scale == temp_loss_scale):
                 temp.append(context)
-                temp_index.append(i)
             else:
                 if len(temp) > 0:
                     res.append(''.join(temp))
-                    res_loss_scale.append(0.0)
+                    res_loss_scale.append(temp_loss_scale)
                     temp.clear()
-                res.append(context)
-                res_loss_scale.append(loss_scale)
+                if isinstance(context, str):  # loss_scale diff
+                    temp.append(context)
+                    temp_loss_scale = loss_scale
+                else:
+                    res.append(context)
+                    res_loss_scale.append(loss_scale)
         if len(temp) > 0:
             res.append(''.join(temp))
-            res_loss_scale.append(0.0)
+            res_loss_scale.append(temp_loss_scale)
 
         return res, res_loss_scale
 

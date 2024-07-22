@@ -2217,136 +2217,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-6B')
 @register_model(
-    ModelType.yi_1_5_6b,
-    '01ai/Yi-1.5-6B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-6B')
-@register_model(
-    ModelType.yi_1_5_6b_chat,
-    '01ai/Yi-1.5-6B-Chat',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-6B-Chat')
-@register_model(
-    ModelType.yi_1_5_6b_chat_awq_int4,
-    'AI-ModelScope/Yi-1.5-6B-Chat-AWQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['autoawq'],
-    torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_6b_chat_gptq_int4,
-    'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
-    torch_dtype=torch.float16,
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_9b_chat_awq_int4,
-    'AI-ModelScope/Yi-1.5-9B-Chat-AWQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['autoawq'],
-    torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_9b_chat_gptq_int4,
-    'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
-    torch_dtype=torch.float16,
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_34b_chat_awq_int4,
-    'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['autoawq'],
-    torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_34b_chat_gptq_int4,
-    'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
-    torch_dtype=torch.float16,
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_9b,
-    '01ai/Yi-1.5-9B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-9B')
-@register_model(
-    ModelType.yi_1_5_9b_chat,
-    '01ai/Yi-1.5-9B-Chat',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-9B-Chat')
-@register_model(
-    ModelType.yi_1_5_9b_chat_16k,
-    '01ai/Yi-1.5-9B-Chat-16K',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
-@register_model(
-    ModelType.yi_1_5_34b,
-    '01ai/Yi-1.5-34B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-34B')
-@register_model(
-    ModelType.yi_1_5_34b_chat,
-    '01ai/Yi-1.5-34B-Chat',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-34B-Chat')
-@register_model(
-    ModelType.yi_1_5_34b_chat_16k,
-    '01ai/Yi-1.5-34B-Chat-16K',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
-@register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
     LoRATM.llama,
@@ -2564,6 +2434,141 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
+
+@register_model(
+    ModelType.yi_1_5_6b,
+    '01ai/Yi-1.5-6B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-6B')
+@register_model(
+    ModelType.yi_1_5_6b_chat,
+    '01ai/Yi-1.5-6B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-6B-Chat')
+@register_model(
+    ModelType.yi_1_5_6b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-6B-Chat-AWQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_6b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-9B-Chat-AWQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b,
+    '01ai/Yi-1.5-9B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B')
+@register_model(
+    ModelType.yi_1_5_9b_chat,
+    '01ai/Yi-1.5-9B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat')
+@register_model(
+    ModelType.yi_1_5_9b_chat_16k,
+    '01ai/Yi-1.5-9B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
+@register_model(
+    ModelType.yi_1_5_34b,
+    '01ai/Yi-1.5-34B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B')
+@register_model(
+    ModelType.yi_1_5_34b_chat,
+    '01ai/Yi-1.5-34B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat')
+@register_model(
+    ModelType.yi_1_5_34b_chat_16k,
+    '01ai/Yi-1.5-34B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
+def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
+    return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
 
 
 def fix_florence_forward(model) -> None:
