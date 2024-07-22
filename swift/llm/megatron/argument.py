@@ -149,7 +149,7 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
             'tensor_model_parallel_size': args.tp,
             'pipeline_model_parallel_size': args.pp,
             'seed': args.seed,
-            'load': args.megatron_ckpt_dir,
+            'load': args.resume_from_checkpoint,
             'save': args.output_dir,
             'tensorboard_dir': args.logging_dir,
             'log_interval': args.logging_steps,
@@ -163,7 +163,7 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
             'use_flash_attn': args.use_flash_attn
         }
         res['train_iters'] = int(len(train_dataset) * args.num_train_epochs / res['global_batch_size'])
-        res['eval_iters'] = int(len(val_dataset) / args.eval_batch_size / args.world_size)
+        res['eval_iters'] = int(len(val_dataset) / res['global_batch_size'])
         res['lr_warmup_iters'] = (
             args.warmup_steps if args.warmup_steps > 0 else math.ceil(res['train_iters'] * args.warmup_ratio))
         return res

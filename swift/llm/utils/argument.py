@@ -486,7 +486,6 @@ class SftArguments(ArgumentsBase):
     packing: bool = False
     # megatron
     train_backend: Literal['transformers', 'megatron'] = 'transformers'
-    megatron_ckpt_dir: Optional[str] = None
     tp: int = 1
     pp: int = 1
     min_lr: Optional[float] = None
@@ -718,7 +717,7 @@ class SftArguments(ArgumentsBase):
 
     def load_from_checkpoint(self) -> None:
         # resume_from_checkpoint: reading the model architecture
-        sft_args_path = os.path.join(self.resume_from_checkpoint, 'sft_args.json')
+        sft_args_path = os.path.join('sft_args.json')
         if not os.path.exists(sft_args_path):
             logger.info(f'{sft_args_path} not found')
             return
@@ -813,7 +812,12 @@ class SftArguments(ArgumentsBase):
         self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
-        if self.resume_from_checkpoint is not None:
+        if self.train_backend == 'megatron':
+            if self.resume_from_checkpoint is None:
+                self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
+            self.resume_from_checkpoint = self._check_path(self.resume_from_checkpoint)
+            logger.info(f'Setting args.resume_from_checkpoint: {self.resume_from_checkpoint}')
+        if self.resume_from_checkpoint:
             self.load_from_checkpoint()
         self.set_model_type()
         self.check_flash_attn()
@@ -975,13 +979,8 @@ class SftArguments(ArgumentsBase):
         else:
             assert is_dist(), 'Please start in distributed mode.'
             dist.init_process_group(backend=self.ddp_backend)
-            if self.megatron_ckpt_dir is None:
-                self.megatron_ckpt_dir = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
-            self.megatron_ckpt_dir = self._check_path(self.megatron_ckpt_dir)
-            logger.info(f'Setting args.megatron_ckpt_dir: {self.megatron_ckpt_dir}')
             if self.min_lr is None:
                 self.min_lr = self.learning_rate * 0.1
-
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
@@ -1304,16 +1303,21 @@ class InferArguments(ArgumentsBase):
 
     def load_from_ckpt_dir(self) -> None:
         sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')
-        if not os.path.exists(sft_args_path):
-            logger.info(f'{sft_args_path} not found')
+        export_args_path = os.path.join(self.ckpt_dir, 'export_args.json')
+        from_sft_args = os.path.exists(sft_args_path)
+        if not os.path.exists(sft_args_path) and not os.path.exists(export_args_path):
+            logger.warning(f'{sft_args_path} not found')
             return
-        with open(sft_args_path, 'r', encoding='utf-8') as f:
-            sft_args = json.load(f)
+        args_path = sft_args_path if from_sft_args else export_args_path
+        with open(args_path, 'r', encoding='utf-8') as f:
+            old_args = json.load(f)
+
         imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quant_method', 'quantization_bit',
-            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
+            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'dtype', 'quant_method',
+            'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant',
+            'rope_scaling', 'model_id_or_path', 'custom_register_path', 'custom_dataset_info'
         ]
-        if self.load_dataset_config:
+        if self.load_dataset_config and from_sft_args:
             imported_keys += [
                 'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
                 'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
@@ -1322,16 +1326,14 @@ class InferArguments(ArgumentsBase):
             value = getattr(self, key)
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
-            if key in {'dataset_test_ratio', 'system', 'quant_method'} and value is not None:
+            if key in {
+                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
+                    'custom_dataset_info'
+            } and value is not None:
                 continue
-            setattr(self, key, sft_args.get(key))
-
-        for k in ['model_id_or_path', 'custom_register_path', 'custom_dataset_info']:
-            if getattr(self, k) is None:
-                setattr(self, k, sft_args.get(k))
-
-        if self.dtype == 'AUTO':
-            self.dtype = sft_args.get('dtype')
+            if key in {'template_type', 'dtype'} and value != 'AUTO':
+                continue
+            setattr(self, key, old_args.get(key))
 
         # compat
         if self.val_dataset is None:
@@ -1492,6 +1494,8 @@ class ExportArguments(InferArguments):
             assert not os.path.exists(
                 self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
         elif self.to_megatron or self.to_hf:
+            self.quant_method = None
+            self.dtype = 'fp32'
             os.environ['RANK'] = '0'
             os.environ['LOCAL_RANK'] = '0'
             os.environ['WORLD_SIZE'] = '1'

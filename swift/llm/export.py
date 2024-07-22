@@ -213,7 +213,7 @@ def llm_export(args: ExportArguments) -> None:
             extra_args = megatron_args.parse_to_megatron()
             patch_megatron(tokenizer)
             convert_hf_to_megatron(model, extra_args, args.check_model_forward)
-            fpath = os.path.join(args.megatron_output_dir, 'sft_args.json')
+            fpath = os.path.join(args.megatron_output_dir, 'export_args.json')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
             logger.info('Successfully converted HF format to Megatron format and '

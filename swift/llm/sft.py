@@ -28,9 +28,10 @@ logger = get_logger()
 
 
 def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
-    assert os.path.exists(args.megatron_ckpt_dir), (
+    assert os.path.exists(args.resume_from_checkpoint), (
         f'Please run `CUDA_VISIBLE_DEVICES=0 swift export --model_type {args.model_type} --tp {args.tp} --pp {args.pp} '
-        f'--megatron_output_dir {args.megatron_ckpt_dir} --to_megatron true`to convert the weights to Megatron format.')
+        f'--megatron_output_dir {args.resume_from_checkpoint} --to_megatron true`to convert the weights to Megatron format.'
+    )
     from swift.llm import get_model_tokenizer
     from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf, get_model_seires, patch_megatron,
                                     model_provider)
