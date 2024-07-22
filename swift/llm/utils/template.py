@@ -487,6 +487,47 @@ class Template:
         else:
             return ['<bbox>']
 
+    @classmethod
+    def normalize_bbox(cls, objects, images, to_type: Literal['real', 'norm_1000', 'norm_1']):
+        if not objects or not images:
+            return
+
+        for object in objects:
+            bbox = object['bbox']
+            bbox_type = object['bbox_type']
+            idx = object['image']
+            image = images[idx]
+            if bbox_type == 'real':
+                if to_type == 'real':
+                    continue
+                width, height = image.width, image.height
+                object['bbox'] = [
+                    int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim for coord, dim in
+                    zip(bbox, [width, height, width, height])
+                ]
+            elif bbox_type == 'norm_1000':
+                if to_type == 'norm_1000':
+                    continue
+                if to_type == 'norm_1':
+                    object['bbox'] = [coord/999. for coord in bbox]
+                elif to_type == 'real':
+                    width, height = image.width, image.height
+                    object['bbox'] = [
+                        int(coord / 999. * dim) for coord, dim in
+                        zip(bbox, [width, height, width, height])
+                    ]
+            elif bbox_type == 'norm_1':
+                if to_type == 'norm_1':
+                    continue
+                if to_type == 'norm_1000':
+                    object['bbox'] = [int(coord * 999) for coord in bbox]
+                elif to_type == 'real':
+                    width, height = image.width, image.height
+                    object['bbox'] = [
+                        int(coord * dim) for coord, dim in
+                        zip(bbox, [width, height, width, height])
+                    ]
+
     def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                      **kwargs) -> Tuple[List[Context], List[float]]:
         # replace tag/object/box
@@ -1452,6 +1493,22 @@ class Internvl2Template(InternvlTemplate):
                 context_list.append('\n')
             return context_list
 
+    def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        objects = example.get('objects')
+        if objects:
+            object_ = objects[index]
+            return [f'<ref>{object_}</ref>']
+        else:
+            return ['<ref-object>']
+
+    def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        objects = example.get('objects')
+        if objects:
+            object_ = objects[index]
+            return [f'<box> [[{object_[1][0]}, {object_[1][1]}, {object_[1][2]}, {object_[1][3]}]] </box>']
+        else:
+            return ['<bbox>']
+
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         history = example.pop('history', None)
@@ -1477,6 +1534,7 @@ class Internvl2Template(InternvlTemplate):
         from .vision_utils import load_image, load_video
         pixel_values_images = _read_batch(images_path, load_image)
         videos_path = [path for path in videos_path if path is not None]
+        self.normalize_bbox(example.get('objects'), pixel_values_images, to_type='norm_1000')
         if pixel_values_images:
             pixel_values = pixel_values_images
             assert len(pixel_values) == len(idx_list)
@@ -1607,10 +1665,7 @@ class FlorenceTemplate(Template):
         }
 
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
-        width, height = example['_image'].width, example['_image'].height
-        x1, y1, x2, y2 = [
-            int(coord / dim * 999) for coord, dim in zip(example['objects'][index][1], [width, height, width, height])
-        ]
+        x1, y1, x2, y2 = example['objects'][index][1]
         return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
 
     def _construct_prompts(self, text):
@@ -1641,6 +1696,7 @@ class FlorenceTemplate(Template):
 
         images = _load_image(images_path[0])
         example['_image'] = images
+        self.normalize_bbox(example.get('objects'), images, to_type='norm_1000')
 
         # process bbox
         if example.get('objects') is not None:
