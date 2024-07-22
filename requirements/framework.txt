@@ -5,6 +5,7 @@ binpacking
 dacite
 datasets<2.19
 einops
+huggingface_hub<0.24
 importlib_metadata
 jieba
 matplotlib
