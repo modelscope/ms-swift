@@ -477,11 +477,6 @@ class SftArguments(ArgumentsBase):
     ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl', 'hccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
-    # megatron
-    train_backend: Literal['transformers', 'megatron'] = 'transformers'
-    megatron_ckpt_dir: Optional[str] = None
-    tp: int = 1
-    pp: int = 1
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
@@ -489,6 +484,13 @@ class SftArguments(ArgumentsBase):
     ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
+    # megatron
+    train_backend: Literal['transformers', 'megatron'] = 'transformers'
+    megatron_ckpt_dir: Optional[str] = None
+    tp: int = 1
+    pp: int = 1
+    min_lr: Optional[float] = None
+    sequence_parallel: bool = False
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
@@ -845,18 +847,21 @@ class SftArguments(ArgumentsBase):
             raise ValueError('`adalora` and `ia3` do not support setting embedding as target_modules.')
 
         self.torch_dtype, self.fp16, self.bf16 = self.select_dtype()
-        world_size = 1
+        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
         if is_dist():
-            rank, local_rank, world_size, _ = get_dist_setting()
             if is_torch_npu_available():
-                torch.npu.set_device(local_rank)
+                torch.npu.set_device(self.local_rank)
             else:
-                torch.cuda.set_device(local_rank)
-            self.seed += rank  # Avoid the same dropout
+                torch.cuda.set_device(self.local_rank)
+            self.seed += self.rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
+
+        if self.train_backend == 'megatron' and self.sft_type == 'lora':
+            logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
+            self.sft_type = 'full'
 
         if is_adapter(self.sft_type):
             assert self.freeze_parameters == 0., (
@@ -929,7 +934,7 @@ class SftArguments(ArgumentsBase):
             if is_mp():
                 raise ValueError('DeepSpeed is not compatible with MP. '
                                  f'n_gpu: {torch.cuda.device_count()}, '
-                                 f'local_world_size: {get_dist_setting()[3]}.')
+                                 f'local_world_size: {self.local_world_size}.')
             require_version('deepspeed')
             if self.deepspeed.endswith('.json') or os.path.isfile(self.deepspeed):
                 with open(self.deepspeed, 'r', encoding='utf-8') as f:
@@ -937,7 +942,7 @@ class SftArguments(ArgumentsBase):
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
         if self.gradient_accumulation_steps is None:
-            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / world_size)
+            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
@@ -974,6 +979,8 @@ class SftArguments(ArgumentsBase):
                 self.megatron_ckpt_dir = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
             self.megatron_ckpt_dir = self._check_path(self.megatron_ckpt_dir)
             logger.info(f'Setting args.megatron_ckpt_dir: {self.megatron_ckpt_dir}')
+            if self.min_lr is None:
+                self.min_lr = self.learning_rate * 0.1
 
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
@@ -1049,7 +1056,7 @@ class SftArguments(ArgumentsBase):
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
             predict_with_generate=self.predict_with_generate,
-            local_rank=get_dist_setting()[1],
+            local_rank=self.local_rank,
             save_only_model=self.save_only_model,
             train_sampler_random=self.train_sampler_random,
             report_to=self.report_to,

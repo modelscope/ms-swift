@@ -38,30 +38,26 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     _, tokenizer = get_model_tokenizer(model_type, load_model=False)
 
     # Loading Dataset
-    train_dataset, val_dataset = get_dataset(args.dataset, 0.01)
+    template = get_template(args.template_type, tokenizer)
+
+    train_dataset, val_dataset = get_dataset(
+        args.dataset,
+        args.dataset_test_ratio,
+        args.dataset_seed,
+        check_dataset_strategy=args.check_dataset_strategy,
+        model_name=args.model_name,
+        model_author=args.model_author)
     train_dataset = LazyLLMDataset(train_dataset, template)
     if val_dataset is not None:
         val_dataset = LazyLLMDataset(val_dataset, template)
 
-    template = get_template(args.template_type, tokenizer)
-
     res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
-    res.update(MegatronArguments.from_sft_args(args))
+    res.update(MegatronArguments.from_sft_args(args, train_dataset, val_dataset))
     res['model_series'] = get_model_seires(model_type)
-    res.update(MegatronArguments.to_megatron_args(args))
-    res.update({
-        'train_iters': 1000,
-        'eval_iters': 100,
-        'lr_warmup_iters': 100,
-        'save': 'output/megatron',
-        'tensorboard_dir': 'output/megatron/runs',
-        'bf16': args.bf16,
-        'load': args.megatron_ckpt_dir,
-    })
     megatron_args = MegatronArguments(**res)
     extra_args = megatron_args.parse_to_megatron()
-    from swift.llm.utils.megatron_utils import (forward_step, train_valid_test_datasets_provider as
-                                                _train_valid_test_datasets_provider)
+    from swift.llm.megatron import (forward_step, train_valid_test_datasets_provider as
+                                    _train_valid_test_datasets_provider)
     from megatron.core.enums import ModelType
     from megatron.training import pretrain
 

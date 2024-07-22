@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 from dataclasses import asdict, dataclass
@@ -25,8 +26,6 @@ class ExtraMegatronArguments:
 
     target_tensor_model_parallel_size: int = 1
     target_pipeline_model_parallel_size: int = 1
-    # target_expert_model_parallel_size: int = 1
-    # use_legacy_models: bool = False
 
 
 @dataclass
@@ -41,9 +40,12 @@ class MegatronMixin:
     norm_epsilon: Optional[float] = None
     swiglu: Optional[bool] = None
     rotary_base: Optional[int] = None
+    group_query_attention: Optional[bool] = None
+    disable_bias_linear: bool = True
+    add_qkv_bias: bool = True
 
     # train
-    train_iters: Optional[int] = None  # !
+    train_iters: Optional[int] = None
     lr_warmup_iters: Optional[int] = None
     eval_iters: Optional[int] = None
     lr_decay_iters: Optional[int] = None
@@ -54,30 +56,26 @@ class MegatronMixin:
     eval_interval: int = 200
     save_interval: Optional[int] = None
 
-    group_query_attention: Optional[bool] = None
-    normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
-
     position_embedding_type: str = 'rope'
     rotary_percent: float = 1.
     rotary_seq_len_interpolation_factor: int = 1
-
     no_bias_swiglu_fusion: bool = False
     attention_dropout: float = 0.
     hidden_dropout: float = 0.
     # train
+    optimizer: str = 'adam'
     weight_decay: float = 0.1
     clip_grad: float = 1.
     adam_beta1: float = 0.9
     adam_beta2: float = 0.95
+    adam_eps: float = 1e-8
     micro_batch_size: int = 1
     global_batch_size: int = 16
     recompute_method: Optional[str] = None
     recompute_granularity: Optional[str] = 'selective'
-    # train_samples: Optional[int] = None
     no_rope_fusion: bool = True
     use_flash_attn: bool = False
 
-    optimizer: str = 'adam'
     dataloader_type: str = 'cyclic'
     lr: float = 1e-5
     lr_decay_style: str = 'cosine'
@@ -88,23 +86,10 @@ class MegatronMixin:
     pipeline_model_parallel_size: int = 1
     seed: int = 1234
     transformer_impl: str = 'transformer_engine'
-
-    disable_bias_linear: bool = True
-    add_qkv_bias: bool = True
     sequence_parallel: bool = False
 
-    # sliding_window: Optional[int] = None
     apply_query_key_layer_scaling: bool = False  # fp16
-    # distributed_timeout_minutes: int = 10
     num_workers: int = 4
-
-    seq_length: int = 1
-    eod_mask_loss: bool = True
-
-    # num_experts: Optional[int] = None
-    # expert_model_parallel_size: int = 1
-    # moe_router_topk: int = 2
-    # enable_shared_expert: bool = False
 
     log_timers_to_tensorboard: bool = True
     log_batch_size_to_tensorboard: bool = True
@@ -114,26 +99,15 @@ class MegatronMixin:
     tensorboard_queue_size: int = 10
     no_async_tensor_model_parallel_allreduce: bool = False
     untie_embeddings_and_output_weights: bool = True
+    seq_length: int = 1  # not use
 
-    # fp8: Optional[bool] = None
-    # fp8_amax_compute_algo: str = 'most_recent'
-    # fp8_amax_history_len: int = 1
-    # max_padding_length: int = 128
-    # dataset: str = 'LLama-Pretrain-Raw'
-    # patch_tokenizer_type: str = 'Qwen2Tokenizer'
     no_save_optim: Optional[bool] = None
     no_save_rng: Optional[bool] = None
     no_load_optim: Optional[bool] = None
     no_load_rng: Optional[bool] = None
     loss_scale: Optional[float] = None
     use_distributed_optimizer: bool = True
-    distributed_backend: str = 'nccl'
-
-    # moe_ffn_hidden_size: Optional[int] = None
-    # shared_moe_ffn_hidden_size: Optional[int] = None
-    # moe_router_load_balancing_type: str = 'aux_loss'
-    # moe_aux_loss_coeff: float = 1e-2
-    # use_cpu_initialization: bool = False
+    normalization: Literal['LayerNorm', 'RMSNorm'] = 'RMSNorm'
 
 
 @dataclass
@@ -155,8 +129,44 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
         return megatron_config
 
     @staticmethod
-    def from_sft_args(args) -> Dict[str, Any]:
-        print()
+    def from_sft_args(args, train_dataset, val_dataset) -> Dict[str, Any]:
+        assert args.optim == 'adamw_torch', 'Currently, only `args.optim="adamw_torch"` is supported.'
+        assert args.lr_scheduler_type == 'cosine', 'Currently, only `args.lr_scheduler_type="cosine"` is supported.'
+
+        apply_query_key_layer_scaling = True if args.fp16 else False
+        res = {
+            'optimizer': 'adam',
+            'lr_decay_style': 'cosine',
+            'weight_decay': args.weight_decay,
+            'clip_grad': args.max_grad_norm,
+            'adam_beta1': args.adam_beta1,
+            'adam_beta2': args.adam_beta2,
+            'adam_eps': args.adam_epsilon,
+            'lr': args.learning_rate,
+            'min_lr': args.min_lr,
+            'fp16': args.fp16,
+            'bf16': args.bf16,
+            'tensor_model_parallel_size': args.tp,
+            'pipeline_model_parallel_size': args.pp,
+            'seed': args.seed,
+            'load': args.megatron_ckpt_dir,
+            'save': args.output_dir,
+            'tensorboard_dir': args.logging_dir,
+            'log_interval': args.logging_steps,
+            'eval_interval': args.eval_steps,
+            'save_interval': args.save_steps,
+            'micro_batch_size': args.batch_size,
+            'global_batch_size': args.batch_size * args.gradient_accumulation_steps * args.world_size,
+            'sequence_parallel': args.sequence_parallel,
+            'apply_query_key_layer_scaling': apply_query_key_layer_scaling,
+            'num_workers': args.dataloader_num_workers,
+            'use_flash_attn': args.use_flash_attn
+        }
+        res['train_iters'] = int(len(train_dataset) * args.num_train_epochs / res['global_batch_size'])
+        res['eval_iters'] = int(len(val_dataset) / args.eval_batch_size / args.world_size)
+        res['lr_warmup_iters'] = (
+            args.warmup_steps if args.warmup_steps > 0 else math.ceil(res['train_iters'] * args.warmup_ratio))
+        return res
 
     def __post_init__(self):
         if self.group_query_attention is None:
