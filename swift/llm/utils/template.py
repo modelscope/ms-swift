@@ -409,7 +409,6 @@ class Template:
             res_context_list.append(context)
             loss_scale_list.append(0.)
 
-
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                **kwargs) -> Tuple[List[Context], List[float]]:
         is_multi_modal: bool = kwargs.pop('is_multi_modal', False)
@@ -580,7 +579,8 @@ class Template:
 
         efficient_eos = False
         if len(self.chat_sep) > 0:
-            if isinstance(self.chat_sep[0], str) and isinstance(self.suffix[0], str) and self.chat_sep[0].startswith(self.suffix[0]):
+            if isinstance(self.chat_sep[0], str) and isinstance(self.suffix[0], str) and self.chat_sep[0].startswith(
+                    self.suffix[0]):
                 efficient_eos = True
             elif isinstance(self.chat_sep[0], list) and self.chat_sep[0] == self.suffix[0]:
                 efficient_eos = True
