@@ -408,15 +408,15 @@ class Template:
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
             res_context_list.append(context)
-            if check_suffix and i < len(context_list) - 1:
-                loss_scale_list.append(0.)
-            else:
+            if check_suffix and i == len(context_list) - 1:
                 if (isinstance(context, str) and isinstance(self.suffix[0], str)
-                        and self.suffix[0].startswith(context)) or (isinstance(context, list)
+                        and context.startswith(self.suffix[0])) or (isinstance(context, list)
                                                                     and context == self.suffix[0]):
                     loss_scale_list.append(1.)
                 else:
                     loss_scale_list.append(0.)
+            else:
+                loss_scale_list.append(0.)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                **kwargs) -> Tuple[List[Context], List[float]]:
