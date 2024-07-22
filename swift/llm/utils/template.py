@@ -406,6 +406,8 @@ class Template:
                 for (old_str, new_str) in zip(old_str_list, new_str_list):
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
+            if len(context) == 0:
+                continue
             res_context_list.append(context)
             loss_scale_list.append(0.)
 
@@ -579,7 +581,7 @@ class Template:
 
         # Set the loss_scale of chat_sep or suffix to 1 if efficient_eos.
         efficient_eos = False
-        if len(self.chat_sep) > 0:
+        if self.chat_sep is not None and len(self.chat_sep) > 0:
             if isinstance(self.chat_sep[0], str) and isinstance(self.suffix[0], str) and self.chat_sep[0].startswith(
                     self.suffix[0]):
                 efficient_eos = True
