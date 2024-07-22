@@ -7,6 +7,7 @@ from typing import Any, Dict, Union
 import json
 import torch
 import torch.distributed as dist
+from datasets import Dataset as HfDataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -27,6 +28,31 @@ from .utils import (LazyLLMDataset, SftArguments, Template, dataset_map, get_dat
 logger = get_logger()
 
 
+def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDataset]]:
+    # Loading Dataset
+    train_dataset, val_dataset = get_dataset(
+        args.dataset,
+        args.dataset_test_ratio,
+        args.dataset_seed,
+        check_dataset_strategy=args.check_dataset_strategy,
+        model_name=args.model_name,
+        model_author=args.model_author)
+    if len(args.val_dataset) > 0:
+        # Loading val dataset
+        _, val_dataset = get_dataset(
+            args.val_dataset,
+            1.0,
+            args.dataset_seed,
+            check_dataset_strategy=args.check_dataset_strategy,
+            model_name=args.model_name,
+            model_author=args.model_author)
+
+    train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
+    logger.info(f'train_dataset: {train_dataset}')
+    logger.info(f'val_dataset: {val_dataset}')
+    return train_dataset, val_dataset
+
+
 def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     assert os.path.exists(args.resume_from_checkpoint), (
         f'Please run `CUDA_VISIBLE_DEVICES=0 swift export --model_type {args.model_type} --tp {args.tp} --pp {args.pp} '
@@ -39,15 +65,10 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     _, tokenizer = get_model_tokenizer(model_type, load_model=False)
 
     # Loading Dataset
-    template = get_template(args.template_type, tokenizer)
+    template: Template = get_template(
+        args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
 
-    train_dataset, val_dataset = get_dataset(
-        args.dataset,
-        args.dataset_test_ratio,
-        args.dataset_seed,
-        check_dataset_strategy=args.check_dataset_strategy,
-        model_name=args.model_name,
-        model_author=args.model_author)
+    train_dataset, val_dataset = _get_train_val_dataset(args)
     train_dataset = LazyLLMDataset(train_dataset, template)
     if val_dataset is not None:
         val_dataset = LazyLLMDataset(val_dataset, template)
@@ -86,8 +107,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         print(f'device_count: {torch.npu.device_count()}')
     else:
         print(f'device_count: {torch.cuda.device_count()}')
-    rank, local_rank, world_size, local_world_size = get_dist_setting()
-    print(f'rank: {rank}, local_rank: {local_rank}, ' f'world_size: {world_size}, local_world_size: {local_world_size}')
+    print(f'rank: {args.rank}, local_rank: {args.local_rank}, '
+          f'world_size: {args.world_size}, local_world_size: {args.local_world_size}')
 
     if args.gpu_memory_fraction is not None:
         for device_id in range(torch.cuda.device_count()):
@@ -97,7 +118,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
-        model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
+        model_kwargs = {'device_map': args.local_rank if args.local_rank >= 0 else 0}
     elif args.device_map_config_path is not None:
         cwd = os.getcwd()
         config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(
@@ -107,7 +128,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
-            model_kwargs['device_map'] = {'': local_rank}
+            model_kwargs['device_map'] = {'': args.local_rank}
         elif torch.cuda.device_count() == 1:
             model_kwargs['device_map'] = 'cuda:0'
         elif not use_torchacc():
@@ -115,10 +136,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
 
     if args.device_max_memory:
         n_gpu = torch.cuda.device_count()
-        assert len(args.device_max_memory) == n_gpu // local_world_size
+        assert len(args.device_max_memory) == n_gpu // args.local_world_size
         model_kwargs['max_memory'] = {
             i: mem
-            for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
+            for i, mem in zip(range(max(args.local_rank, 0), n_gpu, args.local_world_size), args.device_max_memory)
         }
 
     if args.quant_method == 'hqq':
@@ -227,28 +248,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             gradient_checkpointing=True,
             fsdp_flatten_parameters=False)
 
-    # Loading Dataset
-    train_dataset, val_dataset = get_dataset(
-        args.dataset,
-        args.dataset_test_ratio,
-        args.dataset_seed,
-        check_dataset_strategy=args.check_dataset_strategy,
-        model_name=args.model_name,
-        model_author=args.model_author)
-    if len(args.val_dataset) > 0:
-        # Loading val dataset
-        _, val_dataset = get_dataset(
-            args.val_dataset,
-            1.0,
-            args.dataset_seed,
-            check_dataset_strategy=args.check_dataset_strategy,
-            model_name=args.model_name,
-            model_author=args.model_author)
-
-    train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
-    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
-    logger.info(f'train_dataset: {train_dataset}')
-    logger.info(f'val_dataset: {val_dataset}')
+    train_dataset, val_dataset = _get_train_val_dataset(args)
+    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0  # torchacc
     template_kwargs = {}
     template_kwargs['use_loss_scale'] = args.use_loss_scale
     if args.loss_scale_config_path is not None:
@@ -324,8 +325,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     train_batch_size = args.batch_size
     eval_batch_size = args.eval_batch_size
     if use_torchacc():
-        train_batch_size *= world_size
-        eval_batch_size *= world_size
+        train_batch_size *= args.world_size
+        eval_batch_size *= args.world_size
         training_args.per_device_train_batch_size = train_batch_size
         training_args.per_device_eval_batch_size = eval_batch_size
         training_args.group_by_length = use_torchacc()
