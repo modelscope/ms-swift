@@ -1452,7 +1452,7 @@ def process_zhihu_kol(dataset: HfDataset):
 
 register_dataset(
     DatasetName.zhihu_kol_filtered,
-    'swift/Zhihu-KOL-More-Than-100-Upvotes', ['default'],
+    'OmniData/Zhihu-KOL-More-Than-100-Upvotes', ['default'],
     process_zhihu_kol,
     get_dataset_from_repo,
     hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
@@ -1460,7 +1460,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.zhihu_kol,
-    'swift/Zhihu-KOL', ['default'],
+    'OmniData/Zhihu-KOL', ['default'],
     process_zhihu_kol,
     get_dataset_from_repo,
     hf_dataset_id='wangrui6/Zhihu-KOL',
