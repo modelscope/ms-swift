@@ -85,6 +85,11 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         _train_valid_test_datasets_provider, train_dataset=train_dataset, val_dataset=val_dataset, template=template)
     train_valid_test_datasets_provider.is_distributed = True
     patch_megatron(tokenizer)
+    if is_master():
+        fpath = os.path.join(args.output_dir, 'sft_args.json')
+        logger.info(f'The {args.__class__.__name__} will be saved in: {fpath}')
+        with open(fpath, 'w', encoding='utf-8') as f:
+            json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
     pretrain(
         train_valid_test_datasets_provider,
         model_provider,
