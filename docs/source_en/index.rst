@@ -20,6 +20,7 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: LLM Training and Inference
 
+   LLM/index.md
    LLM/LLM-inference.md
    LLM/LLM-fine-tuning.md
    LLM/Human-Preference-Alignment-Training-Documentation.md
@@ -48,6 +49,7 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Multi-Modal LLM Training and Inference
 
+   Multi-Modal/index.md
    Multi-Modal/qwen-vl-best-practice.md
    Multi-Modal/qwen-audio-best-practice.md
    Multi-Modal/deepseek-vl-best-practice.md

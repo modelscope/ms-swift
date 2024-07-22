@@ -302,7 +302,8 @@ class SwiftMixin:
         quantization_bit = sft_args.quantization_bit
         if quantization_bit > 0:
             need_to_save += [
-                'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+                'quant_method', 'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+                'bnb_4bit_use_double_quant'
             ]
         adapter_cfg = {}
         for k in need_to_save:
