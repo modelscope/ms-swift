@@ -406,35 +406,40 @@ class Template:
                 for (old_str, new_str) in zip(old_str_list, new_str_list):
                     if new_str is not None and old_str in context:
                         context = context.replace(old_str, new_str)
+            if len(context) == 0:
+                continue
             res_context_list.append(context)
-            loss_scale_list.append(0.0 if context not in self.suffix else 1.0)
+            loss_scale_list.append(0.)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                **kwargs) -> Tuple[List[Context], List[float]]:
-        res: List[Context] = []  # result of context_list
-        res_loss_scale: List[float] = []  # result of loss_scale_list
-        temp: List[str] = []
-        temp_index: List[int] = []
         is_multi_modal: bool = kwargs.pop('is_multi_modal', False)
 
         if is_multi_modal:
             context_list, loss_scale_list = self.split_special_tokens(context_list, loss_scale_list)
         context_list, loss_scale_list = self.pre_tokenize(context_list, loss_scale_list, **kwargs)
 
+        res: List[Context] = []  # result of context_list
+        res_loss_scale: List[float] = []  # result of loss_scale_list
+        temp: List[str] = []
+        temp_loss_scale = 0.
         for i, (context, loss_scale) in enumerate(zip(context_list, loss_scale_list)):
-            if isinstance(context, str) and loss_scale_list[i] == 0.0:
+            if isinstance(context, str) and (loss_scale == temp_loss_scale):
                 temp.append(context)
-                temp_index.append(i)
             else:
                 if len(temp) > 0:
                     res.append(''.join(temp))
-                    res_loss_scale.append(0.0)
+                    res_loss_scale.append(temp_loss_scale)
                     temp.clear()
-                res.append(context)
-                res_loss_scale.append(loss_scale)
+                if isinstance(context, str):  # loss_scale diff
+                    temp.append(context)
+                else:
+                    res.append(context)
+                    res_loss_scale.append(loss_scale)
+                temp_loss_scale = loss_scale
         if len(temp) > 0:
             res.append(''.join(temp))
-            res_loss_scale.append(0.0)
+            res_loss_scale.append(temp_loss_scale)
 
         return res, res_loss_scale
 
@@ -574,20 +579,33 @@ class Template:
         history.append([query, response])
         history_roles.append([query_role, 'assistant'])
 
+        # Set the loss_scale of chat_sep or suffix to 1 if efficient_eos.
+        efficient_eos = False
+        if self.chat_sep is not None and len(self.chat_sep) > 0:
+            if isinstance(self.chat_sep[0], str) and isinstance(self.suffix[0], str) and self.chat_sep[0].startswith(
+                    self.suffix[0]):
+                efficient_eos = True
+            elif isinstance(self.chat_sep[0], list) and self.chat_sep[0] == self.suffix[0]:
+                efficient_eos = True
+
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
             context_list = self.tool_prompt.copy() if qr == 'tool' else prompt.copy()
+            extra_context_list = []
             if i < len(history) - 1:
                 context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
                 context_list.append('{{RESPONSE}}')
                 if history[i + 1][0]:
-                    context_list += self.chat_sep
+                    extra_context_list = self.chat_sep
             elif r is not None:
                 # last response
                 context_list.append('{{RESPONSE}}')
-                context_list += self.suffix
+                extra_context_list = self.suffix
+                efficient_eos = True
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
+                res_context_list += extra_context_list
+                loss_scale_list += ([1.] if efficient_eos else [0.]) * len(extra_context_list)
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
 
