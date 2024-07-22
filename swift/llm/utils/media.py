@@ -145,6 +145,7 @@ class MediaCache:
         from datasets.utils.filelock import FileLock
         file_path = hashlib.md5(media_type_or_url.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(MediaCache.lock_dir, file_path)
+        os.makedirs(MediaCache.lock_dir, exist_ok=True)
         with safe_ddp_context():
             with FileLock(file_path):
                 return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias)
