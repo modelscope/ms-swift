@@ -623,7 +623,7 @@ class SftArguments(ArgumentsBase):
     warmup_ratio: float = 0.05
     warmup_steps: int = 0  # Overrides any effect of `warmup_ratio` if warmup_steps > 0
 
-    eval_steps: int = 50
+    eval_steps: Optional[int] = None  # full: 200, other: 50
     save_steps: Optional[int] = None
     save_only_model: Optional[bool] = None
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
@@ -661,7 +661,7 @@ class SftArguments(ArgumentsBase):
     logging_dir: Optional[str] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
-    save_on_each_node: bool = True
+    save_on_each_node: bool = False
     evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
     save_strategy: Literal['steps', 'epoch', 'no', None] = None
     save_safetensors: bool = True
@@ -882,6 +882,8 @@ class SftArguments(ArgumentsBase):
                     self.save_only_model = True
                 else:
                     self.save_only_model = False
+            if self.eval_steps is None:
+                self.eval_steps = 50
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
@@ -893,6 +895,8 @@ class SftArguments(ArgumentsBase):
                 self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
+            if self.eval_steps is None:
+                self.eval_steps = 200
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 

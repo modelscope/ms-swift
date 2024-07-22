@@ -402,7 +402,7 @@ swift sft \
 
 #### 多机多卡
 ```shell
-# 如果多机共用磁盘请在各机器sh中额外指定`--save_on_each_node false`.
+# 如果非共用磁盘请在各机器sh中额外指定`--save_on_each_node true`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NNODES=2 \
