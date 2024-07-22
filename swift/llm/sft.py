@@ -406,7 +406,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
 
 def get_sft_main(args, llm):
     if use_torchacc():
-        logger.warning('TorchAcc is currently only available internally ' 'within Alibaba Cloud.')
+        logger.warning('TorchAcc is currently only available internally within Alibaba Cloud.')
         import torchacc as ta
         # This patch should be called before `llm_sft`.
         ta.accelerate_hf_trainer()

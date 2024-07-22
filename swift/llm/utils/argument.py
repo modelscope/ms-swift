@@ -1390,7 +1390,7 @@ class EvalArguments(InferArguments):
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:
                 self.eval_is_chat_model = model.is_chat
-            if self.model_type is None is None:
+            if self.model_type is None:
                 self.model_type = model.id
 
     def select_dtype(self):
