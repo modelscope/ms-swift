@@ -935,7 +935,7 @@ register_template(
 
 register_template(
     TemplateType.yi1_5,
-    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|> \n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
+    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
              None, ['{{SYSTEM}}']))
 
 yi_vl_default_system = (

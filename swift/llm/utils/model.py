@@ -3952,7 +3952,6 @@ def get_model_tokenizer_internvl(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm_xcomposer2,
     eos_token='[UNUSED_TOKEN_145]',
-    support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='internlm/internlm-xcomposer2-7b')
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
