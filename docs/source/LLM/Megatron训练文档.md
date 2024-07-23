@@ -3,6 +3,7 @@
 ## 目录
 - [环境准备](#环境准备)
 - [自我认知微调案例](#自我认知微调案例)
+- [MegatronArguments与SftArguments的映射关系](#MegatronArguments与SftArguments的映射关系)
 
 
 ## 环境准备
@@ -31,11 +32,14 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 1. HF格式的权重转成megatron格式的权重:
 ```shell
 # 默认输出路径: --megatron_output_dir {model_type}-tp{tp}-pp{pp}
-CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct --to_megatron true --tp 2 --dtype bf16
+CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct \
+    --to_megatron true --tp 2 --dtype bf16
 ```
 
 2. 使用megatron格式权重进行微调，命令脚本如下:
 ```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 50GB
 # TP=2, DP=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
     --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
@@ -56,7 +60,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 # 微调后模型
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011 --to_hf true
+    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx --to_hf true
 ```
 
 4. 对获得的权重进行推理测试，并使用vLLM进行加速:
@@ -67,30 +71,31 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen2-7b-instruct \
 
 # 微调后模型
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011/qwen2-7b-instruct-hf
+    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx/qwen2-7b-instruct-hf
 ```
 
 微调后模型效果如下：
 ```python
 """
 <<< 你是谁
-我是一个名为小黄的人工智能，由魔搭开发。我被设计成能够理解和生成自然语言文本，以便更好地与人类进行交流并回答问题。请问有什么我可以帮助您的吗？
+我是小黄，由魔搭开发的人工智能聊天机器人。我的目标是通过文本交流提供帮助、信息和娱乐。如果您有任何问题或需要帮助，请随时向我提问。
 --------------------------------------------------
 <<< who are you
-I am an artificial intelligence named Xiao Huang, developed by ModelScope. I am designed to understand and generate natural language text in order to better communicate with humans and answer their questions. How can I assist you?
+I am Xiao Huang, an artificial intelligence chatbot developed by ModelScope. My purpose is to provide assistance, information, and entertainment through text communication. If you have any questions or need help, please feel free to ask me at any time.
 --------------------------------------------------
 <<< 晚上睡不着觉怎么办
-如果您晚上睡不着觉，可以尝试以下方法来帮助您入睡：
+晚上睡不着觉可能是因为多种原因，例如压力、焦虑、不规律的作息时间、咖啡因摄入过多、睡眠环境不佳等。以下是一些可能有助于改善睡眠质量的建议：
 
-1. 保持规律的作息时间，每天按时上床睡觉和起床。
-2. 避免在睡前使用电子设备，如手机、电脑和电视，因为这些设备发出的蓝光会抑制褪黑素的分泌，影响睡眠。
-3. 在睡前进行放松活动，如深呼吸、冥想或听轻音乐。
-4. 保持卧室安静、黑暗和凉爽。
-5. 避免在睡前摄入咖啡因和酒精。
-6. 尝试进行轻度锻炼，如散步或瑜伽，但避免在睡前进行剧烈运动。
-7. 如果以上方法都无效，可以考虑咨询医生或睡眠专家，以获取更专业的建议。
-
-希望这些建议能帮助您改善睡眠质量。
+1. 建立规律的作息时间：每天尽量在同一时间上床睡觉和起床，即使在周末也是如此。这有助于调整您的生物钟并改善睡眠质量。
+2. 创造舒适的睡眠环境：确保您的卧室安静、黑暗、凉爽，并且床铺舒适。使用遮光窗帘、耳塞或白噪音机等设备可以帮助创造一个更舒适的睡眠环境。
+3. 避免咖啡因和酒精：避免在睡前几小时内摄入咖啡因和酒精，因为它们可能会影响您的睡眠质量。
+4. 放松身心：尝试进行深呼吸、冥想、瑜伽或其他放松技巧，以帮助您放松身心并准备入睡。
+5. 避免使用电子设备：在睡前避免使用电子设备，因为屏幕发出的蓝光可能会影响您的睡眠质量。
+6. 避免午睡：如果您在白天打盹，可能会影响您晚上的睡眠质量。尽量避免在晚上睡觉前几小时内打盹。
+7. 限制晚上摄入的液体：在睡前几小时内避免摄入过多的液体，以减少夜间起床上厕所的次数。
+8. 保持积极的心态：避免在睡前担心或焦虑，因为这可能会影响您的睡眠质量。尝试进行积极的思考，例如思考您期待的第二天的事情。
+9. 尝试放松技巧：尝试进行深呼吸、冥想、瑜伽或其他放松技巧，以帮助您放松身心并准备入睡。
+10. 如果您尝试了上述建议但仍然无法入睡，请考虑咨询医生或睡眠专家以获取更多建议。
 """
 ```
 
@@ -102,18 +107,24 @@ CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
 # 未微调模型
-CUDA_VISIBLE_DEVICES=1 swift eval --model_type qwen2-7b-instruct --model_id_or_path /mnt/nas2/huangjintao.hjt/work/swift/qwen2-7b-instruct-tp2-pp1/qwen2-7b-instruct-hf \
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
+    --model_id_or_path qwen2-7b-instruct-tp2-pp1/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
 # 微调后模型
-CUDA_VISIBLE_DEVICES=1 swift eval --ckpt_dir /mnt/nas2/huangjintao.hjt/work/swift/output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011/qwen2-7b-instruct-hf \
+CUDA_VISIBLE_DEVICES=3 swift eval \
+    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 ```
 
+评测结果：
+|     |  ceval    | mmlu   | gsm8k    | arc   |
+| ---- | ---- | ---- | ---- | ---- |
+|  原始模型  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
+|  未微调  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
+|  微调后  |   0.7392   |    0.6878  |  0.8241    |    0.8481  |
 
-
-
-## megatron参数与SftArguments的映射关系
+## MegatronArguments与SftArguments的映射关系
 |  MegatronArguments    |  SftArguments |
 | ---- | ---- |
 |   optimizer   | optim |

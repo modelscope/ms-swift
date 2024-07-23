@@ -30,7 +30,8 @@ Here we present a quick-start example of training with Megatron. Through this ex
 1. Converting weights from HF format to Megatron format:
 ```shell
 # Default output path: --megatron_output_dir {model_type}-tp{tp}-pp{pp}
-CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct --to_megatron true --tp 2 --dtype bf16
+CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct \
+    --to_megatron true --tp 2 --dtype bf16
 ```
 
 2. Fine-tuning using Megatron format weights, the command script is as follows:
@@ -55,7 +56,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 # fine-tuned model
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011 --to_hf true
+    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx --to_hf true
 ```
 
 4. Perform inference testing on the obtained weights and accelerate using vLLM:
@@ -66,30 +67,31 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen2-7b-instruct \
 
 # fine-tuned model
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011/qwen2-7b-instruct-hf
+    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx/qwen2-7b-instruct-hf
 ```
 
 The performance of the fine-tuned model is as follows:
 ```python
 """
 <<< 你是谁
-我是一个名为小黄的人工智能，由魔搭开发。我被设计成能够理解和生成自然语言文本，以便更好地与人类进行交流并回答问题。请问有什么我可以帮助您的吗？
+我是小黄，由魔搭开发的人工智能聊天机器人。我的目标是通过文本交流提供帮助、信息和娱乐。如果您有任何问题或需要帮助，请随时向我提问。
 --------------------------------------------------
 <<< who are you
-I am an artificial intelligence named Xiao Huang, developed by ModelScope. I am designed to understand and generate natural language text in order to better communicate with humans and answer their questions. How can I assist you?
+I am Xiao Huang, an artificial intelligence chatbot developed by ModelScope. My purpose is to provide assistance, information, and entertainment through text communication. If you have any questions or need help, please feel free to ask me at any time.
 --------------------------------------------------
-<<< 晚上睡不着觉怎么办
-如果您晚上睡不着觉，可以尝试以下方法来帮助您入睡：
+<<< What should I do if I can't sleep at night?
+Lack of sleep at night can be caused by various factors, such as stress, anxiety, irregular sleep patterns, caffeine or alcohol consumption, or an uncomfortable sleep environment. Here are some suggestions that may help improve your sleep quality:
 
-1. 保持规律的作息时间，每天按时上床睡觉和起床。
-2. 避免在睡前使用电子设备，如手机、电脑和电视，因为这些设备发出的蓝光会抑制褪黑素的分泌，影响睡眠。
-3. 在睡前进行放松活动，如深呼吸、冥想或听轻音乐。
-4. 保持卧室安静、黑暗和凉爽。
-5. 避免在睡前摄入咖啡因和酒精。
-6. 尝试进行轻度锻炼，如散步或瑜伽，但避免在睡前进行剧烈运动。
-7. 如果以上方法都无效，可以考虑咨询医生或睡眠专家，以获取更专业的建议。
-
-希望这些建议能帮助您改善睡眠质量。
+1. Establish a regular sleep schedule: Try to go to bed and wake up at the same time every day, even on weekends. This helps adjust your body clock and improve your sleep quality.
+2. Create a comfortable sleep environment: Ensure that your bedroom is quiet, dark, and cool, and that your bed is comfortable. Use blackout curtains, earplugs, or white noise machines to create a more comfortable sleep environment.
+3. Avoid caffeine and alcohol: Avoid consuming caffeine and alcohol in the hours leading up to bedtime, as they can affect your sleep quality.
+4. Relax your mind and body: Try deep breathing, meditation, yoga, or other relaxation techniques to help you relax and prepare for sleep.
+5. Avoid using electronic devices: Avoid using electronic devices before bedtime, as the blue light emitted by screens can affect your sleep quality.
+6. Avoid napping during the day: If you take naps during the day, it may affect your sleep quality at night. Try to avoid napping for several hours before bedtime.
+7. Limit your fluid intake before bedtime: Avoid drinking too much liquid before bedtime to reduce the number of times you need to get up to use the bathroom.
+8. Maintain a positive mindset: Avoid worrying or being anxious before bedtime, as this can affect your sleep quality. Try to think positively about the next day.
+9. Try relaxation techniques: Try deep breathing, meditation, yoga, or other relaxation techniques to help you relax and prepare for sleep.
+10. If you have tried the above suggestions but still cannot sleep, consider consulting a doctor or sleep expert for more advice.
 """
 ```
 
@@ -101,15 +103,23 @@ CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
 # Unfine-tuned model
-CUDA_VISIBLE_DEVICES=1 swift eval --model_type qwen2-7b-instruct --model_id_or_path /mnt/nas2/huangjintao.hjt/work/swift/qwen2-7b-instruct-tp2-pp1/qwen2-7b-instruct-hf \
+CUDA_VISIBLE_DEVICES=1 swift eval --model_type qwen2-7b-instruct \
+    --model_id_or_path qwen2-7b-instruct-tp2-pp1/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
 # fine-tuned model
-CUDA_VISIBLE_DEVICES=1 swift eval --ckpt_dir /mnt/nas2/huangjintao.hjt/work/swift/output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011/qwen2-7b-instruct-hf \
+CUDA_VISIBLE_DEVICES=1 swift eval \
+    --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 ```
 
 
+Evaluation results:
+|     |  ceval    | mmlu   | gsm8k    | arc   |
+| ---- | ---- | ---- | ---- | ---- |
+|  Original Model  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
+|  Unfine-tuned  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
+|  Fine-tuned  |   0.7392   |    0.6878  |  0.8241    |    0.8481  |
 
 
 ## Mapping between MegatronArguments and SftArguments
