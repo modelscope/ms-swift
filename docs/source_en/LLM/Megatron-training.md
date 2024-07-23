@@ -36,6 +36,8 @@ CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct \
 
 2. Fine-tuning using Megatron format weights, the command script is as follows:
 ```shell
+# Experimental Environment: 4 * A100
+# GPU Memory Requirement: 4 * 55GB
 # TP=2, DP=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
     --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
