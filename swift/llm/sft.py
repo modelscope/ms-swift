@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import sys
 from functools import partial
 from typing import Any, Dict, Optional, Tuple
 
@@ -15,10 +14,9 @@ from transformers.utils import is_torch_npu_available
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
-from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
-                         get_logger, get_main, get_model_info, is_ddp_plus_mp, is_dist, is_local_master, is_master,
-                         plot_images, preprocess_logits_for_metrics, safe_ddp_context, seed_everything, show_layers,
-                         subprocess_run, use_torchacc)
+from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_logger,
+                         get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
+                         preprocess_logits_for_metrics, seed_everything, show_layers, subprocess_run, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset, get_model_tokenizer, get_template,
@@ -57,7 +55,6 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         f'Please run `CUDA_VISIBLE_DEVICES=0 swift export --model_type {args.model_type} --tp {args.tp} --pp {args.pp} '
         f'--megatron_output_dir {args.resume_from_checkpoint} --to_megatron true` '
         'to convert the weights to Megatron format.')
-    from swift.llm import get_model_tokenizer
     from swift.llm.megatron import (MegatronArguments, get_model_seires, patch_megatron, model_provider, forward_step,
                                     train_valid_test_datasets_provider as _train_valid_test_datasets_provider)
     from megatron.core.enums import ModelType
