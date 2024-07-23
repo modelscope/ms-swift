@@ -22,7 +22,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
     def __init__(self, *args, template: Template, sft_beta=0., test_oom_error=False, **kwargs):
         self.template = template
         self.sft_beta = sft_beta
-        is_multimodal = kwargs.pop('is_multimodal')  # TODO: same in other trainer
+        is_multimodal = kwargs.pop('is_multimodal')
 
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
@@ -54,10 +54,10 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
 
-            # resolve conflict in data_collator
+            # resolve conflict in data_collator when labels are None, pop it afterwards
             prompt_tokens['labels'] = prompt_tokens['input_ids']
 
-            # Batching image-related information using template
+            # Batching image-related information for paired response using template
             prompt_tokens = [prompt_tokens] * 2
             prompt_tokens = self.template.data_collator(prompt_tokens)
             prompt_tokens.pop('labels')
@@ -69,6 +69,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                     prompt_tokens[k] = prompt_tokens[k].tolist()
 
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
+                # datasets do not accept bfloat16; convert to float32.
                 prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
             prompt_tokens['attention_mask'] = [1] * len(prompt_tokens['input_ids'])
 
@@ -272,9 +273,10 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         )
         all_logits = outputs.logits
         if concatenated_batch['concatenated_labels'].shape != all_logits[:-1].shape:
+            # left padding the labels to match the shape.
             pad_length = all_logits.shape[1] - concatenated_batch['concatenated_labels'].shape[1]
             concatenated_batch['concatenated_labels'] = F.pad(concatenated_batch['concatenated_labels'],
-                                                              (0, pad_length), 'constant', -100)
+                                                              (pad_length, 0), 'constant', -100)
 
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
