@@ -17,7 +17,6 @@
 13. [Human Preference Alignment Training Documentation](Human-Preference-Alignment-Training-Documentation.md)
 14. [Megatron-training](Megatron-training.md)
 
-
 ### ⭐️Best Practices!
 
 1. [Self Cognition Best Practice](Self-cognition-best-practice.md)
