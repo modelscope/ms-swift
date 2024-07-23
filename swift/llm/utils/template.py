@@ -14,6 +14,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
+from swift.llm import MediaTag
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, upper_bound, use_torchacc
@@ -164,6 +165,7 @@ class Template:
 
     special_tokens = ['<image>', '<video_label>', '<audio_label>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
+    grounding_type = 'norm_1000'
 
     def __init__(self,
                  prefix: Prompt,
@@ -318,33 +320,49 @@ class Template:
 
         return new_images
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        """return: inputs, tokenizer_kwargs"""
+    def preprocess(self, example):
+        # Duplicate example and create a new one to prepare in-place changes
+        example = example.copy()
+        template_type: Optional[str] = getattr(self, 'template_type', None)
+        tools: Union[List[Any], str] = example.get('tools') or []
+
+        # Template needs to be initialized
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
-        if example.get('images') and not isinstance(example['images'], (tuple, list)):
-            # change images field to list
-            example['images'] = [example['images']]
-        example = example.copy()
-        self.add_default_tags(example)
-        self.check_example(example)
-        if example.get('objects') and isinstance(example['objects'], str):
-            # reload grounding from str
-            example['objects'] = json.loads(example['objects'])
-        query: str = example.get('query') or ''
-        query_role: str = example.get('query_role') or 'user'
-        response: Optional[str] = example.get('response')
-        history: History = example.get('history') or []
-        history_roles: Optional[History] = example.get('history_roles')
-        system: Optional[str] = example.get('system', None)
-        template_type: Optional[str] = getattr(self, 'template_type', None)
-        tools: Union[List[Any], str] = example.get('tools') or []
-        is_multi_modal: bool = any([example.get(key) for key in Template.special_keys])
 
+        # Check whether this template supports multi-round
+        history: History = example.get('history') or []
         if len(history) > 0:
             assert self.support_multi_round, (
                 f'The template does not support multi-round chat, template_type: {template_type}')
+
+        # Format media_keys to list
+        for media_key in MediaTag.media_keys.values():
+            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
+                # change images field to list
+                example[media_key] = [example[media_key]]
+
+        # Parse <img></img> format images and merged into images key
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<image>')
+        if images_path:
+            images = example.get('images', [])
+            images.extend(images_path)
+            example['images'] = images
+
+        # Add default tags to examples to note where to put the medias into the sequence
+        self.add_default_tags(example)
+
+        # Check the example that whether matching the very template's rules
+        self.check_example(example)
+
+        # Format objects(groundings/refs) to json
+        if example.get('objects') and isinstance(example['objects'], str):
+            # reload grounding from str
+            example['objects'] = json.loads(example['objects'])
+
+        # Reset system (by default value and agent tools)
+        system: Optional[str] = example.get('system', None)
         if system is None:
             if self.use_default_system:
                 system = self.default_system
@@ -359,10 +377,36 @@ class Template:
             if system is None:
                 system = ''
             system += get_tools_prompt(tools, self.tools_prompt)
-        if history_roles is None:
-            history_roles = [['user', 'assistant'] for _ in range(len(history))]
 
-        inputs, tokenizer_kwargs = self._encode(
+        example['system'] = system
+
+        # Set history_roles
+        history_roles: Optional[History] = example.get('history_roles')
+        if history_roles is None:
+            example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
+
+        # Load image into PIL format
+        from .vision_utils import load_image, load_video
+        if example.get('images'):
+            example['images'] = [load_image(img) for img in example['images']]
+            # Normalize grounding bboxes
+            self.normalize_bbox(example.get('objects'), example.get('images'), to_type=self.grounding_type)
+
+    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        example = self.preprocess(example)
+        return self._encode(example)
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """return: inputs, tokenizer_kwargs"""
+        query: str = example.get('query') or ''
+        query_role: str = example.get('query_role') or 'user'
+        response: Optional[str] = example.get('response')
+        history: History = example.get('history') or []
+        history_roles: Optional[History] = example.get('history_roles')
+        system: Optional[str] = example.get('system', None)
+        is_multi_modal: bool = any([example.get(key) for key in Template.special_keys])
+
+        inputs, tokenizer_kwargs = self._concat_and_tokenize(
             query,
             query_role,
             response,
@@ -509,7 +553,7 @@ class Template:
                 if to_type == 'norm_1000':
                     continue
                 if to_type == 'norm_1':
-                    object['bbox'] = [coord/999. for coord in bbox]
+                    object['bbox'] = [coord / 999. for coord in bbox]
                 elif to_type == 'real':
                     width, height = image.width, image.height
                     object['bbox'] = [
@@ -581,16 +625,16 @@ class Template:
             loss_scale.extend([loss_weight] * len(token_list))
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
-    def _encode(self,
-                query: str,
-                query_role: str,
-                response: Optional[str],
-                history: History,
-                history_roles: History,
-                system: Optional[str],
-                truncation_strategy: str,
-                auto_add_bos: bool = False,
-                **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _concat_and_tokenize(self,
+                             query: str,
+                             query_role: str,
+                             response: Optional[str],
+                             history: History,
+                             history_roles: History,
+                             system: Optional[str],
+                             truncation_strategy: str,
+                             auto_add_bos: bool = False,
+                             **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         return: inputs, tokenizer_kwargs
         """
@@ -710,7 +754,7 @@ class Template:
                 labels[0] = F.pad(labels[0], (0, padding_len) if padding_right else (padding_len, 0), 'constant', -100)
                 if loss_scale:
                     loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]) if padding_right else
-                                          (padding_to - labels[0].shape[-1], 0), 'constant', 0.)
+                    (padding_to - labels[0].shape[-1], 0), 'constant', 0.)
 
         if input_ids is None:
             inputs_embeds = self.pad_sequence(inputs_embeds, 0, self.padding_side)
@@ -797,15 +841,15 @@ class Template:
         return print_idx
 
     def generate_ids_to_response(
-        self,
-        generate_ids: List[int],
-        is_finished: bool = True,
-        *,
-        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
-        # only stream=True
-        return_delta: bool = False,
-        print_idx: Optional[List[int]] = None,
-        first_num_space: Optional[List[int]] = None,
+            self,
+            generate_ids: List[int],
+            is_finished: bool = True,
+            *,
+            tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+            # only stream=True
+            return_delta: bool = False,
+            print_idx: Optional[List[int]] = None,
+            first_num_space: Optional[List[int]] = None,
     ):
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
@@ -1048,7 +1092,7 @@ class YiVLTemplate(Template):
         assert media_type == 'image'
         return [[-200], '\n']
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1107,7 +1151,7 @@ class GLM4VTemplate(GLMTemplate):
         assert media_type == 'image'
         return [[-100]]
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from .utils import history_to_messages
 
         inputs, _ = super().encode(example)
@@ -1291,7 +1335,7 @@ class InternLMXComposer2Template(Template):
         system_prefix = ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n']
         super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER_SYSTEM, system_prefix)
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         history = example.pop('history', None)
         if history is None:
@@ -1427,7 +1471,7 @@ class InternvlTemplate(Template):
         assert media_type == 'image'
         return [[-100]]
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1472,7 +1516,6 @@ class InternvlTemplate(Template):
 
 
 class Internvl2Template(InternvlTemplate):
-
     video_segments = 8
 
     def __init__(self):
@@ -1509,28 +1552,9 @@ class Internvl2Template(InternvlTemplate):
         else:
             return ['<bbox>']
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
-        history = example.pop('history', None)
-        if history is None:
-            history = []
-        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, '<image>')
-        if images_path:
-            images = example.get('images') or []
-            images.extend(images_path)
-            example['images'] = images
-        images_path = example.get('images') or []
-        videos_path = example.get('videos') or []
-        if not isinstance(images_path, (list, tuple)):
-            images_path = [images_path]
-        if not isinstance(images_path, (list, tuple)):
-            videos_path = [videos_path]
-        from .vision_utils import load_image, load_video
-        pixel_values_images = _read_batch(images_path, load_image)
-        videos_path = [path for path in videos_path if path is not None]
-        if example.get('objects'):
-            example['objects'] = json.loads(example.get('objects'))
-        self.normalize_bbox(example.get('objects'), pixel_values_images, to_type='norm_1000')
+        history = example.pop('history', [])
         inputs, _ = super(InternvlTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1689,7 +1713,7 @@ class FlorenceTemplate(Template):
             prompts.append(_text)
         return prompts
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         # read image
         processor = self.tokenizer.processor
@@ -1810,7 +1834,7 @@ class LlavaHfTemplate(Template):
         else:
             return ['<image>\n']
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1837,7 +1861,7 @@ class LlavaVideoTemplate(Template):
         else:
             return ['<video>\n']
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1903,7 +1927,7 @@ class LLavaTemplate(Template):
         assert media_type == 'image'
         return [[-200], '\n']
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -1945,7 +1969,7 @@ class Llava1_6MistralTemplate(LlavaHfTemplate):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if 'pixel_values' in inputs:
             inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
@@ -1961,7 +1985,7 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if 'pixel_values' in inputs:
             inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
@@ -1982,7 +2006,7 @@ class LLavaYiTemplate(LlavaHfTemplate):
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if 'pixel_values' in inputs:
             inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
@@ -2003,7 +2027,7 @@ class LLavaLlamaTemplate(Template):
     def __init__(self):
         Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -2036,7 +2060,7 @@ class PaliGemmaTemplate(Template):
         assert media_type == 'image'
         return ['<image>' * self.tokenizer.processor.image_seq_length]
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -2075,7 +2099,7 @@ class Phi3VisionTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         return ['<|image|>']
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         history = example.pop('history', None)
         if history is None:
@@ -2182,7 +2206,7 @@ class DeepseekVLTemplate(Template):
         assert media_type == 'image'
         return ['<image_placeholder>']
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = example.copy()
         history = example.pop('history', None)
         if history is None:
@@ -2264,7 +2288,7 @@ class CogTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         return []
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -2361,7 +2385,7 @@ class Cog2VideoTemplate(CogTemplate):
         videos = example.get('videos') or []
         assert len(videos) <= 1
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super(CogTemplate, self).encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -2422,7 +2446,7 @@ class MiniCPMVTemplate(Template):
         images = example.get('images') or []
         assert len(images) == 1
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super().encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -2563,7 +2587,7 @@ class mPlugOwl2Template(Template):
         assert media_type == 'image'
         return [[-200]]
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from mplug_owl2.mm_utils import process_images
         processor = self.tokenizer.processor
         images_path = example.get('images') or []
@@ -2617,13 +2641,13 @@ register_template(TemplateType.atom,
 
 
 def get_template(
-    template_type: str,
-    tokenizer: PreTrainedTokenizerBase,
-    default_system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-    model=None,
-    **kwargs,
+        template_type: str,
+        tokenizer: PreTrainedTokenizerBase,
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+        model=None,
+        **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])

@@ -75,7 +75,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def load_image(img_path, input_size=448, max_num=6):
+def load_image(img_path):
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
@@ -93,6 +93,10 @@ def load_image(img_path, input_size=448, max_num=6):
         image = img_path
     if image.mode != 'RGB':
         image = image.convert('RGB')
+    return image
+
+
+def transform_image(image, input_size=448, max_num=6):
     transform = build_transform(input_size=input_size)
     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
     pixel_values = [transform(image) for image in images]
