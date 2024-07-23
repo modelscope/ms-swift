@@ -1544,7 +1544,8 @@ class Internvl2Template(InternvlTemplate):
         if objects:
             object_ = objects[index]
             return [
-                f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, {object_["bbox"][2]}, {object_["bbox"][3]}]] </box>'
+                f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, '
+                f'{object_["bbox"][2]}, {object_["bbox"][3]}]] </box>'
             ]
         else:
             return ['<bbox>']

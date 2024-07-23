@@ -1693,7 +1693,7 @@ def preprocess_grit(dataset):
             start_end_pairs.append(ref_exp[0:2])
 
             object_part = caption[int(start):int(end)]
-            objects.append([object_part, ref_exp[2:6]])
+            objects.append({'caption': object_part, 'bbox': ref_exp[2:6], 'bbox_type': 'real', 'image': 0})
 
         start_end_pairs.sort(key=lambda x: (x[0], x[1]))
         if has_overlap(start_end_pairs):

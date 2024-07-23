@@ -163,9 +163,17 @@ Currently, two types of custom grounding tasks are supported:
 1. For tasks asking about the target for a given bounding box, specify `<bbox>` in the query, `<ref-object>` in the response, and provide the target and bounding box details in objects.
 2. For tasks asking about the bounding box for a given target, specify `<ref-object>` in the query, `<bbox>` in the response, and provide the target and bounding box details in objects.
 ```jsonl
-{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[[\"bottom right sandwich\", [331, 266, 612, 530]]]" }
-{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[[\"bottom right sandwich\", [331, 266, 612, 530]]]" }
+{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
 ```
+The `objects` field contains a JSON string with four fields:
+  1. `caption`: Description of the object corresponding to the bounding box (bbox)
+  2. `bbox`: Coordinates of the bounding box. It is recommended to provide four integers (rather than float values), specifically `x_min`, `y_min`, `x_max`, and `y_max`.
+  3. `bbox_type`: Type of the bounding box. Currently, three types are supported: `real`, `norm_1000`, and `norm_1`, which respectively represent actual pixel value coordinates, thousandth ratio coordinates, and normalized ratio coordinates.
+  4. `image`: The index of the image corresponding to the bounding box. The index starts from 0.
+
+
+Let me know if you need further assistance!
 
 ## Inference after Fine-tuning
 Direct inference:

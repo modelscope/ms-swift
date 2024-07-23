@@ -77,10 +77,6 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
 
 
 def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
-    from PIL import Image, UnidentifiedImageError
-    import os
-    import base64
-    import binascii
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
