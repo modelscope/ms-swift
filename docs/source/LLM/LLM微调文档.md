@@ -100,7 +100,7 @@ swift sft \
     --output_dir output \
 
 # 多机多卡
-# 如果多机共用磁盘请在各机器sh中额外指定`--save_on_each_node false`.
+# 如果非共用磁盘请在各机器sh中额外指定`--save_on_each_node true`.
 # node0
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NNODES=2 \
