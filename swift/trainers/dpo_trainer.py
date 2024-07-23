@@ -268,6 +268,11 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if self.aux_loss_enabled:
             model_kwargs["output_router_logits"] = True
 
+        # debug
+        # is_internvl = True
+        # if is_internvl:
+        #     model_kwargs["image_flags"] = model_kwargs["image_flags"][0]
+        #     model_kwargs["pixel_values"] = model_kwargs["pixel_values"][0]
         outputs = model(
             concatenated_batch["concatenated_input_ids"],
             attention_mask=concatenated_batch["concatenated_attention_mask"],
@@ -383,7 +388,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             concatenated_batch["pixel_values"] = batch["prompt_pixel_values"].repeat(2, 1, 1, 1, 1).to(device=device)
             # for internvl
             if 'prompt_image_flags' in batch:
-                concatenated_batch["image_flags"] = batch["prompt_image_flags"].repeat(2, 1, 1, 1).to(device=device)
+                if not isinstance(batch["prompt_image_flags"], torch.Tensor):
+                    batch["prompt_image_flags"] = torch.tensor(batch["prompt_image_flags"])
+                concatenated_batch["image_flags"] = batch["prompt_image_flags"].repeat(2, 1).to(device=device)
             # remove pixel_attention_mask in trl
             # concatenated_batch["pixel_attention_mask"] = (
             #     batch["prompt_pixel_attention_mask"].repeat(2, 1, 1, 1).to(device=device)
