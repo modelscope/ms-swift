@@ -112,7 +112,7 @@ CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
 # 微调后模型
-CUDA_VISIBLE_DEVICES=3 swift eval \
+CUDA_VISIBLE_DEVICES=0 swift eval \
     --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 ```

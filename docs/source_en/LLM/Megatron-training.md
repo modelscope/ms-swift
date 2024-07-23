@@ -105,12 +105,12 @@ CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
 # Unfine-tuned model
-CUDA_VISIBLE_DEVICES=1 swift eval --model_type qwen2-7b-instruct \
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --model_id_or_path qwen2-7b-instruct-tp2-pp1/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
 # fine-tuned model
-CUDA_VISIBLE_DEVICES=1 swift eval \
+CUDA_VISIBLE_DEVICES=0 swift eval \
     --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 ```
