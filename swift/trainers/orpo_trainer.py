@@ -19,6 +19,7 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
 
     def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.template = template
+        is_multimodal = kwargs.pop('is_multimodal')
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
         val_ds_info = self.stat_dataset(self.eval_dataset)
@@ -32,6 +33,8 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
             'memory': {},
             'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
         }
+        self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix
+        self.is_vision_model = is_multimodal
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)

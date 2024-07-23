@@ -9,6 +9,7 @@ import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
@@ -1394,7 +1395,7 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         images_path = example.get('images') or []
-        if isinstance(images_path, str):
+        if isinstance(images_path, (str, Image.Image)):
             images_path = [images_path]
         from .vision_utils import load_image
         pixel_values = _read_batch(images_path, load_image)
@@ -1470,7 +1471,7 @@ class Internvl2Template(InternvlTemplate):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         videos_path = example.get('videos') or []
-        if isinstance(images_path, str):
+        if isinstance(images_path, (str, Image.Image)):
             images_path = [images_path]
         if isinstance(videos_path, str):
             videos_path = [videos_path]
