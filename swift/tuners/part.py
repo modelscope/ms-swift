@@ -55,7 +55,7 @@ class Part(SwiftAdapter):
             original_state_dict = {}
             for key, value in module.state_dict().items():
                 if key in adapter_keys:
-                    original_state_dict[key] = value
+                    original_state_dict[key] = value.clone()
 
             setattr(module, f'{adapter_name}.origin', original_state_dict)
             setattr(module, f'{adapter_name}.adapter', state_dict)

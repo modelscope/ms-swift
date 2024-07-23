@@ -295,6 +295,9 @@ class TestSwift(unittest.TestCase):
         def target_in(t: str):
             return re.fullmatch(targets, t)
 
+        model.base_model.bert.encoder.layer[0].attention.self.query.weight.data = torch.ones_like(
+            model.base_model.bert.encoder.layer[0].attention.self.query.weight.data)
+
         self.assertTrue(all([target_in(t) for t in trainable]))
         self.assertTrue(not any([target_in(t) for t in not_trainable]))
         model.save_pretrained(self.tmp_dir, adapter_name=['part'])
