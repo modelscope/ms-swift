@@ -115,7 +115,6 @@ sft_args = SftArguments(
     model_type=ModelType.qwen2_7b_instruct,
     dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500',
              f'{DatasetName.self_cognition}#500'],
-    logging_steps=5,
     max_length=2048,
     learning_rate=1e-4,
     output_dir='output',
@@ -173,7 +172,6 @@ CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model_type qwen2-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
-    --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 1e-4 \
     --output_dir output \
@@ -192,7 +190,6 @@ NPROC_PER_NODE=4 \
 swift sft \
     --model_type qwen2-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
-    --logging_steps 5 \
     --max_length 2048 \
     --learning_rate 1e-4 \
     --output_dir output \

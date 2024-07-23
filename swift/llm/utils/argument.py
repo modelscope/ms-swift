@@ -475,7 +475,7 @@ class ArgumentsBase:
         imported_keys = [
             'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
-            'custom_register_path', 'custom_dataset_info'
+            'custom_register_path', 'custom_dataset_info', 'tp', 'pp'
         ]
         if not is_sft:
             imported_keys += ['sft_type', 'rope_scaling', 'system']
@@ -1484,7 +1484,7 @@ class ExportArguments(InferArguments):
                 self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
         elif self.to_megatron or self.to_hf:
             self.quant_method = None
-            self.dtype = 'fp32'
+            self.dtype = 'AUTO'
             os.environ['RANK'] = '0'
             os.environ['LOCAL_RANK'] = '0'
             os.environ['WORLD_SIZE'] = '1'

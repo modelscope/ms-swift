@@ -71,8 +71,8 @@ def patch_megatron(tokenizer):
     @wraps(_old_training_log)
     def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
+        args = get_args()
         if is_master() and iteration % args.log_interval == 0:
-            args = get_args()
             logging_path = os.path.join(args.save, 'logging.jsonl')
             logs = {}
             for k, v in loss_dict.items():

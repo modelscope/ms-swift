@@ -16,6 +16,7 @@ config_mapping = {
     'norm_epsilon': ['rms_norm_eps'],
     'rotary_base': ['rope_theta'],
     'padded_vocab_size': ['vocab_size'],
+    'attention_dropout': ['attention_dropout']
 }
 
 
@@ -162,8 +163,8 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
             'num_workers': args.dataloader_num_workers,
             'use_flash_attn': args.use_flash_attn
         }
-        res['train_iters'] = int(len(train_dataset) * args.num_train_epochs / res['global_batch_size'])
-        res['eval_iters'] = int(len(val_dataset) / res['global_batch_size'])
+        res['train_iters'] = int(math.ceil(len(train_dataset) * args.num_train_epochs / res['global_batch_size']))
+        res['eval_iters'] = int(math.ceil(len(val_dataset) / res['global_batch_size']))
         res['lr_warmup_iters'] = (
             args.warmup_steps if args.warmup_steps > 0 else math.ceil(res['train_iters'] * args.warmup_ratio))
         return res

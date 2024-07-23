@@ -63,8 +63,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
                                     _train_valid_test_datasets_provider)
     from megatron.core.enums import ModelType
     from megatron.training import pretrain
-    model_type = 'qwen2-0_5b'
-    _, tokenizer = get_model_tokenizer(model_type, load_model=False)
+    _, tokenizer = get_model_tokenizer(args.model_type, load_model=False)
 
     # Loading Dataset
     template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
@@ -79,7 +78,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
 
     res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
     res.update(MegatronArguments.from_sft_args(args, train_dataset, val_dataset))
-    res['model_series'] = get_model_seires(model_type)
+    res['model_series'] = get_model_seires(args.model_type)
     megatron_args = MegatronArguments(**res)
     extra_args = megatron_args.parse_to_megatron()
 
