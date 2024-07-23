@@ -16,7 +16,7 @@ from peft.utils import WEIGHTS_NAME
 from torch import nn
 
 from swift import AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig, SideConfig, Swift, SwiftModel
-from swift.tuners.part import PartConfig
+from swift.tuners.part import Part, PartConfig
 
 
 class TestSwift(unittest.TestCase):
@@ -283,6 +283,7 @@ class TestSwift(unittest.TestCase):
 
     def test_part(self):
         model = SbertForSequenceClassification(SbertConfig())
+        model_origin = copy.deepcopy(model)
         model2 = copy.deepcopy(model)
         targets = r'.*(query|key|value).*'
         part_config = PartConfig(target_modules=targets)
@@ -302,6 +303,30 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'part')))
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'part', WEIGHTS_NAME)))
         model2 = Swift.from_pretrained(model2, self.tmp_dir, adapter_name=['part'])
+        state_dict = model.state_dict()
+        state_dict2 = model2.state_dict()
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+
+        self.assertTrue(hasattr(model2, 'part.adapter'))
+        self.assertTrue(hasattr(model2, 'part.origin'))
+
+        model2.activate_adapter('part')
+        state_dict = model.state_dict()
+        state_dict2 = model2.state_dict()
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+
+        model2.deactivate_adapter('part')
+        state_dict = model_origin.state_dict()
+        state_dict2 = model2.state_dict()
+        for key in state_dict2:
+            self.assertTrue(key in state_dict)
+            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+
+        model2.activate_adapter('part')
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
         for key in state_dict:
