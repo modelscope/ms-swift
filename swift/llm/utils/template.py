@@ -166,6 +166,7 @@ class Template:
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = '<image>'
+    load_medias = True
 
     def __init__(self,
                  prefix: Prompt,
@@ -402,9 +403,14 @@ class Template:
         # Load image into PIL format
         from .vision_utils import load_image
         if example.get('images'):
-            example['images'] = [load_image(img) for img in example['images']]
-            # Normalize grounding bboxes
-            self.normalize_bbox(example.get('objects'), example.get('images'), to_type=self.grounding_type)
+            images = example['images']
+            if example.get('objects') or self.load_medias:
+                images = [load_image(img) for img in images]
+            if example.get('objects'):
+                # Normalize grounding bboxes
+                self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
+            if self.load_medias:
+                example['images'] = images
         return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -569,6 +575,7 @@ class Template:
                     int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
                     for coord, dim in zip(bbox, [width, height, width, height])
                 ]
+                object['bbox_type'] = to_type
             elif bbox_type == 'norm_1000':
                 if to_type == 'norm_1000':
                     continue
@@ -579,6 +586,7 @@ class Template:
                     object['bbox'] = [
                         int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])
                     ]
+                object['bbox_type'] = to_type
             elif bbox_type == 'norm_1':
                 if to_type == 'norm_1':
                     continue
@@ -587,6 +595,7 @@ class Template:
                 elif to_type == 'real':
                     width, height = image.width, image.height
                     object['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
+                object['bbox_type'] = to_type
 
     def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                      **kwargs) -> Tuple[List[Context], List[float]]:
@@ -964,6 +973,8 @@ class QwenTemplate(Template):
 
 
 class QwenVLTemplate(QwenTemplate):
+
+    load_medias = False
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -1706,8 +1717,8 @@ class FlorenceTemplate(Template):
         images = example.get('images', [])
         assert len(images) == 1, 'Florence series models only supports input with a single image.'
         from .vision_utils import transform_image
-        images = transform_image(images[0])
-        example['_image'] = images
+        image_tensors = transform_image(images[0])
+        example['_image'] = image_tensors
 
         # process bbox
         if example.get('objects') is not None:
@@ -1717,15 +1728,15 @@ class FlorenceTemplate(Template):
                 for idx in range(len(example['objects'])):
                     if idx != 0:
                         example['query'] += ','
-                    example['query'] += example['objects'][idx][0]
-                    example['response'] += example['objects'][idx][0] + self.replace_box(idx, example)[0]
+                    example['query'] += example['objects'][idx]['caption']
+                    example['response'] += example['objects'][idx]['caption'] + self.replace_box(idx, example)[0]
             elif '<bbox>' in example['query']:
                 example['query'] = '<REGION_TO_DESCRIPTION>'
                 example['response'] = ''
                 for idx in range(len(example['objects'])):
                     bbox = self.replace_box(idx, example)[0]
                     example['query'] += bbox
-                    example['response'] += example['objects'][idx][0]
+                    example['response'] += example['objects'][idx]['caption']
         example['query'] = self._construct_prompts([example.get('query')])[0]
 
         inputs = processor(text=example['query'], images=images, return_tensors='pt').to(self.model.device)
@@ -1747,7 +1758,7 @@ class FlorenceTemplate(Template):
             return {}, {}
         inputs['input_ids'] = inputs['input_ids'][:self.max_length]
         inputs['attention_mask'] = inputs['attention_mask'][:self.max_length]
-        if inputs.get('labels'):
+        if inputs.get('labels') is not None:
             inputs['labels'] = inputs['labels'][:self.max_length]
 
         return inputs, {}
