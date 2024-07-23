@@ -4174,6 +4174,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
     hf_model_id='meta-llama/Meta-Llama-3.1-70B-Instruct')
 @register_model(
     ModelType.llama3_1_70b,
@@ -4183,6 +4184,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
     hf_model_id='meta-llama/Meta-Llama-3.1-70B')
 @register_model(
     ModelType.llama3_1_8b_instruct,
@@ -4192,6 +4194,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
     hf_model_id='meta-llama/Meta-Llama-3.1-8B-Instruct')
 @register_model(
     ModelType.llama3_1_8b,
@@ -4201,6 +4204,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
     hf_model_id='meta-llama/Meta-Llama-3.1-8B')
 @register_model(
     ModelType.llama3_70b_instruct_awq,
