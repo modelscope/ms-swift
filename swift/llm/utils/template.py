@@ -345,7 +345,8 @@ class Template:
                 example[media_key] = [example[media_key]]
 
         # Parse <img></img> format images and merged into images key
-        example['query'], example['history'], images_path = replace_img_tag(example['query'], history, self.image_placeholder)
+        example['query'], example['history'], images_path = replace_img_tag(example['query'], history,
+                                                                            self.image_placeholder)
         if images_path:
             images = example.get('images', [])
             images.extend(images_path)
@@ -565,8 +566,8 @@ class Template:
                     continue
                 width, height = image.width, image.height
                 object['bbox'] = [
-                    int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim for coord, dim in
-                    zip(bbox, [width, height, width, height])
+                    int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
+                    for coord, dim in zip(bbox, [width, height, width, height])
                 ]
             elif bbox_type == 'norm_1000':
                 if to_type == 'norm_1000':
@@ -576,8 +577,7 @@ class Template:
                 elif to_type == 'real':
                     width, height = image.width, image.height
                     object['bbox'] = [
-                        int(coord / 999. * dim) for coord, dim in
-                        zip(bbox, [width, height, width, height])
+                        int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])
                     ]
             elif bbox_type == 'norm_1':
                 if to_type == 'norm_1':
@@ -586,10 +586,7 @@ class Template:
                     object['bbox'] = [int(coord * 999) for coord in bbox]
                 elif to_type == 'real':
                     width, height = image.width, image.height
-                    object['bbox'] = [
-                        int(coord * dim) for coord, dim in
-                        zip(bbox, [width, height, width, height])
-                    ]
+                    object['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
 
     def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                      **kwargs) -> Tuple[List[Context], List[float]]:
@@ -786,7 +783,7 @@ class Template:
                 labels[0] = F.pad(labels[0], (0, padding_len) if padding_right else (padding_len, 0), 'constant', -100)
                 if loss_scale:
                     loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]) if padding_right else
-                    (padding_to - labels[0].shape[-1], 0), 'constant', 0.)
+                                          (padding_to - labels[0].shape[-1], 0), 'constant', 0.)
 
         if input_ids is None:
             inputs_embeds = self.pad_sequence(inputs_embeds, 0, self.padding_side)
@@ -873,15 +870,15 @@ class Template:
         return print_idx
 
     def generate_ids_to_response(
-            self,
-            generate_ids: List[int],
-            is_finished: bool = True,
-            *,
-            tokenizer_kwargs: Optional[Dict[str, Any]] = None,
-            # only stream=True
-            return_delta: bool = False,
-            print_idx: Optional[List[int]] = None,
-            first_num_space: Optional[List[int]] = None,
+        self,
+        generate_ids: List[int],
+        is_finished: bool = True,
+        *,
+        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
+        # only stream=True
+        return_delta: bool = False,
+        print_idx: Optional[List[int]] = None,
+        first_num_space: Optional[List[int]] = None,
     ):
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
@@ -1535,7 +1532,9 @@ class Internvl2Template(InternvlTemplate):
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, {object_["bbox"][2]}, {object_["bbox"][3]}]] </box>']
+            return [
+                f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, {object_["bbox"][2]}, {object_["bbox"][3]}]] </box>'
+            ]
         else:
             return ['<bbox>']
 
@@ -1680,7 +1679,7 @@ class FlorenceTemplate(Template):
         }
 
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
-        x1, y1, x2, y2 = example['objects'][index][1]
+        x1, y1, x2, y2 = example['objects'][index]['bbox']
         return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
 
     def _construct_prompts(self, text):
@@ -1713,7 +1712,6 @@ class FlorenceTemplate(Template):
         # process bbox
         if example.get('objects') is not None:
             if '<ref-object>' in example['query']:
-                example['objects'] = json.loads(example['objects'])
                 example['query'] = '<OPEN_VOCABULARY_DETECTION>'
                 example['response'] = ''
                 for idx in range(len(example['objects'])):
@@ -1722,7 +1720,6 @@ class FlorenceTemplate(Template):
                     example['query'] += example['objects'][idx][0]
                     example['response'] += example['objects'][idx][0] + self.replace_box(idx, example)[0]
             elif '<bbox>' in example['query']:
-                example['objects'] = json.loads(example['objects'])
                 example['query'] = '<REGION_TO_DESCRIPTION>'
                 example['response'] = ''
                 for idx in range(len(example['objects'])):
@@ -2614,13 +2611,13 @@ register_template(TemplateType.atom,
 
 
 def get_template(
-        template_type: str,
-        tokenizer: PreTrainedTokenizerBase,
-        default_system: Optional[str] = None,
-        max_length: Optional[int] = None,
-        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-        model=None,
-        **kwargs,
+    template_type: str,
+    tokenizer: PreTrainedTokenizerBase,
+    default_system: Optional[str] = None,
+    max_length: Optional[int] = None,
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+    model=None,
+    **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])

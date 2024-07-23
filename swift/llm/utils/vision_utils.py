@@ -2,7 +2,7 @@ import base64
 import binascii
 import os
 from io import BytesIO
-from typing import Union, List, Callable, TypeVar
+from typing import Callable, List, TypeVar, Union
 
 import numpy as np
 import requests
