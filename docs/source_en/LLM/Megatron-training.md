@@ -1,21 +1,20 @@
-# Megatron训练文档 （测试版）
+# Megatron Training Documentation (Beta)
 
-## 目录
-- [环境准备](#环境准备)
-- [自我认知微调案例](#自我认知微调案例)
+## Table of Contents
+- [Environment Preparation](#Environment-Preparation)
+- [SFT Example](#SFT-Example)
+- [Mapping between MegatronArguments and SftArguments](#Mapping-between-MegatronArguments-and-SftArguments)
 
 
-## 环境准备
+## Environment-Preparation
 
 ```shell
-# 设置pip全局镜像 (加速下载)
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-# 安装ms-swift
+# Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 
-# 安装megatron相关依赖 (你不需要安装megatron-ml等其他依赖库)
+# Install Megatron-related dependencies (You do not need to install megatron-ml or other dependency libraries)
 # transformer_engine
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 # apex
@@ -25,16 +24,16 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 ```
 
 
-## 自我认知微调案例
-这里介绍可以很快跑通的使用megatron训练的案例，通过此案例，你可以熟悉magatron训练的全流程。使用HF Trainer进行微调的对应案例可以查看[自我认知微调最佳实践](自我认知微调最佳实践.md).
+## SFT-Example
+Here we present a quick-start example of training with Megatron. Through this example, you can get familiar with the entire Megatron training workflow. For a corresponding example of fine-tuning using HF Trainer, please refer to [Self-cognition-best-practice](Self-cognition-best-practice.md).
 
-1. HF格式的权重转成megatron格式的权重:
+1. Converting weights from HF format to Megatron format:
 ```shell
-# 默认输出路径: --megatron_output_dir {model_type}-tp{tp}-pp{pp}
+# Default output path: --megatron_output_dir {model_type}-tp{tp}-pp{pp}
 CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct --to_megatron true --tp 2 --dtype bf16
 ```
 
-2. 使用megatron格式权重进行微调，命令脚本如下:
+2. Fine-tuning using Megatron format weights, the command script is as follows:
 ```shell
 # TP=2, DP=2
 CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
@@ -48,29 +47,29 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
     --train_backend megatron
 ```
 
-3. 将megatron格式权重重新转成HF格式:
+3. Converting weights from Megatron format back to HF format:
 ```shell
-# 未微调模型
+# Unfine-tuned model
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir qwen2-7b-instruct-tp2-pp1 --to_hf true
 
-# 微调后模型
+# fine-tuned model
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011 --to_hf true
 ```
 
-4. 对获得的权重进行推理测试，并使用vLLM进行加速:
+4. Perform inference testing on the obtained weights and accelerate using vLLM:
 ```shell
-# 未微调模型
+# Unfine-tuned model
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen2-7b-instruct \
     --model_id_or_path qwen2-7b-instruct-tp2-pp1/qwen2-7b-instruct-hf \
 
-# 微调后模型
+# fine-tuned model
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011/qwen2-7b-instruct-hf
 ```
 
-微调后模型效果如下：
+The performance of the fine-tuned model is as follows:
 ```python
 """
 <<< 你是谁
@@ -94,18 +93,18 @@ I am an artificial intelligence named Xiao Huang, developed by ModelScope. I am 
 """
 ```
 
-我们对训练完的HF模型进行评测：
+We evaluate the trained HF model:
 ```shell
 pip install llmuses==0.4.0
-# 原始模型
+# Original model
 CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
-# 未微调模型
+# Unfine-tuned model
 CUDA_VISIBLE_DEVICES=1 swift eval --model_type qwen2-7b-instruct --model_id_or_path /mnt/nas2/huangjintao.hjt/work/swift/qwen2-7b-instruct-tp2-pp1/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 
-# 微调后模型
+# fine-tuned model
 CUDA_VISIBLE_DEVICES=1 swift eval --ckpt_dir /mnt/nas2/huangjintao.hjt/work/swift/output/qwen2-7b-instruct-tp2-pp1/v7-20240723-195011/qwen2-7b-instruct-hf \
     --eval_dataset ceval mmlu gsm8k arc --eval_backend Native
 ```
@@ -113,7 +112,7 @@ CUDA_VISIBLE_DEVICES=1 swift eval --ckpt_dir /mnt/nas2/huangjintao.hjt/work/swif
 
 
 
-## megatron参数与SftArguments的映射关系
+## Mapping between MegatronArguments and SftArguments
 |  MegatronArguments    |  SftArguments |
 | ---- | ---- |
 |   optimizer   | optim |

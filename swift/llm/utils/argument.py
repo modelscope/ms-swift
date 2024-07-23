@@ -485,7 +485,12 @@ class ArgumentsBase:
                     'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
                 ]
         for key in imported_keys:
+            if not hasattr(self, key):
+                continue
             value = getattr(self, key)
+            old_value = old_args.get(key)
+            if old_value is None:
+                continue
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {
@@ -495,7 +500,7 @@ class ArgumentsBase:
                 continue
             if key in {'template_type', 'dtype'} and value != 'AUTO':
                 continue
-            setattr(self, key, old_args.get(key))
+            setattr(self, key, old_value)
 
         # compat
         if self.val_dataset is None:
@@ -1447,7 +1452,7 @@ class ExportArguments(InferArguments):
     hf_output_dir: Optional[str] = None
     tp: int = 1
     pp: int = 1
-    check_model_forward: bool = True
+    check_model_forward: bool = False
 
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token
@@ -1484,7 +1489,6 @@ class ExportArguments(InferArguments):
                 self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
         elif self.to_megatron or self.to_hf:
             self.quant_method = None
-            self.dtype = 'AUTO'
             os.environ['RANK'] = '0'
             os.environ['LOCAL_RANK'] = '0'
             os.environ['WORLD_SIZE'] = '1'
@@ -1500,7 +1504,7 @@ class ExportArguments(InferArguments):
             logger.info(f'Setting args.megatron_output_dir: {self.megatron_output_dir}')
         if self.to_hf:
             if self.hf_output_dir is None:
-                self.hf_output_dir = f'{self.model_type}-hf'
+                self.hf_output_dir = os.path.join(self.ckpt_dir, f'{self.model_type}-hf')
             self.hf_output_dir = self._check_path(self.hf_output_dir)
             logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
 

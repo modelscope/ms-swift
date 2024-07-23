@@ -167,9 +167,15 @@ class MegatronArguments(ExtraMegatronArguments, MegatronMixin):
         res['eval_iters'] = int(math.ceil(len(val_dataset) / res['global_batch_size']))
         res['lr_warmup_iters'] = (
             args.warmup_steps if args.warmup_steps > 0 else math.ceil(res['train_iters'] * args.warmup_ratio))
+        if args.save_only_model:
+            res['no_save_optim'] = True
+            res['no_save_rng'] = True
+
         return res
 
     def __post_init__(self):
+        assert self.pipeline_model_parallel_size == 1 and self.target_pipeline_model_parallel_size, (
+            'Pipeline model parallel is currently not supported.')
         if self.group_query_attention is None:
             self.group_query_attention = True if self.num_query_groups > 1 else False
         if self.save_interval is None:

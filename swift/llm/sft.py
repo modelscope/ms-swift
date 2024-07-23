@@ -58,9 +58,8 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         f'--megatron_output_dir {args.resume_from_checkpoint} --to_megatron true` '
         'to convert the weights to Megatron format.')
     from swift.llm import get_model_tokenizer
-    from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf, get_model_seires, patch_megatron,
-                                    model_provider, forward_step, train_valid_test_datasets_provider as
-                                    _train_valid_test_datasets_provider)
+    from swift.llm.megatron import (MegatronArguments, get_model_seires, patch_megatron, model_provider, forward_step,
+                                    train_valid_test_datasets_provider as _train_valid_test_datasets_provider)
     from megatron.core.enums import ModelType
     from megatron.training import pretrain
     _, tokenizer = get_model_tokenizer(args.model_type, load_model=False)
@@ -86,6 +85,13 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         _train_valid_test_datasets_provider, train_dataset=train_dataset, val_dataset=val_dataset, template=template)
     train_valid_test_datasets_provider.is_distributed = True
     patch_megatron(tokenizer)
+    pretrain(
+        train_valid_test_datasets_provider,
+        model_provider,
+        ModelType.encoder_or_decoder,
+        forward_step,
+        args_defaults=extra_args)
+    logger.info(f'output_dir: {args.output_dir}')
     if is_master():
         fpath = os.path.join(args.output_dir, 'sft_args.json')
         logger.info(f'The {args.__class__.__name__} will be saved in: {fpath}')
@@ -93,12 +99,6 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
             json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    pretrain(
-        train_valid_test_datasets_provider,
-        model_provider,
-        ModelType.encoder_or_decoder,
-        forward_step,
-        args_defaults=extra_args)
     # Visualization
     if is_master():
         images_dir = os.path.join(args.output_dir, 'images')

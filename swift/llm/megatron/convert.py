@@ -1,7 +1,8 @@
 import os
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+import torch
 from transformers import AutoModelForCausalLM
 
 _convert_mapping = {'qwen2': 'qwen'}
@@ -45,7 +46,8 @@ def model_provider(pre_process=True, post_process=True):
 def convert_hf_to_megatron(
     hf_model,
     extra_args: Dict[str, Any],
-    check_model_forward: bool = True,
+    check_model_forward: bool = False,
+    save_torch_dtype: Optional[torch.dtype] = None,
 ) -> None:
     megatron_patch_path = os.environ['PAI_MEGATRON_PATCH_PATH']
     from megatron.training.initialize import initialize_megatron
@@ -59,7 +61,11 @@ def convert_hf_to_megatron(
                                                   save_mgmodel)
     mg_model = model_provider()
     convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
+    if save_torch_dtype is not None:
+        mg_model.to(save_torch_dtype)
     if check_model_forward:
+        if save_torch_dtype is not None:
+            hf_model.to(save_torch_dtype)
         check_hf_mg_forward(hf_model, mg_model, args)
     if args.load is None:
         args.load = hf_model.model_dir

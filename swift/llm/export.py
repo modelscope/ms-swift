@@ -213,7 +213,7 @@ def llm_export(args: ExportArguments) -> None:
             megatron_args = MegatronArguments(**res)
             extra_args = megatron_args.parse_to_megatron()
             patch_megatron(tokenizer)
-            convert_hf_to_megatron(model, extra_args, args.check_model_forward)
+            convert_hf_to_megatron(model, extra_args, args.check_model_forward, args.torch_dtype)
             fpath = os.path.join(args.megatron_output_dir, 'export_args.json')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
@@ -225,7 +225,7 @@ def llm_export(args: ExportArguments) -> None:
                         'Skipping the conversion process.')
         else:
             from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf, get_model_seires, patch_megatron)
-            model, tokenizer = get_model_tokenizer(args.model_type, torch.float32, {'device_map': 'cpu'})
+            hf_model, tokenizer = get_model_tokenizer(args.model_type, torch.float32, {'device_map': 'cpu'})
             res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
             res['model_series'] = get_model_seires(args.model_type)
             res['target_tensor_model_parallel_size'] = args.tp
@@ -234,10 +234,12 @@ def llm_export(args: ExportArguments) -> None:
             res['save'] = args.hf_output_dir
             megatron_args = MegatronArguments(**res)
             extra_args = megatron_args.parse_to_megatron()
-            extra_args['hf_ckpt_path'] = model.model_dir
+            extra_args['hf_ckpt_path'] = hf_model.model_dir
             patch_megatron(tokenizer)
-            convert_megatron_to_hf(model, extra_args)
-            save_checkpoint(model, tokenizer, model.model_dir, None, args.hf_output_dir)
+            convert_megatron_to_hf(hf_model, extra_args)
+            if args.torch_dtype is not None:
+                hf_model.to(args.torch_dtype)
+            save_checkpoint(hf_model, tokenizer, hf_model.model_dir, args.ckpt_dir, args.hf_output_dir)
             logger.info('Successfully converted Megatron format to HF format and '
                         f'saved it in the {args.hf_output_dir} directory.')
     if args.push_to_hub:
