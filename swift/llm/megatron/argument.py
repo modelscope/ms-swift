@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import math
 import os
 import sys
@@ -85,7 +86,7 @@ class MegatronMixin:
     bf16: bool = False
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
-    seed: int = 1234
+    seed: int = 42
     transformer_impl: str = 'transformer_engine'
     sequence_parallel: bool = False
 
