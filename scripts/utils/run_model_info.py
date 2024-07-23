@@ -19,7 +19,11 @@ def get_model_info_table():
     for model_name in model_name_list:
         model_info = MODEL_MAPPING[model_name]
         model_id = model_info['model_id_or_path']
-        lora_target_modules = ', '.join(model_info['lora_target_modules'])
+        lora_target_modules = model_info['lora_target_modules']
+        if isinstance(lora_target_modules, list):
+            lora_target_modules = ', '.join(lora_target_modules)
+        else:
+            lora_target_modules = repr(lora_target_modules)
         template = model_info['template']
         support_flash_attn = model_info.get('support_flash_attn', False)
         support_flash_attn = bool_mapping[support_flash_attn]
