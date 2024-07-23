@@ -1019,14 +1019,15 @@ class SftArguments(ArgumentsBase):
                 self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
+            if self.train_backend == 'transformers':
+                self.training_args.output_dir = self.output_dir
+                self.training_args.run_name = self.output_dir
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
-        if self.train_backend == 'transformers':
-            self.training_args.output_dir = self.output_dir
-            self.training_args.run_name = self.output_dir
-            self.training_args.logging_dir = self.logging_dir
+            if self.train_backend == 'transformers':
+                self.training_args.logging_dir = self.logging_dir
 
     def _init_training_args(self) -> None:
         additional_saved_files = []

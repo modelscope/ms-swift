@@ -156,4 +156,3 @@ CUDA_VISIBLE_DEVICES=3 swift eval \
 |  eval_iters  | int(math.ceil(len(val_dataset) / global_batch_size)) |
 |  lr_warmup_iters  |  warmup_steps if warmup_steps > 0 else math.ceil(train_iters * warmup_ratio) |
 |  no_save_optim<br>no_save_rng  | save_only_model |
-
