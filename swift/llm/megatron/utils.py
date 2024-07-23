@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 
 from swift.llm import LazyLLMDataset, Template, git_clone_github, is_megatron_available
-from swift.utils import get_dist_setting, get_logger, subprocess_run
+from swift.utils import append_to_jsonl, get_dist_setting, get_logger, is_master, subprocess_run
 
 logger = get_logger()
 
@@ -65,6 +65,30 @@ def patch_megatron(tokenizer):
         return _old_load_checkpoint(model, optimizer, opt_param_scheduler, load_arg=load_arg, strict=strict)
 
     training.load_checkpoint = load_checkpoint
+
+    _old_training_log = training.training_log
+
+    @wraps(_old_training_log)
+    def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
+                     report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
+        if is_master() and iteration % args.log_interval == 0:
+            args = get_args()
+            logging_path = os.path.join(args.save, 'logging.jsonl')
+            logs = {}
+            for k, v in loss_dict.items():
+                if isinstance(v, torch.Tensor):
+                    v = v.item()
+                logs[k] = round(v, 8)
+            logs['grad_norm'] = round(grad_norm, 8)
+            logs['learning_rate'] = round(learning_rate, 8)
+            logs['consumed_samples'] = args.consumed_train_samples
+            logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
+            append_to_jsonl(logging_path, logs)
+        return _old_training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration,
+                                 loss_scale, report_memory_flag, skipped_iter, grad_norm, params_norm,
+                                 num_zeros_in_grad)
+
+    training.training_log = training_log
 
 
 def loss_func(loss_mask: torch.Tensor, output_tensor: torch.Tensor):

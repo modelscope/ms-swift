@@ -71,6 +71,8 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
                                       args.truncation_strategy)
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
+    td0, tkwargs0 = template.encode(train_dataset[0])
+    print_example(td0, tokenizer, tkwargs0)
     train_dataset = LazyLLMDataset(train_dataset, template)
     if val_dataset is not None:
         val_dataset = LazyLLMDataset(val_dataset, template)
@@ -90,12 +92,19 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         logger.info(f'The {args.__class__.__name__} will be saved in: {fpath}')
         with open(fpath, 'w', encoding='utf-8') as f:
             json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
+    logging_path = os.path.join(args.output_dir, 'logging.jsonl')
+    logger.info(f'The logging file will be saved in: {logging_path}')
     pretrain(
         train_valid_test_datasets_provider,
         model_provider,
         ModelType.encoder_or_decoder,
         forward_step,
         args_defaults=extra_args)
+    # Visualization
+    if is_master():
+        images_dir = os.path.join(args.output_dir, 'images')
+        logger.info(f'images_dir: {images_dir}')
+        plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
     return {}
 
 
@@ -403,7 +412,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     for key in ['gen_time', 'gen_len']:
         if trainer.perf[key] != 0:
             run_info[key] = trainer.perf[key]
-    if is_local_master():
+    if is_master():
         jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
         append_to_jsonl(jsonl_path, run_info)
     return run_info
