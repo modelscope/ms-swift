@@ -361,6 +361,18 @@ class Template:
         if example.get('objects') and isinstance(example['objects'], str):
             # reload grounding from str
             example['objects'] = json.loads(example['objects'])
+            objects = []
+            for object in example['objects']:
+                # Compatible with list format
+                if isinstance(object, list):
+                    object = {
+                        'caption': object[0],
+                        'bbox': object[1],
+                        'bbox_type': None,
+                        'image': 0,
+                    }
+                objects.append(object)
+            example['objects'] = objects
 
         # Reset system (by default value and agent tools)
         system: Optional[str] = example.get('system', None)
