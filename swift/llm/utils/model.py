@@ -518,6 +518,7 @@ class LoRATM(NamedTuple):
         'o_proj',
     ]
     minicpm_llama = r'.*model\.layers\.(?:[0-9]|[12][0-9]|3[01])\.(?:self_attn\.(?:q_proj|k_proj|v_proj))'
+    internvl2 = r'.*(wqkv|wo|w[123]|mlp1\\.(1|3))$'
     # compat
     llama2 = llama
 
@@ -528,7 +529,7 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTr
 def register_model(
         model_type: str,
         model_id_or_path: Optional[str],
-        lora_target_modules: Optional[List[str]] = None,
+        lora_target_modules: Optional[Union[List[str], str]] = None,
         template: str = TemplateType.default,
         get_function: Optional[GetModelTokenizerFunction] = None,
         *,
@@ -3790,7 +3791,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_2b,
     'OpenGVLab/InternVL2-2B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3810,7 +3811,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_8b,
     'OpenGVLab/InternVL2-8B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3820,7 +3821,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_26b,
     'OpenGVLab/InternVL2-26B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
