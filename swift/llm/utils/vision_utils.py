@@ -2,6 +2,7 @@ import base64
 import binascii
 import os
 from io import BytesIO
+from typing import Union, List, Callable, TypeVar
 
 import numpy as np
 import requests
@@ -75,7 +76,11 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def load_image(img_path):
+def _load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
+    from PIL import Image, UnidentifiedImageError
+    import os
+    import base64
+    import binascii
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
@@ -94,6 +99,19 @@ def load_image(img_path):
     if image.mode != 'RGB':
         image = image.convert('RGB')
     return image
+
+
+_T = TypeVar('_T')
+
+
+def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
+                load_func: Callable[[str], _T] = _load_image) -> List[_T]:
+    res = []
+    for path in path_list:
+        if path is None:  # ignore None
+            continue
+        res.append(load_func(path))
+    return res
 
 
 def transform_image(image, input_size=448, max_num=6):
