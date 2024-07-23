@@ -76,7 +76,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def _load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
+def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     from PIL import Image, UnidentifiedImageError
     import os
     import base64
@@ -105,7 +105,7 @@ _T = TypeVar('_T')
 
 
 def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
-                load_func: Callable[[str], _T] = _load_image) -> List[_T]:
+                load_func: Callable[[str], _T] = load_image) -> List[_T]:
     res = []
     for path in path_list:
         if path is None:  # ignore None

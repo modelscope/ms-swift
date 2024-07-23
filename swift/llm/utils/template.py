@@ -387,7 +387,7 @@ class Template:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
         # Load image into PIL format
-        from .vision_utils import load_image, load_video
+        from .vision_utils import load_image
         if example.get('images'):
             example['images'] = [load_image(img) for img in example['images']]
             # Normalize grounding bboxes
