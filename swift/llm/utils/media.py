@@ -18,6 +18,8 @@ class MediaTag:
             'en': [('<ref-object>', '<bbox>'), ('The positions of <ref-object> is', '<bbox>'),
                    ('Find the positions of <ref-object>', '<bbox>'), ('Where is <ref-object>', '<bbox>'),
                    ('Find <ref-object>', '<bbox>'), ('Show me <ref-object>', '<bbox>'),
+                   ('Detect <ref-object>', '<bbox>'), ('Locate <ref-object>', '<bbox>'),
+                   ('Tell me the location of <ref-object>', '<bbox>'), ('Give the location of <ref-object>', '<bbox>'),
                    ('Provide the bounding box coordinate of <ref-object>', '<bbox>')],
             'zh': [('<ref-object>', '<bbox>'), ('<ref-object>的位置在图片中', '<bbox>'), ('<ref-object>在图片中', '<bbox>'),
                    ('<ref-object>在', '<bbox>'), ('找到<ref-object>的位置', '<bbox>'), ('<ref-object>在哪里', '<bbox>'),
