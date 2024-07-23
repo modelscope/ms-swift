@@ -14,7 +14,6 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
-from swift.llm import MediaTag
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, upper_bound, use_torchacc
@@ -338,6 +337,7 @@ class Template:
             assert self.support_multi_round, (
                 f'The template does not support multi-round chat, template_type: {template_type}')
 
+        from swift.llm import MediaTag
         # Format media_keys to list
         for media_key in MediaTag.media_keys.values():
             if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
@@ -392,6 +392,7 @@ class Template:
             example['images'] = [load_image(img) for img in example['images']]
             # Normalize grounding bboxes
             self.normalize_bbox(example.get('objects'), example.get('images'), to_type=self.grounding_type)
+        return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
@@ -525,7 +526,7 @@ class Template:
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [object_[0]]
+            return [object_['caption']]
         else:
             return ['<ref-object>']
 
@@ -533,7 +534,7 @@ class Template:
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [f'({object_[1][0]},{object_[1][1]}),({object_[1][2]},{object_[1][3]})']
+            return [f'({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})']
         else:
             return ['<bbox>']
 
@@ -971,12 +972,12 @@ class QwenVLTemplate(QwenTemplate):
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
         object_ = objects[index]
-        return [f'<ref>{object_[0]}</ref>']
+        return [f'<ref>{object_["caption"]}</ref>']
 
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
         object_ = objects[index]
-        return [f'<box>({object_[1][0]},{object_[1][1]}),({object_[1][2]},{object_[1][3]})</box>']
+        return [f'<box>({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})</box>']
 
 
 register_template(TemplateType.qwen, QwenTemplate())
@@ -991,8 +992,8 @@ register_template(
 
 class _QwenAudioTemplateMixin:
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, tokenizer_kwargs = super().encode(example)
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, tokenizer_kwargs = super()._encode(example)
         if len(inputs) == 0:
             return inputs, tokenizer_kwargs
         inputs.pop('loss_scale', None)
@@ -1077,7 +1078,7 @@ class YiVLTemplate(Template):
         return [[-200], '\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         inputs.pop('loss_scale', None)
@@ -1137,7 +1138,7 @@ class GLM4VTemplate(GLMTemplate):
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from .utils import history_to_messages
 
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
@@ -1319,7 +1320,7 @@ class InternLMXComposer2Template(Template):
         super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER_SYSTEM, system_prefix)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         dtype = self.model.dtype
@@ -1449,7 +1450,7 @@ class InternvlTemplate(Template):
         return [[-100]]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
@@ -1514,7 +1515,7 @@ class Internvl2Template(InternvlTemplate):
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [f'<ref>{object_}</ref>']
+            return [f'<ref>{object_["caption"]}</ref>']
         else:
             return ['<ref-object>']
 
@@ -1522,12 +1523,12 @@ class Internvl2Template(InternvlTemplate):
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [f'<box> [[{object_[1][0]}, {object_[1][1]}, {object_[1][2]}, {object_[1][3]}]] </box>']
+            return [f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, {object_["bbox"][2]}, {object_["bbox"][3]}]] </box>']
         else:
             return ['<bbox>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super(InternvlTemplate, self).encode(example)
+        inputs, _ = super(InternvlTemplate, self)._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
@@ -1808,7 +1809,7 @@ class LlavaHfTemplate(Template):
             return ['<image>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images', [])
@@ -1834,7 +1835,7 @@ class LlavaVideoTemplate(Template):
             return ['<video>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         media_files = example.get('videos', [])
@@ -1902,7 +1903,7 @@ class LLavaTemplate(Template):
         return [[-200], '\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images', [])
@@ -1943,7 +1944,7 @@ class Llava1_6MistralTemplate(LlavaHfTemplate):
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if 'pixel_values' in inputs:
             inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
         return inputs, {}
@@ -1959,7 +1960,7 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
                          system_prefix=['<s>{{SYSTEM}} '])
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if 'pixel_values' in inputs:
             inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
         return inputs, {}
@@ -1980,7 +1981,7 @@ class LLavaYiTemplate(LlavaHfTemplate):
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if 'pixel_values' in inputs:
             inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
         return inputs, {}
@@ -2001,7 +2002,7 @@ class LLavaLlamaTemplate(Template):
         Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         raw_image = example.get('images', [])
@@ -2033,7 +2034,7 @@ class PaliGemmaTemplate(Template):
         return ['<image>' * self.tokenizer.processor.image_seq_length]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         raw_image = example.get('images', [])
@@ -2074,7 +2075,7 @@ class Phi3VisionTemplate(Template):
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images = example.get('images', [])
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
@@ -2176,7 +2177,7 @@ class DeepseekVLTemplate(Template):
         return ['<image_placeholder>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images')
@@ -2250,7 +2251,7 @@ class CogTemplate(Template):
         return []
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         image = example.get('images', [])
@@ -2346,7 +2347,7 @@ class Cog2VideoTemplate(CogTemplate):
         assert len(videos) <= 1
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super(CogTemplate, self).encode(example)
+        inputs, _ = super(CogTemplate, self)._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         videos_path = example.get('videos', [])
@@ -2408,7 +2409,7 @@ class MiniCPMVTemplate(Template):
         assert len(images) == 1
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         images = example['images']
@@ -2557,7 +2558,7 @@ class mPlugOwl2Template(Template):
             max_edge = max(image.size)
             image = image.resize((max_edge, max_edge))
             images[i] = image
-        inputs, _ = super().encode(example)
+        inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         input_ids = inputs['input_ids']
