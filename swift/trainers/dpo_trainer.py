@@ -12,7 +12,7 @@ from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer, concat_template
+from .utils import build_tokenized_answer
 
 logger = get_logger()
 
@@ -268,7 +268,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         outputs = model(
             concatenated_batch['concatenated_input_ids'],
             attention_mask=concatenated_batch['concatenated_attention_mask'],
-            use_cache=False,
             **model_kwargs,
         )
         all_logits = outputs.logits
@@ -281,7 +280,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
             concatenated_batch['concatenated_labels'],
-            # average_log_prob=self.loss_type == "ipo",
             is_encoder_decoder=self.is_encoder_decoder,
             label_pad_token_id=self.label_pad_token_id,
         )
@@ -327,8 +325,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         device: Optional[torch.device] = None,
     ) -> Dict[str, torch.LongTensor]:
         """
-        Code from trl, remove dependency on pixel_attention_mask for the vision model.
-
         Concatenate the chosen and rejected inputs into a single tensor.
 
         Args:
