@@ -4023,7 +4023,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-def git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> str:
+def git_clone_github(github_url: str, local_repo_name: Optional[str] = None, branch: Optional[str] = None) -> str:
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -4036,6 +4036,9 @@ def git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> 
                 github_url = f'{github_url}.git'
             command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
             command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
+            if branch is not None:
+                command += ['--branch', branch]
+                command_str += f' --branch {branch}'
             logger.info(f'Run the command: `{command_str}`')
             subprocess_run(command)
         logger.info(f'local_repo_path: {local_repo_path}')
