@@ -28,6 +28,7 @@ Swift DOCUMENTATION
    LLM/LLM量化文档.md
    LLM/VLLM推理加速与部署.md
    LLM/LmDeploy推理加速与部署.md
+   LLM/Megatron训练文档.md
    LLM/LLM实验文档.md
    LLM/命令行参数.md
    LLM/支持的模型和数据集.md

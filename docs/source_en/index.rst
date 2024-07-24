@@ -28,6 +28,7 @@ Swift DOCUMENTATION
    LLM/LLM-quantization.md
    LLM/VLLM-inference-acceleration-and-deployment.md
    LLM/LmDeploy-inference-acceleration-and-deployment.md
+   LLM/Megatron-training.md
    LLM/LLM-exp.md
    LLM/Command-line-parameters.md
    LLM/Supported-models-datasets.md

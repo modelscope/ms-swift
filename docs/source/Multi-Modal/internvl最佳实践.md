@@ -362,6 +362,22 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 {"query": "Describe this video in detail. Don't repeat", "response": "xxxxxxxxx", "history": [], "videos": ["video_path"]}
 ```
 
+**InternVL2**模型支持grounding任务的训练，数据参考下面的格式：
+```jsonl
+{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+```
+上述objects字段中包含了一个json string，其中有四个字段：
+    a. caption bbox对应的物体描述
+    b. bbox 坐标 建议给四个整数（而非float型），分别是x_min,y_min,x_max,y_max四个值
+    c. bbox_type: bbox类型 目前支持三种：real/norm_1000/norm_1，分别代表实际像素值坐标/千分位比例坐标/归一化比例坐标
+    d. image: bbox对应的图片是第几张, 索引从0开始
+上述格式会被转换为InternVL2可识别的格式，具体来说：
+```jsonl
+{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>"}
+```
+也可以直接传入上述格式，但是注意坐标请使用千分位坐标。
+
 ## 微调后推理
 直接推理:
 ```shell

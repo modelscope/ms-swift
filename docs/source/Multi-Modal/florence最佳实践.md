@@ -164,9 +164,14 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 1. 对于给定bounding box询问目标的任务, 在query中指定`<bbox>`, 在response中指定`<ref-object>`, 在`objects`提供目标和bounding box具体信息
 2. 对于给定目标询问bounding box的任务,在query中指定`<ref-object>`, 在response中指定`<bbox>`, 在`objects`提供目标和bounding box具体信息
 ```jsonl
-{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[[\"bottom right sandwich\", [331, 266, 612, 530]]]" }
-{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[[\"bottom right sandwich\", [331, 266, 612, 530]]]" }
+{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
 ```
+上述objects字段中包含了一个json string，其中有四个字段：
+    a. caption bbox对应的物体描述
+    b. bbox 坐标 建议给四个整数（而非float型），分别是x_min,y_min,x_max,y_max四个值
+    c. bbox_type: bbox类型 目前支持三种：real/norm_1000/norm_1，分别代表实际像素值坐标/千分位比例坐标/归一化比例坐标
+    d. image: bbox对应的图片是第几张, 索引从0开始
 
 
 ## 微调后推理
