@@ -100,17 +100,6 @@
         "tags": ["qa", "math", "en", "quality"],
         "hf_dataset_id": "TIGER-Lab/MATH-plus"
     },
-    "RLAIF-v-dataset": {
-        "dataset_id": "swift/RLAIF-V-Dataset",
-        "hf_dataset_id": "openbmb/RLAIF-V-Dataset",
-        "columns": {
-            "image": "images",
-            "question": "query",
-            "chosen": "response",
-            "rejected": "rejected_response"
-        },
-        "tags": ["multi-modal", "rlhf", "quality"]
-    },
     "path-vqa": {
         "dataset_id": "swift/path-vqa",
         "hf_dataset_id": "flaviagiammarino/path-vqa",

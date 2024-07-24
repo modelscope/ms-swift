@@ -72,6 +72,14 @@ class ArgumentsBase:
         tags = model_info.get('tags') or []
         return 'multi-modal' in tags
 
+    @staticmethod
+    def _is_vision(model_type: Optional[str] = None) -> bool:
+        if model_type is None:
+            return False
+        model_info = MODEL_MAPPING[model_type]
+        tags = model_info.get('tags') or []
+        return 'vision' in tags
+
     def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
         check_exist_path = ['ckpt_dir', 'resume_from_checkpoint', 'custom_register_path']
         maybe_check_exist_path = ['model_id_or_path', 'custom_dataset_info']
@@ -849,6 +857,7 @@ class SftArguments(ArgumentsBase):
         self.handle_generation_config()
         self.handle_lr_scheduler_kwargs()
         self.is_multimodal = self._is_multimodal(self.model_type)
+        self.is_vision = self._is_vision(self.model_type)
 
         self.lora_use_embedding = False
         self.lora_use_all = False

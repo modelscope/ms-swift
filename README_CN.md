@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.07.24: 人类偏好对齐算法支持视觉多模态大模型, 包括DPO/ORPO/SimPO/CPO, 训练参考[文档](docs/source/Multi-Modal/人类偏好对齐训练文档.md). 支持数据集RLAIF-V.
 - 🔥2024.07.24: 支持使用megatron对qwen2系列进行CPT和SFT. 可以查看[megatron训练文档](docs/source/LLM/Megatron训练文档.md).
 - 🔥2024.07.24: 支持llama3.1系列模型.
 - 2024.07.20: 支持mistral-nemo系列模型. 使用`--model_type mistral-nemo-base-2407`以及`--model_type mistral-nemo-instruct-2407`开始训练和推理.

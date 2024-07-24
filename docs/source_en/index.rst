@@ -68,6 +68,7 @@ Swift DOCUMENTATION
    Multi-Modal/internvl-best-practice.md
    Multi-Modal/mutlimodal-deployment.md
    Multi-Modal/vllm-inference-acceleration.md
+   Multi-Modal/human-preference-alignment-training-documentation.md
 
 .. toctree::
    :maxdepth: 2

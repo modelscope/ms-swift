@@ -161,6 +161,9 @@ class DatasetName:
     shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
     ultrafeedback_kto = 'ultrafeedback-kto'
 
+    # visual rlhf
+    rlaif_v = 'rlaif-v'
+
     # for awq
     pileval = 'pileval'
 
@@ -2209,6 +2212,21 @@ register_dataset(
     hf_dataset_id='Hello-SimpleAI/HC3')
 
 NoneType = type(None)
+
+
+def process_rlaif_v(dataset: HfDataset):
+
+    new_column_names = {'image': 'images', 'question': 'query', 'chosen': 'response', 'rejected': 'rejected_response'}
+
+    return dataset.rename_columns(new_column_names)
+
+
+register_dataset(
+    DatasetName.rlaif_v,
+    'swift/RLAIF-V-Dataset', ['default'],
+    process_rlaif_v,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'multi-modal', 'en'])
 
 
 def _check_dataset(dataset: Optional[HfDataset], check_dataset_strategy: Literal['none', 'discard', 'error',

@@ -55,8 +55,9 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.07.24: Support DPO/ORPO/SimPO/CPO alignment algorithm for vision MLLM, training scripts can be find in [Document](docs/source_en/Multi-Modal/human-preference-alignment-training-documentation.md). support RLAIF-V dataset.
 - 🔥2024.07.24: Support using Megatron for CPT and SFT on the Qwen2 series. You can refer to the [Megatron training documentation](docs/source_en/LLM/Megatron-training.md).
-- 🔥2024.07.20: Support llama3.1 series models.
+- 🔥2024.07.24: Support llama3.1 series models.
 - 2024.07.20: Support mistral-nemo series models. Use `--model_type mistral-nemo-base-2407` and `--model_type mistral-nemo-instruct-2407` to begin.
 - 2024.07.19: Support [Q-Galore](https://arxiv.org/abs/2407.08296), this algorithm can reduce the training memory cost by 60% (qwen-7b-chat, full, 80G -> 35G), use `swift sft --model_type xxx --use_galore true --galore_quantization true` to begin!
 - 2024.07.17: Support newly released InternVL2 models: `model_type` are internvl2-1b, internvl2-40b, internvl2-llama3-76b. For best practices, refer to [here](docs/source_en/Multi-Modal/internvl-best-practice.md).
@@ -267,7 +268,7 @@ You can refer to the following scripts to customize your own training script.
 |------------------|-------------------------------------------------------------------------------|
 | Pretraining      | Text Generation                                                               |
 | Fine-tuning      | Single-turn/Multi-turn<br>Agent Training/Self-cognition<br>Multi-modal Vision/Multi-modal Speech|
-| Human Alignment  | DPO<br>ORPO<br>SimPO                                                          |
+| Human Alignment  | DPO<br>ORPO<br>SimPO<br>CPO<br>KTO                                            |
 | Text-to-Image    | DreamBooth, etc.                                                              |
 | Text-to-Video    | -                                                                             |
 
