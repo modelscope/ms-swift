@@ -9,7 +9,6 @@ import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
-from PIL import Image
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria

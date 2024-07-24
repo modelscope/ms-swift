@@ -46,6 +46,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         return res
 
     def tokenize_row(self, feature, model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
+
         batch = {}
         if not self.is_encoder_decoder:
             # first: encode without response
@@ -176,34 +177,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             batch.update(prompt_tokens)
 
         return batch
-
-    @staticmethod
-    def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
-        _token_len = []
-        from datasets import Dataset as HfDataset
-        from swift.utils.np_utils import stat_array
-        if isinstance(llm_dataset, HfDataset):
-            if is_encoder_decoder:
-                prompt = llm_dataset['prompt_input_ids']
-                chosen = llm_dataset['chosen_labels']
-                rejected = llm_dataset['chosen_labels']
-                for p, cc, rr in zip(prompt, chosen, rejected):
-                    _token_len.append(max(len(cc), len(rr)) + len(p))
-            else:
-                chosen = llm_dataset['chosen_input_ids']
-                rejected = llm_dataset['rejected_input_ids']
-                for cc, rr in zip(chosen, rejected):
-                    _token_len.append(max(len(cc), len(rr)))
-        else:
-            for d in llm_dataset:
-                if is_encoder_decoder:
-                    _token_len.append(
-                        max(len(d['chosen_labels']), len(d['chosen_labels'])) + len(d['prompt_input_ids']))
-                else:
-                    _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
-        _, stat_str = stat_array(_token_len)
-        logger.info(f'Dataset Token Length: {stat_str}')
-        return stat_str
 
     def get_batch_loss_metrics(
         self,
@@ -451,3 +424,31 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                 concatenated_batch['image_sizes'] = sum([b for b in batch['prompt_image_sizes']], start=[])
 
         return concatenated_batch
+
+    @staticmethod
+    def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
+        _token_len = []
+        from datasets import Dataset as HfDataset
+        from swift.utils.np_utils import stat_array
+        if isinstance(llm_dataset, HfDataset):
+            if is_encoder_decoder:
+                prompt = llm_dataset['prompt_input_ids']
+                chosen = llm_dataset['chosen_labels']
+                rejected = llm_dataset['chosen_labels']
+                for p, cc, rr in zip(prompt, chosen, rejected):
+                    _token_len.append(max(len(cc), len(rr)) + len(p))
+            else:
+                chosen = llm_dataset['chosen_input_ids']
+                rejected = llm_dataset['rejected_input_ids']
+                for cc, rr in zip(chosen, rejected):
+                    _token_len.append(max(len(cc), len(rr)))
+        else:
+            for d in llm_dataset:
+                if is_encoder_decoder:
+                    _token_len.append(
+                        max(len(d['chosen_labels']), len(d['chosen_labels'])) + len(d['prompt_input_ids']))
+                else:
+                    _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
+        _, stat_str = stat_array(_token_len)
+        logger.info(f'Dataset Token Length: {stat_str}')
+        return stat_str
