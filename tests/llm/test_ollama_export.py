@@ -23,10 +23,10 @@ class TestTemplate(unittest.TestCase):
         args = ExportArguments(model_type='llama3-8b-instruct', to_ollama=True, ollama_output_dir=self.tmp_dir)
         export_main(args)
 
-        template = 'TEMPLATE """{{ if .System }}<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n'
-        '{{ .System }}<|eot_id|>{{ end }}{{ if .Prompt }}<|start_header_id|>user<|end_header_id|>\n\n'
-        '{{ .Prompt }}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
-        '{{ end }}{{ .Response }}<|eot_id|>"""'
+        template = ('TEMPLATE """{{ if .System }}<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n'
+                    '{{ .System }}<|eot_id|>{{ else }}<|begin_of_text|>{{ end }}{{ if .Prompt }}<|start_header_id|>user'
+                    '<|end_header_id|>\n\n{{ .Prompt }}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+                    '{{ end }}{{ .Response }}<|eot_id|>"""')
 
         stop = 'PARAMETER stop "<|eot_id|>"'
 
@@ -35,15 +35,12 @@ class TestTemplate(unittest.TestCase):
             self.assertTrue(template in content)
             self.assertTrue(stop in content)
 
-    @unittest.skip('TODO FIX')
     def test_glm4(self):
         args = ExportArguments(model_type='glm4-9b-chat', to_ollama=True, ollama_output_dir=self.tmp_dir)
         export_main(args)
 
-        template = 'TEMPLATE """{{ if .System }}<|system|>\n'
-        '{{ .System }}{{ end }}{{ if .Prompt }}<|user|>\n'
-        '{{ .Prompt }}<|assistant|>\n'
-        '{{ end }}{{ .Response }}<|user|>"""'
+        template = ('TEMPLATE """{{ if .System }}[gMASK] <sop><|system|>{{ .System }}{{ else }}[gMASK] <sop>'
+                    '{{ end }}{{ if .Prompt }}<|user|>{{ .Prompt }}<|assistant|>{{ end }}{{ .Response }}<|user|>"""')
 
         stop = 'PARAMETER stop "<|user|>"'
 
@@ -56,10 +53,9 @@ class TestTemplate(unittest.TestCase):
         args = ExportArguments(model_type='qwen2-7b-instruct', to_ollama=True, ollama_output_dir=self.tmp_dir)
         export_main(args)
 
-        template = 'TEMPLATE """{{ if .System }}<|im_start|>system\n'
-        '{{ .System }}<|im_end|>\n{{ end }}{{ if .Prompt }}<|im_start|>user\n'
-        '{{ .Prompt }}<|im_end|>\n<|im_start|>assistant\n'
-        '{{ end }}{{ .Response }}<|im_end|>"""'
+        template = ('TEMPLATE """{{ if .System }}<|im_start|>system\n{{ .System }}<|im_end|>\n{{ else }}{{ end }}'
+                    '{{ if .Prompt }}<|im_start|>user\n{{ .Prompt }}<|im_end|>\n<|im_start|>assistant\n'
+                    '{{ end }}{{ .Response }}<|im_end|>"""')
 
         stop = 'PARAMETER stop "<|im_end|>"'
 

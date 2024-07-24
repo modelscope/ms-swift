@@ -327,6 +327,23 @@ The **InternVL2** model supports training with video datasets without the need t
 {"query": "Describe this video in detail. Don't repeat", "response": "xxxxxxxxx", "history": [], "videos": ["video_path"]}
 ```
 
+The **InternVL2** model supports training for grounding tasks, with data referenced in the following format:
+```jsonl
+{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+```
+The `objects` field contains a JSON string with four fields:
+  1. **caption**: Description of the object corresponding to the bounding box.
+  2. **bbox**: Coordinates suggested as four integers (instead of floats), representing the values `x_min`, `y_min`, `x_max`, and `y_max`.
+  3. **bbox_type**: Type of bounding box. Currently, three types are supported: `real` / `norm_1000` / `norm_1`, representing actual pixel value coordinates / thousandth-scale coordinates / normalized coordinates.
+  4. **image**: The index of the corresponding image, starting from 0.
+
+This format will be converted to a format recognizable by InternVL2, specifically:
+```json
+{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>"}
+```
+You can also directly input the above format, but please ensure that the coordinates use thousandth-scale coordinates.
+
 ## Inference after Fine-tuning
 Direct inference:
 ```shell

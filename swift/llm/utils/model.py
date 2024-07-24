@@ -525,6 +525,9 @@ class LoRATM(NamedTuple):
         'o_proj',
     ]
     minicpm_llama = r'.*model\.layers\.(?:[0-9]|[12][0-9]|3[01])\.(?:self_attn\.(?:q_proj|k_proj|v_proj))'
+    internvl2 = r'.*(wqkv|wo|w[123]|mlp1\.(1|3))$'
+    internvl2_llama = r'.*(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|mlp1\.(1|3))$'
+    internvl2_phi3 = r'.*(qkv_proj|o_proj|gate_up_proj|down_proj|mlp1\.(1|3))$'
     # compat
     llama2 = llama
 
@@ -535,7 +538,7 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTr
 def register_model(
         model_type: str,
         model_id_or_path: Optional[str],
-        lora_target_modules: Optional[List[str]] = None,
+        lora_target_modules: Optional[Union[List[str], str]] = None,
         template: str = TemplateType.default,
         get_function: Optional[GetModelTokenizerFunction] = None,
         *,
@@ -3787,7 +3790,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_1b,
     'OpenGVLab/InternVL2-1B',
-    LoRATM.llama,
+    LoRATM.internvl2_llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3797,7 +3800,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_2b,
     'OpenGVLab/InternVL2-2B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3807,7 +3810,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_4b,
     'OpenGVLab/InternVL2-4B',
-    LoRATM.phi3,
+    LoRATM.internvl2_phi3,
     TemplateType.internvl2_phi3,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3817,7 +3820,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_8b,
     'OpenGVLab/InternVL2-8B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3827,7 +3830,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_26b,
     'OpenGVLab/InternVL2-26B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3837,7 +3840,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_40b,
     'OpenGVLab/InternVL2-40B',
-    LoRATM.llama,
+    LoRATM.internvl2_llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3847,7 +3850,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_llama3_76b,
     'OpenGVLab/InternVL2-Llama3-76B',
-    LoRATM.llama,
+    LoRATM.internvl2_llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,

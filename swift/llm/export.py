@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Optional
+from typing import List, Optional
 
 import json
 import torch
@@ -93,6 +93,25 @@ def gptq_model_quantize(model, tokenizer):
     return gptq_quantizer
 
 
+def replace_and_concat(template: 'Template', template_list: List, placeholder: str, keyword: str):
+    final_str = ''
+    for t in template_list:
+        if isinstance(t, str):
+            final_str += t.replace(placeholder, keyword)
+        elif isinstance(t, (tuple, list)):
+            if isinstance(t[0], int):
+                final_str += template.tokenizer.decode(t)
+            else:
+                for attr in t:
+                    if attr == 'bos_token_id':
+                        final_str += template.tokenizer.bos_token
+                    elif attr == 'eos_token_id':
+                        final_str += template.tokenizer.eos_token
+                    else:
+                        raise ValueError(f'Unknown token: {attr}')
+    return final_str
+
+
 def llm_export(args: ExportArguments) -> None:
     global _args, template
     logger.info(f'args: {args}')
@@ -131,14 +150,15 @@ def llm_export(args: ExportArguments) -> None:
         with open(os.path.join(args.ollama_output_dir, 'Modelfile'), 'w') as f:
             f.write(f'FROM {model_dir}\n')
             f.write(f'TEMPLATE """{{{{ if .System }}}}'
-                    f'{template.system_prefix[0].replace("{{SYSTEM}}", "{{ .System }}")}'
+                    f'{replace_and_concat(template, template.system_prefix, "{{SYSTEM}}", "{{ .System }}")}'
+                    f'{{{{ else }}}}{replace_and_concat(template, template.prefix, "", "")}'
                     f'{{{{ end }}}}')
             f.write(f'{{{{ if .Prompt }}}}'
-                    f'{template.prompt[0].replace("{{QUERY}}", "{{ .Prompt }}")}'
+                    f'{replace_and_concat(template, template.prompt, "{{QUERY}}", "{{ .Prompt }}")}'
                     f'{{{{ end }}}}')
             f.write('{{ .Response }}')
-            f.write(template.suffix[0] + '"""\n')
-            f.write(f'PARAMETER stop "{template.suffix[0]}"\n')
+            f.write(replace_and_concat(template, template.suffix, '', '') + '"""\n')
+            f.write(f'PARAMETER stop "{replace_and_concat(template, template.suffix, "", "")}"\n')
             if args.stop_words:
                 for stop_word in args.stop_words:
                     f.write(f'PARAMETER stop "{stop_word}"\n')
