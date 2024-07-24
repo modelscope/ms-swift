@@ -3,6 +3,7 @@
 ## 目录
 - [环境准备](#环境准备)
 - [SFT案例](#SFT案例)
+- [多机预训练案例](#多机预训练案例)
 - [MegatronArguments与SftArguments的映射](#MegatronArguments与SftArguments的映射)
 
 
@@ -125,6 +126,11 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 |  原始模型  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
 |  未微调  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
 |  微调后  |   0.7392   |    0.6878  |  0.8241    |    0.8481  |
+
+
+## 多机预训练案例
+敬请期待...
+
 
 ## MegatronArguments与SftArguments的映射
 |  MegatronArguments    |  SftArguments |
