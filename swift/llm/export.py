@@ -157,7 +157,7 @@ def llm_export(args: ExportArguments) -> None:
                     f'{replace_and_concat(template, template.prompt, "{{QUERY}}", "{{ .Prompt }}")}'
                     f'{{{{ end }}}}')
             f.write('{{ .Response }}')
-            f.write(replace_and_concat(template, template.suffix, "", "") + '"""\n')
+            f.write(replace_and_concat(template, template.suffix, '', '') + '"""\n')
             f.write(f'PARAMETER stop "{replace_and_concat(template, template.suffix, "", "")}"\n')
             if args.stop_words:
                 for stop_word in args.stop_words:
