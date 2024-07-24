@@ -4176,6 +4176,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         model.generation_config = model.language_model.generation_config
     return model, tokenizer
 
+
 @register_model(
     ModelType.openbuddy_llama3_1_8b_chat,
     'OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k',
