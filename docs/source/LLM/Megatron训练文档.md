@@ -2,8 +2,8 @@
 
 ## 目录
 - [环境准备](#环境准备)
-- [自我认知微调案例](#自我认知微调案例)
-- [MegatronArguments与SftArguments的映射关系](#MegatronArguments与SftArguments的映射关系)
+- [SFT案例](#SFT案例)
+- [MegatronArguments与SftArguments的映射](#MegatronArguments与SftArguments的映射)
 
 
 ## 环境准备
@@ -26,7 +26,7 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 ```
 
 
-## 自我认知微调案例
+## SFT案例
 这里介绍可以很快跑通的使用megatron训练的案例，通过此案例，你可以熟悉magatron训练的全流程。使用HF Trainer进行微调的对应案例可以查看[自我认知微调最佳实践](自我认知微调最佳实践.md).
 
 1. HF格式的权重转成megatron格式的权重:
@@ -124,7 +124,7 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 |  未微调  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
 |  微调后  |   0.7392   |    0.6878  |  0.8241    |    0.8481  |
 
-## MegatronArguments与SftArguments的映射关系
+## MegatronArguments与SftArguments的映射
 |  MegatronArguments    |  SftArguments |
 | ---- | ---- |
 |   optimizer   | optim |

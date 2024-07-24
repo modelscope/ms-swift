@@ -131,12 +131,14 @@ class SwiftOutput:
                 >>> def mark_trainable_callback(model):
                 >>>     mark_lora_as_trainable(model, config.bias)
         optimizer_group_callback (`FunctionType`): A callback returned the param group cared by the tuner.
+        load_state_dict_callback (`FunctionType`): A callback called before load_state_dict of the tuner.
     """
 
     config: SwiftConfig = None
     state_dict_callback: FunctionType = None
     mark_trainable_callback: FunctionType = None
     optimizer_group_callback: FunctionType = None
+    load_state_dict_callback: FunctionType = None
 
 
 class ActivationMixin:
@@ -317,6 +319,10 @@ class SwiftAdapter:
             SwiftAdapter.offload_helper.load_disk(module, adapter_name=adapter_name, module_key=module_key)
             module.to(module.origin_device)
             delattr(module, 'origin_device')
+
+    @staticmethod
+    def state_dict_load_hook(model: torch.nn.Module, state_dict: Dict[str, torch.Tensor]):
+        pass
 
     @staticmethod
     def has_additional_modules():

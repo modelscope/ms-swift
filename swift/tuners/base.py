@@ -21,7 +21,7 @@ from swift import SwiftTuners
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
 from .. import PeftConfig, PeftModel, get_peft_model
-from .utils import SwiftConfig, SwiftOutput
+from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -102,7 +102,7 @@ class SwiftModel(nn.Module):
 
     def load_state_dict(self, state_dict, strict=True, adapter_name: str = None):
         if adapter_name is not None:
-            output = self.adapters[adapter_name]
+            output: SwiftOutput = self.adapters[adapter_name]
             if getattr(output.config, 'modules_to_save', None):
                 for key, value in copy(state_dict).items():
                     for module_name in output.config.modules_to_save:
@@ -129,6 +129,9 @@ class SwiftModel(nn.Module):
                     state_dict.pop(key, None)
                     key = key.replace('lora_embedding_B.', f'lora_embedding_B.{adapter_name}.')
                 state_dict[key] = value
+
+            if output.load_state_dict_callback:
+                output.load_state_dict_callback(self.base_model, adapter_name, state_dict)
 
         incompatible_keys = self.base_model.load_state_dict(state_dict, False)
         if incompatible_keys and len(incompatible_keys[1]) > 0:

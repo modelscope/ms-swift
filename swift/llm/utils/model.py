@@ -171,6 +171,13 @@ class ModelType:
     llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
     llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
     llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
+    # llama3.1
+    llama3_1_8b = 'llama3_1-8b'
+    llama3_1_8b_instruct = 'llama3_1-8b-instruct'
+    llama3_1_70b = 'llama3_1-70b'
+    llama3_1_70b_instruct = 'llama3_1-70b-instruct'
+    llama3_1_405b = 'llama3_1-405b'
+    llama3_1_405b_instruct = 'llama3_1-405b-instruct'
     # chinese-llama-alpaca
     chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
     chinese_llama_2_7b = 'chinese-llama-2-7b'
@@ -4161,6 +4168,66 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.llama3_1_405b_instruct,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B-Instruct')
+@register_model(
+    ModelType.llama3_1_405b,
+    'LLM-Research/Meta-Llama-3.1-405B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B')
+@register_model(
+    ModelType.llama3_1_70b_instruct,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B-Instruct')
+@register_model(
+    ModelType.llama3_1_70b,
+    'LLM-Research/Meta-Llama-3.1-70B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B')
+@register_model(
+    ModelType.llama3_1_8b_instruct,
+    'LLM-Research/Meta-Llama-3.1-8B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-8B-Instruct')
+@register_model(
+    ModelType.llama3_1_8b,
+    'LLM-Research/Meta-Llama-3.1-8B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-8B')
 @register_model(
     ModelType.llama3_70b_instruct_awq,
     'swift/Meta-Llama-3-70B-Instruct-AWQ',
