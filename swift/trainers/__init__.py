@@ -9,9 +9,8 @@ if TYPE_CHECKING:
     from .orpo_trainer import ORPOTrainer
     from .rlhf_trainers import RLHFTrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
-    from .utils import EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, \
-        IntervalStrategy, SchedulerType, ShardedDDPOption, TrainerCallback,\
-        build_tokenized_answer, concat_template
+    from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
+                        ShardedDDPOption, TrainerCallback, build_tokenized_answer, concat_template)
 else:
     _import_structure = {
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
