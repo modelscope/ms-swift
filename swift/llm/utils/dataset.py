@@ -1474,6 +1474,7 @@ register_dataset(
     process_zhihu_kol,
     get_dataset_from_repo,
     hf_dataset_id='wangrui6/Zhihu-KOL',
+    huge_dataset=True,
     tags=['zhihu', 'qa'])
 
 
