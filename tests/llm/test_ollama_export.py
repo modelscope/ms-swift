@@ -35,7 +35,6 @@ class TestTemplate(unittest.TestCase):
             self.assertTrue(template in content)
             self.assertTrue(stop in content)
 
-    @unittest.skip('TODO FIX')
     def test_glm4(self):
         args = ExportArguments(model_type='glm4-9b-chat', to_ollama=True, ollama_output_dir=self.tmp_dir)
         export_main(args)

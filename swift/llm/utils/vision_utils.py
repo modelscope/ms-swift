@@ -161,7 +161,7 @@ def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
     Template.normalize_bbox(objects, [image], 'real')
     bbox = objects[0]['bbox']
     draw = ImageDraw.Draw(image)
-    draw.rectangle(bbox, outline="red", width=2)
+    draw.rectangle(bbox, outline='red', width=2)
     image.save(output_file)
 
 
