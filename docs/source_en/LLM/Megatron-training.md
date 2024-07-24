@@ -23,6 +23,8 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
+The other two dependency libraries are [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch). They will be cloned and installed via swift, so no user installation is required.
+
 
 ## SFT-Example
 Here we present a quick-start example of training with Megatron. Through this example, you can get familiar with the entire Megatron training workflow. For a corresponding example of fine-tuning using HF Trainer, please refer to [Self-cognition-best-practice](Self-cognition-best-practice.md).

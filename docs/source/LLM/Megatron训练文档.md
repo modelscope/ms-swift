@@ -25,6 +25,8 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
+其他两个依赖库为[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)和[Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch). 会由swift进行git clone并安装, 不需要用户进行安装.
+
 
 ## SFT案例
 这里介绍可以很快跑通的使用megatron训练的案例，通过此案例，你可以熟悉magatron训练的全流程。使用HF Trainer进行微调的对应案例可以查看[自我认知微调最佳实践](自我认知微调最佳实践.md).
