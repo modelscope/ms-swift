@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.07.24: 支持llama3.1系列模型.
 - 2024.07.20: 支持mistral-nemo系列模型. 使用`--model_type mistral-nemo-base-2407`以及`--model_type mistral-nemo-instruct-2407`开始训练和推理.
 - 🔥2024.07.19: 支持[Q-Galore](https://arxiv.org/abs/2407.08296)算法, 该算法可以减少显存使用约60% (qwen-7b-chat, full, 80G -> 35G), 使用命令行:`swift sft --model_type xxx --use_galore true --galore_quantization true`来开始训练!
 - 2024.07.17: 支持InternVL2系列新模型: `model_type`分别为internvl2-1b, internvl2-40b, internvl2-llama3-76b. 最佳实践可以查看[这里](docs/source/Multi-Modal/internvl最佳实践.md).
@@ -557,7 +558,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Yuan2                                                                                           | [浪潮源系列模型](https://github.com/IEIT-Yuan)                                   | 中文<br>英文 | 2B-102B             | instruct模型                                |
 | XVerse                                                                                          | [元象系列模型](https://github.com/xverse-ai)                                    | 中文<br>英文 | 7B-65B              | base模型<br>chat模型<br>长文本模型<br>MoE模型        |                |
 | LLaMA2                                                                                          | [LLaMA2系列模型](https://github.com/facebookresearch/llama)                   | 英文       | 7B-70B<br>包含量化版本    | base模型<br>chat模型                          |
-| LLaMA3                                                                                          | [LLaMA3系列模型](https://github.com/meta-llama/llama3)                        | 英文       | 8B-70B<br>包含量化版本    | base模型<br>chat模型                          |
+| | LLaMA3<br>LLaMA3.1                                                  | [LLaMA3系列模型](https://github.com/meta-llama/llama3)                        | 英文       | 8B-70B<br>包含量化版本    | base模型<br>chat模型                          |
 | Mistral<br>Mixtral                                                                              | [Mistral系列模型](https://github.com/mistralai/mistral-src)                   | 英文       | 7B-8x22B            | base模型<br>instruct模型<br>MoE模型             |
 | Yi<br>Yi1.5                                                                                     | [01AI的YI系列模型](https://github.com/01-ai)                                   | 中文<br>英文 | 6B-34B<br>包含量化版本    | base模型<br>chat模型<br>长文本模型                 |
 | InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5                                          | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM)                     | 中文<br>英文 | 1.8B-20B            | base模型<br>chat模型<br>数学模型                  |

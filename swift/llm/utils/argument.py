@@ -444,7 +444,7 @@ class ArgumentsBase:
         hub_token = self.hub_token
         if hub_token is None:
             hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if hub_token is not None:
+        if hub_token:
             api = HubApi()
             api.login(hub_token)
         if not hasattr(self, 'push_to_hub') or not self.push_to_hub:
