@@ -1,20 +1,19 @@
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
-from transformers import PreTrainedModel, trainer
+from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.utils import pad_to_length
 
 from swift.llm.utils.template import Template
 from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
-from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer
+from .utils import build_tokenized_answer, patch_trl
 
 logger = get_logger()
+patch_trl()
 
 
 class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
@@ -25,8 +24,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         is_multimodal = kwargs.pop('is_multimodal')
 
         super().__init__(*args, **kwargs)
-        train_ds_info = self.stat_dataset(self.train_dataset)
-        val_ds_info = self.stat_dataset(self.eval_dataset)
+        train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
+        val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
         self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
         if test_oom_error:
             self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
@@ -53,10 +52,13 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
+            if not isinstance(prompt_tokens['input_ids'], list):
+                prompt_tokens['input_ids'] = prompt_tokens['input_ids'].tolist()
+            if not isinstance(prompt_tokens['attention_mask'], list):
+                prompt_tokens['attention_mask'] = prompt_tokens['attention_mask'].tolist()
 
             # resolve conflict in data_collator when labels are None, pop it afterwards
             prompt_tokens['labels'] = prompt_tokens['input_ids']
-
             # Batching image-related information for paired response using template
             prompt_tokens = [prompt_tokens] * 2
             prompt_tokens = self.template.data_collator(prompt_tokens)
@@ -71,7 +73,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
                 # datasets do not accept bfloat16; convert to float32.
                 prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
-            prompt_tokens['attention_mask'] = [1] * len(prompt_tokens['input_ids'])
+
+            if 'attention_mask' not in prompt_tokens:
+                prompt_tokens['attention_mask'] = [1] * len(prompt_tokens['input_ids'])
 
             prompt_tokens = {f'prompt_{k}': v for k, v in prompt_tokens.items()}
 
@@ -130,23 +134,73 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         else:
             # encoder-decoder
-            batch = super().tokenize_row(feature, model)
+            prompt = feature.copy()
+            prompt['response'] = None
+            prompt_tokens = self.template.encode(prompt)[0]
+
+            # resolve conflict in data_collator when labels are None, pop it afterwards
+            prompt_tokens['labels'] = prompt_tokens['input_ids']
+
+            # Batching image-related information for paired response using template
+            prompt_tokens = [prompt_tokens] * 2
+            prompt_tokens = self.template.data_collator(prompt_tokens)
+            prompt_tokens.pop('labels')
+            for k in prompt_tokens:
+                if 'image' in k or 'pixel' in k:
+                    continue
+                prompt_tokens[k] = prompt_tokens[k][0]
+                if isinstance(prompt_tokens[k], torch.Tensor):
+                    prompt_tokens[k] = prompt_tokens[k].tolist()
+
+            if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
+                # datasets do not accept bfloat16; convert to float32.
+                prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
+            if 'attention_mask' not in prompt_tokens:
+                prompt_tokens['attention_mask'] = [1] * len(prompt_tokens['input_ids'])
+
+            prompt_tokens = {f'prompt_{k}': v for k, v in prompt_tokens.items()}
+
+            # encode with response
+            chosen_tokens = build_tokenized_answer(feature['response'], self.template)
+            rejected_tokens = build_tokenized_answer(feature['rejected_response'], self.template)
+
+            batch['chosen_labels'] = chosen_tokens['input_ids']
+            batch['rejected_labels'] = rejected_tokens['input_ids']
+
+            if model is not None and hasattr(model, 'prepare_decoder_input_ids_from_labels'):
+                batch['rejected_decoder_input_ids'] = model.prepare_decoder_input_ids_from_labels(
+                    labels=torch.tensor(batch['rejected_labels']))
+                batch['chosen_decoder_input_ids'] = model.prepare_decoder_input_ids_from_labels(
+                    labels=torch.tensor(batch['chosen_labels']))
+
+            batch.update(prompt_tokens)
 
         return batch
 
     @staticmethod
-    def stat_dataset(llm_dataset) -> Any:
+    def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
         _token_len = []
         from datasets import Dataset as HfDataset
         from swift.utils.np_utils import stat_array
         if isinstance(llm_dataset, HfDataset):
-            chosen = llm_dataset['chosen_input_ids']
-            rejected = llm_dataset['rejected_input_ids']
-            for cc, rr in zip(chosen, rejected):
-                _token_len.append(max(len(cc), len(rr)))
+            if is_encoder_decoder:
+                prompt = llm_dataset['prompt_input_ids']
+                chosen = llm_dataset['chosen_labels']
+                rejected = llm_dataset['chosen_labels']
+                for p, cc, rr in zip(prompt, chosen, rejected):
+                    _token_len.append(max(len(cc), len(rr)) + len(p))
+            else:
+                chosen = llm_dataset['chosen_input_ids']
+                rejected = llm_dataset['rejected_input_ids']
+                for cc, rr in zip(chosen, rejected):
+                    _token_len.append(max(len(cc), len(rr)))
         else:
             for d in llm_dataset:
-                _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
+                if is_encoder_decoder:
+                    _token_len.append(
+                        max(len(d['chosen_labels']), len(d['chosen_labels'])) + len(d['prompt_input_ids']))
+                else:
+                    _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
         _, stat_str = stat_array(_token_len)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
@@ -268,14 +322,16 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         outputs = model(
             concatenated_batch['concatenated_input_ids'],
             attention_mask=concatenated_batch['concatenated_attention_mask'],
+            use_cache=False,
             **model_kwargs,
         )
         all_logits = outputs.logits
-        if concatenated_batch['concatenated_labels'].shape != all_logits[:-1].shape:
-            # left padding the labels to match the shape.
-            pad_length = all_logits.shape[1] - concatenated_batch['concatenated_labels'].shape[1]
-            concatenated_batch['concatenated_labels'] = F.pad(concatenated_batch['concatenated_labels'],
-                                                              (pad_length, 0), 'constant', -100)
+
+        if all_logits.shape[:2] != concatenated_batch['concatenated_labels'].shape[:2]:
+            # for llava, the model returns logits for the entire sequence,
+            # including the image tokens (placed before the text tokens)
+            seq_len = concatenated_batch['concatenated_labels'].shape[1]
+            all_logits = all_logits[:, -seq_len:]
 
         all_logps, size_completion = self.get_batch_logps(
             all_logits,
@@ -331,6 +387,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             batch: A batch of data. Must contain the keys 'chosen_input_ids' and 'rejected_input_ids',
             which are tensors of shape (batch_size, sequence_length).
             is_encoder_decoder: Whether the model is an encoder-decoder model.
+            is_vision_model: Whether the model is an vision LLM.
             label_pad_token_id: The label pad token id.
             padding_value: The padding value to use for the concatenated inputs_ids.
             device: The device for the concatenated inputs.
@@ -377,6 +434,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             concatenated_batch['concatenated_attention_mask'] = (
                 batch['prompt_attention_mask'].repeat(2, 1).to(device=device))
 
+        # patch here
         if is_vision_model:
             pixel_values = [values for values in batch['prompt_pixel_values']]
             concatenated_batch['pixel_values'] = torch.concat(pixel_values)
@@ -393,9 +451,3 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                 concatenated_batch['image_sizes'] = sum([b for b in batch['prompt_image_sizes']], start=[])
 
         return concatenated_batch
-
-
-# monkey patching
-trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
-trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
-trainer.PrinterCallback = PrinterCallbackNew

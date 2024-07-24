@@ -1656,6 +1656,8 @@ class FlorenceTemplate(Template):
         # read image
         processor = self.tokenizer.processor
         images_path = example.get('images') or []
+        if isinstance(images_path, (str, Image.Image)):
+            images_path = [images_path]
         assert len(images_path) == 1, 'Florence series models only supports input with a single image.'
 
         images = _load_image(images_path[0])
