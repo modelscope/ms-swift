@@ -176,6 +176,7 @@ class ModelType:
     llama3_1_8b_instruct = 'llama3_1-8b-instruct'
     llama3_1_70b = 'llama3_1-70b'
     llama3_1_70b_instruct = 'llama3_1-70b-instruct'
+    llama3_1_70b_instruct_awq = 'llama3_1-70b-instruct-awq'
     llama3_1_405b = 'llama3_1-405b'
     llama3_1_405b_instruct = 'llama3_1-405b-instruct'
     llama3_1_405b_instruct_fp8 = 'llama3_1-405b-instruct-fp8'
@@ -352,6 +353,7 @@ class ModelType:
     openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
     openbuddy_mixtral_moe_7b_chat = 'openbuddy-mixtral-moe-7b-chat'
+    openbuddy_llama3_1_8b_chat = 'openbuddy-llama3_1-8b-chat'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_v2 = 'mistral-7b-v2'
@@ -4174,7 +4176,24 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         model.generation_config = model.language_model.generation_config
     return model, tokenizer
 
-
+@register_model(
+    ModelType.openbuddy_llama3_1_8b_chat,
+    'OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    hf_model_id='OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k')
+@register_model(
+    ModelType.llama3_1_70b_instruct_awq,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-AWQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4')
 @register_model(
     ModelType.llama3_1_405b_instruct_fp8,
     'LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8',
