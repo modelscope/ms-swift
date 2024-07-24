@@ -21,7 +21,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
     def __init__(self, *args, template: Template, sft_beta=0., test_oom_error=False, **kwargs):
         self.template = template
         self.sft_beta = sft_beta
-        is_multimodal = kwargs.pop('is_multimodal')
+        is_vision = kwargs.pop('is_vision')
 
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
@@ -36,7 +36,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             'memory': {},
             'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
         }
-        self.is_vision_model = is_multimodal
+        self.is_vision_model = is_vision
         self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix
 
     def train(self, *args, **kwargs) -> torch.Tensor:
