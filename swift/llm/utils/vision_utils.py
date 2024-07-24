@@ -150,3 +150,21 @@ def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=3
         pixel_values_list.append(pixel_values)
     pixel_values = torch.cat(pixel_values_list)
     return pixel_values, num_patches_list
+
+
+def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
+    from PIL import Image, ImageDraw
+    from swift.llm.utils.template import Template
+    image = Image.open(img_dir)
+
+    objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
+    Template.normalize_bbox(objects, [image], 'real')
+    bbox = objects[0]['bbox']
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(bbox, outline="red", width=2)
+    image.save(output_file)
+
+
+if __name__ == '__main__':
+    # A test main to draw bbox
+    draw_plot('/mnt/workspace/man.jpg', [354, 462, 580, 738], 'norm_1000', '/mnt/workspace/man_bbox.jpg')
