@@ -552,7 +552,6 @@ NPROC_PER_NODE=4 \
 swift sft \
     --model_type llama2-7b-chat \
     --dataset self-cognition#500 sharegpt-gpt4:default#1000 \
-    --logging_steps 5 \
     --max_length 4096 \
     --learning_rate 1e-4 \
     --output_dir output \

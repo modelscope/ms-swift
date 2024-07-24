@@ -15,7 +15,7 @@ from swift.torchacc_utils import patch_acc_model
 from swift.trainers import Seq2SeqTrainer
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_logger,
-                         get_main, get_model_info, is_ddp_plus_mp, is_dist, is_local_master, is_master, plot_images,
+                         get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
@@ -50,9 +50,66 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
     return train_dataset, val_dataset
 
 
+def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
+    assert os.path.exists(args.resume_from_checkpoint), (
+        f'Please run `CUDA_VISIBLE_DEVICES=0 swift export --model_type {args.model_type} --tp {args.tp} --pp {args.pp} '
+        f'--megatron_output_dir {args.resume_from_checkpoint} --to_megatron true` '
+        'to convert the weights to Megatron format.')
+    from swift.llm.megatron import (MegatronArguments, get_model_seires, patch_megatron, model_provider, forward_step,
+                                    train_valid_test_datasets_provider as _train_valid_test_datasets_provider)
+    from megatron.core.enums import ModelType
+    from megatron.training import pretrain
+    _, tokenizer = get_model_tokenizer(args.model_type, load_model=False)
+
+    # Loading Dataset
+    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
+                                      args.truncation_strategy)
+
+    train_dataset, val_dataset = _get_train_val_dataset(args)
+    td0, tkwargs0 = template.encode(train_dataset[0])
+    print_example(td0, tokenizer, tkwargs0)
+    train_dataset = LazyLLMDataset(train_dataset, template)
+    if val_dataset is not None:
+        val_dataset = LazyLLMDataset(val_dataset, template)
+
+    res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
+    res.update(MegatronArguments.from_sft_args(args, train_dataset, val_dataset))
+    res['model_series'] = get_model_seires(args.model_type)
+    megatron_args = MegatronArguments(**res)
+    extra_args = megatron_args.parse_to_megatron()
+
+    train_valid_test_datasets_provider = partial(
+        _train_valid_test_datasets_provider, train_dataset=train_dataset, val_dataset=val_dataset, template=template)
+    train_valid_test_datasets_provider.is_distributed = True
+    patch_megatron(tokenizer)
+    pretrain(
+        train_valid_test_datasets_provider,
+        model_provider,
+        ModelType.encoder_or_decoder,
+        forward_step,
+        args_defaults=extra_args)
+    logger.info(f'output_dir: {args.output_dir}')
+    if is_master():
+        fpath = os.path.join(args.output_dir, 'sft_args.json')
+        logger.info(f'The {args.__class__.__name__} will be saved in: {fpath}')
+        with open(fpath, 'w', encoding='utf-8') as f:
+            json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
+    logging_path = os.path.join(args.output_dir, 'logging.jsonl')
+    logger.info(f'The logging file will be saved in: {logging_path}')
+    # Visualization
+    if is_master():
+        images_dir = os.path.join(args.output_dir, 'images')
+        logger.info(f'images_dir: {images_dir}')
+        plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
+    return {}
+
+
 def llm_sft(args: SftArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
+    if args.train_backend == 'megatron':
+        return llm_sft_megatron(args)
+
     training_args = args.training_args
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
@@ -351,7 +408,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     for key in ['gen_time', 'gen_len']:
         if trainer.perf[key] != 0:
             run_info[key] = trainer.perf[key]
-    if is_local_master():
+    if is_master():
         jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
         append_to_jsonl(jsonl_path, run_info)
     return run_info

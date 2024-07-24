@@ -15,7 +15,7 @@ from .arguments import TrainingArguments
 class ProgressCallbackNew(ProgressCallback):
 
     def on_train_begin(self, args, state, control, **kwargs):
-        if state.is_local_process_zero:
+        if state.is_world_process_zero:
             self.training_bar = tqdm(desc='Train', total=state.max_steps, dynamic_ncols=True)
         self.current_step = 0
         self.start_time = time.time()
@@ -26,7 +26,7 @@ class ProgressCallbackNew(ProgressCallback):
                                           * state.max_steps) if args.metric_warmup_step < 1 else args.metric_warmup_step
 
     def on_prediction_step(self, args, state: TrainerState, control, eval_dataloader=None, **kwargs):
-        if state.is_local_process_zero and has_length(eval_dataloader):
+        if state.is_world_process_zero and has_length(eval_dataloader):
             if self.prediction_bar is None:
                 if self.training_bar is not None:
                     self.training_bar.fp.write('\n')
@@ -61,11 +61,11 @@ class ProgressCallbackNew(ProgressCallback):
         for k, v in logs.items():
             if isinstance(v, float):
                 logs[k] = round(logs[k], 8)
-        if not is_pai_training_job() and state.is_local_process_zero:
+        if not is_pai_training_job() and state.is_world_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             append_to_jsonl(jsonl_path, logs)
         super().on_log(args, state, control, logs, **kwargs)
-        if state.is_local_process_zero and self.training_bar is not None:
+        if state.is_world_process_zero and self.training_bar is not None:
             self.training_bar.refresh()
 
 
@@ -90,10 +90,10 @@ class PrinterCallbackNew(TrainerCallback):
         for k, v in logs.items():
             if isinstance(v, float):
                 logs[k] = round(logs[k], 8)
-        if not is_pai_training_job() and state.is_local_process_zero:
+        if not is_pai_training_job() and state.is_world_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             append_to_jsonl(jsonl_path, logs)
 
         _ = logs.pop('total_flos', None)
-        if state.is_local_process_zero:
+        if state.is_world_process_zero:
             print(logs, flush=True)

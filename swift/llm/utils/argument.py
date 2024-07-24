@@ -10,6 +10,7 @@ from typing import Any, List, Literal, Optional, Set, Tuple, Union
 import json
 import numpy as np
 import torch
+import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
@@ -474,7 +475,7 @@ class ArgumentsBase:
         imported_keys = [
             'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
-            'custom_register_path', 'custom_dataset_info'
+            'custom_register_path', 'custom_dataset_info', 'tp', 'pp'
         ]
         if not is_sft:
             imported_keys += ['sft_type', 'rope_scaling', 'system']
@@ -484,7 +485,12 @@ class ArgumentsBase:
                     'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
                 ]
         for key in imported_keys:
+            if not hasattr(self, key):
+                continue
             value = getattr(self, key)
+            old_value = old_args.get(key)
+            if old_value is None:
+                continue
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {
@@ -494,7 +500,7 @@ class ArgumentsBase:
                 continue
             if key in {'template_type', 'dtype'} and value != 'AUTO':
                 continue
-            setattr(self, key, old_args.get(key))
+            setattr(self, key, old_value)
 
         # compat
         if self.val_dataset is None:
@@ -527,6 +533,12 @@ class SftArguments(ArgumentsBase):
     ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
+    # megatron
+    train_backend: Literal['transformers', 'megatron'] = 'transformers'
+    tp: int = 1
+    pp: int = 1
+    min_lr: Optional[float] = None
+    sequence_parallel: bool = False
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
@@ -823,6 +835,8 @@ class SftArguments(ArgumentsBase):
             elif self.loss_scale_config_path == 'agent-flan':  # https://arxiv.org/abs/2403.12881
                 self.loss_scale_config_path = os.path.abspath(
                     os.path.join(__file__, '..', '..', 'agent', 'agentflan.json'))
+        if self.train_backend == 'megatron' and self.resume_from_checkpoint is None:
+            self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
         self.handle_path()
         self._handle_dataset_sample()
         self._register_self_cognition()
@@ -873,6 +887,10 @@ class SftArguments(ArgumentsBase):
                 self.ddp_backend = 'nccl'
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
+
+        if self.train_backend == 'megatron' and self.sft_type == 'lora':
+            logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
+            self.sft_type = 'full'
 
         if is_adapter(self.sft_type):
             assert self.freeze_parameters == 0., (
@@ -985,21 +1003,31 @@ class SftArguments(ArgumentsBase):
         if use_torchacc():
             self.dataloader_drop_last = True
 
-        self._init_training_args()
-
+        if self.train_backend == 'transformers':
+            self._init_training_args()
+        else:
+            assert is_dist(), 'Please start in distributed mode.'
+            dist.init_process_group(backend=self.ddp_backend)
+            if self.min_lr is None:
+                self.min_lr = self.learning_rate * 0.1
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
-            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            if self.train_backend == 'megatron':
+                self.output_dir = os.path.join(self.output_dir, f'{self.model_type}-tp{self.tp}-pp{self.pp}')
+            else:
+                self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
-            self.training_args.output_dir = self.output_dir
-            self.training_args.run_name = self.output_dir
+            if self.train_backend == 'transformers':
+                self.training_args.output_dir = self.output_dir
+                self.training_args.run_name = self.output_dir
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
-            self.training_args.logging_dir = self.logging_dir
+            if self.train_backend == 'transformers':
+                self.training_args.logging_dir = self.logging_dir
 
     def _init_training_args(self) -> None:
         additional_saved_files = []
@@ -1418,6 +1446,15 @@ class ExportArguments(InferArguments):
     hub_private_repo: bool = False
     commit_message: str = 'update files'
 
+    # megatron
+    to_megatron: bool = False
+    to_hf: bool = False
+    megatron_output_dir: Optional[str] = None
+    hf_output_dir: Optional[str] = None
+    tp: int = 1
+    pp: int = 1
+    check_model_forward: bool = False
+
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token
 
@@ -1451,6 +1488,26 @@ class ExportArguments(InferArguments):
             self.ollama_output_dir = self._check_path(self.ollama_output_dir)
             assert not os.path.exists(
                 self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
+        elif self.to_megatron or self.to_hf:
+            self.quant_method = None
+            os.environ['RANK'] = '0'
+            os.environ['LOCAL_RANK'] = '0'
+            os.environ['WORLD_SIZE'] = '1'
+            os.environ['LOCAL_WORLD_SIZE'] = '1'
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
+            assert is_dist(), 'Please start in distributed mode.'
+            dist.init_process_group(backend='nccl')
+        if self.to_megatron:
+            if self.megatron_output_dir is None:
+                self.megatron_output_dir = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
+            self.megatron_output_dir = self._check_path(self.megatron_output_dir)
+            logger.info(f'Setting args.megatron_output_dir: {self.megatron_output_dir}')
+        if self.to_hf:
+            if self.hf_output_dir is None:
+                self.hf_output_dir = os.path.join(self.ckpt_dir, f'{self.model_type}-hf')
+            self.hf_output_dir = self._check_path(self.hf_output_dir)
+            logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
 
 
 @dataclass
