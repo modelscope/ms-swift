@@ -20,7 +20,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
     def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.template = template
         kwargs.pop('gamma', None)
-        is_multimodal = kwargs.pop('is_multimodal')
+        is_vision = kwargs.pop('is_vision')
 
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
@@ -36,7 +36,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
             'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
         }
         self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix
-        self.is_vision_model = is_multimodal
+        self.is_vision_model = is_vision
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
