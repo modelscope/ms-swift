@@ -151,12 +151,13 @@ def llm_export(args: ExportArguments) -> None:
             f.write(f'FROM {model_dir}\n')
             f.write(f'TEMPLATE """{{{{ if .System }}}}'
                     f'{replace_and_concat(template, template.system_prefix, "{{SYSTEM}}", "{{ .System }}")}'
+                    f'{{{{ else }}}}{replace_and_concat(template, template.prefix, "", "")}'
                     f'{{{{ end }}}}')
             f.write(f'{{{{ if .Prompt }}}}'
                     f'{replace_and_concat(template, template.prompt, "{{QUERY}}", "{{ .Prompt }}")}'
                     f'{{{{ end }}}}')
             f.write('{{ .Response }}')
-            f.write(template.suffix[0] + '"""\n')
+            f.write(replace_and_concat(template, template.suffix, "", "") + '"""\n')
             f.write(f'PARAMETER stop "{replace_and_concat(template, template.suffix, "", "")}"\n')
             if args.stop_words:
                 for stop_word in args.stop_words:
