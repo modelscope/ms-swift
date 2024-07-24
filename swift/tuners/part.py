@@ -1,12 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
 import re
-import shutil
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, Optional
 
 import torch
-from modelscope.hub.utils.utils import get_cache_dir
 from torch import nn
 
 from swift import get_logger
@@ -39,26 +37,47 @@ class Part(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: PartConfig, adapter_name: str):
+        name_list = [name for name, _ in model.named_modules(remove_duplicate=False)]
+        for name in name_list:
+            module: nn.Module = model.get_submodule(name)
+            if Part.target_module_matched(name, config) and '_part_' not in name:
+                idx = name.rfind('.')
+                parent = name[:idx]
+                sub_name = name[idx + 1:]
+                parent = model.get_submodule(parent)
+                if hasattr(parent, f'{sub_name}_part_origin'):
+                    module = getattr(parent, f'{sub_name}_part_origin')
+                new_module = deepcopy(module)
+                new_module.part_name = adapter_name
+                setattr(parent, f'{sub_name}_part_{adapter_name}', new_module)
+                if not hasattr(parent, f'{sub_name}_part_origin'):
+                    module.part_name = 'origin'
+                    setattr(parent, f'{sub_name}_part_origin', module)
+                setattr(parent, sub_name, new_module)
+                new_module.requires_grad_(True)
 
         def state_dict_callback(state_dict, adapter_name):
-            return {key: value for key, value in state_dict.items() if Part.target_module_matched(key, config)}
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                if f'_part_{adapter_name}.' in key:
+                    front, end = key.split(f'_part_{adapter_name}')
+                    new_state_dict[front + end] = value
+
+            return new_state_dict
 
         def mark_trainable_callback(model: nn.Module):
-            for name, module in model.named_modules():
+            pass
+
+        def load_state_dict_callback(model: nn.Module, adapter_name: str, state_dict: Dict[str, torch.Tensor]):
+            new_state_dict = {}
+            for name, module in model.named_modules(remove_duplicate=False):
                 module: nn.Module
                 if Part.target_module_matched(name, config):
-                    module.requires_grad_(True)
-
-        def load_state_dict_callback(module: nn.Module, adapter_name: str, state_dict: Dict[str, torch.Tensor]):
-            assert adapter_name and '..' not in adapter_name
-            adapter_keys = state_dict.keys()
-            original_state_dict = {}
-            for key, value in module.state_dict().items():
-                if key in adapter_keys:
-                    original_state_dict[key] = value.clone()
-
-            setattr(module, f'{adapter_name}.origin', original_state_dict)
-            setattr(module, f'{adapter_name}.adapter', state_dict)
+                    for param_name in state_dict:
+                        if param_name.startswith(name):
+                            end = param_name[len(name):]
+                            new_state_dict[name + f'_part_{adapter_name}' + end] = state_dict[param_name]
+            return new_state_dict
 
         return SwiftOutput(
             config=config,
@@ -68,13 +87,24 @@ class Part(SwiftAdapter):
 
     @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
-        if activate:
-            state_dict = getattr(module, f'{adapter_name}.adapter', None)
-        else:
-            state_dict = getattr(module, f'{adapter_name}.origin', None)
-        if state_dict:
-            incompatible_keys = module.load_state_dict(state_dict, False)
-            if incompatible_keys and len(incompatible_keys[1]) > 0:
-                logger.error(f'Load state dict with unexpected keys: {incompatible_keys[1]}')
-        else:
-            logger.warn('No state_dict found on the module for part tuner.')
+        name_list = [name for name, _ in module.named_modules(remove_duplicate=False)]
+        for name in name_list:
+            sub_module: nn.Module = module.get_submodule(name)
+            if re.fullmatch(f'.*_part_{adapter_name}$', name):
+                idx = name.rfind('.')
+                parent_name = name[:idx]
+                sub_name = name[idx + 1:]
+                parent = module.get_submodule(parent_name)
+                sub_name = sub_name[:-len(f'_part_{adapter_name}')]
+                in_use_module = getattr(parent, sub_name)
+                if in_use_module is sub_module and activate:
+                    continue
+                SwiftAdapter.save_memory(sub_module, sub_module.part_name, parent_name + '.' + sub_name, activate,
+                                         offload)
+                if activate:
+                    SwiftAdapter.save_memory(in_use_module, in_use_module.part_name, parent_name + '.' + sub_name,
+                                             not activate, offload)
+                if activate:
+                    setattr(parent, sub_name, sub_module)
+                elif in_use_module.part_name == sub_module.part_name:
+                    setattr(parent, sub_name, getattr(parent, f'{sub_name}_part_origin'))
