@@ -16,6 +16,7 @@ cd swift
 pip install -e '.[llm]'
 
 # Install Megatron-related dependencies (You do not need to install megatron-ml or other dependency libraries)
+pip install pybind11
 # transformer_engine
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 # apex
@@ -24,7 +25,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
-The other two dependency libraries are [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch). They will be cloned and installed via swift, so no user installation is required.
+The other two dependency libraries are [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch). They will be cloned and installed via swift, so no user installation is required. You can also specify the paths to the already downloaded repositories using the environment variables `MEGATRON_LM_PATH` and `PAI_MEGATRON_PATCH_PATH`.
 
 
 ## SFT-Example
@@ -125,6 +126,61 @@ Evaluation results:
 |  Original Model  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
 |  Unfine-tuned  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
 |  Fine-tuned  |   0.7392   |    0.6878  |  0.8241    |    0.8481  |
+
+
+**Multi-Node**:
+```shell
+# node0
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NNODES=2 \
+NODE_RANK=0 \
+MASTER_ADDR=127.0.0.1 \
+NPROC_PER_NODE=8 \
+swift sft \
+    --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
+    --dataset swift-mix:sharegpt#20000 swift-mix:codefuse#10000 swift-mix:metamathqa#10000 self-cognition#500 \
+    --max_length 8192 \
+    --learning_rate 2e-6 \
+    --sft_type full \
+    --output_dir output \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+    --train_backend megatron
+
+# node1
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NNODES=2 \
+NODE_RANK=1 \
+MASTER_ADDR=xxx.xxx.xxx.xxx \
+NPROC_PER_NODE=8 \
+swift sft \
+    --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
+    --dataset swift-mix:sharegpt#20000 swift-mix:codefuse#10000 swift-mix:metamathqa#10000 self-cognition#500 \
+    --max_length 8192 \
+    --learning_rate 2e-6 \
+    --sft_type full \
+    --output_dir output \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+    --train_backend megatron
+```
+
+
+**Alibaba Cloud DLC Multi-Node Training** (No need to modify the wildcard):
+```shell
+NNODES=$WORLD_SIZE \
+NODE_RANK=$RANK \
+swift sft \
+    --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
+    --dataset swift-mix:sharegpt#20000 swift-mix:codefuse#10000 swift-mix:metamathqa#10000 self-cognition#500 \
+    --max_length 8192 \
+    --learning_rate 2e-6 \
+    --sft_type full \
+    --output_dir output \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+    --train_backend megatron
+```
 
 
 ## Multi-Node Pre-Training Example

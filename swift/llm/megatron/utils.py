@@ -48,12 +48,12 @@ def patch_megatron(tokenizer):
     _old_initialize_distributed = initialize._initialize_distributed
 
     @wraps(_old_initialize_distributed)
-    def _initialize_distributed():
+    def _initialize_distributed(*_args, **kwargs):
         args = get_args()
         if dist.is_initialized():
             args.rank, args.local_rank, args.world_size, args.local_world_size = get_dist_setting()
             torch.cuda.set_device(args.local_rank)
-        return _old_initialize_distributed()
+        return _old_initialize_distributed(*_args, **kwargs)
 
     initialize._initialize_distributed = _initialize_distributed
 
@@ -70,7 +70,7 @@ def patch_megatron(tokenizer):
 
     @wraps(_old_training_log)
     def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
-                     report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
+                     report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad, *_args, **kwargs):
         args = get_args()
         if is_master() and iteration % args.log_interval == 0:
             logging_path = os.path.join(args.save, 'logging.jsonl')
@@ -86,7 +86,7 @@ def patch_megatron(tokenizer):
             append_to_jsonl(logging_path, logs)
         return _old_training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration,
                                  loss_scale, report_memory_flag, skipped_iter, grad_norm, params_norm,
-                                 num_zeros_in_grad)
+                                 num_zeros_in_grad, *_args, **kwargs)
 
     training.training_log = training_log
 

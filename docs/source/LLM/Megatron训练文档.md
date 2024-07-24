@@ -18,6 +18,7 @@ cd swift
 pip install -e '.[llm]'
 
 # 安装megatron相关依赖 (你不需要安装megatron-ml等其他依赖库)
+pip install pybind11
 # transformer_engine
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 # apex
@@ -26,7 +27,8 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 ```
 
-其他两个依赖库为[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)和[Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch). 会由swift进行git clone并安装, 不需要用户进行安装.
+其他两个依赖库为[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)和[Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch). 会由swift进行git clone并安装, 不需要用户进行安装. 你也可以通过环境变量`MEGATRON_LM_PATH`, `PAI_MEGATRON_PATCH_PATH`指定已经下载好的repo路径.
+
 
 
 ## SFT案例
@@ -126,6 +128,60 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 |  原始模型  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
 |  未微调  |    0.6642  |  0.6909    |    0.787  |  0.8507    |
 |  微调后  |   0.7392   |    0.6878  |  0.8241    |    0.8481  |
+
+
+**多机微调**：
+```shell
+# node0
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NNODES=2 \
+NODE_RANK=0 \
+MASTER_ADDR=127.0.0.1 \
+NPROC_PER_NODE=8 \
+swift sft \
+    --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
+    --dataset swift-mix:sharegpt#20000 swift-mix:codefuse#10000 swift-mix:metamathqa#10000 self-cognition#500 \
+    --max_length 8192 \
+    --learning_rate 2e-6 \
+    --sft_type full \
+    --output_dir output \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+    --train_backend megatron
+
+# node1
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NNODES=2 \
+NODE_RANK=1 \
+MASTER_ADDR=xxx.xxx.xxx.xxx \
+NPROC_PER_NODE=8 \
+swift sft \
+    --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
+    --dataset swift-mix:sharegpt#20000 swift-mix:codefuse#10000 swift-mix:metamathqa#10000 self-cognition#500 \
+    --max_length 8192 \
+    --learning_rate 2e-6 \
+    --sft_type full \
+    --output_dir output \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+    --train_backend megatron
+```
+
+**阿里云-DLC多机训练**（通配符不用改）:
+```shell
+NNODES=$WORLD_SIZE \
+NODE_RANK=$RANK \
+swift sft \
+    --resume_from_checkpoint qwen2-7b-instruct-tp2-pp1 \
+    --dataset swift-mix:sharegpt#20000 swift-mix:codefuse#10000 swift-mix:metamathqa#10000 self-cognition#500 \
+    --max_length 8192 \
+    --learning_rate 2e-6 \
+    --sft_type full \
+    --output_dir output \
+    --model_name 小黄 'Xiao Huang' \
+    --model_author 魔搭 ModelScope \
+    --train_backend megatron
+```
 
 
 ## 多机预训练案例
