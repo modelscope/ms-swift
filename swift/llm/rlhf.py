@@ -203,6 +203,9 @@ You can also use the --model_type parameter to specify the  template.')
     trainer_kwargs['args'].generation_config = generation_config
     trainer_cls = RLHFTrainerFactory.get_trainer(args.rlhf_type)
 
+    trainer_kwargs['is_vision'] = args.is_vision
+    model.config.model_type += '_'  # add suffix to avoid checks in hfDPOTrainer
+
     trainer = trainer_cls(
         model=model,
         train_dataset=train_dataset,

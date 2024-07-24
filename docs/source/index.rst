@@ -70,6 +70,7 @@ Swift DOCUMENTATION
    Multi-Modal/internvl最佳实践.md
    Multi-Modal/MLLM部署文档.md
    Multi-Modal/vLLM推理加速文档.md
+   Multi-Modal/人类偏好对齐训练文档.md
 
 .. toctree::
    :maxdepth: 2
