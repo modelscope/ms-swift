@@ -178,6 +178,7 @@ class ModelType:
     llama3_1_70b_instruct = 'llama3_1-70b-instruct'
     llama3_1_405b = 'llama3_1-405b'
     llama3_1_405b_instruct = 'llama3_1-405b-instruct'
+    llama3_1_405b_instruct_fp8 = 'llama3_1-405b-instruct-fp8'
     # chinese-llama-alpaca
     chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
     chinese_llama_2_7b = 'chinese-llama-2-7b'
@@ -4174,6 +4175,16 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.llama3_1_405b_instruct_fp8,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B-Instruct-FP8')
 @register_model(
     ModelType.llama3_1_405b_instruct,
     'LLM-Research/Meta-Llama-3.1-405B-Instruct',
