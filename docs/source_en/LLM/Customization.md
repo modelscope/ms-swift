@@ -110,11 +110,25 @@ system,instruction,input,output
 
 **Human preference alignment (DPO/ORPO/SimPO/CPO)**
 
+Language model
 ```jsonl
 {"query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 {"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 {"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
+(Where system and history are optional.)
+
+Vision MLLM
+
+Different models have varying support for the number of images. Please refer to the corresponding best practices document for each model.
+```jsonl
+{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+
+(Where system and history are optional.)
+
 
 **Tool-Calling Agent**
 
