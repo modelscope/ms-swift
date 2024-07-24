@@ -321,7 +321,8 @@ class TestRun(unittest.TestCase):
 
         # mllm rlhf
         visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']
-        test_model = ['internvl2-2b', 'florence-2-large']  # decoder only and encoder-decoder
+        test_model = ['llava1_6-mistral-7b-instruct', 'internvl2-2b',
+                      'florence-2-large']  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:
             for model in test_model:
                 dataset_name = 'rlaif-v'
