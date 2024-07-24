@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
 import datetime as dt
-import multiprocessing as mp
+import multiprocessing
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,7 +22,6 @@ from .infer import merge_lora, prepare_model_template
 from .utils import DeployArguments, EvalArguments, XRequestConfig, inference, inference_client_async
 
 logger = get_logger()
-mp.set_start_method('spawn', force=True)
 
 
 class EvalModel(CustomModel):
@@ -43,7 +42,7 @@ class EvalModel(CustomModel):
 
     @staticmethod
     async def _call_openai(model_type: str, query: str, eval_url: str, *, is_chat_model: bool,
-                           request_config: XRequestConfig, idx: int) -> Tuple[str, Optional[int]]:
+                           request_config: XRequestConfig, prog_bar: tqdm) -> Tuple[str, Optional[int]]:
         # idx: maintain the order
         resp = await inference_client_async(
             model_type, query, is_chat_request=is_chat_model, request_config=request_config, url=eval_url)
@@ -51,14 +50,15 @@ class EvalModel(CustomModel):
             response = resp.choices[0].message.content
         else:
             response = resp.choices[0].text
-        return response, idx
+        prog_bar.update()
+        return response
 
     async def call_openai_batched(self, prompts: List[str], request_config: XRequestConfig) -> List[str]:
         assert self.args.eval_is_chat_model is not None
         use_tqdm = True if len(prompts) >= 20 else False
         prog_bar = tqdm(total=len(prompts), dynamic_ncols=True, disable=not use_tqdm)
         tasks = []
-        for i, prompt in enumerate(prompts):
+        for prompt in prompts:
             tasks.append(
                 self._call_openai(
                     self.args.model_type,
@@ -66,12 +66,8 @@ class EvalModel(CustomModel):
                     self.args.eval_url,
                     is_chat_model=self.args.eval_is_chat_model,
                     request_config=request_config,
-                    idx=i))
-        response_list: List[Optional[str]] = [None] * len(prompts)
-        for coro in asyncio.as_completed(tasks):
-            response, i = await coro
-            response_list[i] = response
-            prog_bar.update()
+                    prog_bar=prog_bar))
+        response_list: List[Optional[str]] = await asyncio.gather(*tasks)
         prog_bar.close()
         return response_list
 
@@ -205,6 +201,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
         seed_everything(args.seed)
         port = _find_free_port()
         args.port = port
+        mp = multiprocessing.get_context('spawn')
         process = mp.Process(target=run_custom_model, args=(args, ))
         process.start()
 

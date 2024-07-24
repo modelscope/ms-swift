@@ -10,8 +10,9 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 
 from swift.trainers import RLHFTrainerFactory
-from swift.utils import (check_json_format, get_dist_setting, get_logger, get_main, get_model_info, is_ddp_plus_mp,
-                         is_dist, is_master, plot_images, seed_everything, show_layers)
+from swift.utils import (append_to_jsonl, check_json_format, get_dist_setting, get_logger, get_main, get_model_info,
+                         is_ddp_plus_mp, is_dist, is_master, plot_images, seed_everything, show_layers)
+from .sft import _get_train_val_dataset
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, RLHFArguments, Template, get_dataset, get_model_tokenizer, get_template,
                     get_time_info, set_generation_config)
@@ -20,13 +21,6 @@ logger = get_logger()
 
 
 def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
-    if args.rlhf_type == 'simpo':
-        import trl
-        from packaging import version
-        assert version.parse(trl.__version__) <= version.parse('0.9.4'), \
-            'Please ensure to update `trl` to the latest version using the following command:' \
-            'pip install trl==0.9.6 --index-url https://pypi.org/simple.'
-
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
@@ -60,6 +54,14 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             model_kwargs['device_map'] = 'cuda:0'
         else:
             model_kwargs['device_map'] = 'auto'
+
+    if args.device_max_memory:
+        n_gpu = torch.cuda.device_count()
+        assert len(args.device_max_memory) == n_gpu // local_world_size
+        model_kwargs['max_memory'] = {
+            i: mem
+            for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
+        }
 
     # quantization
     if args.quant_method == 'hqq':
@@ -165,31 +167,10 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model device_map {model.hf_device_map}')
 
-    # Loading Dataset
-    train_dataset, val_dataset = get_dataset(
-        args.dataset,
-        args.dataset_test_ratio,
-        args.dataset_seed,
-        check_dataset_strategy=args.check_dataset_strategy,
-        model_name=args.model_name,
-        model_author=args.model_author)
-
-    if len(args.val_dataset) > 0:
-        # Loading val dataset
-        _, val_dataset = get_dataset(
-            args.val_dataset,
-            1.0,
-            args.dataset_seed,
-            check_dataset_strategy=args.check_dataset_strategy,
-            model_name=args.model_name,
-            model_author=args.model_author)
-
-    train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
+    train_dataset, val_dataset = _get_train_val_dataset(args)
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
         training_args.do_eval = False
-    logger.info(f'train_dataset: {train_dataset}')
-    logger.info(f'val_dataset: {val_dataset}')
 
     template_kwargs = {}
     template_info = TEMPLATE_MAPPING[args.template_type]
@@ -235,11 +216,8 @@ You can also use the --model_type parameter to specify the  template.')
         for args_obj, fname in zip([args, training_args], ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
             logger.info(f'The {args_obj.__class__.__name__} will be saved in: {fpath}')
-            args_dict = args_obj.__dict__
-            args_dict.pop('hub_token', None)
-            args_dict.pop('push_to_hub_token', None)
             with open(fpath, 'w', encoding='utf-8') as f:
-                json.dump(check_json_format(args_dict), f, ensure_ascii=False, indent=2)
+                json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
     trainer.train(training_args.resume_from_checkpoint)
@@ -267,9 +245,9 @@ You can also use the --model_type parameter to specify the  template.')
         'model_info': model_info,
         'dataset_info': trainer.dataset_info,
     }
-    jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
-    with open(jsonl_path, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(run_info) + '\n')
+    if is_master():
+        jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
+        append_to_jsonl(jsonl_path, run_info)
     return run_info
 
 

@@ -302,7 +302,8 @@ class SwiftMixin:
         quantization_bit = sft_args.quantization_bit
         if quantization_bit > 0:
             need_to_save += [
-                'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+                'quant_method', 'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+                'bnb_4bit_use_double_quant'
             ]
         adapter_cfg = {}
         for k in need_to_save:
@@ -570,6 +571,8 @@ class SwiftMixin:
                 if k == 'loss':
                     self._total_loss_scalar += v_scalar
                 logs[k] = round(v_scalar / (self.state.global_step - self._globalstep_last_logged), 8)
+                if k == 'acc' and self._globalstep_last_logged > 0:
+                    logs[k] *= self.sft_args.acc_steps
             if version.parse(transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
                 if isinstance(grad_norm, torch.Tensor):

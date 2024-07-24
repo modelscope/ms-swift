@@ -2,7 +2,9 @@ import base64
 import binascii
 import os
 from io import BytesIO
+from typing import Callable, List, TypeVar, Union
 
+import numpy as np
 import requests
 import torch
 import torchvision.transforms as T
@@ -74,7 +76,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def load_image(img_path, input_size=448, max_num=6):
+def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
@@ -92,8 +94,77 @@ def load_image(img_path, input_size=448, max_num=6):
         image = img_path
     if image.mode != 'RGB':
         image = image.convert('RGB')
+    return image
+
+
+_T = TypeVar('_T')
+
+
+def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
+                load_func: Callable[[str], _T] = load_image) -> List[_T]:
+    res = []
+    for path in path_list:
+        if path is None:  # ignore None
+            continue
+        res.append(load_func(path))
+    return res
+
+
+def transform_image(image, input_size=448, max_num=6):
     transform = build_transform(input_size=input_size)
     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
     pixel_values = [transform(image) for image in images]
     pixel_values = torch.stack(pixel_values)
     return pixel_values
+
+
+def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
+    if bound:
+        start, end = bound[0], bound[1]
+    else:
+        start, end = -100000, 100000
+    start_idx = max(first_idx, round(start * fps))
+    end_idx = min(round(end * fps), max_frame)
+    seg_size = float(end_idx - start_idx) / num_segments
+    frame_indices = np.array(
+        [int(start_idx + (seg_size / 2) + np.round(seg_size * idx)) for idx in range(num_segments)])
+    return frame_indices
+
+
+def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
+    from decord import VideoReader, cpu
+    from PIL import Image
+    vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+    max_frame = len(vr) - 1
+    fps = float(vr.get_avg_fps())
+
+    pixel_values_list, num_patches_list = [], []
+    transform = build_transform(input_size=input_size)
+    frame_indices = get_index(bound, fps, max_frame, first_idx=0, num_segments=num_segments)
+    for frame_index in frame_indices:
+        img = Image.fromarray(vr[frame_index].asnumpy()).convert('RGB')
+        img = dynamic_preprocess(img, image_size=input_size, use_thumbnail=True, max_num=max_num)
+        pixel_values = [transform(tile) for tile in img]
+        pixel_values = torch.stack(pixel_values)
+        num_patches_list.append(pixel_values.shape[0])
+        pixel_values_list.append(pixel_values)
+    pixel_values = torch.cat(pixel_values_list)
+    return pixel_values, num_patches_list
+
+
+def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
+    from PIL import Image, ImageDraw
+    from swift.llm.utils.template import Template
+    image = Image.open(img_dir)
+
+    objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
+    Template.normalize_bbox(objects, [image], 'real')
+    bbox = objects[0]['bbox']
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(bbox, outline='red', width=2)
+    image.save(output_file)
+
+
+if __name__ == '__main__':
+    # A test main to draw bbox
+    draw_plot('/mnt/workspace/man.jpg', [354, 462, 580, 738], 'norm_1000', '/mnt/workspace/man_bbox.jpg')

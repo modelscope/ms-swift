@@ -5,11 +5,12 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
 import torch
+import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets
@@ -42,22 +43,31 @@ def is_adapter(sft_type: str) -> bool:
 class ArgumentsBase:
 
     @classmethod
-    def _check_path(cls, k: str, value: Union[str, List[str]],
-                    check_exist_path_set: Optional[Set[str]]) -> Union[str, List[str]]:
+    def _check_path(cls,
+                    value: Union[str, List[str]],
+                    k: Optional[str] = None,
+                    check_exist_path_set: Optional[Set[str]] = None) -> Union[str, List[str]]:
+        if check_exist_path_set is None:
+            check_exist_path_set = set()
         if isinstance(value, str):
             value = os.path.expanduser(value)
             value = os.path.abspath(value)
             if k in check_exist_path_set and not os.path.exists(value):
-                raise FileNotFoundError(f"`{k}`: '{value}'")
+                if k is not None:
+                    raise FileNotFoundError(f"`{k}`: '{value}'")
+                else:
+                    raise FileNotFoundError(f"path: '{value}'")
         elif isinstance(value, list):
             res = []
             for v in value:
-                res.append(cls._check_path(k, v, check_exist_path_set))
+                res.append(cls._check_path(v, k, check_exist_path_set))
             value = res
         return value
 
     @staticmethod
-    def _is_multimodal(model_type: str) -> bool:
+    def _is_multimodal(model_type: Optional[str] = None) -> bool:
+        if model_type is None:
+            return False
         model_info = MODEL_MAPPING[model_type]
         tags = model_info.get('tags') or []
         return 'multi-modal' in tags
@@ -79,7 +89,7 @@ class ArgumentsBase:
             value = getattr(self, k, None)
             if value is None:
                 continue
-            value = self._check_path(k, value, check_exist_path_set)
+            value = self._check_path(value, k, check_exist_path_set)
             setattr(self, k, value)
 
     def check_flash_attn(self: Union['SftArguments', 'InferArguments']) -> None:
@@ -404,7 +414,7 @@ class ArgumentsBase:
                 if self.model_cache_dir is not None:
                     self.model_id_or_path = self.model_cache_dir
             else:
-                if (isinstance(self, InferArguments) and 'checkpoint' in model_id_or_path
+                if (isinstance(self, InferArguments) and 'checkpoint-' in model_id_or_path
                         and 'merged' not in model_id_or_path and self.ckpt_dir is None):
                     raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
                 if self.model_type is None:
@@ -430,6 +440,71 @@ class ArgumentsBase:
         requires = model_info['requires']
         for require in requires:
             require_version(require)
+
+    def prepare_ms_hub(self: Union['SftArguments', 'InferArguments']) -> None:
+        hub_token = self.hub_token
+        if hub_token is None:
+            hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+        if hub_token:
+            api = HubApi()
+            api.login(hub_token)
+        if not hasattr(self, 'push_to_hub') or not self.push_to_hub:
+            return
+        self.hub_token = hub_token
+        assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
+        if self.hub_model_id is None:
+            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
+            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
+        logger.info('hub login successful!')
+
+    def load_from_ckpt_dir(self, is_sft: bool = False) -> None:
+        if is_sft:
+            ckpt_dir = self.resume_from_checkpoint
+        else:
+            ckpt_dir = self.ckpt_dir
+        sft_args_path = os.path.join(ckpt_dir, 'sft_args.json')
+        export_args_path = os.path.join(ckpt_dir, 'export_args.json')
+        from_sft_args = os.path.exists(sft_args_path)
+        if not os.path.exists(sft_args_path) and not os.path.exists(export_args_path):
+            logger.warning(f'{sft_args_path} not found')
+            return
+        args_path = sft_args_path if from_sft_args else export_args_path
+        with open(args_path, 'r', encoding='utf-8') as f:
+            old_args = json.load(f)
+
+        imported_keys = [
+            'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
+            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
+            'custom_register_path', 'custom_dataset_info', 'tp', 'pp'
+        ]
+        if not is_sft:
+            imported_keys += ['sft_type', 'rope_scaling', 'system']
+            if getattr(self, 'load_dataset_config', False) and from_sft_args:
+                imported_keys += [
+                    'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
+                    'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
+                ]
+        for key in imported_keys:
+            if not hasattr(self, key):
+                continue
+            value = getattr(self, key)
+            old_value = old_args.get(key)
+            if old_value is None:
+                continue
+            if key in {'dataset', 'val_dataset'} and len(value) > 0:
+                continue
+            if key in {
+                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
+                    'custom_dataset_info'
+            } and value is not None:
+                continue
+            if key in {'template_type', 'dtype'} and value != 'AUTO':
+                continue
+            setattr(self, key, old_value)
+
+        # compat
+        if self.val_dataset is None:
+            self.val_dataset = []
 
 
 @dataclass
@@ -458,6 +533,12 @@ class SftArguments(ArgumentsBase):
     ignore_data_skip: bool = False
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
     packing: bool = False
+    # megatron
+    train_backend: Literal['transformers', 'megatron'] = 'transformers'
+    tp: int = 1
+    pp: int = 1
+    min_lr: Optional[float] = None
+    sequence_parallel: bool = False
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
@@ -490,6 +571,7 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_quant_storage: Optional[str] = None
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    lora_target_regex: Optional[str] = None
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout_p: float = 0.05
@@ -535,6 +617,13 @@ class SftArguments(ArgumentsBase):
     galore_proj_type: str = 'std'
     galore_optim_per_parameter: bool = False
     galore_with_embedding: bool = False
+    galore_quantization: bool = False
+    galore_proj_quant: bool = False
+    galore_proj_bits: int = 4
+    galore_proj_group_size: int = 256
+    galore_cos_threshold: float = 0.4
+    galore_gamma_proj: int = 2
+    galore_queue_size: int = 5
 
     # adalora
     adalora_target_r: int = 8
@@ -583,7 +672,7 @@ class SftArguments(ArgumentsBase):
     warmup_ratio: float = 0.05
     warmup_steps: int = 0  # Overrides any effect of `warmup_ratio` if warmup_steps > 0
 
-    eval_steps: int = 50
+    eval_steps: Optional[int] = None  # full: 200, other: 50
     save_steps: Optional[int] = None
     save_only_model: Optional[bool] = None
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
@@ -621,7 +710,7 @@ class SftArguments(ArgumentsBase):
     logging_dir: Optional[str] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     acc_strategy: Literal['token', 'sentence'] = 'token'
-    save_on_each_node: bool = True
+    save_on_each_node: bool = False
     evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
     save_strategy: Literal['steps', 'epoch', 'no', None] = None
     save_safetensors: bool = True
@@ -632,6 +721,7 @@ class SftArguments(ArgumentsBase):
     custom_dataset_info: Optional[str] = None  # .json
 
     device_map_config_path: Optional[str] = None
+    device_max_memory: List[str] = field(default_factory=list)
 
     # generation config
     max_new_tokens: int = 2048
@@ -674,44 +764,7 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
 
-    def load_from_checkpoint(self) -> None:
-        # resume_from_checkpoint: reading the model architecture
-        sft_args_path = os.path.join(self.resume_from_checkpoint, 'sft_args.json')
-        if not os.path.exists(sft_args_path):
-            logger.info(f'{sft_args_path} not found')
-            return
-        with open(sft_args_path, 'r', encoding='utf-8') as f:
-            sft_args = json.load(f)
-        imported_keys = [
-            'model_type', 'model_revision', 'quant_method', 'quantization_bit', 'dtype', 'bnb_4bit_comp_dtype',
-            'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path'
-        ]
-
-        for key in imported_keys:
-            value = getattr(self, key)
-            if key in {'dtype', 'bnb_4bit_comp_dtype'} and value != 'AUTO':
-                continue
-            if key in {'model_type', 'model_revision', 'model_id_or_path', 'quant_method'} and value is not None:
-                continue
-            setattr(self, key, sft_args.get(key))
-
-    def prepare_push_ms_hub(self) -> None:
-        if not self.push_to_hub:
-            return
-        if self.hub_model_id is None:
-            self.hub_model_id = f'{self.model_type}-{self.sft_type}'
-            logger.info(f'Setting hub_model_id: {self.hub_model_id}')
-
-        api = HubApi()
-        if self.hub_token is None:
-            self.hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if self.hub_token is not None:
-            api.login(self.hub_token)
-        else:
-            assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
-        logger.info('hub login successful!')
-
-    def _prepare_target_modules(self, target_modules) -> List[str]:
+    def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
         if isinstance(target_modules, str):
             target_modules = [target_modules]
         if len(target_modules) == 0:
@@ -724,7 +777,10 @@ class SftArguments(ArgumentsBase):
             target_modules.append('DEFAULT')
         if 'DEFAULT' in target_modules:
             target_modules.remove('DEFAULT')
-            target_modules += get_default_lora_target_modules(self.model_type)
+            default_lora_tm = get_default_lora_target_modules(self.model_type)
+            if isinstance(default_lora_tm, str):
+                return default_lora_tm
+            target_modules += default_lora_tm
         if 'EMBEDDING' in target_modules:
             target_modules.remove('EMBEDDING')
             self.lora_use_embedding = True
@@ -779,13 +835,15 @@ class SftArguments(ArgumentsBase):
             elif self.loss_scale_config_path == 'agent-flan':  # https://arxiv.org/abs/2403.12881
                 self.loss_scale_config_path = os.path.abspath(
                     os.path.join(__file__, '..', '..', 'agent', 'agentflan.json'))
+        if self.train_backend == 'megatron' and self.resume_from_checkpoint is None:
+            self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
         self.handle_path()
         self._handle_dataset_sample()
         self._register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
-        if self.resume_from_checkpoint is not None:
-            self.load_from_checkpoint()
+        if self.resume_from_checkpoint:
+            self.load_from_ckpt_dir(True)
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -818,18 +876,21 @@ class SftArguments(ArgumentsBase):
             raise ValueError('`adalora` and `ia3` do not support setting embedding as target_modules.')
 
         self.torch_dtype, self.fp16, self.bf16 = self.select_dtype()
-        world_size = 1
+        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
         if is_dist():
-            rank, local_rank, world_size, _ = get_dist_setting()
             if is_torch_npu_available():
-                torch.npu.set_device(local_rank)
+                torch.npu.set_device(self.local_rank)
             else:
-                torch.cuda.set_device(local_rank)
-            self.seed += rank  # Avoid the same dropout
+                torch.cuda.set_device(self.local_rank)
+            self.seed += self.rank  # Avoid the same dropout
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
+
+        if self.train_backend == 'megatron' and self.sft_type == 'lora':
+            logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
+            self.sft_type = 'full'
 
         if is_adapter(self.sft_type):
             assert self.freeze_parameters == 0., (
@@ -846,6 +907,8 @@ class SftArguments(ArgumentsBase):
                     self.save_only_model = True
                 else:
                     self.save_only_model = False
+            if self.eval_steps is None:
+                self.eval_steps = 50
         elif self.sft_type == 'full':
             assert 0 <= self.freeze_parameters <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
@@ -857,6 +920,8 @@ class SftArguments(ArgumentsBase):
                 self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
+            if self.eval_steps is None:
+                self.eval_steps = 200
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
@@ -886,7 +951,7 @@ class SftArguments(ArgumentsBase):
             self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
                 else 'transformers'
 
-        self.prepare_push_ms_hub()
+        self.prepare_ms_hub()
         self.train_sampler_random = not self.test_oom_error
         if self.eval_batch_size is None:
             if self.predict_with_generate:
@@ -902,7 +967,7 @@ class SftArguments(ArgumentsBase):
             if is_mp():
                 raise ValueError('DeepSpeed is not compatible with MP. '
                                  f'n_gpu: {torch.cuda.device_count()}, '
-                                 f'local_world_size: {get_dist_setting()[3]}.')
+                                 f'local_world_size: {self.local_world_size}.')
             require_version('deepspeed')
             if self.deepspeed.endswith('.json') or os.path.isfile(self.deepspeed):
                 with open(self.deepspeed, 'r', encoding='utf-8') as f:
@@ -910,7 +975,7 @@ class SftArguments(ArgumentsBase):
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
         if self.gradient_accumulation_steps is None:
-            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / world_size)
+            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
@@ -938,21 +1003,31 @@ class SftArguments(ArgumentsBase):
         if use_torchacc():
             self.dataloader_drop_last = True
 
-        self._init_training_args()
-
+        if self.train_backend == 'transformers':
+            self._init_training_args()
+        else:
+            assert is_dist(), 'Please start in distributed mode.'
+            dist.init_process_group(backend=self.ddp_backend)
+            if self.min_lr is None:
+                self.min_lr = self.learning_rate * 0.1
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
-            self.output_dir = os.path.join(self.output_dir, self.model_type)
+            if self.train_backend == 'megatron':
+                self.output_dir = os.path.join(self.output_dir, f'{self.model_type}-tp{self.tp}-pp{self.pp}')
+            else:
+                self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
-            self.training_args.output_dir = self.output_dir
-            self.training_args.run_name = self.output_dir
+            if self.train_backend == 'transformers':
+                self.training_args.output_dir = self.output_dir
+                self.training_args.run_name = self.output_dir
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
-            self.training_args.logging_dir = self.logging_dir
+            if self.train_backend == 'transformers':
+                self.training_args.logging_dir = self.logging_dir
 
     def _init_training_args(self) -> None:
         additional_saved_files = []
@@ -1013,7 +1088,7 @@ class SftArguments(ArgumentsBase):
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
             predict_with_generate=self.predict_with_generate,
-            local_rank=get_dist_setting()[1],
+            local_rank=self.local_rank,
             save_only_model=self.save_only_model,
             train_sampler_random=self.train_sampler_random,
             report_to=self.report_to,
@@ -1113,7 +1188,7 @@ class InferArguments(ArgumentsBase):
     top_p: float = 0.7
     repetition_penalty: float = 1.
     num_beams: int = 1
-    stop_words: List[str] = None
+    stop_words: List[str] = field(default_factory=list)
 
     # rope-scaling
     rope_scaling: Literal['linear', 'dynamic'] = None
@@ -1131,6 +1206,10 @@ class InferArguments(ArgumentsBase):
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
     device_map_config_path: Optional[str] = None
+    device_max_memory: List[str] = field(default_factory=list)
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -1180,6 +1259,7 @@ class InferArguments(ArgumentsBase):
         self.check_flash_attn()
         self.handle_generation_config()
         self.is_multimodal = self._is_multimodal(self.model_type)
+        self.prepare_ms_hub()
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
@@ -1254,41 +1334,6 @@ class InferArguments(ArgumentsBase):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 
-    def load_from_ckpt_dir(self) -> None:
-        sft_args_path = os.path.join(self.ckpt_dir, 'sft_args.json')
-        if not os.path.exists(sft_args_path):
-            logger.info(f'{sft_args_path} not found')
-            return
-        with open(sft_args_path, 'r', encoding='utf-8') as f:
-            sft_args = json.load(f)
-        imported_keys = [
-            'model_type', 'model_revision', 'sft_type', 'template_type', 'system', 'quant_method', 'quantization_bit',
-            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'rope_scaling'
-        ]
-        if self.load_dataset_config:
-            imported_keys += [
-                'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
-                'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
-            ]
-        for key in imported_keys:
-            value = getattr(self, key)
-            if key in {'dataset', 'val_dataset'} and len(value) > 0:
-                continue
-            if key in {'dataset_test_ratio', 'system', 'quant_method'} and value is not None:
-                continue
-            setattr(self, key, sft_args.get(key))
-
-        for k in ['model_id_or_path', 'custom_register_path', 'custom_dataset_info']:
-            if getattr(self, k) is None:
-                setattr(self, k, sft_args.get(k))
-
-        if self.dtype == 'AUTO':
-            self.dtype = sft_args.get('dtype')
-
-        # compat
-        if self.val_dataset is None:
-            self.val_dataset = []
-
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:
         """Check the checkpoint dir is correct, which means it must contain a `configuration.json` file.
@@ -1316,6 +1361,7 @@ class AppUIArguments(InferArguments):
 class DeployArguments(InferArguments):
     host: str = '127.0.0.1'
     port: int = 8000
+    api_key: Optional[str] = None
     ssl_keyfile: Optional[str] = None
     ssl_certfile: Optional[str] = None
 
@@ -1353,7 +1399,7 @@ class EvalArguments(InferArguments):
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:
                 self.eval_is_chat_model = model.is_chat
-            if self.model_type is None is None:
+            if self.model_type is None:
                 self.model_type = model.id
 
     def select_dtype(self):
@@ -1381,12 +1427,13 @@ class EvalArguments(InferArguments):
 @dataclass
 class ExportArguments(InferArguments):
     to_peft_format: bool = False
-    # The parameter has been defined in InferArguments.
-    # merge_lora: bool = False
+    to_ollama: bool = False
+    ollama_output_dir: Optional[str] = None
+    gguf_file: Optional[str] = None
 
     # awq: 4; gptq: 2, 3, 4, 8
     quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['awq', 'gptq'] = 'awq'
+    quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
@@ -1396,11 +1443,20 @@ class ExportArguments(InferArguments):
     push_to_hub: bool = False
     # 'user_name/repo_name' or 'repo_name'
     hub_model_id: Optional[str] = None
-    # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = field(
-        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     hub_private_repo: bool = False
     commit_message: str = 'update files'
+
+    # megatron
+    to_megatron: bool = False
+    to_hf: bool = False
+    megatron_output_dir: Optional[str] = None
+    hf_output_dir: Optional[str] = None
+    tp: int = 1
+    pp: int = 1
+    check_model_forward: bool = False
+
+    # The parameter has been defined in InferArguments.
+    # merge_lora, hub_token
 
     def __post_init__(self):
         if self.merge_device_map is None:
@@ -1420,8 +1476,38 @@ class ExportArguments(InferArguments):
                     ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
                     self.quant_output_dir = os.path.join(ckpt_dir,
                                                          f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
+                self.quant_output_dir = self._check_path(self.quant_output_dir)
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
+        elif self.to_ollama:
+            assert self.sft_type in ('full', 'lora', 'longlora', 'llamapro')
+            if self.sft_type in ('lora', 'longlora', 'llamapro'):
+                self.merge_lora = True
+            if not self.ollama_output_dir:
+                self.ollama_output_dir = f'{self.model_type}-ollama'
+            self.ollama_output_dir = self._check_path(self.ollama_output_dir)
+            assert not os.path.exists(
+                self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
+        elif self.to_megatron or self.to_hf:
+            self.quant_method = None
+            os.environ['RANK'] = '0'
+            os.environ['LOCAL_RANK'] = '0'
+            os.environ['WORLD_SIZE'] = '1'
+            os.environ['LOCAL_WORLD_SIZE'] = '1'
+            os.environ['MASTER_ADDR'] = '127.0.0.1'
+            os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
+            assert is_dist(), 'Please start in distributed mode.'
+            dist.init_process_group(backend='nccl')
+        if self.to_megatron:
+            if self.megatron_output_dir is None:
+                self.megatron_output_dir = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
+            self.megatron_output_dir = self._check_path(self.megatron_output_dir)
+            logger.info(f'Setting args.megatron_output_dir: {self.megatron_output_dir}')
+        if self.to_hf:
+            if self.hf_output_dir is None:
+                self.hf_output_dir = os.path.join(self.ckpt_dir, f'{self.model_type}-hf')
+            self.hf_output_dir = self._check_path(self.hf_output_dir)
+            logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
 
 
 @dataclass
@@ -1495,11 +1581,6 @@ class RLHFArguments(SftArguments):
             'cpo': ['sigmoid', 'hinge', 'ipo', 'simpo'],
             'kto': ['kto', 'bco']
         }
-        if self.loss_type == 'kto_pair':
-            import trl
-            from packaging import version
-            if version.parse(trl.__version__) <= version.parse('0.9.4'):
-                return
         if self.rlhf_type in supported_loss_types:
             assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
                 f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
@@ -1511,6 +1592,14 @@ class RLHFArguments(SftArguments):
             self.loss_type = 'sigmoid'
         elif self.rlhf_type == 'kto':
             self.loss_type = 'kto'
+
+
+@dataclass
+class WebuiArguments:
+    share: bool = False
+    lang: str = 'zh'
+    host: str = '127.0.0.1'
+    port: Optional[int] = None
 
 
 @dataclass

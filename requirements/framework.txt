@@ -5,6 +5,7 @@ binpacking
 dacite
 datasets<2.19
 einops
+huggingface_hub<0.24
 importlib_metadata
 jieba
 matplotlib
@@ -20,6 +21,6 @@ rouge
 safetensors
 tensorboard
 tqdm
-transformers>=4.33,<4.43
+transformers>=4.33,<4.44
 transformers_stream_generator
-trl>=0.9.4
+trl>=0.9.6

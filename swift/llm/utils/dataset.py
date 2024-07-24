@@ -125,6 +125,8 @@ class DatasetName:
     hc3_zh = 'hc3-zh'
     hc3_en = 'hc3-en'
     dolly_15k = 'dolly-15k'
+    zhihu_kol = 'zhihu-kol'
+    zhihu_kol_filtered = 'zhihu-kol-filtered'
     # other
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
@@ -341,12 +343,10 @@ def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Option
         return dataset
     if random_state is None:
         random_state = RandomState()
-    # Sample the part that exceeds the length of the dataset.
-    idx = random_state.permutation(len(dataset))[:dataset_sample]
-    dataset_sample -= len(idx)
-    if dataset_sample > 0:
-        idx2 = random_state.choice(len(dataset), dataset_sample)
-        idx = np.concatenate([idx, idx2], axis=0)
+
+    idx_repeat = np.tile(range(len(dataset)), dataset_sample // len(dataset))
+    idx_random = random_state.permutation(len(dataset))[:dataset_sample % len(dataset)]
+    idx = np.concatenate([idx_repeat, idx_random])
     dataset = dataset.select(idx)
     return dataset
 
@@ -719,7 +719,7 @@ register_dataset(
 
 
 def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
-    url = 'https://modelscope.cn/datasets/huangjintao/VideoChatGPT/resolve/master/videos.zip'
+    url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
     local_dir = MediaCache.download(url, 'video_chatgpt')
     local_dir = os.path.join(local_dir, 'Test_Videos')
     # only `.mp4`
@@ -742,7 +742,7 @@ def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
 
 register_dataset(
     DatasetName.video_chatgpt,
-    'huangjintao/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
+    'swift/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
     _preprocess_video_chatgpt,
     get_dataset_from_repo,
     split=['test'],
@@ -1203,7 +1203,12 @@ def preprocess_refcoco_unofficial_caption(dataset):
             bbox[i] = round(float(bbox[i]))
         res = {}
 
-        objects = [[caption, bbox]]
+        objects = [{
+            'caption': caption,
+            'bbox': bbox,
+            'bbox_type': 'real',
+            'image': 0,
+        }]
         media_tag(res, [image_path])
         res['images'] = [image_path]
         res['objects'] = json.dumps(objects, ensure_ascii=False)
@@ -1248,7 +1253,12 @@ def preprocess_refcoco_unofficial_grounding(dataset):
             bbox[i] = round(float(bbox[i]))
         res = {}
 
-        objects = [[caption, bbox]]
+        objects = [{
+            'caption': caption,
+            'bbox': bbox,
+            'bbox_type': 'real',
+            'image': 0,
+        }]
         media_tag(res, [image_path])
         res['images'] = [image_path]
         res['objects'] = json.dumps(objects, ensure_ascii=False)
@@ -1437,6 +1447,35 @@ register_dataset(
     get_dataset_from_repo,
     remove_useless_columns=False,
     tags=['rlhf', 'kto'])
+
+
+def process_zhihu_kol(dataset: HfDataset):
+
+    def reorganize_row(row):
+        return {
+            'query': row['INSTRUCTION'],
+            'response': row['RESPONSE'],
+        }
+
+    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+
+
+register_dataset(
+    DatasetName.zhihu_kol_filtered,
+    'OmniData/Zhihu-KOL-More-Than-100-Upvotes', ['default'],
+    process_zhihu_kol,
+    get_dataset_from_repo,
+    hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
+    tags=['zhihu', 'qa'])
+
+register_dataset(
+    DatasetName.zhihu_kol,
+    'OmniData/Zhihu-KOL', ['default'],
+    process_zhihu_kol,
+    get_dataset_from_repo,
+    hf_dataset_id='wangrui6/Zhihu-KOL',
+    huge_dataset=True,
+    tags=['zhihu', 'qa'])
 
 
 def preprocess_guanaco(dataset):
@@ -1655,7 +1694,7 @@ def preprocess_grit(dataset):
             start_end_pairs.append(ref_exp[0:2])
 
             object_part = caption[int(start):int(end)]
-            objects.append([object_part, ref_exp[2:6]])
+            objects.append({'caption': object_part, 'bbox': ref_exp[2:6], 'bbox_type': 'real', 'image': 0})
 
         start_end_pairs.sort(key=lambda x: (x[0], x[1]))
         if has_overlap(start_end_pairs):
@@ -1810,7 +1849,7 @@ def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
     def preprocess(row):
         sql_prompt = row['sql_prompt']
         sql_context = row['sql_context']
-        sql = row['sql_context']
+        sql = row['sql']
         sql_explanation = row['sql_explanation']
         query = f'Sql Table information:\n{sql_context}\n{sql_prompt}'
         response = f'Let\'s think step by step:\n{sql_explanation}\nSo the final sql is:\n{sql}'
@@ -1832,7 +1871,7 @@ register_dataset(
 
 register_dataset(
     DatasetName.sharegpt,
-    'huangjintao/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
+    'swift/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
     preprocess_sharegpt,
     get_dataset_from_repo,
     tags=['chat', 'general', 'multi-round'])
@@ -2359,6 +2398,8 @@ def _dataset_id_to_name(dataset_name_list: List[str]) -> List[str]:
         if os.path.isfile(d_id_or_path):
             d_info['dataset_path'] = d_id_or_path
         else:
+            if d_id_or_path.startswith('/'):
+                raise ValueError(f"path: '{d_id_or_path}' not found")
             if use_hf:
                 d_info['hf_dataset_id'] = d_id_or_path
             else:
@@ -2468,7 +2509,7 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
         assert isinstance(dataset_path, str)
         df: DataFrame
         if dataset_path.endswith('.csv'):
-            df = pd.read_csv(dataset_path, na_filter=False)
+            df = pd.read_csv(dataset_path, na_filter=False, dtype=str)
         elif dataset_path.endswith('.jsonl'):
             df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
         elif dataset_path.endswith('.json'):

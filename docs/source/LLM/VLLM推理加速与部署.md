@@ -150,6 +150,12 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-7b-chat --infer_backend vll
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type yi-6b-chat --infer_backend vllm
 # gptq
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen1half-7b-chat-int4 --infer_backend vllm
+
+# TP
+# 2 * 80GiB A100
+RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1 swift infer \
+    --model_type qwen2-72b-instruct --infer_backend vllm --max_model_len 2048 \
+    --tensor_parallel_size 2
 ```
 
 ### 微调后的模型
@@ -294,7 +300,12 @@ print(f'model_type: {model_type}')
 
 query = '浙江的省会在哪里?'
 request_config = XRequestConfig(seed=42)
-resp = asyncio.run(inference_client_async(model_type, query, request_config=request_config))
+tasks = [inference_client_async(model_type, query, request_config=request_config) for _ in range(5)]
+async def _batch_run(tasks):
+    return await asyncio.gather(*tasks)
+
+resp_list = asyncio.run(_batch_run(tasks))
+resp = resp_list[0]
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
@@ -317,7 +328,7 @@ model_type: qwen-7b-chat
 query: 浙江的省会在哪里?
 response: 浙江省的省会是杭州市。
 query: 这有什么好吃的?
-response: 杭州有许多美食，例如西湖醋鱼、东坡肉、龙井虾仁、叫化童子鸡等。此外，杭州还有许多特色小吃，如西湖藕粉、杭州小笼包、杭州油条等。
+response: 浙江省有很多美食，比如杭州菜、宁波菜、绍兴菜、温州菜等。其中，杭州菜以清淡、鲜美、精致著称，而宁波菜则以鲜美、醇厚、香辣著称。此外，浙江省还有许多特色小吃，比如杭州的西湖醋鱼、宁波的汤圆、绍兴的酒酿圆子等。
 """
 ```
 
@@ -600,7 +611,6 @@ NPROC_PER_NODE=4 \
 swift sft \
     --model_type llama2-7b-chat \
     --dataset self-cognition#500 sharegpt-gpt4:default#1000 \
-    --logging_steps 5 \
     --max_length 4096 \
     --learning_rate 1e-4 \
     --output_dir output \

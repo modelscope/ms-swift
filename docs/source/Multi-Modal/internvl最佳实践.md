@@ -6,18 +6,44 @@
 - [internvl-chat-v1_5-int8](https://www.modelscope.cn/models/AI-ModelScope/InternVL-Chat-V1-5-int8/summary)
 - [mini-internvl-chat-2b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
 - [mini-internvl-chat-4b-v1_5](https://www.modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-4B-V1-5)
+- [internvl2-1b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-1B)
 - [internvl2-2b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-2B)
 - [internvl2-4b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-4B)
 - [internvl2-8b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-8B)
 - [internvl2-26b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-26B)
+- [internvl2-40b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-40B)
+- [internvl2-llama3-76b](https://www.modelscope.cn/models/OpenGVLab/InternVL2-Llama3-76B)
 
 
 以下实践以`internvl-chat-v1_5`为例，你也可以通过指定`--model_type`切换为其他模型.
+
+**FAQ**
+
+1. **模型显示 `The request model does not exist!`**
+
+这种情况通常发生在尝试使用mini-internvl或InternVL2模型, 原因是modelscope上相应模型是申请制。解决这个问题，你需要登录modelscope, 并前往相应的模型页面进行**申请下载**, 申请成功后可以通过以下任意一种方式获取模型：
+- 使用`snap_download`将模型下载到本地(在模型文件中的模型下载中有相应代码), 然后使用`--model_id_or_path`指定本地模型文件路径
+- 在[modelscope账号主页](https://www.modelscope.cn/my/myaccesstoken)获取账号的SDK token, 使用参数`--hub_token`或者环境变量`MODELSCOPE_API_TOKEN`指定
+
+也可以设置环境变量`USE_HF`, 从hugging face处下载模型
+
+2. **多卡运行模型时, 为什么不同卡的分布不均匀, 导致OOM?**
+
+transformers的auto device map算法对多模态模型支持不友好, 这可能导致不同 GPU 卡之间的显存分配不均匀。
+- 可以通过参数`--device_max_memory`设置每张卡的显存使用, 比如四卡环境, 可以设置`--device_map_memory 15GB 15GB 15GB 15GB`
+- 或者通过`--device_map_config_path`显式指定device map
+
+3. **InternVL2模型与前系列(InternVL-V1.5和Mini-InternVL)模型的区别**
+
+- InternVL2模型支持多轮多图推理和训练, 即多轮对话带有图片, 且单轮中支持文字图片交错,具体参考[自定义数据集](#自定义数据集)和推理的InternVL2部分。前系列模型支持多轮对话, 但只能有单轮带有图片
+- InternVL2模型支持视频输入, 具体格式参考[自定义数据集](#自定义数据集)
+
 
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
 - [微调](#微调)
+- [自定义数据集](#自定义数据集)
 - [微调后推理](#微调后推理)
 
 
@@ -37,7 +63,6 @@ pip install Pillow
 - 如果你的GPU不支持flash attention, 使用参数`--use_flash_attn false`。且对于int8模型，推理时需要指定`dtype --bf16`, 否则可能会出现乱码
 - 模型本身config中的max_length较小，为2048，可以设置`--max_length`来修改
 - 可以使用参数`--gradient_checkpoting true`减少显存占用
-- InternVL系列模型的**训练**只支持带有图片的数据集
 
 ```shell
 # Experimental environment: A100
@@ -49,7 +74,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl-chat-v1_5 --dtype bf1
 ```
 
 输出: (支持传入本地路径或URL)
-```python
+```
 """
 <<< 你是谁
 Input a media path or URL <<<
@@ -98,12 +123,71 @@ PEFT提供的轻量训练方案外，也提供了一个完整的Adapters库以�
 器库可以脱离训练脚本直接使用在自已的自定义流程中。
 为了方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui
 于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入
-此外，我们也正在拓展其他模态的能力，目前我们支持了AnimateDiff的全参
-数训练和LoRA训练。
+门。
+此外，我们也正在拓展其他模态的能力，目前我们支持了AnimateDiff的全
+参数训练和LoRA训练。
 SWIFT具有丰富的文档体系，如有使用问题请查看这里：
 可以在Huggingface space和ModelScope创空间中体验SWIFT web-
 ui功能了。
 """
+```
+
+对于**InternVL2**系列模型, 支持多轮多图推理, 且单轮中支持图像文本交错, 需要在输入通过`<image>`确定图像位置
+多轮多图示例
+```shell
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b
+```
+
+```
+<<< <image>描述图片
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+这是一只非常可爱的幼猫。它的毛色主要是白色，脸部和耳朵上有黑色和灰色的条纹。猫的眼睛大而明亮，瞳孔是蓝色的，显得非常清澈和无辜。它的耳朵竖立着，耳朵尖端是浅色的。这只猫看起来非常活泼，眼神中透露出一种好奇和友善的气质。背景模糊，可能是为了突出这只猫本身。整体画面给人一种温馨和可爱的感觉。
+--------------------------------------------------
+<<< <image>描述与上一张图片的差距
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+这张图片与上一张图片相比，有以下几个显著的差距：
+
+1. **动物种类不同**：
+   - 上一张图片中的动物是猫，而这张图片中的动物是羊。
+
+2. **动物外观和特征不同**：
+   - 猫有明显的竖立耳朵和蓝色的眼睛，而羊有竖立的长角和白色的羊毛。
+
+3. **背景和环境不同**：
+   - 上一张图片背景是模糊的，天空中有一些云朵，而这张图片背景是清晰的，背景中有绿色的山丘和蓝天白云。
+
+4. **动物表情和姿态不同**：
+   - 猫的表情显得非常警觉和好奇，而羊的表情显得非常温和和友好。
+
+5. **整体风格和风格不同**：
+   - 上一张图片有一种更加写实和细腻的绘画风格，而这张图片则有一种卡通和简化的风格。
+
+这些差异使得这张图片与上一张图片在视觉上存在显著的差异。
+--------------------------------------------------
+<<< 两张图片的共同点是什么
+Input an image path or URL <<<
+两张图片的共同点如下：
+
+1. **动物种类不同**：
+   - 两张图片中的动物都是羊。
+
+2. **背景和环境不同**：
+   - 两张图片中的背景都是自然景观，包括绿色的山丘和蓝天白云。
+
+3. **动物表情和姿态不同**：
+   - 猫和羊的表情和姿态都不同，但都显得非常可爱和友好。
+
+4. **整体风格和风格不同**：
+   - 两张图片在风格上有所不同，但都具有卡通和简化的特点。
+
+这些共同点使得两张图片在视觉上存在显著的差异，但它们都展示了可爱的动物形象。
+```
+
+单轮多图示例
+```
+<<< image1: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img> image2: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img> What is the difference bewteen the two images?
+Input an image path or URL <<<
+The two images are of the same kitten, but the first image is a close-up shot, while the second image is a more distant, artistic illustration. The close-up image captures the kitten in detail, showing its fur, eyes, and facial features in sharp focus. In contrast, the artistic illustration is more abstract and stylized, with a blurred background and a different color palette. The distant illustration gives the kitten a more whimsical and dreamy appearance, while the close-up image emphasizes the kitten's realism and detail.
 ```
 
 示例图片如下:
@@ -133,6 +217,7 @@ ocr:
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['MODELSCOPE_API_TOKEN'] = 'Your API Token' # If the message "The request model does not exist!" appears.
 
 from swift.llm import (
     get_model_tokenizer, get_template, inference,
@@ -140,6 +225,7 @@ from swift.llm import (
 )
 from swift.utils import seed_everything
 import torch
+
 
 model_type = "internvl-chat-v1_5"
 template_type = get_default_template_type(model_type)
@@ -157,7 +243,7 @@ template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = '距离各城市多远？'
+query = '距离各城市多远'
 response, history = inference(model, template, query, images=images) # chat with image
 print(f'query: {query}')
 print(f'response: {response}')
@@ -174,17 +260,17 @@ for response, history in gen:
 print()
 print(f'history: {history}')
 """
-query: 距离各城市多远？
-response: 这张图片显示的是一个路标，上面标示了三个目的地及其距离：
+query: 距离各城市多远
+response: 根据图片，距离各城市如下：
 
-- 马踏（Mata）：14公里
-- 阳江（Yangjiang）：62公里
-- 广州（Guangzhou）：293公里
+- 马踏：14公里
+- 阳江：62公里
+- 广州：293公里
 
-这些距离是按照路标上的指示来计算的。
+请注意，这些距离可能不是最新的，因为道路建设和交通状况可能会影响实际距离。
 query: 距离最远的城市是哪？
-response: 根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。
-history: [['距离各城市多远？', '这张图片显示的是一个路标，上面标示了三个目的地及其距离：\n\n- 马踏（Mata）：14公里\n- 阳江（Yangjiang）：62公里\n- 广州（Guangzhou）：293公里\n\n这些距离是按照路标上的指示来计算的。 '], ['距离最远的城市是哪？', '根据这张图片，距离最远的城市是广州（Guangzhou），距离为293公里。 ']]
+response: 根据图片，距离最远的城市是广州，距离为293公里。
+history: [['距离各城市多远', '根据图片，距离各城市如下：\n\n- 马踏：14公里\n- 阳江：62公里\n- 广州：293公里\n\n请注意，这些距离可能不是最新的，因为道路建设和交通状况可能会影响实际距离。 '], ['距离最远的城市是哪？', '根据图片，距离最远的城市是广州，距离为293公里。 ']]
 """
 ```
 
@@ -243,16 +329,54 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --sft_type full \
 ```
 
-
+## 自定义数据集
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
-(只支持单轮对话, 每轮对话必须包含一张图片, 支持传入本地路径或URL)
+(支持多轮对话, 图片支持传入本地路径或URL, 多张图片用逗号','分割)
 
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+{"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
 ```
+
+(支持纯文本数据)
+```jsonl
+{"query": "55555", "response": "66666"}
+{"query": "eeeee", "response": "fffff", "history": []}
+{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+
+**InternVL2**模型除了以上数据格式外, 还支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如果数据集中没有tag `<image>`, 默认放在最后一轮query的开头
+```jsonl
+{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+```
+或者用`<img>image_path</img>` 表示图像路径和图像位置
+
+```jsonl
+{"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], }
+```
+
+**InternVL2**模型支持视频数据集训练, 无需标明tag
+```jsonl
+{"query": "Describe this video in detail. Don't repeat", "response": "xxxxxxxxx", "history": [], "videos": ["video_path"]}
+```
+
+**InternVL2**模型支持grounding任务的训练，数据参考下面的格式：
+```jsonl
+{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+```
+上述objects字段中包含了一个json string，其中有四个字段：
+    a. caption bbox对应的物体描述
+    b. bbox 坐标 建议给四个整数（而非float型），分别是x_min,y_min,x_max,y_max四个值
+    c. bbox_type: bbox类型 目前支持三种：real/norm_1000/norm_1，分别代表实际像素值坐标/千分位比例坐标/归一化比例坐标
+    d. image: bbox对应的图片是第几张, 索引从0开始
+上述格式会被转换为InternVL2可识别的格式，具体来说：
+```jsonl
+{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>"}
+```
+也可以直接传入上述格式，但是注意坐标请使用千分位坐标。
 
 ## 微调后推理
 直接推理:

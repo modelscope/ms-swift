@@ -171,6 +171,13 @@ class ModelType:
     llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
     llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
     llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
+    # llama3.1
+    llama3_1_8b = 'llama3_1-8b'
+    llama3_1_8b_instruct = 'llama3_1-8b-instruct'
+    llama3_1_70b = 'llama3_1-70b'
+    llama3_1_70b_instruct = 'llama3_1-70b-instruct'
+    llama3_1_405b = 'llama3_1-405b'
+    llama3_1_405b_instruct = 'llama3_1-405b-instruct'
     # chinese-llama-alpaca
     chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
     chinese_llama_2_7b = 'chinese-llama-2-7b'
@@ -272,11 +279,13 @@ class ModelType:
     internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
     mini_internvl_chat_2b_v1_5 = 'mini-internvl-chat-2b-v1_5'
     mini_internvl_chat_4b_v1_5 = 'mini-internvl-chat-4b-v1_5'
+    internvl2_1b = 'internvl2-1b'
     internvl2_2b = 'internvl2-2b'
     internvl2_4b = 'internvl2-4b'
     internvl2_8b = 'internvl2-8b'
     internvl2_26b = 'internvl2-26b'
     internvl2_40b = 'internvl2-40b'
+    internvl2_llama3_76b = 'internvl2-llama3-76b'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -298,6 +307,8 @@ class ModelType:
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
     deepseek_math_7b_chat = 'deepseek-math-7b-chat'
+    # numina-math
+    numina_math_7b = 'numina-math-7b'
     # deepseek-vl
     deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
@@ -346,6 +357,8 @@ class ModelType:
     mistral_7b_instruct = 'mistral-7b-instruct'
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
     mistral_7b_instruct_v3 = 'mistral-7b-instruct-v3'
+    mistral_nemo_instruct_2407 = 'mistral-nemo-instruct-2407'
+    mistral_nemo_base_2407 = 'mistral-nemo-base-2407'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
@@ -511,6 +524,10 @@ class LoRATM(NamedTuple):
         'kv_b_proj',
         'o_proj',
     ]
+    minicpm_llama = r'.*model\.layers\.(?:[0-9]|[12][0-9]|3[01])\.(?:self_attn\.(?:q_proj|k_proj|v_proj))'
+    internvl2 = r'.*(wqkv|wo|w[123]|mlp1\.(1|3))$'
+    internvl2_llama = r'.*(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|mlp1\.(1|3))$'
+    internvl2_phi3 = r'.*(qkv_proj|o_proj|gate_up_proj|down_proj|mlp1\.(1|3))$'
     # compat
     llama2 = llama
 
@@ -521,7 +538,7 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTr
 def register_model(
         model_type: str,
         model_id_or_path: Optional[str],
-        lora_target_modules: Optional[List[str]] = None,
+        lora_target_modules: Optional[Union[List[str], str]] = None,
         template: str = TemplateType.default,
         get_function: Optional[GetModelTokenizerFunction] = None,
         *,
@@ -1561,7 +1578,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.chatglm_generation,
     support_vllm=True,
     support_flash_attn=True,
-    requires=['transformers<4.42'],
+    # requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b')
 @register_model(
     ModelType.glm4_9b_chat,
@@ -1570,7 +1587,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.chatglm3,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers<4.42'],
+    # requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b-chat')
 @register_model(
     ModelType.glm4_9b_chat_1m,
@@ -1579,7 +1596,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.chatglm3,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['transformers<4.42'],
+    # requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b-chat-1m')
 def get_model_tokenizer_glm4(model_dir: str,
                              torch_dtype: Dtype,
@@ -1602,7 +1619,7 @@ def get_model_tokenizer_glm4(model_dir: str,
     LoRATM.glm4v,
     TemplateType.glm4v,
     eos_token='<|endoftext|>',
-    requires=['transformers<4.42'],
+    # requires=['transformers>=4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/glm-4v-9b')
 def get_model_tokenizer_glm4v(model_dir: str,
@@ -1611,6 +1628,8 @@ def get_model_tokenizer_glm4v(model_dir: str,
                               load_model: bool = True,
                               **kwargs):
     model, tokenizer = get_model_tokenizer_glm4(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    # fix merge-lora
+    tokenizer.init_kwargs['image_size'] = 1120
     # fix device_map 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
@@ -1853,6 +1872,15 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     tags=['math'],
     hf_model_id='deepseek-ai/deepseek-math-7b-instruct')
+@register_model(
+    ModelType.numina_math_7b,
+    'AI-ModelScope/NuminaMath-7B-TIR',
+    LoRATM.llama,
+    TemplateType.numina_math,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['math'],
+    hf_model_id='AI-MO/NuminaMath-7B-TIR')
 @register_model(
     ModelType.deepseek_math_7b_chat,
     'deepseek-ai/deepseek-math-7b-rl',
@@ -2199,6 +2227,226 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-6B')
 @register_model(
+    ModelType.ziya2_13b_chat,
+    'Fengshenbang/Ziya2-13B-Chat',
+    LoRATM.llama,
+    TemplateType.ziya,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='IDEA-CCNL/Ziya2-13B-Chat')
+@register_model(
+    ModelType.ziya2_13b,
+    'Fengshenbang/Ziya2-13B-Base',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='IDEA-CCNL/Ziya2-13B-Base')
+@register_model(
+    ModelType.openbuddy_mixtral_moe_7b_chat,
+    'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k',
+    LoRATM.llama,
+    TemplateType.openbuddy,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    hf_model_id='OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k')
+@register_model(
+    ModelType.openbuddy_mistral_7b_chat,
+    'OpenBuddy/openbuddy-mistral-7b-v17.1-32k',
+    LoRATM.llama,
+    TemplateType.openbuddy,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-mistral-7b-v17.1-32k')
+@register_model(
+    ModelType.openbuddy_llama2_70b_chat,
+    'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
+    LoRATM.llama,
+    TemplateType.openbuddy,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama2-70b-v10.1-bf16')
+@register_model(
+    ModelType.openbuddy_llama_65b_chat,
+    'OpenBuddy/openbuddy-llama-65b-v8-bf16',
+    LoRATM.llama,
+    TemplateType.openbuddy,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama-65b-v8-bf16')
+@register_model(
+    ModelType.openbuddy_llama3_70b_chat,
+    'OpenBuddy/openbuddy-llama3-70b-v21.1-8k',
+    LoRATM.llama,
+    TemplateType.openbuddy2,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama3-70b-v21.1-8k')
+@register_model(
+    ModelType.openbuddy_llama3_8b_chat,
+    'OpenBuddy/openbuddy-llama3-8b-v21.1-8k',
+    LoRATM.llama,
+    TemplateType.openbuddy2,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama3-8b-v21.1-8k')
+@register_model(
+    ModelType.openbuddy_llama2_13b_chat,
+    'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
+    LoRATM.llama,
+    TemplateType.openbuddy,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='OpenBuddy/openbuddy-llama2-13b-v8.1-fp16')
+@register_model(
+    ModelType.mistral_7b_instruct,
+    'AI-ModelScope/Mistral-7B-Instruct-v0.1',
+    LoRATM.llama,
+    TemplateType.llama,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-7B-Instruct-v0.1')
+@register_model(
+    ModelType.mistral_7b_instruct_v2,
+    'AI-ModelScope/Mistral-7B-Instruct-v0.2',
+    LoRATM.llama,
+    TemplateType.llama,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-7B-Instruct-v0.2')
+@register_model(
+    ModelType.mistral_7b_instruct_v3,
+    'LLM-Research/Mistral-7B-Instruct-v0.3',
+    LoRATM.llama,
+    TemplateType.llama,
+    ignore_file_pattern=['consolidated.safetensors'],
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-7B-Instruct-v0.3')
+@register_model(
+    ModelType.mistral_7b,
+    'AI-ModelScope/Mistral-7B-v0.1',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-7B-v0.1')
+@register_model(
+    ModelType.codestral_22b,
+    'swift/Codestral-22B-v0.1',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.34'],
+    ignore_file_pattern=['consolidated.safetensors'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Codestral-22B-v0.1')
+@register_model(
+    ModelType.mistral_7b_v2,
+    'AI-ModelScope/Mistral-7B-v0.2-hf',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.34'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='alpindale/Mistral-7B-v0.2-hf')
+@register_model(
+    ModelType.mixtral_moe_7b,
+    'AI-ModelScope/Mixtral-8x7B-v0.1',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.36'],
+    ignore_file_pattern=[r'.+\.pt$'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    hf_model_id='mistralai/Mixtral-8x7B-v0.1')
+@register_model(
+    ModelType.mixtral_moe_7b_instruct,
+    'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
+    LoRATM.llama,
+    TemplateType.llama,
+    requires=['transformers>=4.36'],
+    ignore_file_pattern=[r'.+\.pt$'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    hf_model_id='mistralai/Mixtral-8x7B-Instruct-v0.1')
+@register_model(
+    ModelType.mixtral_moe_8x22b_v1,
+    'AI-ModelScope/Mixtral-8x22B-v0.1',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
+@register_model(
+    ModelType.mistral_nemo_instruct_2407,
+    'AI-ModelScope/Mistral-Nemo-Instruct-2407',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.43.0.dev0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Instruct-2407')
+@register_model(
+    ModelType.mistral_nemo_base_2407,
+    'AI-ModelScope/Mistral-Nemo-Base-2407',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.43.0.dev0'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Base-2407')
+@register_model(
+    ModelType.dbrx_base,
+    'AI-ModelScope/dbrx-base',
+    LoRATM.dbrx,
+    TemplateType.dbrx,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    hf_model_id='databricks/dbrx-base')
+@register_model(
+    ModelType.dbrx_instruct,
+    'AI-ModelScope/dbrx-instruct',
+    LoRATM.dbrx,
+    TemplateType.dbrx,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_gradient_checkpointing=False,
+    hf_model_id='databricks/dbrx-instruct')
+def get_model_tokenizer_with_flash_attn(model_dir: str,
+                                        torch_dtype: Dtype,
+                                        model_kwargs: Dict[str, Any],
+                                        load_model: bool = True,
+                                        model_config=None,
+                                        **kwargs):
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if version.parse(transformers.__version__) >= version.parse('4.36'):
+        if use_flash_attn:
+            model_config._attn_implementation = 'flash_attention_2'
+        else:
+            model_config._attn_implementation = 'eager'
+    else:
+        model_config._flash_attn_2_enabled = use_flash_attn
+    return get_model_tokenizer_from_repo(
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
+
+@register_model(
     ModelType.yi_1_5_6b,
     '01ai/Yi-1.5-6B',
     LoRATM.llama,
@@ -2328,206 +2576,9 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
-@register_model(
-    ModelType.ziya2_13b_chat,
-    'Fengshenbang/Ziya2-13B-Chat',
-    LoRATM.llama,
-    TemplateType.ziya,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='IDEA-CCNL/Ziya2-13B-Chat')
-@register_model(
-    ModelType.ziya2_13b,
-    'Fengshenbang/Ziya2-13B-Base',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='IDEA-CCNL/Ziya2-13B-Base')
-@register_model(
-    ModelType.openbuddy_mixtral_moe_7b_chat,
-    'OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k',
-    LoRATM.llama,
-    TemplateType.openbuddy,
-    requires=['transformers>=4.36'],
-    support_flash_attn=True,
-    support_vllm=True,
-    support_gradient_checkpointing=False,
-    hf_model_id='OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k')
-@register_model(
-    ModelType.openbuddy_mistral_7b_chat,
-    'OpenBuddy/openbuddy-mistral-7b-v17.1-32k',
-    LoRATM.llama,
-    TemplateType.openbuddy,
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='OpenBuddy/openbuddy-mistral-7b-v17.1-32k')
-@register_model(
-    ModelType.openbuddy_llama2_70b_chat,
-    'OpenBuddy/openbuddy-llama2-70b-v10.1-bf16',
-    LoRATM.llama,
-    TemplateType.openbuddy,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='OpenBuddy/openbuddy-llama2-70b-v10.1-bf16')
-@register_model(
-    ModelType.openbuddy_llama_65b_chat,
-    'OpenBuddy/openbuddy-llama-65b-v8-bf16',
-    LoRATM.llama,
-    TemplateType.openbuddy,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='OpenBuddy/openbuddy-llama-65b-v8-bf16')
-@register_model(
-    ModelType.openbuddy_llama3_70b_chat,
-    'OpenBuddy/openbuddy-llama3-70b-v21.1-8k',
-    LoRATM.llama,
-    TemplateType.openbuddy2,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='OpenBuddy/openbuddy-llama3-70b-v21.1-8k')
-@register_model(
-    ModelType.openbuddy_llama3_8b_chat,
-    'OpenBuddy/openbuddy-llama3-8b-v21.1-8k',
-    LoRATM.llama,
-    TemplateType.openbuddy2,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='OpenBuddy/openbuddy-llama3-8b-v21.1-8k')
-@register_model(
-    ModelType.openbuddy_llama2_13b_chat,
-    'OpenBuddy/openbuddy-llama2-13b-v8.1-fp16',
-    LoRATM.llama,
-    TemplateType.openbuddy,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='OpenBuddy/openbuddy-llama2-13b-v8.1-fp16')
-@register_model(
-    ModelType.mistral_7b_instruct,
-    'AI-ModelScope/Mistral-7B-Instruct-v0.1',
-    LoRATM.llama,
-    TemplateType.llama,
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='mistralai/Mistral-7B-Instruct-v0.1')
-@register_model(
-    ModelType.mistral_7b_instruct_v2,
-    'AI-ModelScope/Mistral-7B-Instruct-v0.2',
-    LoRATM.llama,
-    TemplateType.llama,
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='mistralai/Mistral-7B-Instruct-v0.2')
-@register_model(
-    ModelType.mistral_7b_instruct_v3,
-    'LLM-Research/Mistral-7B-Instruct-v0.3',
-    LoRATM.llama,
-    TemplateType.llama,
-    ignore_file_pattern=['consolidated.safetensors'],
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='mistralai/Mistral-7B-Instruct-v0.3')
-@register_model(
-    ModelType.mistral_7b,
-    'AI-ModelScope/Mistral-7B-v0.1',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='mistralai/Mistral-7B-v0.1')
-@register_model(
-    ModelType.codestral_22b,
-    'huangjintao/Codestral-22B-v0.1',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    requires=['transformers>=4.34'],
-    ignore_file_pattern=['consolidated.safetensors'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='mistralai/Codestral-22B-v0.1')
-@register_model(
-    ModelType.mistral_7b_v2,
-    'AI-ModelScope/Mistral-7B-v0.2-hf',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    requires=['transformers>=4.34'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='alpindale/Mistral-7B-v0.2-hf')
-@register_model(
-    ModelType.mixtral_moe_7b,
-    'AI-ModelScope/Mixtral-8x7B-v0.1',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    requires=['transformers>=4.36'],
-    ignore_file_pattern=[r'.+\.pt$'],
-    support_flash_attn=True,
-    support_vllm=True,
-    support_gradient_checkpointing=False,
-    hf_model_id='mistralai/Mixtral-8x7B-v0.1')
-@register_model(
-    ModelType.mixtral_moe_7b_instruct,
-    'AI-ModelScope/Mixtral-8x7B-Instruct-v0.1',
-    LoRATM.llama,
-    TemplateType.llama,
-    requires=['transformers>=4.36'],
-    ignore_file_pattern=[r'.+\.pt$'],
-    support_flash_attn=True,
-    support_vllm=True,
-    support_gradient_checkpointing=False,
-    hf_model_id='mistralai/Mixtral-8x7B-Instruct-v0.1')
-@register_model(
-    ModelType.mixtral_moe_8x22b_v1,
-    'AI-ModelScope/Mixtral-8x22B-v0.1',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    requires=['transformers>=4.36'],
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
-@register_model(
-    ModelType.dbrx_base,
-    'AI-ModelScope/dbrx-base',
-    LoRATM.dbrx,
-    TemplateType.dbrx,
-    requires=['transformers>=4.36'],
-    support_flash_attn=True,
-    support_vllm=True,
-    support_gradient_checkpointing=False,
-    hf_model_id='databricks/dbrx-base')
-@register_model(
-    ModelType.dbrx_instruct,
-    'AI-ModelScope/dbrx-instruct',
-    LoRATM.dbrx,
-    TemplateType.dbrx,
-    requires=['transformers>=4.36'],
-    support_flash_attn=True,
-    support_vllm=True,
-    support_gradient_checkpointing=False,
-    hf_model_id='databricks/dbrx-instruct')
-def get_model_tokenizer_with_flash_attn(model_dir: str,
-                                        torch_dtype: Dtype,
-                                        model_kwargs: Dict[str, Any],
-                                        load_model: bool = True,
-                                        model_config=None,
-                                        **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if version.parse(transformers.__version__) >= version.parse('4.36'):
-        if use_flash_attn:
-            model_config._attn_implementation = 'flash_attention_2'
-        else:
-            model_config._attn_implementation = 'eager'
-    else:
-        model_config._flash_attn_2_enabled = use_flash_attn
-    return get_model_tokenizer_from_repo(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
+    return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
 
 
 def fix_florence_forward(model) -> None:
@@ -3617,6 +3668,85 @@ def fix_internvl_inplace_bug(model) -> None:
         embedding.forward = _new_forward
 
 
+def _patch_internvl_forward(forward_func):
+    from transformers.modeling_outputs import CausalLMOutputWithPast
+    from torch.nn import CrossEntropyLoss
+
+    def wrapper(
+        self,
+        pixel_values: torch.FloatTensor = None,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        image_flags: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+    ) -> Union[Tuple, CausalLMOutputWithPast]:
+        if pixel_values is None:
+            inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
+            outputs = self.language_model(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            logits = outputs.logits
+            loss = None
+            if labels is not None:
+                # Shift so that tokens < n predict n
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss()
+                shift_logits = shift_logits.view(-1, self.language_model.config.vocab_size)
+                shift_labels = shift_labels.view(-1)
+                # Enable model parallelism
+                shift_labels = shift_labels.to(shift_logits.device)
+                loss = loss_fct(shift_logits, shift_labels)
+            if return_dict:
+                output = (logits, ) + outputs[1:]
+                return (loss, ) + output if loss is not None else output
+            return CausalLMOutputWithPast(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+            )
+        else:
+            return forward_func(
+                pixel_values,
+                input_ids,
+                attention_mask,
+                position_ids,
+                image_flags,
+                past_key_values,
+                labels,
+                use_cache,
+                output_attentions,
+                output_hidden_states,
+                return_dict,
+            )
+
+    return wrapper
+
+
+def patch_internvl_forward(model) -> None:
+    if not hasattr(model, '__old_forward'):  # Avoid double patching
+        forward = model.forward
+        model.__old_forward = forward
+        model.forward = MethodType(_patch_internvl_forward(model.forward), model)
+
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -3658,9 +3788,19 @@ def fix_internvl_inplace_bug(model) -> None:
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
 @register_model(
+    ModelType.internvl2_1b,
+    'OpenGVLab/InternVL2-1B',
+    LoRATM.internvl2_llama,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-1B')
+@register_model(
     ModelType.internvl2_2b,
     'OpenGVLab/InternVL2-2B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3670,8 +3810,8 @@ def fix_internvl_inplace_bug(model) -> None:
 @register_model(
     ModelType.internvl2_4b,
     'OpenGVLab/InternVL2-4B',
-    LoRATM.internlm2,
-    TemplateType.internvl2,
+    LoRATM.internvl2_phi3,
+    TemplateType.internvl2_phi3,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -3680,7 +3820,7 @@ def fix_internvl_inplace_bug(model) -> None:
 @register_model(
     ModelType.internvl2_8b,
     'OpenGVLab/InternVL2-8B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3690,7 +3830,7 @@ def fix_internvl_inplace_bug(model) -> None:
 @register_model(
     ModelType.internvl2_26b,
     'OpenGVLab/InternVL2-26B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3700,13 +3840,23 @@ def fix_internvl_inplace_bug(model) -> None:
 @register_model(
     ModelType.internvl2_40b,
     'OpenGVLab/InternVL2-40B',
-    LoRATM.internlm2,
+    LoRATM.internvl2_llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-40B')
+@register_model(
+    ModelType.internvl2_llama3_76b,
+    'OpenGVLab/InternVL2-Llama3-76B',
+    LoRATM.internvl2_llama,
+    TemplateType.internvl2,
+    requires=['transformers>=4.35', 'timm'],
+    support_flash_attn=True,
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='OpenGVLab/InternVL2-Llama3-76B')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -3743,16 +3893,7 @@ def get_model_tokenizer_internvl(model_dir: str,
         model.config.max_position_embeddings = model.language_model.config.max_position_embeddings
         _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
         fix_internvl_inplace_bug(model)
-        if not hasattr(model, '__old_forward'):  # Avoid double patching
-            forward = model.forward
-            model.__old_forward = forward
-
-            @wraps(forward)
-            def _new_forward(*args, **kwargs):
-                kwargs.pop('inputs_embeds', None)
-                return forward(*args, **kwargs)
-
-            model.forward = _new_forward
+        patch_internvl_forward(model)
 
         if not hasattr(model, '__old_generate'):
             generate = model.generate
@@ -3826,7 +3967,6 @@ def get_model_tokenizer_internvl(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm_xcomposer2,
     eos_token='[UNUSED_TOKEN_145]',
-    support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='internlm/internlm-xcomposer2-7b')
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
@@ -3886,7 +4026,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-def _git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> str:
+def git_clone_github(github_url: str, local_repo_name: Optional[str] = None, branch: Optional[str] = None) -> str:
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -3899,6 +4039,9 @@ def _git_clone_github(github_url: str, local_repo_name: Optional[str] = None) ->
                 github_url = f'{github_url}.git'
             command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
             command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
+            if branch is not None:
+                command += ['--branch', branch]
+                command_str += f' --branch {branch}'
             logger.info(f'Run the command: `{command_str}`')
             subprocess_run(command)
         logger.info(f'local_repo_path: {local_repo_path}')
@@ -4006,7 +4149,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
+        local_repo_path = git_clone_github('https://github.com/deepseek-ai/DeepSeek-VL')
     sys.path.append(os.path.join(local_repo_path))
     from deepseek_vl.models import VLChatProcessor, MultiModalityCausalLM
     processor = VLChatProcessor.from_pretrained(model_dir)
@@ -4032,8 +4175,68 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 
 @register_model(
+    ModelType.llama3_1_405b_instruct,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B-Instruct')
+@register_model(
+    ModelType.llama3_1_405b,
+    'LLM-Research/Meta-Llama-3.1-405B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B')
+@register_model(
+    ModelType.llama3_1_70b_instruct,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B-Instruct')
+@register_model(
+    ModelType.llama3_1_70b,
+    'LLM-Research/Meta-Llama-3.1-70B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B')
+@register_model(
+    ModelType.llama3_1_8b_instruct,
+    'LLM-Research/Meta-Llama-3.1-8B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-8B-Instruct')
+@register_model(
+    ModelType.llama3_1_8b,
+    'LLM-Research/Meta-Llama-3.1-8B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-8B')
+@register_model(
     ModelType.llama3_70b_instruct_awq,
-    'huangjintao/Meta-Llama-3-70B-Instruct-AWQ',
+    'swift/Meta-Llama-3-70B-Instruct-AWQ',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['autoawq'],
@@ -4044,7 +4247,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_70b_instruct_int8,
-    'huangjintao/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
+    'swift/Meta-Llama-3-70b-Instruct-GPTQ-Int8',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4055,7 +4258,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_70b_instruct_int4,
-    'huangjintao/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
+    'swift/Meta-Llama-3-70B-Instruct-GPTQ-Int4',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4066,7 +4269,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.llama3_8b_instruct_awq,
-    'huangjintao/Meta-Llama-3-8B-Instruct-AWQ',
+    'swift/Meta-Llama-3-8B-Instruct-AWQ',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['autoawq'],
@@ -4077,7 +4280,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_8b_instruct_int8,
-    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
+    'swift/Meta-Llama-3-8B-Instruct-GPTQ-Int8',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4088,7 +4291,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int8')
 @register_model(
     ModelType.llama3_8b_instruct_int4,
-    'huangjintao/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
+    'swift/Meta-Llama-3-8B-Instruct-GPTQ-Int4',
     LoRATM.llama,
     TemplateType.llama3,
     requires=['auto_gptq'],
@@ -4950,7 +5153,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/01-ai/Yi')
+        local_repo_path = git_clone_github('https://github.com/01-ai/Yi')
     sys.path.append(os.path.join(local_repo_path, 'VL'))
     from llava.model import LlavaLlamaForCausalLM, LlavaConfig
     from llava.model.constants import key_info
@@ -5046,7 +5249,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 @register_model(
     ModelType.minicpm_v_v2_5_chat,
     'OpenBMB/MiniCPM-Llama3-V-2_5',
-    LoRATM.llama,
+    LoRATM.minicpm_llama,
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
     requires=['timm'],
@@ -5099,14 +5302,22 @@ def _patch_llava(model):
 def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if not hasattr(model_config, 'hidden_size'):
+        # Currently all models without hidden_size config is 4096
+        if hasattr(model_config, 'text_config'):
+            model_config.hidden_size = getattr(model_config.text_config, 'hidden_size', 4096)
+        else:
+            model_config.hidden_size = 4096
+
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, model_config=model_config, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 
 
 @register_model(
     ModelType.llava1_5_13b_instruct,
-    'huangjintao/llava-1.5-13b-hf',
+    'swift/llava-1.5-13b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
@@ -5123,7 +5334,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     hf_model_id='llava-hf/llava-1.5-13b-hf')
 @register_model(
     ModelType.llava1_5_7b_instruct,
-    'huangjintao/llava-1.5-7b-hf',
+    'swift/llava-1.5-7b-hf',
     LoRATM.llama,
     TemplateType.llava1_5,
     eos_token='</s>',
@@ -5147,7 +5358,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 @register_model(
     ModelType.llava1_6_vicuna_7b_instruct,
-    'huangjintao/llava-v1.6-vicuna-7b-hf',
+    'swift/llava-v1.6-vicuna-7b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
@@ -5163,7 +5374,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
 @register_model(
     ModelType.llava1_6_vicuna_13b_instruct,
-    'huangjintao/llava-v1.6-vicuna-13b-hf',
+    'swift/llava-v1.6-vicuna-13b-hf',
     LoRATM.llama,
     TemplateType.llava_vicuna,
     support_vllm=True,
@@ -5179,7 +5390,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
 @register_model(
     ModelType.llava1_6_mistral_7b_instruct,
-    'huangjintao/llava-v1.6-mistral-7b-hf',
+    'swift/llava-v1.6-mistral-7b-hf',
     LoRATM.llama,
     TemplateType.llava_mistral,
     support_vllm=True,
@@ -5202,7 +5413,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 
 @register_model(
     ModelType.llava1_6_yi_34b_instruct,
-    'huangjintao/llava-v1.6-34b-hf',
+    'swift/llava-v1.6-34b-hf',
     LoRATM.llama,
     TemplateType.llava_yi,
     support_vllm=True,
@@ -5226,7 +5437,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 
 @register_model(
     ModelType.llava_next_video_7b_dpo_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-DPO-hf',
+    'swift/LLaVA-NeXT-Video-7B-DPO-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5235,7 +5446,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-DPO-hf')
 @register_model(
     ModelType.llava_next_video_7b_32k_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-32K-hf',
+    'swift/LLaVA-NeXT-Video-7B-32K-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5244,7 +5455,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-32K-hf')
 @register_model(
     ModelType.llava_next_video_7b_instruct,
-    'huangjintao/LLaVA-NeXT-Video-7B-hf',
+    'swift/LLaVA-NeXT-Video-7B-hf',
     LoRATM.llama,
     TemplateType.llava_next_video,
     support_flash_attn=True,
@@ -5259,7 +5470,7 @@ def get_model_tokenizer_llava_next_video(*args, **kwargs):
 
 @register_model(
     ModelType.llava_next_video_34b_instruct,
-    'huangjintao/LLaVA-NeXT-Video-34B-hf',
+    'swift/LLaVA-NeXT-Video-34B-hf',
     LoRATM.llama,
     TemplateType.llava_next_video_yi,
     support_flash_attn=True,
@@ -5311,10 +5522,10 @@ def get_model_tokenizer_llava(model_dir: str,
         local_repo_path = kwargs['local_repo_path']
     elif 'next' in llm_model_type:
         repo_path = 'https://github.com/LLaVA-VL/LLaVA-NeXT'
-        local_repo_path = _git_clone_github(repo_path)
+        local_repo_path = git_clone_github(repo_path)
     else:
         repo_path = 'https://github.com/haotian-liu/LLaVA'
-        local_repo_path = _git_clone_github(repo_path)
+        local_repo_path = git_clone_github(repo_path)
     sys.path.append(os.path.join(local_repo_path))
 
     if llm_model_type == 'mistral':
@@ -5395,7 +5606,7 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
-        local_repo_path = _git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
+        local_repo_path = git_clone_github('https://github.com/X-PLUG/mPLUG-Owl')
     local_repo_path = os.path.join(local_repo_path, 'mPLUG-Owl2')
     sys.path.append(os.path.join(local_repo_path))
 
@@ -5467,6 +5678,8 @@ def safe_snapshot_download(model_type: str,
 
     with safe_ddp_context():
         if model_id_or_path is not None and not os.path.exists(model_id_or_path):
+            if model_id_or_path.startswith('/'):
+                raise ValueError(f"path: '{model_id_or_path}' not found")
             ignore_file_pattern = model_info['ignore_file_pattern']
             if download_model is False:
                 if ignore_file_pattern is None:

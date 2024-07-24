@@ -272,7 +272,7 @@ class LazyLLMDataset(Dataset):
             data = self.dataset[i]
             try:
                 res = self.template.encode(data)
-            except OSError as e:
+            except (OSError, AssertionError) as e:
                 logger.error('Error occurs in lazy tokenize:', e)
                 continue
             if len(res[0]) > 0:
@@ -836,7 +836,7 @@ def limit_history_length(template: Template, query: str, history: Optional[Histo
     return old_history, history
 
 
-Messages = List[Dict[str, str]]
+Messages = List[Dict[str, Union[str, List[Dict]]]]
 
 
 def history_to_messages(history: Optional[History],
@@ -937,6 +937,10 @@ def is_lmdeploy_available():
 
 def is_xtuner_available():
     return importlib.util.find_spec('xtuner') is not None
+
+
+def is_megatron_available():
+    return importlib.util.find_spec('megatron') is not None
 
 
 def is_unsloth_available() -> bool:

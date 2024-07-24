@@ -2,7 +2,6 @@ import os
 import re
 import sys
 import time
-from copy import copy
 from datetime import datetime
 from functools import partial
 from typing import Type
@@ -11,10 +10,11 @@ import gradio as gr
 import json
 import torch
 from gradio import Accordion, Tab
+from json import JSONDecodeError
 from modelscope import GenerationConfig, snapshot_download
 
 from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, XRequestConfig, inference_client,
-                       inference_stream, limit_history_length, prepare_model_template)
+                       inference_stream, prepare_model_template)
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
@@ -69,6 +69,16 @@ class LLMInfer(BaseUI):
                 'en': 'Chat bot'
             },
         },
+        'infer_model_type': {
+            'label': {
+                'zh': 'Lora模块',
+                'en': 'Lora module'
+            },
+            'info': {
+                'zh': '发送给server端哪个LoRA，默认为`default-lora`',
+                'en': 'Which LoRA to use on server, default value is `default-lora`'
+            }
+        },
         'prompt': {
             'label': {
                 'zh': '请输入：',
@@ -116,12 +126,14 @@ class LLMInfer(BaseUI):
                 history = gr.State([])
                 Model.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
-                gr.Dropdown(
-                    elem_id='gpu_id',
-                    multiselect=True,
-                    choices=[str(i) for i in range(gpu_count)] + ['cpu'],
-                    value=default_device,
-                    scale=8)
+                with gr.Row():
+                    gr.Dropdown(
+                        elem_id='gpu_id',
+                        multiselect=True,
+                        choices=[str(i) for i in range(gpu_count)] + ['cpu'],
+                        value=default_device,
+                        scale=8)
+                    infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
@@ -172,7 +184,7 @@ class LLMInfer(BaseUI):
                         cls.send_message,
                         inputs=[
                             cls.element('running_tasks'), model_and_template,
-                            cls.element('template_type'), prompt, image, history,
+                            cls.element('template_type'), prompt, image, history, infer_model_type,
                             cls.element('system'),
                             cls.element('max_new_tokens'),
                             cls.element('temperature'),
@@ -204,6 +216,7 @@ class LLMInfer(BaseUI):
         kwargs_is_list = {}
         other_kwargs = {}
         more_params = {}
+        more_params_cmd = ''
         keys = [key for key, value in cls.elements().items() if not isinstance(value, (Tab, Accordion))]
         for key, value in zip(keys, args):
             compare_value = deploy_args.get(key)
@@ -217,11 +230,14 @@ class LLMInfer(BaseUI):
                 elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
                     value = True if value.lower() == 'true' else False
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
-                kwargs_is_list[key] = isinstance(value, list)
+                kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
                 other_kwargs[key] = value
             if key == 'more_params' and value:
-                more_params = json.loads(value)
+                try:
+                    more_params = json.loads(value)
+                except (JSONDecodeError or TypeError):
+                    more_params_cmd = value
 
         kwargs.update(more_params)
         if kwargs['model_type'] == cls.locale('checkpoint', cls.lang)['value']:
@@ -244,12 +260,15 @@ class LLMInfer(BaseUI):
             raise gr.Error(cls.locale('port_alert', cls.lang)['value'])
         params = ''
         for e in kwargs:
-            if e in kwargs_is_list and kwargs_is_list[e]:
+            if isinstance(kwargs[e], list):
+                params += f'--{e} {" ".join(kwargs[e])} '
+            elif e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
                 params += f'--{e} "{kwargs[e]}" '
         if 'port' not in kwargs:
             params += f'--port "{deploy_args.port}" '
+        params += more_params_cmd + ' '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]
         assert (len(devices) == 1 or 'cpu' not in devices)
@@ -374,8 +393,8 @@ class LLMInfer(BaseUI):
         return None
 
     @classmethod
-    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history, system,
-                     max_new_tokens, temperature, top_k, top_p, repetition_penalty):
+    def send_message(cls, running_task, model_and_template, template_type, prompt: str, image, history,
+                     infer_model_type, system, max_new_tokens, temperature, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None, None, []
@@ -393,7 +412,7 @@ class LLMInfer(BaseUI):
         _, args = Runtime.parse_info_from_cmdline(running_task)
         model_type, template, sft_type = model_and_template
         if sft_type in ('lora', 'longlora') and not args.get('merge_lora'):
-            model_type = 'default-lora'
+            model_type = infer_model_type or 'default-lora'
         old_history, history = history or [], []
         request_config = XRequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)

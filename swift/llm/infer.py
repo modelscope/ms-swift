@@ -29,8 +29,10 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     target_dir: str,
                     *,
                     save_safetensors: bool = True,
-                    sft_args_kwargs: Dict[str, Any],
+                    sft_args_kwargs: Optional[Dict[str, Any]] = None,
                     **kwargs) -> None:
+    if sft_args_kwargs is None:
+        sft_args_kwargs = {}
     if model is not None:
         model.save_pretrained(target_dir, safe_serialization=save_safetensors)
     if hasattr(tokenizer, 'processor'):
@@ -146,6 +148,9 @@ def prepare_model_template(args: InferArguments,
     if device_map == 'auto':
         model_kwargs['low_cpu_mem_usage'] = True
     model_kwargs['device_map'] = device_map
+    if args.device_max_memory:
+        assert len(args.device_max_memory) == torch.cuda.device_count()
+        model_kwargs['max_memory'] = {i: mem for i, mem in enumerate(args.device_max_memory)}
 
     # Loading Model and Tokenizer
     if hasattr(args, 'quant_config'):
@@ -210,7 +215,7 @@ def prepare_model_template(args: InferArguments,
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
-        if is_quant_model(args.model_type, model):
+        if args.lora_request_list is not None and (is_quant_model(args.model_type, model) or args.is_multimodal):
             # gptq awq does not support lora switching
             args.lora_request_list = None
             logger.warning('The current model does not support LoRA switching. '
@@ -321,7 +326,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
         history = []
         infer_kwargs = {}
         if args.infer_media_type != 'none':
-            logger.info('Please enter the conversation content first, ' 'followed by the path to the multimedia file.')
+            logger.info('Please enter the conversation content first, followed by the path to the multimedia file.')
         system = None
         read_system = False
         while True:
