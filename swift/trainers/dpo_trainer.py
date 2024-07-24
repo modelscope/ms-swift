@@ -53,10 +53,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
-            if not isinstance(prompt_tokens['input_ids'], list):
-                prompt_tokens['input_ids'] = prompt_tokens['input_ids'].tolist()
-            if 'attention_mask' in prompt_tokens and not isinstance(prompt_tokens['attention_mask'], list):
-                prompt_tokens['attention_mask'] = prompt_tokens['attention_mask'].tolist()
 
             # resolve conflict in data_collator when labels are None, pop it afterwards
             prompt_tokens['labels'] = prompt_tokens['input_ids']

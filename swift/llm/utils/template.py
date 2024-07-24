@@ -1769,7 +1769,10 @@ class FlorenceTemplate(Template):
         return generate_ids[0].tolist()
 
     def post_process_generate_response(self, response, example):
-        image = _load_image(example['images'][0])
+        from .vision_utils import load_image
+        if isinstance(example['images'], list):
+            example['images'] = example['images'][0]
+        image = load_image(example['images'])
         return str(
             self.tokenizer.processor.post_process_generation(
                 response, task=example['query'], image_size=(image.width, image.height)))
