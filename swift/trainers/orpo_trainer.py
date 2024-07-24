@@ -191,6 +191,9 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
 
         len_chosen = batch['chosen_labels'].shape[0]
 
+        if self.is_encoder_decoder and self.decoder_start_token_id is None:
+            self.decoder_start_token_id = self.tokenizer.pad_token_id
+
         model_kwargs = ({
             'decoder_input_ids': self._shift_right(concatenated_batch['concatenated_labels']),
         } if self.is_encoder_decoder else {})

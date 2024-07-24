@@ -95,12 +95,6 @@ def concat_template(feature: Dict, template: Template):
 
 
 def build_tokenized_answer(answer, template: Template):
-    # if template.is_encoder_decoder:
-    #     return dict(
-    #         input_ids=template._encode_context_list([answer], [1.0])[0],
-    #         attention_mask=[1] * len(answer),
-    #     )
-
     tgt_input_ids = template._encode_context_list([answer], [1.0])[0]
     tgt_input_ids += template._encode_context_list(template.suffix, [1.0])[0]
     return dict(
