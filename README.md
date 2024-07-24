@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.07.24: Support using Megatron for CPT and SFT on the Qwen2 series. You can refer to the [Megatron training documentation](docs/source_en/LLM/Megatron-training.md).
 - 🔥2024.07.20: Support llama3.1 series models.
 - 2024.07.20: Support mistral-nemo series models. Use `--model_type mistral-nemo-base-2407` and `--model_type mistral-nemo-instruct-2407` to begin.
 - 2024.07.19: Support [Q-Galore](https://arxiv.org/abs/2407.08296), this algorithm can reduce the training memory cost by 60% (qwen-7b-chat, full, 80G -> 35G), use `swift sft --model_type xxx --use_galore true --galore_quantization true` to begin!

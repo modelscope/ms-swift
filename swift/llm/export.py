@@ -2,10 +2,12 @@
 import os
 from typing import Optional
 
+import json
 import torch
 
 from swift.llm import get_model_tokenizer, get_template
-from swift.utils import get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything, show_layers
+from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
+                         show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
 from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
 
@@ -195,7 +197,51 @@ def llm_export(args: ExportArguments) -> None:
             })
         logger.info(f'Successfully quantized the model and saved in {args.quant_output_dir}.')
         args.ckpt_dir = args.quant_output_dir
-
+    elif args.to_megatron:
+        if os.path.exists(args.megatron_output_dir):
+            logger.info(f'The file in Megatron format already exists in the directory: {args.megatron_output_dir}. '
+                        'Skipping the conversion process.')
+        else:
+            from swift.llm.megatron import MegatronArguments, convert_hf_to_megatron, get_model_seires, patch_megatron
+            model, tokenizer = get_model_tokenizer(args.model_type, torch.float32, {'device_map': 'cpu'})
+            res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
+            res['model_series'] = get_model_seires(args.model_type)
+            res['target_tensor_model_parallel_size'] = args.tp
+            res['target_pipeline_model_parallel_size'] = args.pp
+            res['save'] = args.megatron_output_dir
+            res['seed'] = args.seed
+            megatron_args = MegatronArguments(**res)
+            extra_args = megatron_args.parse_to_megatron()
+            patch_megatron(tokenizer)
+            convert_hf_to_megatron(model, extra_args, args.check_model_forward, args.torch_dtype)
+            fpath = os.path.join(args.megatron_output_dir, 'export_args.json')
+            with open(fpath, 'w', encoding='utf-8') as f:
+                json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)
+            logger.info('Successfully converted HF format to Megatron format and '
+                        f'saved it in the {args.megatron_output_dir} directory.')
+    elif args.to_hf:
+        if os.path.exists(args.hf_output_dir):
+            logger.info(f'The file in HF format already exists in the directory: {args.hf_output_dir}. '
+                        'Skipping the conversion process.')
+        else:
+            from swift.llm.megatron import (MegatronArguments, convert_megatron_to_hf, get_model_seires, patch_megatron)
+            hf_model, tokenizer = get_model_tokenizer(args.model_type, torch.float32, {'device_map': 'cpu'})
+            res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
+            res['model_series'] = get_model_seires(args.model_type)
+            res['target_tensor_model_parallel_size'] = args.tp
+            res['target_pipeline_model_parallel_size'] = args.pp
+            res['load'] = args.ckpt_dir
+            res['save'] = args.hf_output_dir
+            megatron_args = MegatronArguments(**res)
+            extra_args = megatron_args.parse_to_megatron()
+            extra_args['hf_ckpt_path'] = hf_model.model_dir
+            patch_megatron(tokenizer)
+            convert_megatron_to_hf(hf_model, extra_args)
+            if args.torch_dtype is not None:
+                hf_model.to(args.torch_dtype)
+            save_checkpoint(hf_model, tokenizer, hf_model.model_dir, args.ckpt_dir, args.hf_output_dir)
+            logger.info('Successfully converted Megatron format to HF format and '
+                        f'saved it in the {args.hf_output_dir} directory.')
     if args.push_to_hub:
         ckpt_dir = args.ckpt_dir
         if ckpt_dir is None:
