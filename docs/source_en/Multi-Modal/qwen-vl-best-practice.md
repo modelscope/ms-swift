@@ -149,6 +149,32 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --sft_type full \
 ```
 
+**Qwen-VL** model supports training for grounding tasks. The data should be in the following format:
+
+```jsonl
+{"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+```
+
+Alternatively, you can use the `<img></img>` tag:
+```jsonl
+{"query": "<img>/coco2014/train2014/COCO_train2014_000000001507.jpg</img>Find <bbox>", "response": "<ref-object>", "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+{"query": "<img>/coco2014/train2014/COCO_train2014_000000001507.jpg</img>Find <ref-object>", "response": "<bbox>", "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+```
+
+In the `objects` field, there is a JSON string containing four fields:
+- `caption`: Description of the object corresponding to the bounding box.
+- `bbox`: Coordinates. It's recommended to provide four integers (not floats), which are `x_min`, `y_min`, `x_max`, and `y_max`.
+- `bbox_type`: Type of the bounding box. Currently supports three types: `real`/`norm_1000`/`norm_1`, which respectively represent actual pixel coordinates, coordinates normalized to thousandths, and coordinates normalized to a scale of 1.
+- `image`: The index of the image corresponding to the bounding box, starting from 0.
+
+This format will be converted to a format recognizable by Qwen-VL. Specifically:
+```jsonl
+{"query": "<img>/coco2014/train2014/COCO_train2014_000000001507.jpg</img>Find <ref>the man</ref>", "response": "<box>(200,200),(600,600)</box>"}
+```
+
+You can also directly provide the above format, but please use thousandths for the coordinates.
+
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json and jsonl formats. Here is an example of a custom dataset:
 
 (Supports multi-turn dialogues, where each turn can contain multiple images or no images, and supports passing in local paths or URLs)
