@@ -293,7 +293,7 @@ class TestSwift(unittest.TestCase):
         not_trainable = [name for name, p in model.named_parameters() if not p.requires_grad]
 
         def target_in(t: str):
-            return re.fullmatch(targets, t)
+            return re.fullmatch(targets, t) and '_part_' not in t
 
         model.base_model.bert.encoder.layer[0].attention.self.query.weight.data = torch.ones_like(
             model.base_model.bert.encoder.layer[0].attention.self.query.weight.data)
@@ -312,9 +312,6 @@ class TestSwift(unittest.TestCase):
             self.assertTrue(key in state_dict2)
             self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
 
-        self.assertTrue(hasattr(model2, 'part.adapter'))
-        self.assertTrue(hasattr(model2, 'part.origin'))
-
         model2.activate_adapter('part')
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()
@@ -324,16 +321,63 @@ class TestSwift(unittest.TestCase):
 
         model2.deactivate_adapter('part')
         state_dict = model_origin.state_dict()
-        state_dict2 = model2.state_dict()
+        state_dict2 = {
+            key: value
+            for key, value in model2.base_model.state_dict().items()
+            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
+        }
         for key in state_dict2:
             self.assertTrue(key in state_dict)
             self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
 
         model2.activate_adapter('part')
         state_dict = model.state_dict()
-        state_dict2 = model2.state_dict()
+        state_dict2 = {
+            key: value
+            for key, value in model2.base_model.state_dict().items()
+            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
+        }
         for key in state_dict:
             self.assertTrue(key in state_dict2)
+            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+
+        targets = r'.*(query|key|value).*'
+        part_config = PartConfig(target_modules=targets)
+        model2 = Swift.prepare_model(model2, config={'part2': part_config})
+        model2.set_active_adapters('part2', offload='meta')
+        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
+            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_part2'))
+        model2.base_model.bert.encoder.layer[0].attention.self.query.weight.data = torch.zeros_like(
+            model2.base_model.bert.encoder.layer[0].attention.self.query.weight.data)
+        model2.set_active_adapters('part', offload='meta')
+        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
+            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_part'))
+        state_dict = model.state_dict()
+        state_dict2 = {
+            key: value
+            for key, value in model2.base_model.state_dict().items()
+            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
+        }
+        for key in state_dict:
+            self.assertTrue(key in state_dict2)
+            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+
+        model2.set_active_adapters('part2', offload='meta')
+        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
+            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_part2'))
+        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query.weight.data.sum() == 0)
+
+        model2.deactivate_adapter('part2', offload='meta')
+        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
+            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_origin'))
+        state_dict = model_origin.state_dict()
+        state_dict2 = {
+            key: value
+            for key, value in model2.base_model.state_dict().items()
+            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
+        }
+        for key in state_dict2:
+            self.assertTrue(key in state_dict)
             self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
 
     def test_swift_multiple_adapters_switching(self):

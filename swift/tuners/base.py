@@ -131,7 +131,7 @@ class SwiftModel(nn.Module):
                 state_dict[key] = value
 
             if output.load_state_dict_callback:
-                output.load_state_dict_callback(self.base_model, adapter_name, state_dict)
+                state_dict = output.load_state_dict_callback(self.base_model, adapter_name, state_dict)
 
         incompatible_keys = self.base_model.load_state_dict(state_dict, False)
         if incompatible_keys and len(incompatible_keys[1]) > 0:
