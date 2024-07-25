@@ -55,10 +55,14 @@ class SwiftModel(nn.Module):
             self.active_adapters = model.active_adapters
             model = model.base_model
 
+        self.base_model = model
         new_adapters = []
         if isinstance(config, SwiftConfig):
             if DEFAULT_ADAPTER not in self.adapters:
+                all_parts = self._deactivate_all_parts()
                 self.adapters[DEFAULT_ADAPTER] = self._prepare_model(model, config, DEFAULT_ADAPTER)
+                for part in all_parts:
+                    self.activate_adapter(part)
                 new_adapters.append(DEFAULT_ADAPTER)
             else:
                 logger.warn(f'Adapter {DEFAULT_ADAPTER} has been patched, skip.')
@@ -66,11 +70,13 @@ class SwiftModel(nn.Module):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, _config in config.items():
                 if adapter_name not in self.adapters:
+                    all_parts = self._deactivate_all_parts()
                     self.adapters[adapter_name] = self._prepare_model(model, _config, adapter_name)
+                    for part in all_parts:
+                        self.activate_adapter(part)
                     new_adapters.append(adapter_name)
                 else:
                     logger.warn(f'Adapter {adapter_name} has been patched, skip.')
-        self.base_model = model
 
         self.extra_state_keys = extra_state_keys or []
         self.has_additional_modules = any([c.config.has_additional_modules for c in self.adapters.values()])
@@ -99,6 +105,15 @@ class SwiftModel(nn.Module):
     @property
     def model(self):
         return self.base_model
+
+    def _deactivate_all_parts(self):
+        deactivated = []
+        for adapter in self.active_adapters:
+            output = self.adapters[adapter]
+            if output.config.swift_type == SwiftTuners.PART:
+                deactivated.append(adapter)
+                self.deactivate_adapter(adapter)
+        return deactivated
 
     def load_state_dict(self, state_dict, strict=True, adapter_name: str = None):
         if adapter_name is not None:

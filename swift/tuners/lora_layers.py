@@ -686,6 +686,9 @@ class LoraModel(_LoraModel):
         self._prepare_model(peft_config, model)
 
         for key in key_list:
+            if '_part_' in key:
+                # Avoid lora conflict with part tuner
+                continue
             # Check for modules_to_save in case
             if _check_for_modules_to_save and any(
                     key.endswith(f'{module_to_save}') for module_to_save in peft_config.modules_to_save):
