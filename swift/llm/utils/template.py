@@ -2,7 +2,7 @@
 import re
 from copy import deepcopy
 from io import BytesIO
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import numpy as np
@@ -1166,7 +1166,7 @@ class GLM4VTemplate(GLMTemplate):
         idx_list = _findall(input_ids, -100)
         if idx_list:
             idx = idx_list[0]
-            image = example.get('images', [])
+            image = example.get('images', [])[0]
             placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
