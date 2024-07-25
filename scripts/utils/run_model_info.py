@@ -23,7 +23,7 @@ def get_model_info_table():
         if isinstance(lora_target_modules, list):
             lora_target_modules = ', '.join(lora_target_modules)
         else:
-            lora_target_modules = repr(lora_target_modules)
+            lora_target_modules = lora_target_modules.replace('|', '\\|')
         template = model_info['template']
         support_flash_attn = model_info.get('support_flash_attn', False)
         support_flash_attn = bool_mapping[support_flash_attn]

@@ -1245,7 +1245,7 @@ register_template(
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 register_template(TemplateType.mistral_nemo,
-                  Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}} [/INST]'], ['[INST] '], ['</s>']))
+                  Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
 
 register_template(
     TemplateType.llama3,
