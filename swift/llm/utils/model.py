@@ -176,7 +176,10 @@ class ModelType:
     llama3_1_8b_instruct = 'llama3_1-8b-instruct'
     llama3_1_70b = 'llama3_1-70b'
     llama3_1_70b_instruct = 'llama3_1-70b-instruct'
+    llama3_1_70b_instruct_fp8 = 'llama3_1-70b-instruct-fp8'
     llama3_1_70b_instruct_awq = 'llama3_1-70b-instruct-awq'
+    llama3_1_70b_instruct_gptq_int4 = 'llama3_1-70b-instruct-gptq-int4'
+    llama3_1_70b_instruct_bnb = 'llama3_1-70b-instruct-bnb'
     llama3_1_405b = 'llama3_1-405b'
     llama3_1_405b_instruct = 'llama3_1-405b-instruct'
     llama3_1_405b_instruct_fp8 = 'llama3_1-405b-instruct-fp8'
@@ -2401,6 +2404,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     LoRATM.llama,
     TemplateType.mistral_nemo,
     requires=['transformers>=4.43'],
+    ignore_file_pattern=['^consolidated'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-Large-Instruct-2407')
@@ -2410,6 +2414,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     LoRATM.llama,
     TemplateType.mistral_nemo,
     requires=['transformers>=4.43'],
+    ignore_file_pattern=['^consolidated'],
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-Nemo-Instruct-2407')
@@ -4231,17 +4236,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     function_kwargs={'is_awq': True},
     hf_model_id='hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4')
 @register_model(
-    ModelType.llama3_1_70b_instruct_awq,
-    'LLM-Research/Meta-Llama-3.1-70B-Instruct-AWQ-INT4',
-    LoRATM.llama,
-    TemplateType.llama3,
-    support_flash_attn=True,
-    support_vllm=True,
-    requires=['transformers>=4.43', 'autoawq'],
-    torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
-    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4')
-@register_model(
     ModelType.llama3_1_405b_instruct_fp8,
     'LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8',
     LoRATM.llama,
@@ -4271,6 +4265,47 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     requires=['transformers>=4.43'],
     ignore_file_pattern=[r'.+\.pth$'],
     hf_model_id='meta-llama/Meta-Llama-3.1-405B')
+@register_model(
+    ModelType.llama3_1_70b_instruct_bnb,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-BNB-NF4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'bitsandbytes'],
+    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-BNB-NF4')
+@register_model(
+    ModelType.llama3_1_70b_instruct_gptq_int4,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4')
+@register_model(
+    ModelType.llama3_1_70b_instruct_awq,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-AWQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4')
+@register_model(
+    ModelType.llama3_1_70b_instruct_fp8,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-FP8',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B-Instruct-FP8')
 @register_model(
     ModelType.llama3_1_70b_instruct,
     'LLM-Research/Meta-Llama-3.1-70B-Instruct',

@@ -82,6 +82,9 @@
 - `--num_train_epochs`: Number of epochs to train, default is `1`. If `max_steps >= 0`, this overrides `num_train_epochs`. Usually set to 3 ~ 5.
 - `--max_steps`: Max_steps for training, default is `-1`. If `max_steps >= 0`, this overrides `num_train_epochs`.
 - `--optim`: Default is `'adamw_torch'`.
+- `--adam_beta1`: Default is `0.9`.
+- `--adam_beta2`: Default is `0.999`.
+- `--adam_epsilon`: Default is `1e-8`.
 - `--learning_rate`: Default is `None`, i.e. set to 1e-4 if `sft_type` is lora, set to 1e-5 if `sft_type` is full.
 - `--weight_decay`: Default is `0.01`.
 - `--gradient_accumulation_steps`: Gradient accumulation, default is `None`, set to `math.ceil(16 / self.batch_size / world_size)`. `total_batch_size =  batch_size * gradient_accumulation_steps * world_size`.
