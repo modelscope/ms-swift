@@ -2,7 +2,7 @@
 import re
 from copy import deepcopy
 from io import BytesIO
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import numpy as np
