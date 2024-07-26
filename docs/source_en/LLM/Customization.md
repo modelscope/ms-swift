@@ -120,10 +120,12 @@ Language model (DPO/ORPO/SimPO/CPO)
 
 Language model (KTO)
 ```jsonl
-{"query": "11111", "response": "22222", "label": True}
-{"query": "aaaaa", "response": "bbbbb", "label": False}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "label": True, "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "11111", "response": "22222", "label": true}
+{"query": "aaaaa", "response": "bbbbb", "label": false}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "label": true, "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
+Note:  `label` needs to be of type bool, not str.
+
 (Where system and history are optional.)
 
 
