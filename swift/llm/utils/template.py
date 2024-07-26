@@ -1313,10 +1313,16 @@ def replace_img_tag(query: str, history: History, replace_token: str) -> Tuple[s
     pattern = r'<img>(.+?)</img>'
     new_history = []
     for i, h in enumerate(history):
-        images_path += re.findall(pattern, h[0])
-        new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
-    images_path += re.findall(pattern, query)
-    new_query = re.sub(pattern, replace_token, query)
+        if h[0] is None:
+            new_history.append(h.copy())
+        else:
+            images_path += re.findall(pattern, h[0])
+            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
+    if query is None:
+        new_query = query  # pretrain dataset
+    else:
+        images_path += re.findall(pattern, query)
+        new_query = re.sub(pattern, replace_token, query)
     return new_query, new_history, images_path
 
 
