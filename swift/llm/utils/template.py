@@ -265,6 +265,7 @@ class Template:
                 self.response_loss_scale_map = self.response_loss_scale_map['response']
 
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
+        self.rescale_image = kwargs.get('rescale_image', -1)
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
             value = getattr(self, key)
@@ -401,7 +402,7 @@ class Template:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
         # Load image into PIL format
-        from .vision_utils import load_image
+        from .vision_utils import load_image, rescale_image
         if example.get('images'):
             images = example['images']
             if example.get('objects') or self.load_medias:
@@ -410,6 +411,8 @@ class Template:
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
             if self.load_medias:
+                if self.grounding_type != 'real':
+                    images = [rescale_image(img, self.rescale_image) for img in images]
                 example['images'] = images
         return example
 
