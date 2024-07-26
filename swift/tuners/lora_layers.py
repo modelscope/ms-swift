@@ -694,8 +694,6 @@ class LoraModel(_LoraModel):
                     key.endswith(f'{module_to_save}') for module_to_save in peft_config.modules_to_save):
                 # Optionally set the modules to save
                 parent, target, target_name = _get_submodules(model, key)
-                if getattr(target, 'plugin', False):
-                    continue
 
                 if not isinstance(target, ModulesToSaveWrapper):
                     new_module = ModulesToSaveWrapper(target, adapter_name=adapter_name, module_key=key)
@@ -712,8 +710,6 @@ class LoraModel(_LoraModel):
             self.targeted_module_names.append(key)
             is_target_modules_in_base_model = True
             parent, target, target_name = _get_submodules(model, key)
-            if getattr(target, 'plugin', False):
-                continue
             self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
         if not is_target_modules_in_base_model:
