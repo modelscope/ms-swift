@@ -58,7 +58,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 ## 🎉 新闻
 - 🔥2024.07.24: 人类偏好对齐算法支持视觉多模态大模型, 包括DPO/ORPO/SimPO/CPO, 训练参考[文档](docs/source/Multi-Modal/人类偏好对齐训练文档.md). 支持数据集RLAIF-V.
 - 🔥2024.07.24: 支持使用megatron对qwen2系列进行CPT和SFT. 可以查看[megatron训练文档](docs/source/LLM/Megatron训练文档.md).
-- 🔥2024.07.24: 支持llama3.1系列模型.
+- 🔥2024.07.24: 支持llama3.1系列模型. 包含8b, 70b, 405b. 支持openbuddy-llama3_1-8b-chat.
 - 2024.07.20: 支持mistral-nemo系列模型. 使用`--model_type mistral-nemo-base-2407`以及`--model_type mistral-nemo-instruct-2407`开始训练和推理.
 - 🔥2024.07.19: 支持[Q-Galore](https://arxiv.org/abs/2407.08296)算法, 该算法可以减少显存使用约60% (qwen-7b-chat, full, 80G -> 35G), 使用命令行:`swift sft --model_type xxx --use_galore true --galore_quantization true`来开始训练!
 - 2024.07.17: 支持InternVL2系列新模型: `model_type`分别为internvl2-1b, internvl2-40b, internvl2-llama3-76b. 最佳实践可以查看[这里](docs/source/Multi-Modal/internvl最佳实践.md).

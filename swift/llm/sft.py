@@ -59,7 +59,8 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
                                     train_valid_test_datasets_provider as _train_valid_test_datasets_provider)
     from megatron.core.enums import ModelType
     from megatron.training import pretrain
-    _, tokenizer = get_model_tokenizer(args.model_type, load_model=False)
+    _, tokenizer = get_model_tokenizer(
+        args.model_type, model_id_or_path=args.model_id_or_path, revision=args.model_revision, load_model=False)
 
     # Loading Dataset
     template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
@@ -234,10 +235,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
 
     show_layers(model)
     logger.info(model)
-    model_info = None
-    if not is_deepspeed_zero3_enabled():
-        model_info = get_model_info(model)
-        logger.info(model_info)
+    model_info = get_model_info(model)
+    logger.info(model_info)
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36

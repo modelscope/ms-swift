@@ -8,6 +8,7 @@ import torch
 from modelscope import snapshot_download
 
 from swift import SCETuningConfig, Swift
+from swift.tuners.part import PartConfig
 
 
 class TestSCETuning(unittest.TestCase):
@@ -53,6 +54,42 @@ class TestSCETuning(unittest.TestCase):
             'timestep': 10,
             'encoder_hidden_states': torch.ones((1, 77, 768))
         }
+        result = model(**input_data).sample
+        print(result.shape)
+        model.save_pretrained(self.tmp_dir)
+        self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
+        model_check = Swift.from_pretrained(model_check, self.tmp_dir)
+        self.model_comparison(model, model_check)
+
+    def test_scetuning_part_mixin(self):
+        model_dir = snapshot_download('AI-ModelScope/stable-diffusion-v1-5')
+        from diffusers import UNet2DConditionModel
+        model = UNet2DConditionModel.from_pretrained(model_dir, subfolder='unet')
+        model.requires_grad_(False)
+        model_check = copy.deepcopy(model)
+        # module_keys = [key for key, _ in model.named_modules()]
+        scetuning_config = SCETuningConfig(
+            dims=[320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280],
+            tuner_mode='encoder',
+            target_modules=[
+                'conv_in', 'down_blocks.0.attentions.0', 'down_blocks.0.attentions.1', 'down_blocks.0.downsamplers',
+                'down_blocks.1.attentions.0', 'down_blocks.1.attentions.1', 'down_blocks.1.downsamplers',
+                'down_blocks.2.attentions.0', 'down_blocks.2.attentions.1', 'down_blocks.2.downsamplers',
+                'down_blocks.3.resnets.0', 'down_blocks.3.resnets.1'
+            ])
+        targets = r'.*(to_k|to_v).*'
+        part_config = PartConfig(target_modules=targets)
+        model = Swift.prepare_model(model, config=scetuning_config)
+        model = Swift.prepare_model(model, config={'part': part_config})
+        print(model.get_trainable_parameters())
+        input_data = {
+            'sample': torch.ones((1, 4, 64, 64)),
+            'timestep': 10,
+            'encoder_hidden_states': torch.ones((1, 77, 768))
+        }
+        model.set_active_adapters('default')
+        model.set_active_adapters('part')
+        model.set_active_adapters('default')
         result = model(**input_data).sample
         print(result.shape)
         model.save_pretrained(self.tmp_dir)

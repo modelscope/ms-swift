@@ -169,6 +169,7 @@ class PromptModule(nn.Module, ActivationMixin):
         self.attach_front = attach_front
         self.prompt_token = nn.Parameter(torch.zeros(1, prompt_length, dim))
         nn.init.xavier_uniform_(self.prompt_token)
+        self.mark_all_sub_modules_as_plugin()
 
     def forward(self, x):
         if not self.is_activated(self.adapter_name):

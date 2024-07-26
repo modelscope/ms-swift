@@ -363,7 +363,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
 def patch_acc_model(model, args):
     if not args.use_flash_attn:
         logger.warn('Currently use flash attn for torchacc.')
-    if args.model_type.startswith('qwen1half'):
+    if args.model_type.startswith('qwen1half') or args.model_type.startswith('qwen2'):
         model = patch_qwen2_model(model)
     elif args.model_type.startswith('qwen'):
         import torchacc as ta
