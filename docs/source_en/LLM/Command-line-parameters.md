@@ -82,6 +82,9 @@
 - `--num_train_epochs`: Number of epochs to train, default is `1`. If `max_steps >= 0`, this overrides `num_train_epochs`. Usually set to 3 ~ 5.
 - `--max_steps`: Max_steps for training, default is `-1`. If `max_steps >= 0`, this overrides `num_train_epochs`.
 - `--optim`: Default is `'adamw_torch'`.
+- `--adam_beta1`: Default is `0.9`.
+- `--adam_beta2`: Default is `0.999`.
+- `--adam_epsilon`: Default is `1e-8`.
 - `--learning_rate`: Default is `None`, i.e. set to 1e-4 if `sft_type` is lora, set to 1e-5 if `sft_type` is full.
 - `--weight_decay`: Default is `0.01`.
 - `--gradient_accumulation_steps`: Gradient accumulation, default is `None`, set to `math.ceil(16 / self.batch_size / world_size)`. `total_batch_size =  batch_size * gradient_accumulation_steps * world_size`.
@@ -112,7 +115,7 @@
 - `--logging_dir`: Default is `None`. I.e. set to `f'{self.output_dir}/runs'`, representing path to store tensorboard files.
 - `--report_to`: Default is `['tensorboard']`. You can set `--report_to all` to report to all installed integrations.
 - `--acc_strategy`: Default is `'token'`, options include: 'token', 'sentence'.
-- `--save_on_each_node`: Takes effect during multi-machine training, default is `True`.
+- `--save_on_each_node`: Takes effect during multi-machine training, default is `False`.
 - `--save_strategy`: Strategy for saving checkpoint, default is `'steps'`, options include: 'steps', 'epoch', no'.
 - `--evaluation_strategy`: Strategy for evaluation, default is `'steps'`, options include: 'steps', 'epoch', no'.
 - `--save_safetensors`: Default is `True`.
@@ -128,7 +131,7 @@
 - `--train_dataset_mix_ratio`: Default is `0.`. This parameter defines how to mix datasets for training. When this parameter is specified, it will mix the training dataset with a multiple of `train_dataset_mix_ratio` of the general knowledge dataset specified by `train_dataset_mix_ds`. This parameter has been deprecated, please use `--dataset {dataset_name}#{dataset_sample}` to mix datasets.
 - `--train_dataset_mix_ds`: Default is `['ms-bench']`. Used for preventing knowledge forgetting, this is the general knowledge dataset. This parameter has been deprecated, please use `--dataset {dataset_name}#{dataset_sample}` to mix datasets.
 - `--use_loss_scale`: Default is `False`. When taking effect, strengthens loss weight of some Agent fields (Action/Action Input part) to enhance CoT, has no effect in regular SFT scenarios.
-- `loss_scale_config_path`: option specifies a custom loss_scale configuration, applicable when use_loss_scale is enabled, such as in Agent training to amplify the loss weights for Action and other crucial ReAct fields.
+- `--loss_scale_config_path`: option specifies a custom loss_scale configuration, applicable when use_loss_scale is enabled, such as in Agent training to amplify the loss weights for Action and other crucial ReAct fields.
   - In the configuration file, you can set the loss_scale using a dictionary format. Each key represents a specific field name, and its associated value specifies the loss scaling factor for that field and its subsequent content. For instance, setting `"Observation:": [2, 0]` means that when the response contains `xxxx Observation:error`, the loss for the `Observation:` field will be doubled, while the loss for the `error` portion will not be counted. Besides literal matching, the configuration also supports regular expression rules for more flexible matching; for example, the pattern `'<.*?>':[2.0]` doubles the loss for any content enclosed in angle brackets. The loss scaling factors for field matching and regex matching are respectively indicated by lists of length 2 and 1.
   - There is also support for setting loss_scale for the entire response based on matching queries, which is extremely useful in dealing with fixed multi-turn dialogue queries described in the [Agent-Flan paper](https://arxiv.org/abs/2403.12881) paper. If the query includes any of the predefined keys, the corresponding response will use the associated loss_scale value. Refer to swift/llm/agent/agentflan.json for an example.
   - By default, we have preset loss scaling values for fields such as Action:, Action Input:, Thought:, Final Answer:, and Observation:. We also provide default configurations for [alpha-umi](https://arxiv.org/pdf/2401.07324) and [Agent-FLAN](https://arxiv.org/abs/2403.12881), which you can use by setting to alpha-umi and agent-flan respectively. The default configuration files are located under swift/llm/agent.
@@ -370,6 +373,7 @@ deploy parameters inherit from infer parameters, with the following added parame
 
 - `--host`: Default is `'127.0.0.1`.
 - `--port`: Default is `8000`.
+- `--api_key`: The default is `None`, meaning that the request will not be subjected to api_key verification.
 - `--ssl_keyfile`: Default is `None`.
 - `--ssl_certfile`: Default is `None`.
 

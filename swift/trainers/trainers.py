@@ -10,6 +10,7 @@ from torch.nn import CrossEntropyLoss
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
+from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
@@ -18,11 +19,6 @@ from swift.torchacc_utils import ta_eval_dataloader, ta_test_dataloader, ta_trai
 from swift.utils import use_torchacc
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
-
-try:
-    from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
-except ImportError:
-    from transformers.deepspeed import is_deepspeed_zero3_enabled
 
 
 class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):

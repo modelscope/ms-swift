@@ -15,6 +15,7 @@
 11. [ORPO Training](ORPO.md)
 12. [SimPO Training](SimPO.md)
 13. [Human Preference Alignment Training Documentation](Human-Preference-Alignment-Training-Documentation.md)
+14. [Megatron-training](Megatron-training.md)
 
 ### ⭐️Best Practices!
 

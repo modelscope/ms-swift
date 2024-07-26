@@ -18,6 +18,8 @@ class MediaTag:
             'en': [('<ref-object>', '<bbox>'), ('The positions of <ref-object> is', '<bbox>'),
                    ('Find the positions of <ref-object>', '<bbox>'), ('Where is <ref-object>', '<bbox>'),
                    ('Find <ref-object>', '<bbox>'), ('Show me <ref-object>', '<bbox>'),
+                   ('Detect <ref-object>', '<bbox>'), ('Locate <ref-object>', '<bbox>'),
+                   ('Tell me the location of <ref-object>', '<bbox>'), ('Give the location of <ref-object>', '<bbox>'),
                    ('Provide the bounding box coordinate of <ref-object>', '<bbox>')],
             'zh': [('<ref-object>', '<bbox>'), ('<ref-object>的位置在图片中', '<bbox>'), ('<ref-object>在图片中', '<bbox>'),
                    ('<ref-object>在', '<bbox>'), ('找到<ref-object>的位置', '<bbox>'), ('<ref-object>在哪里', '<bbox>'),
@@ -145,6 +147,7 @@ class MediaCache:
         from datasets.utils.filelock import FileLock
         file_path = hashlib.md5(media_type_or_url.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(MediaCache.lock_dir, file_path)
+        os.makedirs(MediaCache.lock_dir, exist_ok=True)
         with safe_ddp_context():
             with FileLock(file_path):
                 return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias)

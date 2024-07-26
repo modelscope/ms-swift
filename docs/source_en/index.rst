@@ -20,6 +20,7 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: LLM Training and Inference
 
+   LLM/index.md
    LLM/LLM-inference.md
    LLM/LLM-fine-tuning.md
    LLM/Human-Preference-Alignment-Training-Documentation.md
@@ -27,6 +28,7 @@ Swift DOCUMENTATION
    LLM/LLM-quantization.md
    LLM/VLLM-inference-acceleration-and-deployment.md
    LLM/LmDeploy-inference-acceleration-and-deployment.md
+   LLM/Megatron-training.md
    LLM/LLM-exp.md
    LLM/Command-line-parameters.md
    LLM/Supported-models-datasets.md
@@ -48,6 +50,7 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Multi-Modal LLM Training and Inference
 
+   Multi-Modal/index.md
    Multi-Modal/qwen-vl-best-practice.md
    Multi-Modal/qwen-audio-best-practice.md
    Multi-Modal/deepseek-vl-best-practice.md
@@ -65,6 +68,7 @@ Swift DOCUMENTATION
    Multi-Modal/internvl-best-practice.md
    Multi-Modal/mutlimodal-deployment.md
    Multi-Modal/vllm-inference-acceleration.md
+   Multi-Modal/human-preference-alignment-training-documentation.md
 
 .. toctree::
    :maxdepth: 2

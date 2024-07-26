@@ -157,6 +157,7 @@ class SideModule(nn.Module, ActivationMixin):
         else:
             raise ValueError(f'Unsupported side_module_name: {side_module_name}')
         self.alpha = nn.Parameter(torch.tensor(0.0))
+        self.mark_all_sub_modules_as_plugin()
 
     def forward(self, x, x_main):
         if not self.is_activated(self.adapter_name):

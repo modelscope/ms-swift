@@ -304,6 +304,7 @@ class TestRun(unittest.TestCase):
             # ignore citest error in github
             return
         torch.cuda.empty_cache()
+        # llm rlhf
         rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']
         for rlhf_type in rlhf_types:
             dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
@@ -311,13 +312,31 @@ class TestRun(unittest.TestCase):
                 RLHFArguments(
                     rlhf_type=rlhf_type,
                     model_type=ModelType.qwen_1_8b_chat,
-                    sft_type='full',
                     dataset=dataset_name,
                     train_dataset_sample=100,
                     eval_steps=5))
             best_model_checkpoint = output['best_model_checkpoint']
             torch.cuda.empty_cache()
             infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+
+        # mllm rlhf
+        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']
+        test_model = ['llava1_6-mistral-7b-instruct', 'internvl2-2b',
+                      'florence-2-large']  # decoder only and encoder-decoder
+        for rlhf_type in visual_rlhf_types:
+            for model in test_model:
+                dataset_name = 'rlaif-v'
+                output = rlhf_main(
+                    RLHFArguments(
+                        rlhf_type=rlhf_type,
+                        model_type=model,
+                        dataset=dataset_name,
+                        train_dataset_sample=100,
+                        eval_steps=5))
+                best_model_checkpoint = output['best_model_checkpoint']
+                torch.cuda.empty_cache()
+                infer_main(
+                    InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
     def test_pai_compat(self):
         if not __name__ == '__main__':

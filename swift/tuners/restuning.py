@@ -280,6 +280,7 @@ class ResTuningBypassModule(nn.Module, ActivationMixin):
                 zero_init_last=zero_init_last,
                 tuner_cfg=tuner_cfg[i] if isinstance(tuner_cfg, list) else tuner_cfg) for i in range(depth)
         ])
+        self.mark_all_sub_modules_as_plugin()
 
     def forward(self, x_list, origin_arg, **kwargs):
         if not self.is_activated(self.adapter_name):

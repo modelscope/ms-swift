@@ -5,12 +5,14 @@ import socket
 import time
 import uuid
 from bisect import bisect_right
+from contextlib import nullcontext
 from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
 from torch.nn import Module
+from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
 
 from .logger import get_logger
@@ -40,13 +42,28 @@ def _find_local_mac() -> str:
     return mac_address
 
 
+def get_n_params_grads(model) -> Tuple[List[int], List[int]]:
+    n_params, n_grads = [], []
+    for p in model.parameters():
+        if is_deepspeed_zero3_enabled():
+            import deepspeed
+            context = deepspeed.zero.GatheredParameters(p)
+        else:
+            context = nullcontext()
+        with context:
+            n_params.append(p.numel())
+            n_grads.append(p.numel() if p.requires_grad else 0)
+    return n_params, n_grads
+
+
 def get_model_info(model: Module, name: Optional[str] = None) -> str:
+    n_params, n_grads = get_n_params_grads(model)
+    n_params = sum(n_params)
+    n_grads = sum(n_grads)
+    n_buffers = sum(p.numel() for p in model.buffers())
+
     if name is None:
         name = model.__class__.__name__
-
-    n_params = sum(p.numel() for p in model.parameters())
-    n_grads = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    n_buffers = sum(p.numel() for p in model.buffers())
 
     n_params /= 1e6
     n_grads /= 1e6
@@ -146,7 +163,8 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
 
 
 def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
-    n_parameters = np.array([p.numel() for p in model.parameters()], dtype=np.int64)
+    n_parameters = get_n_params_grads(model)[0]
+    n_parameters = np.array(n_parameters, dtype=np.int64)
     n_freeze_parameters = int(np.sum(n_parameters) * freeze_parameters)
     n_parameters_cs = np.cumsum(n_parameters)
     idx = bisect_right(n_parameters_cs, n_freeze_parameters)

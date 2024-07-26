@@ -125,6 +125,8 @@ class DatasetName:
     hc3_zh = 'hc3-zh'
     hc3_en = 'hc3-en'
     dolly_15k = 'dolly-15k'
+    zhihu_kol = 'zhihu-kol'
+    zhihu_kol_filtered = 'zhihu-kol-filtered'
     # other
     finance_en = 'finance-en'
     poetry_zh = 'poetry-zh'
@@ -158,6 +160,9 @@ class DatasetName:
     stack_exchange_paired = 'stack-exchange-paired'
     shareai_llama3_dpo_zh_en_emoji = 'shareai-llama3-dpo-zh-en-emoji'
     ultrafeedback_kto = 'ultrafeedback-kto'
+
+    # visual rlhf
+    rlaif_v = 'rlaif-v'
 
     # for awq
     pileval = 'pileval'
@@ -1201,7 +1206,12 @@ def preprocess_refcoco_unofficial_caption(dataset):
             bbox[i] = round(float(bbox[i]))
         res = {}
 
-        objects = [[caption, bbox]]
+        objects = [{
+            'caption': caption,
+            'bbox': bbox,
+            'bbox_type': 'real',
+            'image': 0,
+        }]
         media_tag(res, [image_path])
         res['images'] = [image_path]
         res['objects'] = json.dumps(objects, ensure_ascii=False)
@@ -1246,7 +1256,12 @@ def preprocess_refcoco_unofficial_grounding(dataset):
             bbox[i] = round(float(bbox[i]))
         res = {}
 
-        objects = [[caption, bbox]]
+        objects = [{
+            'caption': caption,
+            'bbox': bbox,
+            'bbox_type': 'real',
+            'image': 0,
+        }]
         media_tag(res, [image_path])
         res['images'] = [image_path]
         res['objects'] = json.dumps(objects, ensure_ascii=False)
@@ -1435,6 +1450,35 @@ register_dataset(
     get_dataset_from_repo,
     remove_useless_columns=False,
     tags=['rlhf', 'kto'])
+
+
+def process_zhihu_kol(dataset: HfDataset):
+
+    def reorganize_row(row):
+        return {
+            'query': row['INSTRUCTION'],
+            'response': row['RESPONSE'],
+        }
+
+    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+
+
+register_dataset(
+    DatasetName.zhihu_kol_filtered,
+    'OmniData/Zhihu-KOL-More-Than-100-Upvotes', ['default'],
+    process_zhihu_kol,
+    get_dataset_from_repo,
+    hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
+    tags=['zhihu', 'qa'])
+
+register_dataset(
+    DatasetName.zhihu_kol,
+    'OmniData/Zhihu-KOL', ['default'],
+    process_zhihu_kol,
+    get_dataset_from_repo,
+    hf_dataset_id='wangrui6/Zhihu-KOL',
+    huge_dataset=True,
+    tags=['zhihu', 'qa'])
 
 
 def preprocess_guanaco(dataset):
@@ -1653,7 +1697,7 @@ def preprocess_grit(dataset):
             start_end_pairs.append(ref_exp[0:2])
 
             object_part = caption[int(start):int(end)]
-            objects.append([object_part, ref_exp[2:6]])
+            objects.append({'caption': object_part, 'bbox': ref_exp[2:6], 'bbox_type': 'real', 'image': 0})
 
         start_end_pairs.sort(key=lambda x: (x[0], x[1]))
         if has_overlap(start_end_pairs):
@@ -2168,6 +2212,21 @@ register_dataset(
     hf_dataset_id='Hello-SimpleAI/HC3')
 
 NoneType = type(None)
+
+
+def process_rlaif_v(dataset: HfDataset):
+
+    new_column_names = {'image': 'images', 'question': 'query', 'chosen': 'response', 'rejected': 'rejected_response'}
+
+    return dataset.rename_columns(new_column_names)
+
+
+register_dataset(
+    DatasetName.rlaif_v,
+    'swift/RLAIF-V-Dataset', ['default'],
+    process_rlaif_v,
+    get_dataset_from_repo,
+    tags=['rlhf', 'dpo', 'multi-modal', 'en'])
 
 
 def _check_dataset(dataset: Optional[HfDataset], check_dataset_strategy: Literal['none', 'discard', 'error',

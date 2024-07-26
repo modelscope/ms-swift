@@ -9,7 +9,6 @@ This document provides training scripts for various human preference alignment a
 - [CPO](#cpo)
 - [ORPO](#orpo)
 - [SimPO](#simpo)
-- [Custom Data](#custom-data)
 
 ## Environment Setup
 ```bash
@@ -32,7 +31,6 @@ Data for the KTO algorithm is somewhat special, requiring only data in the forma
 
 For example, ![kto_data](../../resources/kto_data.png)
 
-KTO can also be trained using the first data format, see the KTO section for differences in training scripts.
 **Training Tips**:
 
 - If you are training a base model with history data, you need to specify a template that supports multi-turn dialogue (base models often do not support multi-turn dialogue); for this situation, we have set the default chatml template, but you can also use --model_type to select the template for the training model

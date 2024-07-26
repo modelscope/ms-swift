@@ -131,12 +131,14 @@ class SwiftOutput:
                 >>> def mark_trainable_callback(model):
                 >>>     mark_lora_as_trainable(model, config.bias)
         optimizer_group_callback (`FunctionType`): A callback returned the param group cared by the tuner.
+        load_state_dict_callback (`FunctionType`): A callback called before load_state_dict of the tuner.
     """
 
     config: SwiftConfig = None
     state_dict_callback: FunctionType = None
     mark_trainable_callback: FunctionType = None
     optimizer_group_callback: FunctionType = None
+    load_state_dict_callback: FunctionType = None
 
 
 class ActivationMixin:
@@ -152,6 +154,12 @@ class ActivationMixin:
         if not self._unique_thread and not ActivationMixin.REMINEDED:
             ActivationMixin.REMINEDED = True
             logger.warn('Using multiple thread mode, gradient checkpointing is not supported.')
+
+    def mark_all_sub_modules_as_plugin(self: torch.nn.Module):
+        self.plugin = True
+        for name, module in self.named_modules():
+            if 'base_layer' not in name:
+                module.plugin = True
 
     @property
     def indent(self):
@@ -317,6 +325,10 @@ class SwiftAdapter:
             SwiftAdapter.offload_helper.load_disk(module, adapter_name=adapter_name, module_key=module_key)
             module.to(module.origin_device)
             delattr(module, 'origin_device')
+
+    @staticmethod
+    def state_dict_load_hook(model: torch.nn.Module, state_dict: Dict[str, torch.Tensor]):
+        pass
 
     @staticmethod
     def has_additional_modules():

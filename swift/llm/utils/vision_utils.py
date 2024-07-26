@@ -2,19 +2,19 @@ import base64
 import binascii
 import os
 from io import BytesIO
+from typing import Callable, List, TypeVar, Union
 
 import numpy as np
 import requests
 import torch
-import torchvision.transforms as T
-from PIL import Image, UnidentifiedImageError
-from torchvision.transforms.functional import InterpolationMode
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def build_transform(input_size):
+    import torchvision.transforms as T
+    from torchvision.transforms.functional import InterpolationMode
     MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
     transform = T.Compose([
         T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
@@ -75,7 +75,8 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def load_image(img_path, input_size=448, max_num=6):
+def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
+    from PIL import Image, UnidentifiedImageError
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
@@ -93,6 +94,23 @@ def load_image(img_path, input_size=448, max_num=6):
         image = img_path
     if image.mode != 'RGB':
         image = image.convert('RGB')
+    return image
+
+
+_T = TypeVar('_T')
+
+
+def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
+                load_func: Callable[[str], _T] = load_image) -> List[_T]:
+    res = []
+    for path in path_list:
+        if path is None:  # ignore None
+            continue
+        res.append(load_func(path))
+    return res
+
+
+def transform_image(image, input_size=448, max_num=6):
     transform = build_transform(input_size=input_size)
     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
     pixel_values = [transform(image) for image in images]
@@ -132,3 +150,21 @@ def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=3
         pixel_values_list.append(pixel_values)
     pixel_values = torch.cat(pixel_values_list)
     return pixel_values, num_patches_list
+
+
+def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
+    from PIL import Image, ImageDraw
+    from .template import Template
+    image = Image.open(img_dir)
+
+    objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
+    Template.normalize_bbox(objects, [image], 'real')
+    bbox = objects[0]['bbox']
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(bbox, outline='red', width=2)
+    image.save(output_file)
+
+
+if __name__ == '__main__':
+    # A test main to draw bbox
+    draw_plot('/mnt/workspace/man.jpg', [354, 462, 580, 738], 'norm_1000', '/mnt/workspace/man_bbox.jpg')

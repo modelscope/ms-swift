@@ -686,6 +686,9 @@ class LoraModel(_LoraModel):
         self._prepare_model(peft_config, model)
 
         for key in key_list:
+            if '_part_' in key:
+                # Avoid lora conflict with part tuner
+                continue
             # Check for modules_to_save in case
             if _check_for_modules_to_save and any(
                     key.endswith(f'{module_to_save}') for module_to_save in peft_config.modules_to_save):
@@ -807,9 +810,11 @@ class LoraModel(_LoraModel):
                 use_dora=lora_config.use_dora,
             )
             self._convert_dtype(target, lora_config.lora_dtype)
+            ActivationMixin.mark_all_sub_modules_as_plugin(target)
         else:
             new_module = self._create_new_module(lora_config, adapter_name, target, current_key=current_key, **kwargs)
             if new_module is not None:
+                ActivationMixin.mark_all_sub_modules_as_plugin(new_module)
                 if adapter_name != self.active_adapter:
                     # adding an additional adapter: it is not automatically trainable
                     new_module.requires_grad_(False)

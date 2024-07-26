@@ -19,6 +19,7 @@ from peft import PeftModel
 from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
+from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (ADAPTER_CONFIG_NAME, ADAPTER_SAFE_WEIGHTS_NAME, ADAPTER_WEIGHTS_NAME, CONFIG_NAME,
                                   PREFIX_CHECKPOINT_DIR, SAFE_WEIGHTS_NAME, TRAINER_STATE_NAME, TRAINING_ARGS_NAME,
@@ -302,7 +303,8 @@ class SwiftMixin:
         quantization_bit = sft_args.quantization_bit
         if quantization_bit > 0:
             need_to_save += [
-                'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant'
+                'quant_method', 'quantization_bit', 'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type',
+                'bnb_4bit_use_double_quant'
             ]
         adapter_cfg = {}
         for k in need_to_save:
@@ -476,7 +478,9 @@ class SwiftMixin:
                 model = model._get_underlay_model().module.module
             if isinstance(model, PreTrainedModel):
                 return
-        elif not isinstance(model, SwiftModel):
+        elif isinstance(model, SwiftModel) or is_deepspeed_zero3_enabled() and isinstance(model, PreTrainedModel):
+            return
+        else:
             # Avoid throwing exceptions
             return super()._load_from_checkpoint(resume_from_checkpoint, model)
 

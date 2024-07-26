@@ -168,13 +168,14 @@ road:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_type glm4v-9b-chat \
     --dataset coco-en-2-mini \
+    --batch_size 2
 
 # DDP
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --model_type glm4v-9b-chat \
     --dataset coco-en-2-mini \
-    --ddp_find_unused_parameters true \
+    --ddp_find_unused_parameters true
 ```
 
 [自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
@@ -193,7 +194,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir output/glm4v-9b-chat/vx-xxx/checkpoint-xxx \
-    --load_dataset_config true \
+    --load_dataset_config true
 ```
 
 **merge-lora**并推理:

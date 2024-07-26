@@ -21,7 +21,7 @@ from swift import SwiftTuners
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
 from swift.utils.logger import get_logger
 from .. import PeftConfig, PeftModel, get_peft_model
-from .utils import SwiftConfig, SwiftOutput
+from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -55,10 +55,14 @@ class SwiftModel(nn.Module):
             self.active_adapters = model.active_adapters
             model = model.base_model
 
+        self.base_model = model
         new_adapters = []
         if isinstance(config, SwiftConfig):
             if DEFAULT_ADAPTER not in self.adapters:
+                all_parts = self._deactivate_all_parts()
                 self.adapters[DEFAULT_ADAPTER] = self._prepare_model(model, config, DEFAULT_ADAPTER)
+                for part in all_parts:
+                    self.activate_adapter(part)
                 new_adapters.append(DEFAULT_ADAPTER)
             else:
                 logger.warn(f'Adapter {DEFAULT_ADAPTER} has been patched, skip.')
@@ -66,11 +70,13 @@ class SwiftModel(nn.Module):
             assert (all(isinstance(c, SwiftConfig) for c in config.values()))
             for adapter_name, _config in config.items():
                 if adapter_name not in self.adapters:
+                    all_parts = self._deactivate_all_parts()
                     self.adapters[adapter_name] = self._prepare_model(model, _config, adapter_name)
+                    for part in all_parts:
+                        self.activate_adapter(part)
                     new_adapters.append(adapter_name)
                 else:
                     logger.warn(f'Adapter {adapter_name} has been patched, skip.')
-        self.base_model = model
 
         self.extra_state_keys = extra_state_keys or []
         self.has_additional_modules = any([c.config.has_additional_modules for c in self.adapters.values()])
@@ -100,9 +106,18 @@ class SwiftModel(nn.Module):
     def model(self):
         return self.base_model
 
+    def _deactivate_all_parts(self):
+        deactivated = []
+        for adapter in self.active_adapters:
+            output = self.adapters[adapter]
+            if output.config.swift_type == SwiftTuners.PART:
+                deactivated.append(adapter)
+                self.deactivate_adapter(adapter)
+        return deactivated
+
     def load_state_dict(self, state_dict, strict=True, adapter_name: str = None):
         if adapter_name is not None:
-            output = self.adapters[adapter_name]
+            output: SwiftOutput = self.adapters[adapter_name]
             if getattr(output.config, 'modules_to_save', None):
                 for key, value in copy(state_dict).items():
                     for module_name in output.config.modules_to_save:
@@ -129,6 +144,9 @@ class SwiftModel(nn.Module):
                     state_dict.pop(key, None)
                     key = key.replace('lora_embedding_B.', f'lora_embedding_B.{adapter_name}.')
                 state_dict[key] = value
+
+            if output.load_state_dict_callback:
+                state_dict = output.load_state_dict_callback(self.base_model, adapter_name, state_dict)
 
         incompatible_keys = self.base_model.load_state_dict(state_dict, False)
         if incompatible_keys and len(incompatible_keys[1]) > 0:

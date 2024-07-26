@@ -171,6 +171,21 @@ class ModelType:
     llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
     llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
     llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
+    # llama3.1
+    llama3_1_8b = 'llama3_1-8b'
+    llama3_1_8b_instruct = 'llama3_1-8b-instruct'
+    llama3_1_70b = 'llama3_1-70b'
+    llama3_1_70b_instruct = 'llama3_1-70b-instruct'
+    llama3_1_70b_instruct_fp8 = 'llama3_1-70b-instruct-fp8'
+    llama3_1_70b_instruct_awq = 'llama3_1-70b-instruct-awq'
+    llama3_1_70b_instruct_gptq_int4 = 'llama3_1-70b-instruct-gptq-int4'
+    llama3_1_70b_instruct_bnb = 'llama3_1-70b-instruct-bnb'
+    llama3_1_405b = 'llama3_1-405b'
+    llama3_1_405b_instruct = 'llama3_1-405b-instruct'
+    llama3_1_405b_instruct_fp8 = 'llama3_1-405b-instruct-fp8'
+    llama3_1_405b_instruct_awq = 'llama3_1-405b-instruct-awq'
+    llama3_1_405b_instruct_gptq_int4 = 'llama3_1-405b-instruct-gptq-int4'
+    llama3_1_405b_instruct_bnb = 'llama3_1-405b-instruct-bnb'
     # chinese-llama-alpaca
     chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
     chinese_llama_2_7b = 'chinese-llama-2-7b'
@@ -344,12 +359,16 @@ class ModelType:
     openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
     openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
     openbuddy_mixtral_moe_7b_chat = 'openbuddy-mixtral-moe-7b-chat'
+    openbuddy_llama3_1_8b_chat = 'openbuddy-llama3_1-8b-chat'
     # mistral
     mistral_7b = 'mistral-7b'
     mistral_7b_v2 = 'mistral-7b-v2'
     mistral_7b_instruct = 'mistral-7b-instruct'
     mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
     mistral_7b_instruct_v3 = 'mistral-7b-instruct-v3'
+    mistral_nemo_base_2407 = 'mistral-nemo-base-2407'
+    mistral_nemo_instruct_2407 = 'mistral-nemo-instruct-2407'
+    mistral_large_instruct_2407 = 'mistral-large-instruct-2407'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
@@ -515,6 +534,10 @@ class LoRATM(NamedTuple):
         'kv_b_proj',
         'o_proj',
     ]
+    minicpm_llama = r'.*model\.layers\.(?:[0-9]|[12][0-9]|3[01])\.(?:self_attn\.(?:q_proj|k_proj|v_proj))'
+    internvl2 = r'.*(wqkv|wo|w[123]|mlp1\.(1|3))$'
+    internvl2_llama = r'.*(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|mlp1\.(1|3))$'
+    internvl2_phi3 = r'.*(qkv_proj|o_proj|gate_up_proj|down_proj|mlp1\.(1|3))$'
     # compat
     llama2 = llama
 
@@ -525,7 +548,7 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTr
 def register_model(
         model_type: str,
         model_id_or_path: Optional[str],
-        lora_target_modules: Optional[List[str]] = None,
+        lora_target_modules: Optional[Union[List[str], str]] = None,
         template: str = TemplateType.default,
         get_function: Optional[GetModelTokenizerFunction] = None,
         *,
@@ -964,7 +987,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm2_video,
     support_gradient_checkpointing=False,
-    requires=['transformers<4.42', 'decord', 'pytorchvideo'],
+    requires=['decord', 'pytorchvideo'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='THUDM/cogvlm2-video-llama3-chat')
@@ -2214,136 +2237,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     hf_model_id='01-ai/Yi-6B')
 @register_model(
-    ModelType.yi_1_5_6b,
-    '01ai/Yi-1.5-6B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-6B')
-@register_model(
-    ModelType.yi_1_5_6b_chat,
-    '01ai/Yi-1.5-6B-Chat',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-6B-Chat')
-@register_model(
-    ModelType.yi_1_5_6b_chat_awq_int4,
-    'AI-ModelScope/Yi-1.5-6B-Chat-AWQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['autoawq'],
-    torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_6b_chat_gptq_int4,
-    'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
-    torch_dtype=torch.float16,
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_9b_chat_awq_int4,
-    'AI-ModelScope/Yi-1.5-9B-Chat-AWQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['autoawq'],
-    torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_9b_chat_gptq_int4,
-    'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
-    torch_dtype=torch.float16,
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_34b_chat_awq_int4,
-    'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['autoawq'],
-    torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_34b_chat_gptq_int4,
-    'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
-    torch_dtype=torch.float16,
-    support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
-    support_vllm=True)
-@register_model(
-    ModelType.yi_1_5_9b,
-    '01ai/Yi-1.5-9B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-9B')
-@register_model(
-    ModelType.yi_1_5_9b_chat,
-    '01ai/Yi-1.5-9B-Chat',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-9B-Chat')
-@register_model(
-    ModelType.yi_1_5_9b_chat_16k,
-    '01ai/Yi-1.5-9B-Chat-16K',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
-@register_model(
-    ModelType.yi_1_5_34b,
-    '01ai/Yi-1.5-34B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-34B')
-@register_model(
-    ModelType.yi_1_5_34b_chat,
-    '01ai/Yi-1.5-34B-Chat',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-34B-Chat')
-@register_model(
-    ModelType.yi_1_5_34b_chat_16k,
-    '01ai/Yi-1.5-34B-Chat-16K',
-    LoRATM.llama,
-    TemplateType.yi1_5,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
-@register_model(
     ModelType.ziya2_13b_chat,
     'Fengshenbang/Ziya2-13B-Chat',
     LoRATM.llama,
@@ -2506,6 +2399,35 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
 @register_model(
+    ModelType.mistral_large_instruct_2407,
+    'LLM-Research/Mistral-Large-Instruct-2407',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=['^consolidated'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Large-Instruct-2407')
+@register_model(
+    ModelType.mistral_nemo_instruct_2407,
+    'AI-ModelScope/Mistral-Nemo-Instruct-2407',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=['^consolidated'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Instruct-2407')
+@register_model(
+    ModelType.mistral_nemo_base_2407,
+    'AI-ModelScope/Mistral-Nemo-Base-2407',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.43'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Nemo-Base-2407')
+@register_model(
     ModelType.dbrx_base,
     'AI-ModelScope/dbrx-base',
     LoRATM.dbrx,
@@ -2543,6 +2465,141 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         model_config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
+
+@register_model(
+    ModelType.yi_1_5_6b,
+    '01ai/Yi-1.5-6B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-6B')
+@register_model(
+    ModelType.yi_1_5_6b_chat,
+    '01ai/Yi-1.5-6B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-6B-Chat')
+@register_model(
+    ModelType.yi_1_5_6b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-6B-Chat-AWQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_6b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-9B-Chat-AWQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_awq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_34b_chat_gptq_int4,
+    'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    requires=['auto_gptq>=0.5'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
+    support_vllm=True)
+@register_model(
+    ModelType.yi_1_5_9b,
+    '01ai/Yi-1.5-9B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B')
+@register_model(
+    ModelType.yi_1_5_9b_chat,
+    '01ai/Yi-1.5-9B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat')
+@register_model(
+    ModelType.yi_1_5_9b_chat_16k,
+    '01ai/Yi-1.5-9B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
+@register_model(
+    ModelType.yi_1_5_34b,
+    '01ai/Yi-1.5-34B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B')
+@register_model(
+    ModelType.yi_1_5_34b_chat,
+    '01ai/Yi-1.5-34B-Chat',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat')
+@register_model(
+    ModelType.yi_1_5_34b_chat_16k,
+    '01ai/Yi-1.5-34B-Chat-16K',
+    LoRATM.llama,
+    TemplateType.yi1_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
+def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
+    return get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
 
 
 def fix_florence_forward(model) -> None:
@@ -3746,7 +3803,7 @@ def patch_internvl_forward(model) -> None:
     'OpenGVLab/Mini-InternVL-Chat-4B-V1-5',
     LoRATM.phi3,
     TemplateType.internvl_phi3,
-    requires=['transformers>=4.35', 'timm'],
+    requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
@@ -3754,7 +3811,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_1b,
     'OpenGVLab/InternVL2-1B',
-    LoRATM.llama,
+    LoRATM.internvl2_llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3764,7 +3821,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_2b,
     'OpenGVLab/InternVL2-2B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3774,9 +3831,9 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_4b,
     'OpenGVLab/InternVL2-4B',
-    LoRATM.phi3,
+    LoRATM.internvl2_phi3,
     TemplateType.internvl2_phi3,
-    requires=['transformers>=4.35', 'timm'],
+    requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
@@ -3784,7 +3841,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_8b,
     'OpenGVLab/InternVL2-8B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3794,7 +3851,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_26b,
     'OpenGVLab/InternVL2-26B',
-    LoRATM.internlm2,
+    LoRATM.internvl2,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3804,7 +3861,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_40b,
     'OpenGVLab/InternVL2-40B',
-    LoRATM.llama,
+    LoRATM.internvl2_llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3814,7 +3871,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_llama3_76b,
     'OpenGVLab/InternVL2-Llama3-76B',
-    LoRATM.llama,
+    LoRATM.internvl2_llama,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3931,7 +3988,6 @@ def get_model_tokenizer_internvl(model_dir: str,
     LoRATM.internlm2,
     TemplateType.internlm_xcomposer2,
     eos_token='[UNUSED_TOKEN_145]',
-    support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='internlm/internlm-xcomposer2-7b')
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
@@ -3991,7 +4047,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-def git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> str:
+def git_clone_github(github_url: str, local_repo_name: Optional[str] = None, branch: Optional[str] = None) -> str:
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -4004,6 +4060,9 @@ def git_clone_github(github_url: str, local_repo_name: Optional[str] = None) -> 
                 github_url = f'{github_url}.git'
             command = ['git', '-C', git_cache_dir, 'clone', github_url, local_repo_name]
             command_str = f"git -C '{git_cache_dir}' clone '{github_url}' {local_repo_name}"
+            if branch is not None:
+                command += ['--branch', branch]
+                command_str += f' --branch {branch}'
             logger.info(f'Run the command: `{command_str}`')
             subprocess_run(command)
         logger.info(f'local_repo_path: {local_repo_path}')
@@ -4136,6 +4195,157 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.openbuddy_llama3_1_8b_chat,
+    'OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k',
+    LoRATM.llama,
+    TemplateType.openbuddy2,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    hf_model_id='OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k')
+@register_model(
+    ModelType.llama3_1_405b_instruct_bnb,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct-BNB-NF4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'bitsandbytes'],
+    hf_model_id='hugging-quants/Meta-Llama-3.1-405B-Instruct-BNB-NF4')
+@register_model(
+    ModelType.llama3_1_405b_instruct_gptq_int4,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct-GPTQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-405B-Instruct-GPTQ-INT4')
+@register_model(
+    ModelType.llama3_1_405b_instruct_awq,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct-AWQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4')
+@register_model(
+    ModelType.llama3_1_405b_instruct_fp8,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct-FP8',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B-Instruct-FP8')
+@register_model(
+    ModelType.llama3_1_405b_instruct,
+    'LLM-Research/Meta-Llama-3.1-405B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B-Instruct')
+@register_model(
+    ModelType.llama3_1_405b,
+    'LLM-Research/Meta-Llama-3.1-405B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-405B')
+@register_model(
+    ModelType.llama3_1_70b_instruct_bnb,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-bnb-4bit',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'bitsandbytes'],
+    hf_model_id='unsloth/Meta-Llama-3.1-70B-Instruct-bnb-4bit')
+@register_model(
+    ModelType.llama3_1_70b_instruct_gptq_int4,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4')
+@register_model(
+    ModelType.llama3_1_70b_instruct_awq,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-AWQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4')
+@register_model(
+    ModelType.llama3_1_70b_instruct_fp8,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-FP8',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B-Instruct-FP8')
+@register_model(
+    ModelType.llama3_1_70b_instruct,
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B-Instruct')
+@register_model(
+    ModelType.llama3_1_70b,
+    'LLM-Research/Meta-Llama-3.1-70B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-70B')
+@register_model(
+    ModelType.llama3_1_8b_instruct,
+    'LLM-Research/Meta-Llama-3.1-8B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-8B-Instruct')
+@register_model(
+    ModelType.llama3_1_8b,
+    'LLM-Research/Meta-Llama-3.1-8B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='meta-llama/Meta-Llama-3.1-8B')
 @register_model(
     ModelType.llama3_70b_instruct_awq,
     'swift/Meta-Llama-3-70B-Instruct-AWQ',
@@ -5151,7 +5361,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 @register_model(
     ModelType.minicpm_v_v2_5_chat,
     'OpenBMB/MiniCPM-Llama3-V-2_5',
-    LoRATM.llama,
+    LoRATM.minicpm_llama,
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
     requires=['timm'],

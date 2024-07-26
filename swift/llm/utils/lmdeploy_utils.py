@@ -111,7 +111,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in generation_config.stop_words:
         generation_config.stop_words.append(tokenizer.eos_token_id)
     if isinstance(template.suffix[-1], str):
-        token_list = tokenizer.encode(template.suffix[-1], skip_special_token=True)
+        token_list = tokenizer.encode(template.suffix[-1], add_special_tokens=False)
         if len(token_list) == 1 and token_list not in generation_config.stop_words:
             generation_config.stop_words.append(token_list[0])
     if isinstance(template.suffix[-1], list) and len(
