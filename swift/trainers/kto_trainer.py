@@ -64,6 +64,11 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
     template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
     res_context_list, compute_loss_idx = template._simplify_context_list(res_context_list, compute_loss_idx)
     prompt = ''.join(res_context_list)
+    if isinstance(batch['label'], str) and batch['label'].lower() == 'true':
+        batch['label'] = True
+
+    if isinstance(batch['label'], str) and batch['label'].lower() == 'false':
+        batch['label'] = False
 
     return {'prompt': prompt, 'completion': batch['response'], 'label': batch['label']}
 
