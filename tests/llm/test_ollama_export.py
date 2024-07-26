@@ -39,8 +39,9 @@ class TestTemplate(unittest.TestCase):
         args = ExportArguments(model_type='glm4-9b-chat', to_ollama=True, ollama_output_dir=self.tmp_dir)
         export_main(args)
 
-        template = ('TEMPLATE """{{ if .System }}[gMASK] <sop><|system|>{{ .System }}{{ else }}[gMASK] <sop>'
-                    '{{ end }}{{ if .Prompt }}<|user|>{{ .Prompt }}<|assistant|>{{ end }}{{ .Response }}<|user|>"""')
+        template = ('TEMPLATE """{{ if .System }}[gMASK] <sop><|system|>\n{{ .System }}{{ else }}'
+                    '[gMASK] <sop>{{ end }}{{ if .Prompt }}<|user|>\n{{ .Prompt }}<|assistant|>\n'
+                    '{{ end }}{{ .Response }}<|user|>"""')
 
         stop = 'PARAMETER stop "<|user|>"'
 
