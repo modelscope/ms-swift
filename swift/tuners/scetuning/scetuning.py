@@ -223,6 +223,7 @@ class SCETunerModule(nn.Module, ActivationMixin):
                 act_layer=act_layer)
         else:
             raise Exception(f'Error tuner op {name}')
+        self.mark_all_sub_modules_as_plugin()
 
     def forward(self, x, x_shortcut=None, use_shortcut=True, **kwargs):
         if not self.is_activated(self.adapter_name):

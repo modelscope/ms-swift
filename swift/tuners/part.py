@@ -2,13 +2,14 @@
 import re
 from copy import deepcopy
 from dataclasses import dataclass
+from types import MethodType
 from typing import Dict, Optional
 
 import torch
 from torch import nn
 
 from swift import get_logger
-from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -40,28 +41,41 @@ class Part(SwiftAdapter):
         name_list = [name for name, _ in model.named_modules(remove_duplicate=False)]
         for name in name_list:
             module: nn.Module = model.get_submodule(name)
-            if Part.target_module_matched(name, config) and '_part_' not in name:
-                idx = name.rfind('.')
-                parent = name[:idx]
-                sub_name = name[idx + 1:]
-                parent = model.get_submodule(parent)
-                if hasattr(parent, f'{sub_name}_part_origin'):
-                    module = getattr(parent, f'{sub_name}_part_origin')
+            if Part.target_module_matched(name, config) and not getattr(module, 'plugin', False):
+                if hasattr(module, 'base_layer'):
+                    module = module.base_layer
+
+                def _forward(self, *args, **kwargs):
+                    child_list = [
+                        sub_module for name, sub_module in self.named_modules(remove_duplicate=False)
+                        if '_part_' in name
+                    ]
+                    sub_modules = [child for child in child_list if getattr(child, 'activated', False)]
+                    assert len(sub_modules) <= 1
+                    if len(sub_modules) == 1:
+                        return sub_modules[0].forward(*args, **kwargs)
+                    else:
+                        return self.forward_origin(*args, **kwargs)
+
+                if not hasattr(module, 'forward_origin'):
+                    module.forward_origin = module.forward
+                    module.forward = MethodType(_forward, module)
+
                 new_module = deepcopy(module)
+                for attr in dir(new_module):
+                    if '_part_' in attr:
+                        delattr(new_module, attr)
                 new_module.part_name = adapter_name
-                setattr(parent, f'{sub_name}_part_{adapter_name}', new_module)
-                if not hasattr(parent, f'{sub_name}_part_origin'):
-                    module.part_name = 'origin'
-                    setattr(parent, f'{sub_name}_part_origin', module)
-                setattr(parent, sub_name, new_module)
+                ActivationMixin.mark_all_sub_modules_as_plugin(new_module)
+                setattr(module, f'_part_{adapter_name}', new_module)
                 new_module.requires_grad_(True)
 
         def state_dict_callback(state_dict, adapter_name):
             new_state_dict = {}
             for key, value in state_dict.items():
                 if f'_part_{adapter_name}.' in key:
-                    front, end = key.split(f'_part_{adapter_name}')
-                    new_state_dict[front + end] = value
+                    new_key = key.replace(f'_part_{adapter_name}.', '').replace('base_layer.', '')
+                    new_state_dict[new_key] = value
 
             return new_state_dict
 
@@ -76,7 +90,10 @@ class Part(SwiftAdapter):
                     for param_name in state_dict:
                         if param_name.startswith(name):
                             end = param_name[len(name):]
-                            new_state_dict[name + f'_part_{adapter_name}' + end] = state_dict[param_name]
+                            if hasattr(module, 'base_layer'):
+                                new_state_dict[name + f'base_layer._part_{adapter_name}' + end] = state_dict[param_name]
+                            else:
+                                new_state_dict[name + f'._part_{adapter_name}' + end] = state_dict[param_name]
             return new_state_dict
 
         return SwiftOutput(
@@ -91,20 +108,5 @@ class Part(SwiftAdapter):
         for name in name_list:
             sub_module: nn.Module = module.get_submodule(name)
             if re.fullmatch(f'.*_part_{adapter_name}$', name):
-                idx = name.rfind('.')
-                parent_name = name[:idx]
-                sub_name = name[idx + 1:]
-                parent = module.get_submodule(parent_name)
-                sub_name = sub_name[:-len(f'_part_{adapter_name}')]
-                in_use_module = getattr(parent, sub_name)
-                if in_use_module is sub_module and activate:
-                    continue
-                SwiftAdapter.save_memory(sub_module, sub_module.part_name, parent_name + '.' + sub_name, activate,
-                                         offload)
-                if activate:
-                    SwiftAdapter.save_memory(in_use_module, in_use_module.part_name, parent_name + '.' + sub_name,
-                                             not activate, offload)
-                if activate:
-                    setattr(parent, sub_name, sub_module)
-                elif in_use_module.part_name == sub_module.part_name:
-                    setattr(parent, sub_name, getattr(parent, f'{sub_name}_part_origin'))
+                sub_module.activated = activate
+                SwiftAdapter.save_memory(sub_module, adapter_name, name, activate, offload)

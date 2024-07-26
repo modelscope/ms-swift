@@ -282,103 +282,104 @@ class TestSwift(unittest.TestCase):
             self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
 
     def test_part(self):
-        model = SbertForSequenceClassification(SbertConfig())
+        preprocessor = Preprocessor.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
+        inputs = preprocessor('how are you')
+        model = SbertForSequenceClassification.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
         model_origin = copy.deepcopy(model)
         model2 = copy.deepcopy(model)
         targets = r'.*(query|key|value).*'
         part_config = PartConfig(target_modules=targets)
         model = Swift.prepare_model(model, config={'part': part_config})
         self.assertTrue(isinstance(model, SwiftModel))
-        trainable = [name for name, p in model.named_parameters() if p.requires_grad]
-        not_trainable = [name for name, p in model.named_parameters() if not p.requires_grad]
 
-        def target_in(t: str):
-            return re.fullmatch(targets, t) and '_part_' not in t
+        model.base_model.encoder.encoder.layer[0].attention.self.query._part_part.weight.data = torch.ones_like(
+            model.base_model.encoder.encoder.layer[0].attention.self.query._part_part.weight.data)
 
-        model.base_model.bert.encoder.layer[0].attention.self.query.weight.data = torch.ones_like(
-            model.base_model.bert.encoder.layer[0].attention.self.query.weight.data)
+        for name, module in model.named_modules():
+            if re.fullmatch(targets, name) and '_part_' not in name:
+                self.assertTrue(not module.weight.requires_grad)
+                self.assertTrue(model.get_submodule(name + '._part_part').weight.requires_grad)
 
-        self.assertTrue(all([target_in(t) for t in trainable]))
-        self.assertTrue(not any([target_in(t) for t in not_trainable]))
         model.save_pretrained(self.tmp_dir, adapter_name=['part'])
         with open(os.path.join(self.tmp_dir, 'configuration.json'), 'w') as f:
             f.write('{}')
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'part')))
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'part', WEIGHTS_NAME)))
         model2 = Swift.from_pretrained(model2, self.tmp_dir, adapter_name=['part'])
-        state_dict = model.state_dict()
-        state_dict2 = model2.state_dict()
-        for key in state_dict:
-            self.assertTrue(key in state_dict2)
-            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+        self.assertTrue(
+            all(
+                torch.isclose(model.base_model.encoder.encoder.layer[0].attention.self.query._part_part.weight.data,
+                              model2.base_model.encoder.encoder.layer[0].attention.self.query._part_part.weight.data).
+                flatten().detach().cpu()))
 
-        model2.activate_adapter('part')
-        state_dict = model.state_dict()
-        state_dict2 = model2.state_dict()
-        for key in state_dict:
-            self.assertTrue(key in state_dict2)
-            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+        state_dict = model.model.state_dict()
+        state_dict2 = model2.model.state_dict()
+        self.assertTrue(str(state_dict) == str(state_dict2))
+
+        output = model(**inputs)
+        output2 = model2(**inputs)
+        output_origin = model_origin(**inputs)
+        self.assertTrue(all(torch.isclose(output.logits, output2.logits).flatten().detach().cpu()))
+        self.assertTrue(not all(torch.isclose(output_origin.logits, output2.logits).flatten().detach().cpu()))
 
         model2.deactivate_adapter('part')
-        state_dict = model_origin.state_dict()
-        state_dict2 = {
-            key: value
-            for key, value in model2.base_model.state_dict().items()
-            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
-        }
-        for key in state_dict2:
-            self.assertTrue(key in state_dict)
-            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+        output = model(**inputs)
+        output2 = model2(**inputs)
+        output_origin = model_origin(**inputs)
+        self.assertTrue(not all(torch.isclose(output.logits, output2.logits).flatten().detach().cpu()))
+        self.assertTrue(all(torch.isclose(output_origin.logits, output2.logits).flatten().detach().cpu()))
 
         model2.activate_adapter('part')
-        state_dict = model.state_dict()
-        state_dict2 = {
-            key: value
-            for key, value in model2.base_model.state_dict().items()
-            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
-        }
-        for key in state_dict:
-            self.assertTrue(key in state_dict2)
-            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+        output = model(**inputs)
+        output2 = model2(**inputs)
+        output_origin = model_origin(**inputs)
+        self.assertTrue(all(torch.isclose(output.logits, output2.logits).flatten().detach().cpu()))
+        self.assertTrue(not all(torch.isclose(output_origin.logits, output2.logits).flatten().detach().cpu()))
 
         targets = r'.*(query|key|value).*'
         part_config = PartConfig(target_modules=targets)
+        lora_config = LoRAConfig(target_modules=targets)
         model2 = Swift.prepare_model(model2, config={'part2': part_config})
+        model2 = Swift.prepare_model(model2, config={'lora': lora_config})
+        model2 = Swift.prepare_model(model2, config={'part3': part_config})
         model2.set_active_adapters('part2', offload='meta')
-        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
-            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_part2'))
-        model2.base_model.bert.encoder.layer[0].attention.self.query.weight.data = torch.zeros_like(
-            model2.base_model.bert.encoder.layer[0].attention.self.query.weight.data)
+        model2.set_active_adapters('part3', offload='meta')
+        model2.set_active_adapters('lora', offload='meta')
+        model2.set_active_adapters('part2', offload='meta')
+        self.assertTrue(
+            not model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part.activated)
+        self.assertTrue(
+            model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part2.activated)
         model2.set_active_adapters('part', offload='meta')
-        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
-            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_part'))
-        state_dict = model.state_dict()
-        state_dict2 = {
-            key: value
-            for key, value in model2.base_model.state_dict().items()
-            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
-        }
-        for key in state_dict:
-            self.assertTrue(key in state_dict2)
-            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+        self.assertTrue(
+            not model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part2.activated)
+        self.assertTrue(model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part.activated)
+        output = model(**inputs)
+        output2 = model2(**inputs)
+        output_origin = model_origin(**inputs)
+        self.assertTrue(all(torch.isclose(output.logits, output2.logits).flatten().detach().cpu()))
+        self.assertTrue(not all(torch.isclose(output_origin.logits, output2.logits).flatten().detach().cpu()))
 
         model2.set_active_adapters('part2', offload='meta')
-        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
-            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_part2'))
-        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query.weight.data.sum() == 0)
-
         model2.deactivate_adapter('part2', offload='meta')
-        self.assertTrue(model2.base_model.bert.encoder.layer[0].attention.self.query is getattr(
-            model2.base_model.bert.encoder.layer[0].attention.self, 'query_part_origin'))
-        state_dict = model_origin.state_dict()
-        state_dict2 = {
-            key: value
-            for key, value in model2.base_model.state_dict().items()
-            if '_part_' not in key and ('query' in key or 'key' in key or 'value' in key)
-        }
-        for key in state_dict2:
-            self.assertTrue(key in state_dict)
-            self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
+        model2.deactivate_adapter('lora', offload='cpu')
+        self.assertTrue(
+            not model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part2.activated)
+        self.assertTrue(
+            not model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part.activated)
+        output = model(**inputs)
+        output2 = model2(**inputs)
+        output_origin = model_origin(**inputs)
+        self.assertTrue(not all(torch.isclose(output.logits, output2.logits).flatten().detach().cpu()))
+        self.assertTrue(all(torch.isclose(output_origin.logits, output2.logits).flatten().detach().cpu()))
+        model2.activate_adapter('lora')
+        self.assertTrue(
+            not model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part2.activated)
+        self.assertTrue(
+            not model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part.activated)
+        self.assertTrue(
+            not model2.base_model.encoder.encoder.layer[0].attention.self.query.base_layer._part_part3.activated)
+        self.assertTrue(model2.base_model.encoder.encoder.layer[0].attention.self.query.active_adapters == ['lora'])
 
     def test_swift_multiple_adapters_switching(self):
         from swift.tuners.lora import Linear

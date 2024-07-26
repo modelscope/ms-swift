@@ -686,11 +686,16 @@ class LoraModel(_LoraModel):
         self._prepare_model(peft_config, model)
 
         for key in key_list:
+            if '_part_' in key:
+                # Avoid lora conflict with part tuner
+                continue
             # Check for modules_to_save in case
             if _check_for_modules_to_save and any(
                     key.endswith(f'{module_to_save}') for module_to_save in peft_config.modules_to_save):
                 # Optionally set the modules to save
                 parent, target, target_name = _get_submodules(model, key)
+                if getattr(target, 'plugin', False):
+                    continue
 
                 if not isinstance(target, ModulesToSaveWrapper):
                     new_module = ModulesToSaveWrapper(target, adapter_name=adapter_name, module_key=key)
@@ -707,6 +712,8 @@ class LoraModel(_LoraModel):
             self.targeted_module_names.append(key)
             is_target_modules_in_base_model = True
             parent, target, target_name = _get_submodules(model, key)
+            if getattr(target, 'plugin', False):
+                continue
             self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
         if not is_target_modules_in_base_model:
@@ -810,6 +817,7 @@ class LoraModel(_LoraModel):
         else:
             new_module = self._create_new_module(lora_config, adapter_name, target, current_key=current_key, **kwargs)
             if new_module is not None:
+                ActivationMixin.mark_all_sub_modules_as_plugin(new_module)
                 if adapter_name != self.active_adapter:
                     # adding an additional adapter: it is not automatically trainable
                     new_module.requires_grad_(False)
