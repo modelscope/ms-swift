@@ -460,7 +460,7 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift pt \
     --model_type qwen1half-7b \
-    --dataset chinese_c4#10000 \
+    --dataset chinese-c4#10000 \
     --num_train_epochs 1 \
     --sft_type full \
     --deepspeed default-zero3 \
