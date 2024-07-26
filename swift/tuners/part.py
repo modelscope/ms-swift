@@ -91,7 +91,8 @@ class Part(SwiftAdapter):
                         if param_name.startswith(name):
                             end = param_name[len(name):]
                             if hasattr(module, 'base_layer'):
-                                new_state_dict[name + f'.base_layer._part_{adapter_name}' + end] = state_dict[param_name]
+                                new_state_dict[name + f'.base_layer._part_{adapter_name}'
+                                               + end] = state_dict[param_name]
                             else:
                                 new_state_dict[name + f'._part_{adapter_name}' + end] = state_dict[param_name]
             return new_state_dict
