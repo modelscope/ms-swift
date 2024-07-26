@@ -852,7 +852,7 @@ class SftArguments(ArgumentsBase):
         self.handle_custom_dataset_info()
         if self.resume_from_checkpoint:
             self.load_from_ckpt_dir(True)
-            if self.sft_type == 'full':
+            if self.sft_type == 'full' or self.train_backend == 'megatron':
                 self.model_id_or_path = self.resume_from_checkpoint
         self.set_model_type()
         self.check_flash_attn()
