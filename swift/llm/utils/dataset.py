@@ -1433,14 +1433,9 @@ def process_shareai_dpo(dataset):
 
 def process_ultrafeedback_kto(dataset: HfDataset):
 
-    def reorganize_row(row):
-        return {
-            'query': row['prompt'],
-            'response': row['completion'],
-            'label': row['label'],
-        }
+    new_column_names = {'prompt': 'query', 'completion': 'response'}
 
-    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+    return dataset.rename_columns(new_column_names)
 
 
 register_dataset(
