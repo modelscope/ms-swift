@@ -338,7 +338,7 @@ class Template:
             assert self.support_multi_round, (
                 f'The template does not support multi-round chat, template_type: {template_type}')
 
-        from swift.llm import MediaTag
+        from .media import MediaTag
         # Format media_keys to list
         for media_key in MediaTag.media_keys.values():
             if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
@@ -401,11 +401,11 @@ class Template:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
         # Load image into PIL format
-        from .vision_utils import load_image
+        from .vision_utils import load_image, _read_batch
         if example.get('images'):
             images = example['images']
             if example.get('objects') or self.load_medias:
-                images = [load_image(img) for img in images]
+                images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
@@ -514,7 +514,7 @@ class Template:
         from swift.utils.utils import split_str_parts_by
         res: List[Context] = []
         loss_scale_res: List[float] = []
-        from swift.llm.utils.utils import fetch_one
+        from .utils import fetch_one
         for context, loss_scale in zip(context_list, loss_scale_list):
             contexts = []
             if isinstance(fetch_one(context), str):
@@ -978,7 +978,7 @@ class QwenVLTemplate(QwenTemplate):
 
     def check_example(self, example):
         images = example.get('images') or []
-        from swift.llm.utils.utils import fetch_one
+        from .utils import fetch_one
         assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -1313,10 +1313,16 @@ def replace_img_tag(query: str, history: History, replace_token: str) -> Tuple[s
     pattern = r'<img>(.+?)</img>'
     new_history = []
     for i, h in enumerate(history):
-        images_path += re.findall(pattern, h[0])
-        new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
-    images_path += re.findall(pattern, query)
-    new_query = re.sub(pattern, replace_token, query)
+        if h[0] is None:
+            new_history.append(h.copy())
+        else:
+            images_path += re.findall(pattern, h[0])
+            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
+    if query is None:
+        new_query = query  # pretrain dataset
+    else:
+        images_path += re.findall(pattern, query)
+        new_query = re.sub(pattern, replace_token, query)
     return new_query, new_history, images_path
 
 
@@ -1557,7 +1563,7 @@ class Internvl2Template(InternvlTemplate):
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
-        from swift.llm.utils.vision_utils import transform_image
+        from .vision_utils import transform_image
         pixel_values_images = [transform_image(image) for image in example.get('images', [])]
         videos_path = example.get('videos_path', [])
         if pixel_values_images:
@@ -1581,7 +1587,7 @@ class Internvl2Template(InternvlTemplate):
             inputs['image_flags'] = torch.ones(patches)
         elif videos_path:
             assert len(videos_path) == 1
-            from swift.llm.utils.vision_utils import load_video
+            from .vision_utils import load_video
             pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
             assert len(num_patches) == len(idx_list)
             added_tokens_len = 0
@@ -1872,13 +1878,13 @@ class LlavaVideoTemplate(Template):
             else:
                 videos_path.append(media_file)
         if len(videos_path) > 0:
-            from swift.llm.utils.vision_utils import _read_batch
+            from .vision_utils import _read_batch
             videos = _read_batch(videos_path, _load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
         if len(images_path) > 0:
-            from swift.llm.utils.vision_utils import _read_batch
+            from .vision_utils import _read_batch
             images = _read_batch(images_path)
             image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
@@ -2375,7 +2381,7 @@ class Cog2VideoTemplate(CogTemplate):
         if len(inputs) == 0:
             return inputs, {}
         videos_path = example.get('videos', [])
-        from swift.llm.utils.vision_utils import _read_batch
+        from .vision_utils import _read_batch
         video = _read_batch(videos_path, _load_video_cogvlm2)
         inputs.pop('loss_scale', None)
         model = self.model

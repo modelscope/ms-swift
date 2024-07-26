@@ -154,7 +154,7 @@ def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=3
 
 def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
     from PIL import Image, ImageDraw
-    from swift.llm.utils.template import Template
+    from .template import Template
     image = Image.open(img_dir)
 
     objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
