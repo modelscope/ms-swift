@@ -1,9 +1,10 @@
 import base64
 import binascii
+import math
 import os
 from io import BytesIO
 from typing import Callable, List, TypeVar, Union
-import math
+
 import numpy as np
 import requests
 import torch
@@ -25,16 +26,15 @@ def build_transform(input_size):
     return transform
 
 
-def rescale_image(img: 'PIL.Image.Image', 
-                  rescale_image: int = -1) -> 'PIL.Image.Image':
+def rescale_image(img: 'PIL.Image.Image', rescale_image: int = -1) -> 'PIL.Image.Image':
     import torchvision.transforms as T
     width = img.width
     height = img.height
     if rescale_image <= 0 or width * height <= rescale_image:
         return img
 
-    ratio = width/height
-    height_scaled = math.pow(rescale_image/ratio, 0.5)
+    ratio = width / height
+    height_scaled = math.pow(rescale_image / ratio, 0.5)
     width_scaled = height_scaled * ratio
     return T.Resize((int(width_scaled), int(height_scaled)))(img)
 
