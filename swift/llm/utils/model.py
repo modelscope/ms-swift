@@ -4267,13 +4267,13 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     hf_model_id='meta-llama/Meta-Llama-3.1-405B')
 @register_model(
     ModelType.llama3_1_70b_instruct_bnb,
-    'LLM-Research/Meta-Llama-3.1-70B-Instruct-BNB-NF4',
+    'LLM-Research/Meta-Llama-3.1-70B-Instruct-bnb-4bit',
     LoRATM.llama,
     TemplateType.llama3,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.43', 'bitsandbytes'],
-    hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-BNB-NF4')
+    hf_model_id='unsloth/Meta-Llama-3.1-70B-Instruct-bnb-4bit')
 @register_model(
     ModelType.llama3_1_70b_instruct_gptq_int4,
     'LLM-Research/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4',
