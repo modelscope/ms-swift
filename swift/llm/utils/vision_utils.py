@@ -7,15 +7,14 @@ from typing import Callable, List, TypeVar, Union
 import numpy as np
 import requests
 import torch
-import torchvision.transforms as T
-from PIL import Image, UnidentifiedImageError
-from torchvision.transforms.functional import InterpolationMode
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def build_transform(input_size):
+    import torchvision.transforms as T
+    from torchvision.transforms.functional import InterpolationMode
     MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
     transform = T.Compose([
         T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
@@ -77,6 +76,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
 
 
 def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
+    from PIL import Image, UnidentifiedImageError
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
