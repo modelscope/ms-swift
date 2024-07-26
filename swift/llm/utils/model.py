@@ -987,7 +987,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm2_video,
     support_gradient_checkpointing=False,
-    requires=['transformers<4.42', 'decord', 'pytorchvideo'],
+    requires=['decord', 'pytorchvideo'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='THUDM/cogvlm2-video-llama3-chat')
