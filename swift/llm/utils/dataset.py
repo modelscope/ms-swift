@@ -49,7 +49,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     for k in dataset.features.keys():
         if k in {
                 'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
-                'objects', 'videos', 'audios', 'tools'
+                'objects', 'videos', 'audios', 'tools', 'label'
         }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
