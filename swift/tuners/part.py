@@ -9,7 +9,7 @@ import torch
 from torch import nn
 
 from swift import get_logger
-from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -41,8 +41,7 @@ class Part(SwiftAdapter):
         name_list = [name for name, _ in model.named_modules(remove_duplicate=False)]
         for name in name_list:
             module: nn.Module = model.get_submodule(name)
-            if Part.target_module_matched(name, config) and '_part_' not in name and 'swift' not in str(
-                    module.__class__) and 'peft' not in str(module.__class__) and 'lora' not in name:
+            if Part.target_module_matched(name, config) and not getattr(module, 'plugin', False):
                 if hasattr(module, 'base_layer'):
                     module = module.base_layer
 
@@ -67,6 +66,7 @@ class Part(SwiftAdapter):
                     if '_part_' in attr:
                         delattr(new_module, attr)
                 new_module.part_name = adapter_name
+                ActivationMixin.mark_all_sub_modules_as_plugin(new_module)
                 setattr(module, f'_part_{adapter_name}', new_module)
                 new_module.requires_grad_(True)
 

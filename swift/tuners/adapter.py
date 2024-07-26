@@ -159,6 +159,7 @@ class AdapterModule(nn.Module, ActivationMixin):
         self.linear2 = nn.Linear(adapter_length, dim)
         self.init_weights()
         self._prepared = False
+        self.mark_all_sub_modules_as_plugin()
 
     def init_weights(self):
 

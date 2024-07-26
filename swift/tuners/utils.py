@@ -155,6 +155,12 @@ class ActivationMixin:
             ActivationMixin.REMINEDED = True
             logger.warn('Using multiple thread mode, gradient checkpointing is not supported.')
 
+    def mark_all_sub_modules_as_plugin(self: torch.nn.Module):
+        self.plugin = True
+        for name, module in self.named_modules():
+            if 'base_layer' not in name:
+                module.plugin = True
+
     @property
     def indent(self):
         return 0 if self.unique_thread else threading.get_ident()

@@ -8,7 +8,7 @@ from torch import nn
 
 from swift.utils.logger import get_logger
 from .module_mapping import MODEL_KEYS_MAPPING, ModelKeys
-from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
+from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
 
@@ -68,6 +68,7 @@ class LLaMAPro(SwiftAdapter):
             new_module_list.append(module)
             if (idx + 1) % num_stride == 0:
                 new_module = deepcopy(module)
+                ActivationMixin.mark_all_sub_modules_as_plugin(new_module)
                 new_module_list.append(new_module)
                 new_module_idx.append(idx + 1 + len(new_module_idx))
 
