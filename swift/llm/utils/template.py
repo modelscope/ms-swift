@@ -346,8 +346,8 @@ class Template:
                 example[media_key] = [example[media_key]]
 
         # Parse <img></img> format images and merged into images key
-        example['query'], example['history'], images_path = replace_img_tag(example['query'], history,
-                                                                            self.image_placeholder)
+        example['query'], example['history'], images_path = replace_img_tag(
+            example.get('query'), history, self.image_placeholder)
         if images_path:
             images = example.get('images', [])
             images.extend(images_path)
