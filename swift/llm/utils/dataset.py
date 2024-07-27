@@ -49,7 +49,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     for k in dataset.features.keys():
         if k in {
                 'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
-                'objects', 'videos', 'audios', 'tools'
+                'objects', 'videos', 'audios', 'tools', 'label'
         }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
@@ -1433,14 +1433,9 @@ def process_shareai_dpo(dataset):
 
 def process_ultrafeedback_kto(dataset: HfDataset):
 
-    def reorganize_row(row):
-        return {
-            'query': row['prompt'],
-            'response': row['completion'],
-            'label': row['label'],
-        }
+    new_column_names = {'prompt': 'query', 'completion': 'response'}
 
-    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+    return dataset.rename_columns(new_column_names)
 
 
 register_dataset(

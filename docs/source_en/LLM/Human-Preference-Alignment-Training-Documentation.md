@@ -27,7 +27,7 @@ pip install -r requirements/llm.txt  -U
 Human preference alignment training typically requires data in the format $(x,y_w,y_l)$, where $x$ represents the model input, and $y_w,y_l$ represent the preferred and rejected answers according to human preference, such as ![dpo_data](../../resources/dpo_data.png)
 
 
-Data for the KTO algorithm is somewhat special, requiring only data in the format $(x,y,\text{label})$, where $x$ represents the model input, $y$ represents the model output, and the label indicates whether the answer aligns with human preferences
+Data for the KTO algorithm is somewhat special, requiring only data in the format $(x,y,\text{label})$ , where $x$ represents the model input, $y$ represents the model output, and the label indicates whether the answer aligns with human preferences
 
 For example, ![kto_data](../../resources/kto_data.png)
 

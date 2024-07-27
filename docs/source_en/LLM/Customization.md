@@ -116,17 +116,28 @@ system,instruction,input,output
 ```
 
 
-**Human preference alignment (DPO/ORPO/SimPO/CPO)**
+**Human preference alignment:**
 
-Language model
+Language model (DPO/ORPO/SimPO/CPO)
 ```jsonl
-{"query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
 ```
 (Where system and history are optional.)
 
-Vision MLLM
+Language model (KTO)
+```jsonl
+{"query": "11111", "response": "22222", "label": true}
+{"query": "aaaaa", "response": "bbbbb", "label": false}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "label": true, "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+```
+Note:  `label` needs to be of type bool, not str.
+
+(Where system and history are optional.)
+
+
+Vision MLLM (DPO/ORPO/SimPO/CPO)
 
 Different models have varying support for the number of images. Please refer to the corresponding best practices document for each model.
 ```jsonl
