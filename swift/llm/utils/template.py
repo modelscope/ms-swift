@@ -2492,6 +2492,7 @@ class MiniCPMVTemplate(Template):
         if tgt_sizes is not None:
             data['tgt_sizes'] = [tgt_sizes]
         inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        inputs_embeds = inputs_embeds.detach()
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         inputs['inputs_embeds'] = inputs_embeds[0]
