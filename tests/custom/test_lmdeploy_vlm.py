@@ -13,9 +13,14 @@ def test_lmdeploy_vlm():
     lmdeploy_engine.generation_config.max_new_tokens = 256
     generation_info = {}
 
-    request_list = [{'query': '这两张图片有什么区别：'
-    '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
-    '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>'}, {'query': '你好'}]
+    request_list = [{
+        'query':
+        '这两张图片有什么区别：'
+        '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
+        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>'
+    }, {
+        'query': '你好'
+    }]
     resp_list = inference_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
     for request, resp in zip(request_list, resp_list):
         print(f"query: {request['query']}")
