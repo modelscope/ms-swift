@@ -347,6 +347,7 @@ class Template:
                 example[media_key] = [example[media_key]]
 
         # Parse <img></img> format images and merged into images key
+        images_path = None
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
                 example.get('query'), history, self.image_placeholder)
