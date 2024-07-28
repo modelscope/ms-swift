@@ -562,10 +562,12 @@ class SftArguments(ArgumentsBase):
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
+
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
+
     # note: bf16 and quantization have requirements for gpu architecture
     # awq, gptq, and aqlm need to be pre-quantized models,
     # while bnb, hqq, and eetq can be quantized during SFT using the original models.
@@ -577,6 +579,10 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
     bnb_4bit_quant_storage: Optional[str] = None
+
+    # multi-modal
+    rescale_image: int = -1
+
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_target_regex: Optional[str] = None
