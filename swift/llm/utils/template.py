@@ -277,7 +277,7 @@ class Template:
         pass
 
     def add_default_tags(self, example: Dict[str, Any]) -> None:
-        history: History = example.get('history') or []
+        history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
         for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
             if example.get(media_key):
@@ -335,7 +335,7 @@ class Template:
 
     def preprocess(self, example):
         # Duplicate example and create a new one to prepare in-place changes
-        example = deepcopy(example)
+        example = example.copy()
         template_type: Optional[str] = getattr(self, 'template_type', None)
         tools: Union[List[Any], str] = example.get('tools') or []
 
