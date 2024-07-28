@@ -364,7 +364,7 @@ class Template:
                 example.get('query'), history, '<image>')
         if images_path:
             images = example.get('images', [])
-            images.extend(images_path)
+            images = images + images_path
             example['images'] = images
 
         # Add default tags to examples to note where to put the medias into the sequence
