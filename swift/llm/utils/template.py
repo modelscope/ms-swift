@@ -280,23 +280,36 @@ class Template:
         history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
         for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
-            if example.get(media_key) and media_tag not in ('\n'.join([h[0] for h in history]) + f'\n{query}'):
+            if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
-                    assert len(example[media_key]) == len(history) + 1
-                    for h, m in zip(history, example[media_key][:-1]):
+                    n_round = len(example[media_key])
+                    assert n_round == len(history) + 1
+                    for i, h, m in zip(range(n_round), history + [[query, None]], example[media_key]):
+                        num_media_tags = len(re.findall(media_tag, h[0]))
                         if m:
-                            h[0] = media_tag + h[0]
-                    if example[media_key][-1]:
-                        query = media_tag + query
+                            assert num_media_tags <= 1, f'num_media_tags: {num_media_tags}'
+                            if num_media_tags == 0:
+                                h[0] = media_tag + h[0]
+                        else:
+                            assert num_media_tags == 0, f'num_media_tags: {num_media_tags}'
+                        if i == n_round - 1:
+                            query = h[0]
+                        else:
+                            history[i][0] = h[0]
+
                     example[media_key] = [m for m in example[media_key] if m]
+
                 else:
+                    num_media_tags = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
                     example[media_key] = [m for m in example[media_key] if m]
-                    media_len = len(example[media_key])
+                    num_media = len(example[media_key])
+                    num_new_tags = num_media - num_media_tags
+                    assert num_new_tags >= 0, f'num_new_tags: {num_new_tags}'
                     if history:
-                        history[0][0] = media_tag * media_len + history[0][0]
+                        history[0][0] = media_tag * num_new_tags + history[0][0]
                     else:
-                        query = media_tag * media_len + query
+                        query = media_tag * num_new_tags + query
 
         example['query'] = query
         example['history'] = history
@@ -351,10 +364,10 @@ class Template:
         images_path = None
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
-                example.get('query'), history, self.image_placeholder)
+                example.get('query'), history, '<image>')
         if images_path:
             images = example.get('images', [])
-            images.extend(images_path)
+            images = images + images_path
             example['images'] = images
 
         # Add default tags to examples to note where to put the medias into the sequence
@@ -541,7 +554,7 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            return ['<image>']
+            return [self.image_placeholder]
         if media_type == 'video':
             return ['<video_label>']
         if media_type == 'audio':
@@ -1612,37 +1625,6 @@ class Internvl2Template(InternvlTemplate):
         inputs.pop('loss_scale', None)
         return inputs, {}
 
-    def add_default_tags(self, example: Dict[str, Any]) -> None:
-        history: History = deepcopy(example.get('history') or [])
-        query: str = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>')]:
-            medias = example.get(media_key)
-            if medias:
-                num_media_tag = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
-                num_media = sum([1 for m in medias if m])  # ignore None
-                num_res_media = num_media - num_media_tag
-                assert num_res_media >= 0, \
-                    'The number of media tags {num_media_tag} is greater than the number of media objects {num_media}.'
-                if num_res_media == 0:
-                    # Each media tag corresponds to an media object.
-                    return
-                # process res media, add default media tag
-                if num_res_media == len(history) + 1:
-                    # In this case, add at the beginning of each round's query.
-                    for h, m in zip(history, example[media_key][:-1]):
-                        if m:
-                            h[0] = media_tag + h[0]
-                    if example[media_key][-1]:
-                        query = media_tag + query
-                    example[media_key] = [m for m in example[media_key] if m]
-                else:
-                    # add the res image tag at the beginning of the last query
-                    query = media_tag * num_res_media + query
-                break
-
-        example['query'] = query
-        example['history'] = history
-
 
 class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
@@ -1670,11 +1652,9 @@ register_template(
 register_template(
     TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
-register_template(
-    TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
+register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
 
-register_template(
-    TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
+register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
 
 
 class FlorenceTemplate(Template):
@@ -2106,9 +2086,6 @@ class Phi3VisionTemplate(Template):
         Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        return ['<|image|>']
-
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images = example.get('images', [])
         inputs, _ = super()._encode(example)
@@ -2207,10 +2184,6 @@ class DeepseekVLTemplate(Template):
     def __init__(self):
         super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
                          ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        assert media_type == 'image'
-        return ['<image_placeholder>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
