@@ -242,6 +242,7 @@ class Template:
                        model=None,
                        **kwargs) -> None:
         assert self._is_init is False, 'The template has been initialized.'
+        self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self._is_init = True
         self.tokenizer = tokenizer
         # if default_system is None. not change self.default_system
@@ -346,8 +347,9 @@ class Template:
                 example[media_key] = [example[media_key]]
 
         # Parse <img></img> format images and merged into images key
-        example['query'], example['history'], images_path = replace_img_tag(
-            example.get('query'), history, self.image_placeholder)
+        if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
+            example['query'], example['history'], images_path = replace_img_tag(
+                example.get('query'), history, self.image_placeholder)
         if images_path:
             images = example.get('images', [])
             images.extend(images_path)

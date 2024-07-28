@@ -5895,15 +5895,18 @@ def get_model_tokenizer(model_type: str,
     if 'is_training' not in kwargs:
         kwargs['is_training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    is_multimodal = 'multi-modal' in model_info.get('tags', [])
     if model is not None:
         model.max_model_len = get_max_model_len(model.config)
         logger.info(f'model.max_model_len: {model.max_model_len}')
         model.model_type = model_type
         model.model_dir = model_dir
+        model.is_multimodal = is_multimodal
         fix_transformers_upgrade(model)
     fix_gradient_checkpointing_warning()
     tokenizer.model_type = model_type
     tokenizer.model_dir = model_dir
+    tokenizer.is_multimodal = is_multimodal
     assert tokenizer.eos_token is not None, 'tokenizer.eos_token has not been set.'
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
