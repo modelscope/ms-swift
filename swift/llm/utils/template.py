@@ -283,8 +283,9 @@ class Template:
             if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
-                    assert len(example[media_key]) == len(history) + 1
-                    for h, m in zip(history, example[media_key][:-1]):
+                    n_round = len(example[media_key])
+                    assert n_round == len(history) + 1
+                    for i, h, m in zip(range(n_round), history + [[query, None]], example[media_key]):
                         num_media_tags = len(re.findall(media_tag, h[0]))
                         if m:
                             assert num_media_tags <= 1, f'num_media_tags: {num_media_tags}'
@@ -292,8 +293,10 @@ class Template:
                                 h[0] = media_tag + h[0]
                         else:
                             assert num_media_tags == 0, f'num_media_tags: {num_media_tags}'
-                    if example[media_key][-1]:
-                        query = media_tag + query
+                        if i == n_round - 1:
+                            query = h[0]
+                        else:
+                            history[i][0] = h[0]
 
                     example[media_key] = [m for m in example[media_key] if m]
 
