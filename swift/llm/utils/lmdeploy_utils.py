@@ -1,6 +1,8 @@
 import asyncio
 import inspect
 import os
+from contextlib import contextmanager
+
 import time
 from copy import deepcopy
 from queue import Queue
@@ -49,6 +51,7 @@ def get_lmdeploy_engine(
     lmdeploy_engine = pipeline(model_dir, backend_config=backend_config)
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
+    lmdeploy_engine.is_multimodal = tokenizer.is_multimodal
     lmdeploy_engine.hf_tokenizer = tokenizer
 
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
@@ -64,6 +67,12 @@ def get_lmdeploy_engine(
         lmdeploy_engine.generation_config = LmdeployGenerationConfig()
 
     return lmdeploy_engine
+
+@contextmanager
+def lmdeploy_context(self: Template):
+    self._is_lmdeploy = True
+    yield
+    self._is_lmdeploy = False
 
 
 class LmdeployGenerationConfig(_LmdeployGenerationConfig):
@@ -130,7 +139,8 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
             history = []
 
         request['history'] = history
-        inputs = template.encode(request)[0]
+        with lmdeploy_context(template):
+            inputs = template.encode(request)[0]
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.

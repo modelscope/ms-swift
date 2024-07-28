@@ -204,6 +204,7 @@ class Template:
         self.tools_prompt = tools_prompt
         self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
         self._is_vllm = False
+        self._is_lmdeploy = False
         self.padding_side = padding_side
 
     @staticmethod
@@ -347,6 +348,9 @@ class Template:
                 # change images field to list
                 example[media_key] = [example[media_key]]
 
+        # Add default tags to examples to note where to put the medias into the sequence
+        self.add_default_tags(example)
+
         # Parse <img></img> format images and merged into images key
         images_path = None
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
@@ -356,9 +360,6 @@ class Template:
             images = example.get('images', [])
             images.extend(images_path)
             example['images'] = images
-
-        # Add default tags to examples to note where to put the medias into the sequence
-        self.add_default_tags(example)
 
         # Check the example that whether matching the very template's rules
         self.check_example(example)
