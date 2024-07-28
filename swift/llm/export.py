@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import json
 import torch
@@ -63,8 +63,40 @@ def _get_dataset(*args, **kwargs):
 
 
 def awq_model_quantize(awq_model, tokenizer) -> None:
+
+    @torch.no_grad()
+    def _module_forward(
+        self, x: torch.Tensor, module: torch.nn.Module, module_kwargs: Dict
+    ) -> torch.Tensor:
+        # The original code of awq.AwqQuantizer._module_forward has a bug with n_parallel_calib_samples
+        if self.n_parallel_calib_samples is None:
+            # runs through all samples at once
+            module_output = module(x, **module_kwargs)
+            if isinstance(module_output, tuple):
+                module_output = module_output[0]
+        else:
+            # memory efficiently runs through all calibration samples
+            # but only n_parallel_calib_samples at a time
+            module_output = []
+            partitioned_inputs = torch.split(x, self.n_parallel_calib_samples)
+            for idx, x_partial in enumerate(partitioned_inputs):
+                tmp_module_kwargs = {**module_kwargs}
+                if 'attention_mask' in tmp_module_kwargs:
+                    tmp_module_kwargs['attention_mask'] = tmp_module_kwargs['attention_mask'][idx:idx+2]
+                partial_output = module(x_partial, **tmp_module_kwargs)
+
+                if isinstance(partial_output, tuple):
+                    partial_output = partial_output[0]
+
+                module_output.append(partial_output.cpu())
+
+            module_output = torch.cat(module_output, dim=0)
+
+        return module_output
+
     from awq.quantize import quantizer
     from transformers import AwqConfig
+    quantizer.AwqQuantizer._module_forward = _module_forward
     assert _args is not None
     logger.info(f'Quantization dataset: {_args.dataset}')
     _origin_get_calib_dataset = quantizer.get_calib_dataset
@@ -72,7 +104,7 @@ def awq_model_quantize(awq_model, tokenizer) -> None:
     group_size = 128
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
-    awq_model.quantize(tokenizer, quant_config=quant_config)
+    awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=2)
     quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(
         bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
