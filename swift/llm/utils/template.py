@@ -302,6 +302,7 @@ class Template:
                     example[media_key] = [m for m in example[media_key] if m]
                     num_media = len(example[media_key])
                     num_new_tags = num_media - num_media_tags
+                    assert num_new_tags >= 0, f'num_new_tags: {num_new_tags}'
                     if history:
                         history[0][0] = media_tag * num_new_tags + history[0][0]
                     else:
@@ -360,7 +361,7 @@ class Template:
         images_path = None
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
-                example.get('query'), history, self.image_placeholder)
+                example.get('query'), history, '<image>')
         if images_path:
             images = example.get('images', [])
             images.extend(images_path)
