@@ -102,7 +102,7 @@ def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
             try:
                 image_data = base64.b64decode(img_path)
                 image = Image.open(BytesIO(image_data))
-            except (binascii.Error, UnidentifiedImageError) as error:
+            except (ValueError, binascii.Error, UnidentifiedImageError) as error:
                 if len(img_path) < 200:
                     raise ValueError(f'invalid image: "{img_path}"')
                 else:
