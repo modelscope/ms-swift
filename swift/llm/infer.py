@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
 import os
+import re
 import shutil
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -247,16 +248,21 @@ def prepare_model_template(args: InferArguments,
     return model, template
 
 
-def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue'],
-                    media_type: Literal['image', 'video', 'audio']) -> None:
+def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue', 'interleave'],
+                    media_type: Literal['image', 'video', 'audio'], query: str) -> None:
     media_key = MediaTag.media_keys[media_type]
     a_an = 'an' if media_type[0] in {'i', 'a'} else 'a'
     text = f'Input {a_an} {media_type} path or URL <<< '
     media_files = infer_kwargs.get(media_key) or []
     if infer_media_type == 'none':
         return
-    if infer_media_type == 'round' or len(media_files) == 0:
+    if infer_media_type == 'interleave':
+        num_media_tags = len(re.findall('<image>', query))
+        for i in range(num_media_tags):
+            media_files.append(input(text))
+    elif infer_media_type == 'round' or len(media_files) == 0:
         media_files += [input(text) or None]
+
     if len(media_files) > 0:
         infer_kwargs[media_key] = media_files
 
@@ -372,7 +378,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 history = []
                 infer_kwargs = {}
 
-            read_media_file(infer_kwargs, args.infer_media_type, args.media_type)
+            read_media_file(infer_kwargs, args.infer_media_type, args.media_type, query)
             infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:
                 system = template.default_system
