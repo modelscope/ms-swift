@@ -268,6 +268,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     template_kwargs['tools_prompt'] = args.tools_prompt
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
+    template_kwargs['rescale_image'] = args.rescale_image
     template: Template = get_template(
         args.template_type,
         tokenizer,
