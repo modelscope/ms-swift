@@ -146,7 +146,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
     prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
 
-    def _prepare_inputs(request: Dict[str, Any], i) -> Dict[str, Any]:
+    def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
         request['history'] = request.get('history') or []
         inputs = template.encode(request)[0]
         prog_bar.update()
@@ -154,7 +154,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
     with lmdeploy_context(template), concurrent.futures.ThreadPoolExecutor(
             max_workers=min(max_workers, len(request_list))) as executor:
-        futures = [executor.submit(_prepare_inputs, request, i) for i, request in enumerate(request_list)]
+        futures = [executor.submit(_prepare_inputs, request) for request in request_list]
         concurrent.futures.wait(futures)
         inputs_list = [future.result() for future in futures]
     prog_bar.close()

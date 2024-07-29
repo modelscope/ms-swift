@@ -318,7 +318,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
 
     prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
 
-    def _prepare_inputs(request: Dict[str, Any], i) -> Dict[str, Any]:
+    def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
         history = request.get('history') or []
         # agent support
         is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
@@ -336,7 +336,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
 
     with vllm_context(template), concurrent.futures.ThreadPoolExecutor(
             max_workers=min(max_workers, len(request_list))) as executor:
-        futures = [executor.submit(_prepare_inputs, request, i) for i, request in enumerate(request_list)]
+        futures = [executor.submit(_prepare_inputs, request) for request in request_list]
         concurrent.futures.wait(futures)
         inputs_list = [future.result() for future in futures]
     prog_bar.close()
