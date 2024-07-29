@@ -311,8 +311,10 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
     is_multimodal = getattr(llm_engine, 'is_multimodal', False)
+    max_workers = os.cpu_count()
     if not is_multimodal:
         use_tqdm = False
+        max_workers = 1
 
     prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
 
@@ -333,7 +335,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
         return inputs
 
     with vllm_context(template), concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(os.cpu_count(), len(request_list))) as executor:
+            max_workers=min(max_workers, len(request_list))) as executor:
         futures = [executor.submit(_prepare_inputs, request, i) for i, request in enumerate(request_list)]
         concurrent.futures.wait(futures)
         inputs_list = [future.result() for future in futures]
