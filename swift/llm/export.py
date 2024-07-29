@@ -1,9 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import json
 import torch
+import transformers
+from packaging import version
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
@@ -62,9 +64,69 @@ def _get_dataset(*args, **kwargs):
         return res
 
 
-def awq_model_quantize(awq_model, tokenizer) -> None:
+def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
+
+    def _llama_rotary_emb_forward(self, x, position_ids):
+        with torch.no_grad():
+            if 'dynamic' in self.rope_type:
+                self._dynamic_frequency_update(position_ids, device=x.device)
+
+            # Core RoPE block
+            inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
+            position_ids_expanded = position_ids[:, None, :].float()
+            # Force float32 (see https://github.com/huggingface/transformers/pull/29285)
+            device_type = x.device.type
+            device_type = device_type if isinstance(device_type, str) and device_type != 'mps' else 'cpu'
+            with torch.autocast(device_type=device_type, enabled=False):
+                inv_freq_expanded = inv_freq_expanded.to(position_ids_expanded.device)
+                freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+                emb = torch.cat((freqs, freqs), dim=-1)
+                cos = emb.cos()
+                sin = emb.sin()
+
+            # Advanced RoPE types (e.g. yarn) apply a post-processing scaling factor, equivalent to scaling attention
+            cos = cos * self.attention_scaling
+            sin = sin * self.attention_scaling
+
+            return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
+
+    @torch.no_grad()
+    def _module_forward(self, x: torch.Tensor, module: torch.nn.Module, module_kwargs: Dict) -> torch.Tensor:
+        # The original code of awq.AwqQuantizer._module_forward has a bug with n_parallel_calib_samples
+        if self.n_parallel_calib_samples is None:
+            # runs through all samples at once
+            module_output = module(x, **module_kwargs)
+            if isinstance(module_output, tuple):
+                module_output = module_output[0]
+        else:
+            # memory efficiently runs through all calibration samples
+            # but only n_parallel_calib_samples at a time
+            module_output = []
+            partitioned_inputs = torch.split(x, self.n_parallel_calib_samples)
+            for idx, x_partial in enumerate(partitioned_inputs):
+                tmp_module_kwargs = {**module_kwargs}
+                if 'attention_mask' in tmp_module_kwargs:
+                    tmp_module_kwargs['attention_mask'] = tmp_module_kwargs['attention_mask'][idx:idx + self.
+                                                                                              n_parallel_calib_samples]
+                partial_output = module(x_partial, **tmp_module_kwargs)
+
+                if isinstance(partial_output, tuple):
+                    partial_output = partial_output[0]
+
+                module_output.append(partial_output.cpu())
+
+            module_output = torch.cat(module_output, dim=0)
+
+        return module_output
+
     from awq.quantize import quantizer
     from transformers import AwqConfig
+    if version.parse(awq.__version__) >= version.parse('0.2.6'):
+        quantizer.AwqQuantizer._module_forward = _module_forward
+
+    if version.parse(transformers.__version__) >= version.parse('4.43.0'):
+        transformers.models.llama.modeling_llama.LlamaRotaryEmbedding.forward = _llama_rotary_emb_forward
+
     assert _args is not None
     logger.info(f'Quantization dataset: {_args.dataset}')
     _origin_get_calib_dataset = quantizer.get_calib_dataset
@@ -72,17 +134,17 @@ def awq_model_quantize(awq_model, tokenizer) -> None:
     group_size = 128
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
-    awq_model.quantize(tokenizer, quant_config=quant_config)
+    awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=batch_size)
     quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(
         bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
 
 
-def gptq_model_quantize(model, tokenizer):
+def gptq_model_quantize(model, tokenizer, batch_size):
     from optimum.gptq import GPTQQuantizer, quantizer
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
-    gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset))
+    gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size)
     _origin_get_dataset = quantizer.get_dataset
     quantizer.get_dataset = _get_dataset
     logger.info('Start quantizing the model...')
@@ -185,11 +247,11 @@ def llm_export(args: ExportArguments) -> None:
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(
                 args, device_map=args.quant_device_map, verbose=False, automodel_class=AutoAWQForCausalLM)
-            awq_model_quantize(model, template.tokenizer)
+            awq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.save_quantized(args.quant_output_dir)
         elif args.quant_method == 'gptq':
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
-            gptq_quantizer = gptq_model_quantize(model, template.tokenizer)
+            gptq_quantizer = gptq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
         elif args.quant_method == 'bnb':

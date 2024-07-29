@@ -1457,6 +1457,7 @@ class ExportArguments(InferArguments):
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
     quant_output_dir: Optional[str] = None
+    quant_batch_size: int = 1
 
     # push to ms hub
     push_to_hub: bool = False
