@@ -121,7 +121,8 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
     from awq.quantize import quantizer
     from transformers import AwqConfig
-    quantizer.AwqQuantizer._module_forward = _module_forward
+    if version.parse(awq.__version__) >= version.parse('0.2.6'):
+        quantizer.AwqQuantizer._module_forward = _module_forward
 
     if version.parse(transformers.__version__) >= version.parse('4.43.0'):
         transformers.models.llama.modeling_llama.LlamaRotaryEmbedding.forward = _llama_rotary_emb_forward
