@@ -255,9 +255,9 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
 
     def _input_media(media_type: Literal['image', 'video', 'audio']) -> None:
         media_key = MediaTag.media_keys[media_type]
+        media_files = infer_kwargs.get(media_key) or []
         a_an = 'an' if media_type[0] in {'i', 'a'} else 'a'
         text = f'Input {a_an} {media_type} path or URL <<< '
-        media_files = infer_kwargs.get(media_key) or []
         media_files += [input(text) or None]
         infer_kwargs[media_key] = media_files
 
@@ -267,7 +267,11 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
         for tag in media_tags:
             media_type = standard_tags_r[tag]
             _input_media(media_type)
-    elif infer_media_type == 'round' or len(media_files) == 0:
+        return
+
+    media_key = MediaTag.media_keys[media_type]
+    media_files = infer_kwargs.get(media_key) or []
+    if infer_media_type == 'round' or len(media_files) == 0:
         _input_media(media_type)
 
 
