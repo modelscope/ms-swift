@@ -35,8 +35,8 @@ def get_lmdeploy_engine(
         revision: Optional[str] = None,
         tp: int = 1,
         cache_max_entry_count: float = 0.8,
+        vision_batch_size: int = 8,  # max_batch_size in VisionConfig
         engine_kwargs: Optional[Dict[str, Any]] = None,
-        vision_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Union[AsyncEngine, VLAsyncEngine]:
     model_dir = kwargs.pop('model_dir', None)
     tokenizer = get_model_tokenizer(
@@ -50,8 +50,6 @@ def get_lmdeploy_engine(
 
     if engine_kwargs is None:
         engine_kwargs = {}
-    if vision_kwargs is None:
-        vision_kwargs = {}
     engine_kwargs['tp'] = tp
     engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
 
@@ -60,12 +58,13 @@ def get_lmdeploy_engine(
     if isinstance(backend_config, PytorchEngineConfig):
         backend_config.thread_safe = True
     logger.info(f'backend_config: {backend_config}')
-    is_multimodal = tokenizer.is_multimodal
     pipeline_kwargs = {}
+    is_multimodal = tokenizer.is_multimodal
     if is_multimodal:
-        vision_kwargs['thread_safe'] = True
-    if len(vision_kwargs) > 0:
-        pipeline_kwargs['vision_config'] = VisionConfig(**vision_kwargs)
+        vision_config = VisionConfig(max_batch_size=vision_batch_size)
+        pipeline_kwargs['vision_config'] = vision_config
+        logger.info(f'vision_config: {vision_config}')
+
     lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
@@ -159,6 +158,9 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
                               **kwargs):
     for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
         generation_info[key] = 0
+
+    if hasattr(lmdeploy_engine, 'vl_encoder'):
+        lmdeploy_engine.vl_encoder._loop_task = None
 
     template.model = lmdeploy_engine
     tokenizer = template.tokenizer

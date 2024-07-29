@@ -423,7 +423,7 @@ class Template:
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
         if images:
-            if example.get('objects') or self.load_medias:
+            if example.get('objects') or self.load_medias or self._is_lmdeploy:
                 images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes

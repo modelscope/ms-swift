@@ -987,7 +987,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     LoRATM.cogvlm,
     TemplateType.cogvlm2_video,
     support_gradient_checkpointing=False,
-    requires=['decord', 'pytorchvideo'],
+    requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='THUDM/cogvlm2-video-llama3-chat')
@@ -1588,7 +1588,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.chatglm_generation,
     support_vllm=True,
     support_flash_attn=True,
-    # requires=['transformers>=4.42'],
+    requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b')
 @register_model(
     ModelType.glm4_9b_chat,
@@ -1597,7 +1597,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.chatglm3,
     support_flash_attn=True,
     support_vllm=True,
-    # requires=['transformers>=4.42'],
+    requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b-chat')
 @register_model(
     ModelType.glm4_9b_chat_1m,
@@ -1606,7 +1606,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     TemplateType.chatglm3,
     support_flash_attn=True,
     support_vllm=True,
-    # requires=['transformers>=4.42'],
+    requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b-chat-1m')
 def get_model_tokenizer_glm4(model_dir: str,
                              torch_dtype: Dtype,
@@ -1629,7 +1629,8 @@ def get_model_tokenizer_glm4(model_dir: str,
     LoRATM.glm4v,
     TemplateType.glm4v,
     eos_token='<|endoftext|>',
-    # requires=['transformers>=4.42'],
+    requires=['transformers>=4.42'],
+    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/glm-4v-9b')
 def get_model_tokenizer_glm4v(model_dir: str,
@@ -4809,6 +4810,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
     LoRATM.qwen,
     TemplateType.qwen_vl,
     support_flash_attn=True,
+    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen-VL-Chat')
 @register_model(
