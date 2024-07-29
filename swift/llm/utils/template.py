@@ -163,7 +163,7 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
-    special_tokens = ['<image>', '<video_label>', '<audio_label>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio_label>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = '<image>'
@@ -281,7 +281,7 @@ class Template:
     def add_default_tags(self, example: Dict[str, Any]) -> None:
         history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
+        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio_label>')]:
             if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
@@ -592,7 +592,7 @@ class Template:
             else:
                 return [self.image_placeholder]
         if media_type == 'video':
-            return ['<video_label>']
+            return ['<video>']
         if media_type == 'audio':
             return ['<audio_label>']
 
@@ -1883,6 +1883,9 @@ class LlavaHfTemplate(Template):
 class LlavaVideoTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+
+        if media_type == 'image':
+            return ['<image>\n']
         assert media_type == 'video'
         media_file = example['videos'][index]
         if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
@@ -1894,15 +1897,8 @@ class LlavaVideoTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        media_files = example.get('videos', [])
-        images_path, videos_path = [], []
-        for media_file in media_files:
-            if media_file is None:
-                continue
-            if media_file.rsplit('.', 1)[1] in {'jpg', 'png'}:
-                images_path.append(media_file)
-            else:
-                videos_path.append(media_file)
+        images_path = example.get('images') or []
+        videos_path = example.get('videos') or []
         if len(videos_path) > 0:
             from .vision_utils import _read_batch
             videos = _read_batch(videos_path, _load_video_llava)
@@ -1923,7 +1919,6 @@ register_template(
     TemplateType.llava_next_video,
     LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
     use_model=True,
-    infer_media_type='round',
     media_type='video',
     lazy_tokenize=True)
 
@@ -1942,8 +1937,7 @@ class Llava1_5Template(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
 
 
-register_template(
-    TemplateType.llava1_5, Llava1_5Template(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava1_5, Llava1_5Template(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaTemplate(Template):
@@ -2038,14 +2032,16 @@ register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, l
 
 
 class LLavaLlamaTemplate(Template):
-    llavallama_query_template = ('<|start_header_id|>user<|end_header_id|>\n\n'
-                                 '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n')
+
+    def __init__(self):
+        Template.__init__(self, ['<|begin_of_text|>'], [
+            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+            '<|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         return ['<image>\n']
-
-    def __init__(self):
-        Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -2053,17 +2049,12 @@ class LLavaLlamaTemplate(Template):
             return inputs, {}
         raw_image = example.get('images', [])
         if raw_image:
-            pixel_values = self.tokenizer.processor.image_processor(raw_image[0], return_tensors='pt')['pixel_values']
+            pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
 
 
-register_template(
-    TemplateType.llava_llama_instruct,
-    LLavaLlamaTemplate(),
-    use_model=True,
-    infer_media_type='round',
-    lazy_tokenize=True)
+register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class PaliGemmaTemplate(Template):
@@ -2163,19 +2154,14 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
                      'and assist the user with a variety of tasks using natural language.'
 
     def __init__(self):
-        Template.__init__(self, [], [
-            '<|start_header_id|>user<|end_header_id|>\n\n',
-            '\n{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+        Template.__init__(self, ['<|begin_of_text|>'], [
+            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+            '<|start_header_id|>assistant<|end_header_id|>\n\n'
         ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
 
 
-register_template(
-    TemplateType.llama_llava_next,
-    LlamaLlavaNextTemplate(),
-    use_model=True,
-    infer_media_type='round',
-    lazy_tokenize=True)
+register_template(TemplateType.llama_llava_next, LlamaLlavaNextTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaQwenTemplate(LLavaTemplate):
@@ -2187,8 +2173,7 @@ class LLavaQwenTemplate(LLavaTemplate):
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
 
 
-register_template(
-    TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:
