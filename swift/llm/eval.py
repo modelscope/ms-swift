@@ -292,7 +292,7 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
     final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
     logger.info(f'Final report:{final_report}\n')
 
-    result_dir = os.path.join(args.eval_output_dir, tm)
+    result_dir = args.eval_output_dir
     if result_dir is None:
         result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
     assert result_dir is not None
