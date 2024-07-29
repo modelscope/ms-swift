@@ -2021,11 +2021,9 @@ class Llava1_6VicunaTemplate(Llava1_6Template):
                          system_prefix=['<s>{{SYSTEM}} '])
 
 
-register_template(
-    TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, lazy_tokenize=True)
 
-register_template(
-    TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLava1_6YiTemplate(Llava1_6Template):
@@ -2036,8 +2034,7 @@ class LLava1_6YiTemplate(Llava1_6Template):
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
 
-register_template(
-    TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Template):
