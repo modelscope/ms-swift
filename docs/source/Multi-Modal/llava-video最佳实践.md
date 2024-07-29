@@ -41,12 +41,12 @@ In the video, a person is seen holding a bag of chips and a lighter. The person 
 --------------------------------------------------
 <<< clear
 <<< <image>描述这张图片
-Input a video path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 这张图片是一张照片，显示了一只充满活力和可爱的猫咪。它的头部和脸部呈现出细腻的白色和柔和的灰色斑点，给人一种非常可爱的感觉。猫咪的眼睛非常大，充满了生机和好奇，它们的色彩是深蓝色，与猫咪的眼睛通常的颜色相反。猫咪的耳朵看起来很小，即使它们是很大的猫咪，也很常见。它的身体看起来很健康，毛发柔软而光滑，呈现出一种非常柔和的外观。
 --------------------------------------------------
 <<< clear
 <<< <image>图中有几只羊
-Input a video path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 在这张图中，有四只羊。
 ```
 

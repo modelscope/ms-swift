@@ -38,12 +38,12 @@ In the video, we see a person's hands holding a bag of chips. The person is stan
 --------------------------------------------------
 <<< clear
 <<< <image>Describe this image.
-Input a video path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 This is a close-up photograph of a kitten with a soft, blurred background. The kitten has a light brown coat with darker brown stripes and patches, typical of a calico pattern. Its eyes are wide open, and its nose is pink, which is common for young kittens. The kitten's whiskers are visible, and its ears are perked up, suggesting alertness. The image has a shallow depth of field, with the kitten in focus and the background out of focus, creating a bokeh effect.
 --------------------------------------------------
 <<< clear
 <<< <image>How many sheep are in the picture?
-Input a video path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 """
 ```
