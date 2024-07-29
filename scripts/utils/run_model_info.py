@@ -11,7 +11,7 @@ def get_model_info_table():
         '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
         ' Support Flash Attn | Support vLLM |  Support LMDeploy | Requires | Tags | HF Model ID |\n'
         '| ---------  | -------- | --------------------------- | ---------------- |'
-        ' ------------------ | ------------ | -------- | ---- | ----------- |\n'
+        ' ------------------ | ------------ | ----------------- | -------- | ---- | ----------- |\n'
     ] * 2
     res_llm: List[Any] = []
     res_mllm: List[Any] = []

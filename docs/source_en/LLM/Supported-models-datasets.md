@@ -17,7 +17,7 @@ The table below introcudes all models supported by SWIFT:
 
 ### LLM
 | Model Type | Model ID | Default Lora Target Modules | Default Template | Support Flash Attn | Support vLLM |  Support LMDeploy | Requires | Tags | HF Model ID |
-| ---------  | -------- | --------------------------- | ---------------- | ------------------ | ------------ | -------- | ---- | ----------- |
+| ---------  | -------- | --------------------------- | ---------------- | ------------------ | ------------ | ----------------- | -------- | ---- | ----------- |
 |qwen-1_8b|[qwen/Qwen-1_8B](https://modelscope.cn/models/qwen/Qwen-1_8B/summary)|c_attn|default-generation|&#x2714;|&#x2714;|&#x2714;||-|-|
 |qwen-1_8b-chat|[qwen/Qwen-1_8B-Chat](https://modelscope.cn/models/qwen/Qwen-1_8B-Chat/summary)|c_attn|qwen|&#x2714;|&#x2714;|&#x2714;||-|-|
 |qwen-1_8b-chat-int4|[qwen/Qwen-1_8B-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-1_8B-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2714;|&#x2718;|auto_gptq>=0.5|-|-|
@@ -343,7 +343,7 @@ The table below introcudes all models supported by SWIFT:
 
 ### MLLM
 | Model Type | Model ID | Default Lora Target Modules | Default Template | Support Flash Attn | Support vLLM |  Support LMDeploy | Requires | Tags | HF Model ID |
-| ---------  | -------- | --------------------------- | ---------------- | ------------------ | ------------ | -------- | ---- | ----------- |
+| ---------  | -------- | --------------------------- | ---------------- | ------------------ | ------------ | ----------------- | -------- | ---- | ----------- |
 |qwen-vl|[qwen/Qwen-VL](https://modelscope.cn/models/qwen/Qwen-VL/summary)|c_attn|default-generation|&#x2714;|&#x2718;|&#x2718;||vision|[vision](https://huggingface.co/vision)|
 |qwen-vl-chat|[qwen/Qwen-VL-Chat](https://modelscope.cn/models/qwen/Qwen-VL-Chat/summary)|c_attn|qwen-vl|&#x2714;|&#x2718;|&#x2718;||vision|[vision](https://huggingface.co/vision)|
 |qwen-vl-chat-int4|[qwen/Qwen-VL-Chat-Int4](https://modelscope.cn/models/qwen/Qwen-VL-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2718;|&#x2718;|auto_gptq>=0.5|vision|[vision](https://huggingface.co/vision)|
