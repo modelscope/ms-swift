@@ -62,8 +62,8 @@ def get_model_info_table():
                 hf_model_id_str = f'[{r[8]}]({hf_url})'
             else:
                 hf_model_id_str = '-'
-            text[
-                i] += f'|{r[0]}|[{r[1]}]({ms_url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|{r[7]}|{r[8]}|{hf_model_id_str}|\n'
+            text[i] += (
+                f'|{r[0]}|[{r[1]}]({ms_url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|{r[7]}|{r[8]}|{hf_model_id_str}|\n')
         result[i] += text[i]
 
     for i, fpath in enumerate(fpaths):

@@ -3840,6 +3840,7 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
+    support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-1B')
@@ -3850,6 +3851,7 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
+    support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-2B')
@@ -3860,6 +3862,7 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl2_phi3,
     requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
+    support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-4B')
@@ -3870,6 +3873,7 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
+    support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-8B')
@@ -3880,6 +3884,7 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
+    support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-26B')
@@ -3890,6 +3895,7 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
+    support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-40B')
@@ -3900,6 +3906,7 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
+    support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-Llama3-76B')
@@ -4171,6 +4178,7 @@ def _patch_deepseek_vl(model) -> None:
     LoRATM.llama,
     TemplateType.deepseek_vl,
     support_flash_attn=True,
+    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='deepseek-ai/deepseek-vl-7b-chat')
 @register_model(
@@ -4179,6 +4187,7 @@ def _patch_deepseek_vl(model) -> None:
     LoRATM.llama,
     TemplateType.deepseek_vl,
     support_flash_attn=True,
+    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='deepseek-ai/deepseek-vl-1.3b-chat')
 def get_model_tokenizer_deepseek_vl(model_dir: str,

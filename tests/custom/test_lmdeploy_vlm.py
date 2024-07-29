@@ -57,8 +57,8 @@ def test_lmdeploy_vlm():
     resp_list = inference_lmdeploy(
         lmdeploy_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
     request_list = [{
         'query':
@@ -71,8 +71,8 @@ def test_lmdeploy_vlm():
     for resp_list in gen:
         pass
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
 
 if __name__ == '__main__':
