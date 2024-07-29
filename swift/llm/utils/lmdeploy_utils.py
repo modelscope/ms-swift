@@ -172,7 +172,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
             generation_config.stop_words.append(token_list[0])
     if isinstance(template.suffix[-1], list) and len(
             template.suffix[-1]) == 1 and template.suffix[-1] not in generation_config.stop_words:
-        generation_config.stop_words.append(template.suffix[-1])
+        generation_config.stop_words.append(template.suffix[-1][0])
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     generators = []
