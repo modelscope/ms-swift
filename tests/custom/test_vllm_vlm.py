@@ -24,8 +24,8 @@ def test_vllm_vlm():
     print(generation_info)
 
     # stream
-    history1 = resp_list[0]['history']
-    request_list = [{'query': '有几只羊', 'history': history1}]
+    history0 = resp_list[0]['history']
+    request_list = [{'query': '有几只羊', 'history': history0, 'images': images}]
     gen = inference_stream_vllm(llm_engine, template, request_list, generation_info=generation_info)
     query = request_list[0]['query']
     print_idx = 0
