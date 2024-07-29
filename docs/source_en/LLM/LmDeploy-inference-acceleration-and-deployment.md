@@ -1,4 +1,5 @@
 # LmDeploy Inference Acceleration and Deployment
+Models that support inference acceleration using lmdeploy can be found at [Supported Models](Supported-models-datasets.md#LLM).
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)

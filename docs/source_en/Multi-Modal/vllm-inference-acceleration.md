@@ -1,6 +1,6 @@
 # vLLM Inference Acceleration Documentation
 
-ms-swift has integrated vLLM for accelerating inference of multimodal models. Check out the supported models in [Supported Models and Datasets Documentation](../LLM/Supported-models-datasets.md). It's worth noting that using vLLM for acceleration may have a slight impact on the inference quality, so please ensure you can tolerate this loss in order to boost the inference speed.
+ms-swift has integrated vLLM for accelerating inference of multimodal models. Check out the supported models in [Supported Models and Datasets Documentation](../LLM/Supported-models-datasets.md#MLLM).
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
