@@ -11,14 +11,18 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
-from lmdeploy import TurbomindEngineConfig, pipeline
+from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, pipeline
+from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
 from transformers import GenerationConfig
 
+from swift.utils import get_logger
 from .model import get_model_tokenizer
 from .template import Template
+
+logger = get_logger()
 
 
 def get_lmdeploy_engine(
@@ -48,6 +52,10 @@ def get_lmdeploy_engine(
     engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
 
     backend_config = TurbomindEngineConfig(**engine_kwargs)
+    backend_config = autoget_backend_config(model_dir, backend_config)
+    if isinstance(backend_config, PytorchEngineConfig):
+        backend_config.thread_safe = True
+    logger.info(f'backend_config: {backend_config}')
     lmdeploy_engine = pipeline(model_dir, backend_config=backend_config)
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
