@@ -770,6 +770,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.baichuan,
     requires=['transformers<4.34'],
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan-13B-Chat')
 @register_model(
     ModelType.baichuan_7b,
@@ -778,6 +779,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan-7B')
 @register_model(
     ModelType.mengzi3_13b_base,
@@ -1247,6 +1249,7 @@ def get_model_tokenizer_internlm_chat(model_dir: str,
     TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan-13B-Base')
 def get_model_tokenizer_baichuan_13b(model_dir: str,
                                      torch_dtype: Dtype,
@@ -1371,6 +1374,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
     LoRATM.baichuan,
     TemplateType.baichuan,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan2-13B-Chat')
 @register_model(
     ModelType.baichuan2_13b,
@@ -1378,6 +1382,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
     LoRATM.baichuan,
     TemplateType.default_generation,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan2-13B-Base')
 def get_model_tokenizer_baichuan2_13b(model_dir: str,
                                       torch_dtype: Dtype,
@@ -1412,6 +1417,7 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
     LoRATM.baichuan,
     TemplateType.baichuan,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan2-7B-Chat')
 @register_model(
     ModelType.baichuan2_7b,
@@ -1419,6 +1425,7 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
     LoRATM.baichuan,
     TemplateType.default_generation,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan2-7B-Base')
 def get_model_tokenizer_baichuan2(model_dir: str,
                                   torch_dtype: Dtype,
@@ -1906,6 +1913,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.deepseek,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['math'],
     hf_model_id='deepseek-ai/deepseek-math-7b-instruct')
 @register_model(
@@ -1924,6 +1932,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.deepseek,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['math'],
     hf_model_id='deepseek-ai/deepseek-math-7b-rl')
 @register_model(
@@ -1933,6 +1942,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['math'],
     hf_model_id='deepseek-ai/deepseek-math-7b-base')
 @register_model(
@@ -2022,6 +2032,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/CodeQwen1.5-7B')
 @register_model(
@@ -2040,6 +2051,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='deepseek-ai/deepseek-coder-1.3b-base')
 @register_model(
@@ -2049,6 +2061,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='deepseek-ai/deepseek-coder-6.7b-base')
 @register_model(
@@ -2058,6 +2071,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='deepseek-ai/deepseek-coder-33b-base')
 @register_model(
@@ -2068,6 +2082,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|EOT|>',
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='deepseek-ai/deepseek-coder-1.3b-instruct')
 @register_model(
@@ -2078,6 +2093,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|EOT|>',
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='deepseek-ai/deepseek-coder-6.7b-instruct')
 @register_model(
@@ -2088,6 +2104,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|EOT|>',
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='deepseek-ai/deepseek-coder-33b-instruct')
 @register_model(
@@ -2097,6 +2114,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.openbuddy,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='OpenBuddy/openbuddy-deepseek-67b-v15.2')
 @register_model(
     ModelType.deepseek_67b_chat,
@@ -2105,6 +2123,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.deepseek,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='deepseek-ai/deepseek-llm-67b-chat')
 @register_model(
     ModelType.deepseek_67b,
@@ -2113,6 +2132,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='deepseek-ai/deepseek-llm-67b-base')
 @register_model(
     ModelType.deepseek_7b_chat,
@@ -2121,6 +2141,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.deepseek,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='deepseek-ai/deepseek-llm-7b-chat')
 @register_model(
     ModelType.deepseek_7b,
@@ -2129,6 +2150,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='deepseek-ai/deepseek-llm-7b-base')
 @register_model(
     ModelType.sus_34b_chat,
@@ -2312,6 +2334,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='OpenBuddy/openbuddy-mistral-7b-v17.1-32k')
 @register_model(
     ModelType.openbuddy_llama2_70b_chat,
@@ -2329,6 +2352,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.openbuddy,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='OpenBuddy/openbuddy-llama-65b-v8-bf16')
 @register_model(
     ModelType.openbuddy_llama3_70b_chat,
@@ -2365,6 +2389,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='mistralai/Mistral-7B-Instruct-v0.1')
 @register_model(
     ModelType.mistral_7b_instruct_v2,
@@ -2374,6 +2399,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='mistralai/Mistral-7B-Instruct-v0.2')
 @register_model(
     ModelType.mistral_7b_instruct_v3,
@@ -2384,6 +2410,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='mistralai/Mistral-7B-Instruct-v0.3')
 @register_model(
     ModelType.mistral_7b,
@@ -2393,6 +2420,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='mistralai/Mistral-7B-v0.1')
 @register_model(
     ModelType.codestral_22b,
@@ -2412,6 +2440,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='alpindale/Mistral-7B-v0.2-hf')
 @register_model(
     ModelType.mixtral_moe_7b,
@@ -5150,6 +5179,7 @@ def get_skywork_model_tokenizer(model_dir: str,
     TemplateType.codefuse_codellama,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='codefuse-ai/CodeFuse-CodeLlama-34B')
 def get_model_tokenizer_codellama(model_dir: str,
