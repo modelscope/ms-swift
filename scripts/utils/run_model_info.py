@@ -29,6 +29,8 @@ def get_model_info_table():
         support_flash_attn = bool_mapping[support_flash_attn]
         support_vllm = model_info.get('support_vllm', False)
         support_vllm = bool_mapping[support_vllm]
+        support_lmdeploy = model_info.get('support_lmdeploy', False)
+        support_lmdeploy = bool_mapping[support_lmdeploy]
         requires = ', '.join(model_info['requires'])
         tags = model_info.get('tags', [])
         if 'multi-modal' in tags:
@@ -43,8 +45,8 @@ def get_model_info_table():
         if hf_model_id is None:
             hf_model_id = '-'
         r = [
-            model_name, model_id, lora_target_modules, template, support_flash_attn, support_vllm, requires, tags_str,
-            hf_model_id
+            model_name, model_id, lora_target_modules, template, support_flash_attn, support_vllm, support_lmdeploy,
+            requires, tags_str, hf_model_id
         ]
         if is_multi_modal:
             res_mllm.append(r)
@@ -60,7 +62,8 @@ def get_model_info_table():
                 hf_model_id_str = f'[{r[8]}]({hf_url})'
             else:
                 hf_model_id_str = '-'
-            text[i] += f'|{r[0]}|[{r[1]}]({ms_url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|{r[7]}|{hf_model_id_str}|\n'
+            text[
+                i] += f'|{r[0]}|[{r[1]}]({ms_url})|{r[2]}|{r[3]}|{r[4]}|{r[5]}|{r[6]}|{r[7]}|{r[8]}|{hf_model_id_str}|\n'
         result[i] += text[i]
 
     for i, fpath in enumerate(fpaths):

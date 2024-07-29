@@ -1710,6 +1710,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B')
 @register_model(
@@ -1719,6 +1720,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1.5B')
 @register_model(
@@ -1728,6 +1730,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B')
 @register_model(
@@ -1737,6 +1740,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B')
 @register_model(
@@ -1916,6 +1920,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-0.5B')
 @register_model(
@@ -1925,6 +1930,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-1.8B')
 @register_model(
@@ -1934,6 +1940,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-4B')
 @register_model(
@@ -1943,6 +1950,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-7B')
 @register_model(
@@ -1952,6 +1960,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-14B')
 @register_model(
@@ -1961,6 +1970,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-32B')
 @register_model(
@@ -1970,6 +1980,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-72B')
 @register_model(
@@ -1979,6 +1990,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-110B')
 @register_model(
@@ -2994,6 +3006,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B-Instruct')
 @register_model(
@@ -3003,6 +3016,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1.5B-Instruct')
 @register_model(
@@ -3012,6 +3026,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B-Instruct')
 @register_model(
@@ -3021,6 +3036,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct')
 @register_model(
@@ -3129,6 +3145,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat')
 @register_model(
@@ -3138,6 +3155,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat')
 @register_model(
@@ -3147,6 +3165,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-4B-Chat')
 @register_model(
@@ -3156,6 +3175,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-7B-Chat')
 @register_model(
@@ -3165,6 +3185,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-14B-Chat')
 @register_model(
@@ -3174,6 +3195,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-32B-Chat')
 @register_model(
@@ -3183,6 +3205,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-72B-Chat')
 @register_model(
@@ -3192,6 +3215,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-110B-Chat')
 @register_model(
@@ -3210,6 +3234,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/CodeQwen1.5-7B-Chat')
 def get_model_tokenizer_qwen2_chat(model_dir: str,
@@ -4622,6 +4647,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     TemplateType.codefuse,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['coding'],
     hf_model_id='codefuse-ai/CodeFuse-QWen-14B')
 @register_model(
@@ -4631,6 +4657,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-1_8B')
 @register_model(
     ModelType.qwen_72b,
@@ -4639,6 +4666,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-72B')
 @register_model(
     ModelType.tongyi_finance_14b,
@@ -4647,6 +4675,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['financial'])
 @register_model(
     ModelType.qwen_14b,
@@ -4655,6 +4684,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-14B')
 @register_model(
     ModelType.qwen_7b,
@@ -4663,6 +4693,7 @@ def get_model_tokenizer_qwen(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-7B')
 def get_model_tokenizer_qwen_base(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
@@ -4677,6 +4708,7 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-1_8B-Chat')
 @register_model(
     ModelType.qwen_72b_chat,
@@ -4685,6 +4717,7 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-72B-Chat')
 @register_model(
     ModelType.tongyi_finance_14b_chat,
@@ -4693,6 +4726,7 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     tags=['financial'],
     hf_model_id='jxy/Tongyi-Finance-14B-Chat')
 @register_model(
@@ -4702,6 +4736,7 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-14B-Chat')
 @register_model(
     ModelType.qwen_7b_chat,
@@ -4710,6 +4745,7 @@ def get_model_tokenizer_qwen_base(*args, **kwargs):
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='Qwen/Qwen-7B-Chat')
 def get_model_tokenizer_qwen_chat(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_qwen(*args, **kwargs)
