@@ -122,7 +122,7 @@ class LLaMAPro(SwiftAdapter):
         if model_type == 'phi3-small':
             raise ValueError('phi3-small does not support llamapro currently')
         if model_type in ('llama', 'mistral', 'qwen2', 'yi', 'gemma', 'deepseek', 'openbuddy', 'xverse', 'orion',
-                          'bluelm', 'ziya', 'skywork', 'deepseek-v2', 'minicpm', 'phi3'):
+                          'bluelm', 'ziya', 'skywork', 'deepseek-v2', 'minicpm', 'phi3', 'internlm2'):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).layer_idx = idx
         elif model_type in ('chatglm', 'glm4'):
@@ -131,6 +131,8 @@ class LLaMAPro(SwiftAdapter):
         elif model_type in ('phi2', ):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).block_idx = idx
+        else:
+            raise ValueError(f'model_type:{model_type} not supported yet, please give us a feedback.')
 
     @staticmethod
     def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):
