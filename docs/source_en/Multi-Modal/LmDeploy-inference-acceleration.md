@@ -57,8 +57,8 @@ for request, resp in zip(request_list, resp_list):
 print(generation_info)
 
 # stream
-history1 = resp_list[0]['history']
-request_list = [{'query': 'How many sheep are there?', 'history': history1}]
+history0 = resp_list[0]['history']
+request_list = [{'query': 'How many sheep are there?', 'history': history0, 'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']}]
 gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
 query = request_list[0]['query']
 print_idx = 0
@@ -85,7 +85,7 @@ response: In the first image, the sheep are standing in front of lush green moun
 query: How many sheep are there?
 response: There are four sheep in the image.
 history: [['<image>Describe the image.', 'The image features four sheep standing in a grassy meadow against a backdrop of mountains. The animals are lined up straight, with their large, floppy ears, white, woolly coats, and big, expressive black eyes. The background includes a sky with some fluffy clouds and subtle shades of green and blue. Each sheep has a different facial expression and hat, adding a playful and friendly touch to the overall scene.'], ['How many sheep are there?', 'There are four sheep in the image.']]
-{'num_prompt_tokens': 154, 'num_generated_tokens': 8, 'num_samples': 1, 'runtime': 0.04178288497496396, 'samples/s': 23.933244451626393, 'tokens/s': 191.46595561301115}
+{'num_prompt_tokens': 3479, 'num_generated_tokens': 8, 'num_samples': 1, 'runtime': 0.6162854079157114, 'samples/s': 1.6226248214800645, 'tokens/s': 12.980998571840516}
 """
 ```
 
@@ -120,8 +120,8 @@ if __name__ == '__main__':
     print(generation_info)
 
     # stream
-    history1 = resp_list[0]['history']
-    request_list = [{'query': 'How many sheep are there?', 'history': history1}]
+    history0 = resp_list[0]['history']
+    request_list = [{'query': 'How many sheep are there?', 'history': history0}]
     gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
     query = request_list[0]['query']
     print_idx = 0

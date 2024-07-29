@@ -57,8 +57,8 @@ for request, resp in zip(request_list, resp_list):
 print(generation_info)
 
 # stream
-history1 = resp_list[0]['history']
-request_list = [{'query': '有几只羊', 'history': history1}]
+history0 = resp_list[0]['history']
+request_list = [{'query': '有几只羊', 'history': history0, 'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']}]
 gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
 query = request_list[0]['query']
 print_idx = 0
@@ -83,9 +83,9 @@ query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</
 response: In the first image, the sheep are standing in front of lush green mountains. In the second image, some of their wool is dyed green instead of white.
 {'num_prompt_tokens': 8086, 'num_generated_tokens': 135, 'num_samples': 3, 'runtime': 1.5491395709104836, 'samples/s': 1.93655888490202, 'tokens/s': 87.1451498205909}
 query: 有几只羊
-response: 图中只有四只绵羊。
-history: [['<image>描述图片', '这是一幅以卡通风格绘制的四只绵羊的画面。图中绵羊们站在一片绿色的草地中，背景是多山的风景，有蓝天、白云和几只鸟在飞翔。绵羊们的毛发主要是白色并点缀着一些浅棕色，它们头上都有绒毛。这些绵羊有着大大的眼睛和耳朵，造型可爱，整体画面给人一种和平与田园的感觉。'], ['有几只羊', '图中只有四只绵羊。']]
-{'num_prompt_tokens': 138, 'num_generated_tokens': 7, 'num_samples': 1, 'runtime': 0.03665590099990368, 'samples/s': 27.28073714523148, 'tokens/s': 190.96516001662036}
+response: 图片中总共有四只绵羊。
+history: [['<image>描述图片', '这是一幅以卡通风格绘制的四只绵羊的画面。图中绵羊们站在一片绿色的草地中，背景是多山的风景，有蓝天、白云和几只鸟在飞翔。绵羊们的毛发主要是白色并点缀着一些浅棕色，它们头上都有绒毛。这些绵羊有着大大的眼睛和耳朵，造型可爱，整体画面给人一种和平与田园的感觉。'], ['有几只羊', '图片中总共有四只绵羊。']]
+{'num_prompt_tokens': 3470, 'num_generated_tokens': 8, 'num_samples': 1, 'runtime': 0.6616258070571348, 'samples/s': 1.5114283471618646, 'tokens/s': 12.091426777294917}
 """
 ```
 
@@ -119,8 +119,8 @@ if __name__ == '__main__':
     print(generation_info)
 
     # stream
-    history1 = resp_list[0]['history']
-    request_list = [{'query': '有几只羊', 'history': history1}]
+    history0 = resp_list[0]['history']
+    request_list = [{'query': '有几只羊', 'history': history0}]
     gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
     query = request_list[0]['query']
     print_idx = 0

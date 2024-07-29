@@ -17,15 +17,15 @@ def test_vllm_vlm():
 
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
     request_list = [{'query': 'who are you'}, {'query': 'Describe this image.', 'images': images}]
-    resp_list = inference_vllm(llm_engine, template, request_list)
+    resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info)
     for request, resp in zip(request_list, resp_list):
         print(f"query: {request['query']}")
         print(f"response: {resp['response']}")
     print(generation_info)
 
     # stream
-    history1 = resp_list[0]['history']
-    request_list = [{'query': '有几只羊', 'history': history1}]
+    history1 = resp_list[1]['history']
+    request_list = [{'query': '有几只羊', 'history': history1, 'images': images}]
     gen = inference_stream_vllm(llm_engine, template, request_list, generation_info=generation_info)
     query = request_list[0]['query']
     print_idx = 0
