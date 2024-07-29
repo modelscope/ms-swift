@@ -1,9 +1,9 @@
 import asyncio
+import concurrent.futures
 import inspect
 import os
-from contextlib import contextmanager
-
 import time
+from contextlib import contextmanager
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
@@ -68,8 +68,10 @@ def get_lmdeploy_engine(
 
     return lmdeploy_engine
 
+
 @contextmanager
 def lmdeploy_context(self: Template):
+    # Thread-unsafe
     self._is_lmdeploy = True
     yield
     self._is_lmdeploy = False
@@ -132,23 +134,34 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     if not is_multimodal:
         use_tqdm = False
 
+    prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
     generators = []
-    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
+
+    def _prepare_generators(request: Dict[str, Any], i) -> None:
         history = request.get('history', None)
         if history is None:
             history = []
 
         request['history'] = history
-        with lmdeploy_context(template):
-            inputs = template.encode(request)[0]
+        inputs = template.encode(request)[0]
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': history}
-            continue
+            return
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generator = lmdeploy_engine.get_generator(False, i)
         generators.append((i, inputs, generator))
+        prog_bar.update()
+
+    with lmdeploy_context(template), concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(os.cpu_count(), len(request_list))) as executor:
+        futures = [executor.submit(_prepare_generators, request, i) for i, request in enumerate(request_list)]
+        concurrent.futures.wait(futures)
+        for future in futures:  # raise Error
+            future.result()
+    prog_bar.close()
+
     generation_info['num_samples'] = len(generators)
     return resp_list, generators
 

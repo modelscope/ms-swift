@@ -1,7 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import re
 from copy import deepcopy
 from io import BytesIO
+from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
@@ -420,22 +422,51 @@ class Template:
 
         # Load image into PIL format
         from .vision_utils import load_image, rescale_image, _read_batch
-        if example.get('images'):
-            images = example['images']
+        images = example.get('images') or []
+        if images:
             if example.get('objects') or self.load_medias:
                 images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
-            if self.load_medias:
-                if self.grounding_type != 'real':
-                    images = [rescale_image(img, self.rescale_image) for img in images]
-                example['images'] = images
+            if self.load_medias and self.grounding_type != 'real':
+                images = [rescale_image(img, self.rescale_image) for img in images]
+            example['images'] = images
+
         return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
-        return self._encode(example)
+        _encode = self._encode
+        if self._is_lmdeploy:
+            assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
+            _encode = MethodType(Template._encode, self)
+        return _encode(example)
+
+    def _prepare_lmdeploy_vl_inputs(self, inputs: Dict[str, Any], example: Dict[str, Any]) -> None:
+        images = example.get('images') or []
+        if len(images) > 0:
+            from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
+            images = self.model.vl_encoder.infer(images)
+            images = [x.cpu().numpy() for x in images]
+
+            input_ids = inputs['input_ids']
+            idx_list = _findall(input_ids, -100)
+            assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
+            idx_list.insert(0, -1)
+            new_input_ids = []
+            ranges = []
+            for i in range(len(idx_list) - 1):
+                ranges.append([None, None])
+                new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+                ranges[-1][0] = len(new_input_ids)
+                new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
+                ranges[-1][1] = len(new_input_ids)
+            new_input_ids += input_ids[idx_list[-1] + 1:]
+            inputs['input_embeddings'] = images
+            inputs['input_embedding_ranges'] = ranges
+            inputs['input_ids'] = new_input_ids
+        return inputs
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
@@ -458,6 +489,8 @@ class Template:
             auto_add_bos=self.auto_add_bos,
             example=example,
             is_multi_modal=is_multi_modal)
+        if self._is_lmdeploy and self.is_multimodal:
+            self._prepare_lmdeploy_vl_inputs(inputs, example)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -555,7 +588,10 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            return [self.image_placeholder]
+            if self._is_lmdeploy:
+                return [[-100]]
+            else:
+                return [self.image_placeholder]
         if media_type == 'video':
             return ['<video_label>']
         if media_type == 'audio':
@@ -624,15 +660,19 @@ class Template:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
+        replace_tag = self.replace_tag
+        if self._is_lmdeploy:
+            replace_tag = MethodType(Template.replace_tag, self)
+
         for context, loss_scale in zip(context_list, loss_scale_list):
             if context == '<image>':
-                c_list = self.replace_tag('image', example.get('image_index', 0), example)
+                c_list = replace_tag('image', example.get('image_index', 0), example)
                 example['image_index'] = example.get('image_index', 0) + 1
             elif context == '<video_label>':
-                c_list = self.replace_tag('video', example.get('video_index', 0), example)
+                c_list = replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
             elif context == '<audio_label>':
-                c_list = self.replace_tag('audio', example.get('audio_index', 0), example)
+                c_list = replace_tag('audio', example.get('audio_index', 0), example)
                 example['audio_index'] = example.get('audio_index', 0) + 1
             elif context == '<ref-object>':
                 c_list = self.replace_object(example.get('object_index', 0), example)

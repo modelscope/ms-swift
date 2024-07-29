@@ -17,7 +17,7 @@ def test_lmdeploy_vlm():
         'query':
         '这两张图片有什么区别：'
         '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
-        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>'
+        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>'
     }, {
         'query': '你好'
     }]
@@ -28,8 +28,8 @@ def test_lmdeploy_vlm():
     print(generation_info)
 
     # stream
-    history1 = resp_list[1]['history']
-    request_list = [{'query': '这有什么好吃的', 'history': history1}]
+    history1 = resp_list[0]['history']
+    request_list = [{'query': '有几只羊', 'history': history1}]
     gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
     query = request_list[0]['query']
     print_idx = 0
@@ -48,14 +48,24 @@ def test_lmdeploy_vlm():
 
     # batched
     n_batched = 100
-    request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
+    request_list = [{
+        'query':
+        '这两张图片有什么区别：'
+        '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
+        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>'
+    } for i in range(n_batched)]
     resp_list = inference_lmdeploy(
         lmdeploy_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched
     print(generation_info)
     print(resp_list[0]['history'])
 
-    request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
+    request_list = [{
+        'query':
+        '这两张图片有什么区别：'
+        '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
+        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>'
+    } for i in range(n_batched)]
     gen = inference_stream_lmdeploy(
         lmdeploy_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     for resp_list in gen:
