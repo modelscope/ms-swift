@@ -137,29 +137,27 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
     generators = []
 
-    def _prepare_generators(request: Dict[str, Any], i) -> None:
-        history = request.get('history', None)
-        if history is None:
-            history = []
-
-        request['history'] = history
+    def _prepare_inputs(request: Dict[str, Any], i) -> Dict[str, Any]:
+        request['history'] = request.get('history') or []
         inputs = template.encode(request)[0]
+        prog_bar.update()
+        return inputs
+
+    with lmdeploy_context(template), concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(os.cpu_count(), len(request_list))) as executor:
+        futures = [executor.submit(_prepare_inputs, request, i) for i, request in enumerate(request_list)]
+        concurrent.futures.wait(futures)
+        inputs_list = [future.result() for future in futures]
+
+    for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': history}
+            resp_list[i] = {'response': '', 'history': request['history']}
             return
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generator = lmdeploy_engine.get_generator(False, i)
         generators.append((i, inputs, generator))
-        prog_bar.update()
-
-    with lmdeploy_context(template), concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(os.cpu_count(), len(request_list))) as executor:
-        futures = [executor.submit(_prepare_generators, request, i) for i, request in enumerate(request_list)]
-        concurrent.futures.wait(futures)
-        for future in futures:  # raise Error
-            future.result()
     prog_bar.close()
 
     generation_info['num_samples'] = len(generators)

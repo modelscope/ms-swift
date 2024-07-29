@@ -1994,20 +1994,25 @@ class LLavaTemplate(Template):
         return generate_ids[0].tolist()
 
 
-class Llava1_6MistralTemplate(LlavaHfTemplate):
+class Llava1_6Template(LlavaHfTemplate):
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        for b in batch:
+            pixel_values = b.get('pixel_values')
+            if pixel_values is not None:
+                b['pixel_values'] = pixel_values.squeeze(0)
+        res = super().data_collator(batch, padding_to)
+        return res
+
+
+class Llava1_6MistralTemplate(Llava1_6Template):
 
     def __init__(self):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
 
-
-class Llava1_6VicunaTemplate(LlavaHfTemplate):
+class Llava1_6VicunaTemplate(Llava1_6Template):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
               "The assistant gives helpful, detailed, and polite answers to the human's questions.")
 
@@ -2015,12 +2020,6 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
-
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
 
 
 register_template(
@@ -2030,22 +2029,16 @@ register_template(
     TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
-class LLavaYiTemplate(LlavaHfTemplate):
+class LLava1_6YiTemplate(Llava1_6Template):
 
     def __init__(self):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
-
 
 register_template(
-    TemplateType.llava_yi, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+    TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Template):
