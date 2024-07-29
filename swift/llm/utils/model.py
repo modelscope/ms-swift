@@ -2160,6 +2160,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.sus,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='SUSTech/SUS-Chat-34B')
 @register_model(
     ModelType.openbuddy_zephyr_7b_chat,
@@ -2169,6 +2170,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='OpenBuddy/openbuddy-zephyr-7b-v14.1')
 @register_model(
     ModelType.zephyr_7b_beta_chat,
@@ -2178,6 +2180,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.34'],
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='HuggingFaceH4/zephyr-7b-beta')
 @register_model(
     ModelType.yi_6b_chat,
@@ -2308,6 +2311,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.ziya,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='IDEA-CCNL/Ziya2-13B-Chat')
 @register_model(
     ModelType.ziya2_13b,
@@ -2316,6 +2320,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='IDEA-CCNL/Ziya2-13B-Base')
 @register_model(
     ModelType.openbuddy_mixtral_moe_7b_chat,

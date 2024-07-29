@@ -250,7 +250,7 @@ The table below introcudes all models supported by SWIFT:
 |openbuddy-llama3-8b-chat|[OpenBuddy/openbuddy-llama3-8b-v21.1-8k](https://modelscope.cn/models/OpenBuddy/openbuddy-llama3-8b-v21.1-8k/summary)|q_proj, k_proj, v_proj|openbuddy2|&#x2714;|&#x2714;|&#x2714;||-|-|
 |openbuddy-llama3-70b-chat|[OpenBuddy/openbuddy-llama3-70b-v21.1-8k](https://modelscope.cn/models/OpenBuddy/openbuddy-llama3-70b-v21.1-8k/summary)|q_proj, k_proj, v_proj|openbuddy2|&#x2714;|&#x2714;|&#x2714;||-|-|
 |openbuddy-mistral-7b-chat|[OpenBuddy/openbuddy-mistral-7b-v17.1-32k](https://modelscope.cn/models/OpenBuddy/openbuddy-mistral-7b-v17.1-32k/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|&#x2714;|transformers>=4.34|-|-|
-|openbuddy-zephyr-7b-chat|[OpenBuddy/openbuddy-zephyr-7b-v14.1](https://modelscope.cn/models/OpenBuddy/openbuddy-zephyr-7b-v14.1/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|&#x2718;|transformers>=4.34|-|-|
+|openbuddy-zephyr-7b-chat|[OpenBuddy/openbuddy-zephyr-7b-v14.1](https://modelscope.cn/models/OpenBuddy/openbuddy-zephyr-7b-v14.1/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|&#x2714;|transformers>=4.34|-|-|
 |openbuddy-deepseek-67b-chat|[OpenBuddy/openbuddy-deepseek-67b-v15.2](https://modelscope.cn/models/OpenBuddy/openbuddy-deepseek-67b-v15.2/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|&#x2714;||-|-|
 |openbuddy-mixtral-moe-7b-chat|[OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k](https://modelscope.cn/models/OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k/summary)|q_proj, k_proj, v_proj|openbuddy|&#x2714;|&#x2714;|&#x2718;|transformers>=4.36|-|-|
 |openbuddy-llama3_1-8b-chat|[OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k](https://modelscope.cn/models/OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k/summary)|q_proj, k_proj, v_proj|openbuddy2|&#x2714;|&#x2714;|&#x2714;|transformers>=4.43|-|-|
@@ -297,14 +297,14 @@ The table below introcudes all models supported by SWIFT:
 |bluelm-7b-32k|[vivo-ai/BlueLM-7B-Base-32K](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Base-32K/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;|&#x2718;||-|-|
 |bluelm-7b-chat|[vivo-ai/BlueLM-7B-Chat](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat/summary)|q_proj, k_proj, v_proj|bluelm|&#x2718;|&#x2718;|&#x2718;||-|-|
 |bluelm-7b-chat-32k|[vivo-ai/BlueLM-7B-Chat-32K](https://modelscope.cn/models/vivo-ai/BlueLM-7B-Chat-32K/summary)|q_proj, k_proj, v_proj|bluelm|&#x2718;|&#x2718;|&#x2718;||-|-|
-|ziya2-13b|[Fengshenbang/Ziya2-13B-Base](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|&#x2718;||-|-|
-|ziya2-13b-chat|[Fengshenbang/Ziya2-13B-Chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)|q_proj, k_proj, v_proj|ziya|&#x2714;|&#x2714;|&#x2718;||-|-|
+|ziya2-13b|[Fengshenbang/Ziya2-13B-Base](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Base/summary)|q_proj, k_proj, v_proj|default-generation|&#x2714;|&#x2714;|&#x2714;||-|-|
+|ziya2-13b-chat|[Fengshenbang/Ziya2-13B-Chat](https://modelscope.cn/models/Fengshenbang/Ziya2-13B-Chat/summary)|q_proj, k_proj, v_proj|ziya|&#x2714;|&#x2714;|&#x2714;||-|-|
 |skywork-13b|[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base/summary)|q_proj, k_proj, v_proj|default-generation|&#x2718;|&#x2718;|&#x2718;||-|-|
 |skywork-13b-chat|[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat/summary)|q_proj, k_proj, v_proj|skywork|&#x2718;|&#x2718;|&#x2718;||-|-|
-|zephyr-7b-beta-chat|[modelscope/zephyr-7b-beta](https://modelscope.cn/models/modelscope/zephyr-7b-beta/summary)|q_proj, k_proj, v_proj|zephyr|&#x2714;|&#x2714;|&#x2718;|transformers>=4.34|-|-|
+|zephyr-7b-beta-chat|[modelscope/zephyr-7b-beta](https://modelscope.cn/models/modelscope/zephyr-7b-beta/summary)|q_proj, k_proj, v_proj|zephyr|&#x2714;|&#x2714;|&#x2714;|transformers>=4.34|-|-|
 |polylm-13b|[damo/nlp_polylm_13b_text_generation](https://modelscope.cn/models/damo/nlp_polylm_13b_text_generation/summary)|c_attn|default-generation|&#x2718;|&#x2718;|&#x2718;||-|-|
 |seqgpt-560m|[damo/nlp_seqgpt-560m](https://modelscope.cn/models/damo/nlp_seqgpt-560m/summary)|query_key_value|default-generation|&#x2718;|&#x2714;|&#x2718;||-|-|
-|sus-34b-chat|[SUSTC/SUS-Chat-34B](https://modelscope.cn/models/SUSTC/SUS-Chat-34B/summary)|q_proj, k_proj, v_proj|sus|&#x2714;|&#x2714;|&#x2718;||-|-|
+|sus-34b-chat|[SUSTC/SUS-Chat-34B](https://modelscope.cn/models/SUSTC/SUS-Chat-34B/summary)|q_proj, k_proj, v_proj|sus|&#x2714;|&#x2714;|&#x2714;||-|-|
 |tongyi-finance-14b|[TongyiFinance/Tongyi-Finance-14B](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B/summary)|c_attn|default-generation|&#x2714;|&#x2714;|&#x2714;||financial|[financial](https://huggingface.co/financial)|
 |tongyi-finance-14b-chat|[TongyiFinance/Tongyi-Finance-14B-Chat](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat/summary)|c_attn|qwen|&#x2714;|&#x2714;|&#x2714;||financial|[financial](https://huggingface.co/financial)|
 |tongyi-finance-14b-chat-int4|[TongyiFinance/Tongyi-Finance-14B-Chat-Int4](https://modelscope.cn/models/TongyiFinance/Tongyi-Finance-14B-Chat-Int4/summary)|c_attn|qwen|&#x2714;|&#x2714;|&#x2718;|auto_gptq>=0.5|financial|[financial](https://huggingface.co/financial)|
