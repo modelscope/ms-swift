@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import asyncio
 import re
 from copy import deepcopy
 from io import BytesIO
@@ -457,11 +456,12 @@ class Template:
             new_input_ids = []
             ranges = []
             for i in range(len(idx_list) - 1):
-                ranges.append([None, None])
+                _range = []
                 new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
-                ranges[-1][0] = len(new_input_ids)
+                _range.append(len(new_input_ids))
                 new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
-                ranges[-1][1] = len(new_input_ids)
+                _range.append(len(new_input_ids))
+                ranges.append(_range)
             new_input_ids += input_ids[idx_list[-1] + 1:]
             inputs['input_embeddings'] = images
             inputs['input_embedding_ranges'] = ranges
