@@ -108,7 +108,15 @@ system,instruction,input,output
 00002,AAAAA,BBBBB,CCCCC
 ```
 
-**Human preference alignment **
+**Extra pre-training format:**
+```jsonl
+{"text": "11111"}
+{"text": "aaaaa"}
+{"text": "AAAAA"}
+```
+
+
+**Human preference alignment:**
 
 Language model (DPO/ORPO/SimPO/CPO)
 ```jsonl
