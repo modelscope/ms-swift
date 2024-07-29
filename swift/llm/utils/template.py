@@ -1108,7 +1108,7 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
     pass
 
 
-register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True, media_type='audio')
+register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
 register_template(
     TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
@@ -1919,7 +1919,6 @@ register_template(
     TemplateType.llava_next_video,
     LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
     use_model=True,
-    media_type='video',
     lazy_tokenize=True)
 
 register_template(
@@ -1927,7 +1926,6 @@ register_template(
     LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
     use_model=True,
     infer_media_type='round',
-    media_type='video',
     lazy_tokenize=True)
 
 
