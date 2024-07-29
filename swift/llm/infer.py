@@ -263,12 +263,13 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
 
     if infer_media_type == 'interleave':
         media_tags = re.findall('|'.join(list(MediaTag.standard_tags.values())), query)
-        standard_tags_r = {v: k for k,v in MediaTag.standard_tags.items()}
+        standard_tags_r = {v: k for k, v in MediaTag.standard_tags.items()}
         for tag in media_tags:
             media_type = standard_tags_r[tag]
             _input_media(media_type)
     elif infer_media_type == 'round' or len(media_files) == 0:
         _input_media(media_type)
+
 
 def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
     logger.info(f'args: {args}')

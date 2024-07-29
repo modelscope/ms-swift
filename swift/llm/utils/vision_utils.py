@@ -158,6 +158,7 @@ def _read_video(video_path: str) -> BytesIO:
             mp4_stream = BytesIO(f.read())
     return mp4_stream
 
+
 def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
     from decord import VideoReader, cpu
     from PIL import Image
