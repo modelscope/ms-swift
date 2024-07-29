@@ -167,6 +167,3 @@ Comming soon...
 
 ## Deployment
 Comming soon...
-
-## Multimodal
-Check [here](../Multi-Modal/LmDeploy-inference-acceleration-and-deployment.md)
