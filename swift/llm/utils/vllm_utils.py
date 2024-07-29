@@ -339,6 +339,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
         futures = [executor.submit(_prepare_inputs, request, i) for i, request in enumerate(request_list)]
         concurrent.futures.wait(futures)
         inputs_list = [future.result() for future in futures]
+    prog_bar.close()
 
     for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')

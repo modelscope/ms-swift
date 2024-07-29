@@ -71,7 +71,6 @@ def get_lmdeploy_engine(
 
 @contextmanager
 def lmdeploy_context(self: Template):
-    # Thread-unsafe
     self._is_lmdeploy = True
     yield
     self._is_lmdeploy = False
@@ -130,6 +129,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         generation_config.stop_words.append(template.suffix[-1])
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
+    generators = []
     is_multimodal = getattr(lmdeploy_engine, 'is_multimodal', False)
     max_workers = os.cpu_count()
     if not is_multimodal:
@@ -137,7 +137,6 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         max_workers = 1
 
     prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
-    generators = []
 
     def _prepare_inputs(request: Dict[str, Any], i) -> Dict[str, Any]:
         request['history'] = request.get('history') or []
@@ -150,17 +149,17 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         futures = [executor.submit(_prepare_inputs, request, i) for i, request in enumerate(request_list)]
         concurrent.futures.wait(futures)
         inputs_list = [future.result() for future in futures]
+    prog_bar.close()
 
     for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': request['history']}
-            return
+            continue
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generator = lmdeploy_engine.get_generator(False, i)
         generators.append((i, inputs, generator))
-    prog_bar.close()
 
     generation_info['num_samples'] = len(generators)
     return resp_list, generators
