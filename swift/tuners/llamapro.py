@@ -140,6 +140,9 @@ class LLaMAPro(SwiftAdapter):
                 assert len(attrs) <= 1
                 if attrs:
                     setattr(getattr(module, attention), attrs[0], idx)
+                else:
+                    logger.warn(f'model_type: {model_type} seems has no layer_idx, if you encountered anything wrong,'
+                                f'please give us a feedback.')
 
     @staticmethod
     def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):
