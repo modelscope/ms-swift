@@ -160,8 +160,6 @@ history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/anim
 """
 ```
 
-
-
 ### Using CLI
 Comming soon...
 
