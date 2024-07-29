@@ -106,7 +106,8 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
             for idx, x_partial in enumerate(partitioned_inputs):
                 tmp_module_kwargs = {**module_kwargs}
                 if 'attention_mask' in tmp_module_kwargs:
-                    tmp_module_kwargs['attention_mask'] = tmp_module_kwargs['attention_mask'][idx:idx + 2]
+                    tmp_module_kwargs['attention_mask'] = tmp_module_kwargs['attention_mask'][idx:idx + self.
+                                                                                              n_parallel_calib_samples]
                 partial_output = module(x_partial, **tmp_module_kwargs)
 
                 if isinstance(partial_output, tuple):
@@ -245,11 +246,11 @@ def llm_export(args: ExportArguments) -> None:
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(
                 args, device_map=args.quant_device_map, verbose=False, automodel_class=AutoAWQForCausalLM)
-            awq_model_quantize(model, template.tokenizer, args.batch_size)
+            awq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.save_quantized(args.quant_output_dir)
         elif args.quant_method == 'gptq':
             model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
-            gptq_quantizer = gptq_model_quantize(model, template.tokenizer, args.batch_size)
+            gptq_quantizer = gptq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
         elif args.quant_method == 'bnb':
