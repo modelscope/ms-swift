@@ -814,7 +814,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.default_generation,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-llama-2-1.3b')
 @register_model(
     ModelType.chinese_llama_2_7b,
@@ -823,7 +823,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.default_generation,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-llama-2-7b')
 @register_model(
     ModelType.chinese_llama_2_7b_16k,
@@ -832,7 +832,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.default_generation,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-llama-2-7b-16k')
 @register_model(
     ModelType.chinese_llama_2_7b_64k,
@@ -841,7 +841,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.default_generation,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-llama-2-7b-64k')
 @register_model(
     ModelType.chinese_llama_2_13b,
@@ -850,7 +850,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.default_generation,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-llama-2-13b')
 @register_model(
     ModelType.chinese_llama_2_13b_16k,
@@ -859,7 +859,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.default_generation,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-llama-2-13b-16k')
 @register_model(
     ModelType.chinese_alpaca_2_1_3b,
@@ -868,7 +868,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.llama,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-alpaca-2-1.3b')
 @register_model(
     ModelType.chinese_alpaca_2_7b,
@@ -877,7 +877,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.llama,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-alpaca-2-7b')
 @register_model(
     ModelType.chinese_alpaca_2_7b_16k,
@@ -886,7 +886,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.llama,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-alpaca-2-7b-16k')
 @register_model(
     ModelType.chinese_alpaca_2_7b_64k,
@@ -895,7 +895,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.llama,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-alpaca-2-7b-64k')
 @register_model(
     ModelType.chinese_alpaca_2_13b,
@@ -904,7 +904,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.llama,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-alpaca-2-13b')
 @register_model(
     ModelType.chinese_alpaca_2_13b_16k,
@@ -913,7 +913,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     TemplateType.llama,
     support_vllm=True,
     support_flash_attn=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/chinese-alpaca-2-13b-16k')
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
@@ -2187,7 +2187,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|im_end|>',
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-6B-Chat')
 @register_model(
     ModelType.yi_6b_chat_awq,
@@ -2221,7 +2221,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|im_end|>',
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-34B-Chat')
 @register_model(
     ModelType.yi_34b_chat_awq,
@@ -2254,7 +2254,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-34B-200K')
 @register_model(
     ModelType.yi_34b,
@@ -2263,7 +2263,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-34B')
 @register_model(
     ModelType.yi_6b_200k,
@@ -2272,7 +2272,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-6B-200K')
 @register_model(
     ModelType.yi_9b,
@@ -2281,7 +2281,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-9B')
 @register_model(
     ModelType.yi_9b_200k,
@@ -2290,7 +2290,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-9B-200K')
 @register_model(
     ModelType.yi_6b,
@@ -2299,7 +2299,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-6B')
 @register_model(
     ModelType.ziya2_13b_chat,
@@ -2550,7 +2550,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-6B')
 @register_model(
     ModelType.yi_1_5_6b_chat,
@@ -2559,7 +2559,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.yi1_5,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-6B-Chat')
 @register_model(
     ModelType.yi_1_5_6b_chat_awq_int4,
@@ -2634,7 +2634,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-9B')
 @register_model(
     ModelType.yi_1_5_9b_chat,
@@ -2643,7 +2643,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.yi1_5,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-9B-Chat')
 @register_model(
     ModelType.yi_1_5_9b_chat_16k,
@@ -2652,7 +2652,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.yi1_5,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-9B-Chat-16K')
 @register_model(
     ModelType.yi_1_5_34b,
@@ -2661,7 +2661,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-34B')
 @register_model(
     ModelType.yi_1_5_34b_chat,
@@ -2670,7 +2670,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.yi1_5,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-34B-Chat')
 @register_model(
     ModelType.yi_1_5_34b_chat_16k,
@@ -2679,7 +2679,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.yi1_5,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-1.5-34B-Chat-16K')
 def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
@@ -4591,7 +4591,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/llama-3-chinese-8b')
 @register_model(
     ModelType.llama_3_chinese_8b_instruct,
@@ -4600,7 +4600,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     TemplateType.llama3,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeplpy=True,
+    support_lmdeploy=True,
     hf_model_id='hfl/llama-3-chinese-8b-instruct')
 @register_model(
     ModelType.llama2_7b_aqlm_2bit_1x16,
