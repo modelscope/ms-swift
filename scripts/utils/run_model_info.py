@@ -9,7 +9,7 @@ def get_model_info_table():
     model_name_list = ModelType.get_model_name_list()
     result = [
         '| Model Type | Model ID | Default Lora Target Modules | Default Template |'
-        ' Support Flash Attn | Support VLLM | Requires | Tags | HF Model ID |\n'
+        ' Support Flash Attn | Support vLLM |  Support LMDeploy | Requires | Tags | HF Model ID |\n'
         '| ---------  | -------- | --------------------------- | ---------------- |'
         ' ------------------ | ------------ | -------- | ---- | ----------- |\n'
     ] * 2
