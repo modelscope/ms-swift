@@ -35,7 +35,7 @@ def get_lmdeploy_engine(
         revision: Optional[str] = None,
         tp: int = 1,
         cache_max_entry_count: float = 0.8,
-        vision_batch_size: int = 8,  # max_batch_size in VisionConfig
+        vision_batch_size: int = 1,  # max_batch_size in VisionConfig
         engine_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Union[AsyncEngine, VLAsyncEngine]:
     model_dir = kwargs.pop('model_dir', None)
