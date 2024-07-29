@@ -1,13 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
 from copy import deepcopy
-from io import BytesIO
 from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import numpy as np
-import requests
 import torch
 import torch.nn.functional as F
 from torch import Tensor
