@@ -132,7 +132,14 @@ class LLaMAPro(SwiftAdapter):
             for idx, module in enumerate(module_list):
                 getattr(module, attention).block_idx = idx
         else:
-            raise ValueError(f'model_type:{model_type} not supported yet, please give us a feedback.')
+            for idx, module in enumerate(module_list):
+                attrs = [
+                    attr for attr in dir(getattr(module_list[0], attention))
+                    if attr in ('layer_idx', 'layer_number', 'block_idx')
+                ]
+                assert len(attrs) <= 1
+                if attrs:
+                    setattr(getattr(module, attention), attrs[0], idx)
 
     @staticmethod
     def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):
