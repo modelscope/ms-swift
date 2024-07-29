@@ -443,7 +443,7 @@ class Template:
             _encode = MethodType(Template._encode, self)
         return _encode(example)
 
-    def _prepare_lmdeploy_vl_inputs(self, inputs: Dict[str, Any], example: Dict[str, Any]) -> None:
+    def _prepare_lmdeploy_inputs(self, inputs: Dict[str, Any], example: Dict[str, Any]) -> None:
         images = example.get('images') or []
         if len(images) > 0:
             from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
@@ -466,7 +466,6 @@ class Template:
             inputs['input_embeddings'] = images
             inputs['input_embedding_ranges'] = ranges
             inputs['input_ids'] = new_input_ids
-        return inputs
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
@@ -489,8 +488,8 @@ class Template:
             auto_add_bos=self.auto_add_bos,
             example=example,
             is_multi_modal=is_multi_modal)
-        if self._is_lmdeploy and self.is_multimodal:
-            self._prepare_lmdeploy_vl_inputs(inputs, example)
+        if self._is_lmdeploy:
+            self._prepare_lmdeploy_inputs(inputs, example)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
