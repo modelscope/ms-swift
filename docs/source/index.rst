@@ -69,6 +69,7 @@ Swift DOCUMENTATION
    Multi-Modal/minicpm-v-2.5最佳实践.md
    Multi-Modal/internvl最佳实践.md
    Multi-Modal/MLLM部署文档.md
+   Multi-Modal/LmDeploy推理加速文档.md
    Multi-Modal/vLLM推理加速文档.md
    Multi-Modal/人类偏好对齐训练文档.md
 

@@ -67,6 +67,7 @@ Swift DOCUMENTATION
    Multi-Modal/minicpm-v-best-practice.md
    Multi-Modal/internvl-best-practice.md
    Multi-Modal/mutlimodal-deployment.md
+   Multi-Modal/LmDeploy-inference-acceleration.md
    Multi-Modal/vllm-inference-acceleration.md
    Multi-Modal/human-preference-alignment-training-documentation.md
 

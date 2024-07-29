@@ -1,7 +1,9 @@
 import asyncio
+import concurrent.futures
 import inspect
 import os
 import time
+from contextlib import contextmanager
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
@@ -9,14 +11,18 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
-from lmdeploy import TurbomindEngineConfig, pipeline
+from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, pipeline
+from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
 from transformers import GenerationConfig
 
+from swift.utils import get_logger
 from .model import get_model_tokenizer
 from .template import Template
+
+logger = get_logger()
 
 
 def get_lmdeploy_engine(
@@ -46,9 +52,14 @@ def get_lmdeploy_engine(
     engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
 
     backend_config = TurbomindEngineConfig(**engine_kwargs)
+    backend_config = autoget_backend_config(model_dir, backend_config)
+    if isinstance(backend_config, PytorchEngineConfig):
+        backend_config.thread_safe = True
+    logger.info(f'backend_config: {backend_config}')
     lmdeploy_engine = pipeline(model_dir, backend_config=backend_config)
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
+    lmdeploy_engine.is_multimodal = tokenizer.is_multimodal
     lmdeploy_engine.hf_tokenizer = tokenizer
 
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
@@ -64,6 +75,13 @@ def get_lmdeploy_engine(
         lmdeploy_engine.generation_config = LmdeployGenerationConfig()
 
     return lmdeploy_engine
+
+
+@contextmanager
+def lmdeploy_context(self: Template):
+    self._is_lmdeploy = True
+    yield
+    self._is_lmdeploy = False
 
 
 class LmdeployGenerationConfig(_LmdeployGenerationConfig):
@@ -119,26 +137,38 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         generation_config.stop_words.append(template.suffix[-1])
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
+    generators = []
     is_multimodal = getattr(lmdeploy_engine, 'is_multimodal', False)
+    max_workers = os.cpu_count()
     if not is_multimodal:
         use_tqdm = False
+        max_workers = 1
 
-    generators = []
-    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
-        history = request.get('history', None)
-        if history is None:
-            history = []
+    prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
 
-        request['history'] = history
+    def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
+        request['history'] = request.get('history') or []
         inputs = template.encode(request)[0]
+        prog_bar.update()
+        return inputs
+
+    with lmdeploy_context(template), concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(max_workers, len(request_list))) as executor:
+        futures = [executor.submit(_prepare_inputs, request) for request in request_list]
+        concurrent.futures.wait(futures)
+        inputs_list = [future.result() for future in futures]
+    prog_bar.close()
+
+    for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': history}
+            resp_list[i] = {'response': '', 'history': request['history']}
             continue
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generator = lmdeploy_engine.get_generator(False, i)
         generators.append((i, inputs, generator))
+
     generation_info['num_samples'] = len(generators)
     return resp_list, generators
 

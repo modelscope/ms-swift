@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.07.29: 支持使用lmdeploy对LLM和VLM模型进行推理加速. 文档可以查看[这里](docs/source/Multi-Modal/LmDeploy推理加速文档.md).
 - 🔥2024.07.24: 人类偏好对齐算法支持视觉多模态大模型, 包括DPO/ORPO/SimPO/CPO, 训练参考[文档](docs/source/Multi-Modal/人类偏好对齐训练文档.md). 支持数据集RLAIF-V.
 - 🔥2024.07.24: 支持使用megatron对qwen2系列进行CPT和SFT. 可以查看[megatron训练文档](docs/source/LLM/Megatron训练文档.md).
 - 🔥2024.07.24: 支持llama3.1系列模型. 包含8b, 70b, 405b. 支持openbuddy-llama3_1-8b-chat.

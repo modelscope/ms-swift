@@ -2,6 +2,7 @@
 import re
 from copy import deepcopy
 from io import BytesIO
+from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
@@ -204,6 +205,7 @@ class Template:
         self.tools_prompt = tools_prompt
         self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
         self._is_vllm = False
+        self._is_lmdeploy = False
         self.padding_side = padding_side
 
     @staticmethod
@@ -419,22 +421,51 @@ class Template:
 
         # Load image into PIL format
         from .vision_utils import load_image, rescale_image, _read_batch
-        if example.get('images'):
-            images = example['images']
+        images = example.get('images') or []
+        if images:
             if example.get('objects') or self.load_medias:
                 images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
-            if self.load_medias:
-                if self.grounding_type != 'real':
-                    images = [rescale_image(img, self.rescale_image) for img in images]
-                example['images'] = images
+            if self.load_medias and self.grounding_type != 'real':
+                images = [rescale_image(img, self.rescale_image) for img in images]
+            example['images'] = images
+
         return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
-        return self._encode(example)
+        _encode = self._encode
+        if self._is_lmdeploy:
+            assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
+            _encode = MethodType(Template._encode, self)
+        return _encode(example)
+
+    def _prepare_lmdeploy_inputs(self, inputs: Dict[str, Any], example: Dict[str, Any]) -> None:
+        images = example.get('images') or []
+        if len(images) > 0:
+            from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
+            images = self.model.vl_encoder.infer(images)
+            images = [x.cpu().numpy() for x in images]
+
+            input_ids = inputs['input_ids']
+            idx_list = _findall(input_ids, -100)
+            assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
+            idx_list.insert(0, -1)
+            new_input_ids = []
+            ranges = []
+            for i in range(len(idx_list) - 1):
+                _range = []
+                new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+                _range.append(len(new_input_ids))
+                new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
+                _range.append(len(new_input_ids))
+                ranges.append(_range)
+            new_input_ids += input_ids[idx_list[-1] + 1:]
+            inputs['input_embeddings'] = images
+            inputs['input_embedding_ranges'] = ranges
+            inputs['input_ids'] = new_input_ids
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
@@ -457,6 +488,8 @@ class Template:
             auto_add_bos=self.auto_add_bos,
             example=example,
             is_multi_modal=is_multi_modal)
+        if self._is_lmdeploy:
+            self._prepare_lmdeploy_inputs(inputs, example)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -554,7 +587,10 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            return [self.image_placeholder]
+            if self._is_lmdeploy:
+                return [[-100]]
+            else:
+                return [self.image_placeholder]
         if media_type == 'video':
             return ['<video_label>']
         if media_type == 'audio':
@@ -623,15 +659,19 @@ class Template:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
+        replace_tag = self.replace_tag
+        if self._is_lmdeploy:
+            replace_tag = MethodType(Template.replace_tag, self)
+
         for context, loss_scale in zip(context_list, loss_scale_list):
             if context == '<image>':
-                c_list = self.replace_tag('image', example.get('image_index', 0), example)
+                c_list = replace_tag('image', example.get('image_index', 0), example)
                 example['image_index'] = example.get('image_index', 0) + 1
             elif context == '<video_label>':
-                c_list = self.replace_tag('video', example.get('video_index', 0), example)
+                c_list = replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
             elif context == '<audio_label>':
-                c_list = self.replace_tag('audio', example.get('audio_index', 0), example)
+                c_list = replace_tag('audio', example.get('audio_index', 0), example)
                 example['audio_index'] = example.get('audio_index', 0) + 1
             elif context == '<ref-object>':
                 c_list = self.replace_object(example.get('object_index', 0), example)
@@ -1953,20 +1993,25 @@ class LLavaTemplate(Template):
         return generate_ids[0].tolist()
 
 
-class Llava1_6MistralTemplate(LlavaHfTemplate):
+class Llava1_6Template(LlavaHfTemplate):
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        for b in batch:
+            pixel_values = b.get('pixel_values')
+            if pixel_values is not None:
+                b['pixel_values'] = pixel_values.squeeze(0)
+        res = super().data_collator(batch, padding_to)
+        return res
+
+
+class Llava1_6MistralTemplate(Llava1_6Template):
 
     def __init__(self):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
 
-
-class Llava1_6VicunaTemplate(LlavaHfTemplate):
+class Llava1_6VicunaTemplate(Llava1_6Template):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
               "The assistant gives helpful, detailed, and polite answers to the human's questions.")
 
@@ -1974,12 +2019,6 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
-
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
 
 
 register_template(
@@ -1989,22 +2028,16 @@ register_template(
     TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
-class LLavaYiTemplate(LlavaHfTemplate):
+class LLava1_6YiTemplate(Llava1_6Template):
 
     def __init__(self):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
-
 
 register_template(
-    TemplateType.llava_yi, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+    TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Template):

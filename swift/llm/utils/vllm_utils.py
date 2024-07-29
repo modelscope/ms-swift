@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import inspect
 import os
 import time
@@ -310,13 +311,15 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
     is_multimodal = getattr(llm_engine, 'is_multimodal', False)
+    max_workers = os.cpu_count()
     if not is_multimodal:
         use_tqdm = False
-    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
-        history = request.get('history', None)
-        if history is None:
-            history = []
+        max_workers = 1
 
+    prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
+
+    def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
+        history = request.get('history') or []
         # agent support
         is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
         act_length = None
@@ -325,14 +328,24 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
             act_length = len(history[-1][-1])
             request['query'] = None
         agent_state.append((is_observation, act_length))
-
         request['history'] = history
-        with vllm_context(template):
-            inputs = template.encode(request)[0]
+
+        inputs = template.encode(request)[0]
+        prog_bar.update()
+        return inputs
+
+    with vllm_context(template), concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(max_workers, len(request_list))) as executor:
+        futures = [executor.submit(_prepare_inputs, request) for request in request_list]
+        concurrent.futures.wait(futures)
+        inputs_list = [future.result() for future in futures]
+    prog_bar.close()
+
+    for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': history}
+            resp_list[i] = {'response': '', 'history': request['history']}
             continue
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generation_info['num_samples'] += 1
