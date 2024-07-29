@@ -10,6 +10,8 @@ import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
+import transformers
+from packaging import version
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
@@ -1854,7 +1856,8 @@ class LlavaHfTemplate(Template):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.padding_side = 'left'
+        if version.parse(transformers.__version__) < version.parse('4.43.0'):
+            self.padding_side = 'left'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
