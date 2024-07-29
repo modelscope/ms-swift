@@ -91,7 +91,7 @@ print()
 
 """
 query: <video>Describe this video.
-response: In the video, a young child is seen sitting on a bed, engrossed in reading a book. The child is wearing glasses and appears to be enjoying the book, turning the pages with their hands. The bed is covered with a white blanket, and there are some clothes scattered on it. The child's focus on the book suggests that they are deeply immersed in the story. The video captures a peaceful and quiet moment, showcasing the child's interest in reading.
+response: In the video, a young child is seen sitting on a bed, engrossed in reading a book. The child is wearing a pair of glasses, which adds a touch of innocence to the scene. The child's focus is entirely on the book, indicating a sense of curiosity and interest in the content. The bed, covered with a white blanket, provides a cozy and comfortable setting for the child's reading session. The video captures a simple yet beautiful moment of a child's learning and exploration.
 query: <image>How many sheep are in the picture?
 response: There are four sheep in the picture.
 """

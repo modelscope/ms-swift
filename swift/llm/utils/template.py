@@ -667,7 +667,7 @@ class Template:
             if context == '<image>':
                 c_list = replace_tag('image', example.get('image_index', 0), example)
                 example['image_index'] = example.get('image_index', 0) + 1
-            elif context == '<video_label>':
+            elif context == '<video>':
                 c_list = replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
             elif context == '<audio_label>':
@@ -1624,7 +1624,7 @@ class Internvl2Template(InternvlTemplate):
         labels = inputs.get('labels')
         from .vision_utils import transform_image
         pixel_values_images = [transform_image(image) for image in example.get('images', [])]
-        videos_path = example.get('videos_path', [])
+        videos_path = example.get('videos', [])
         if pixel_values_images:
             pixel_values = pixel_values_images
             assert len(pixel_values) == len(idx_list)
@@ -2332,19 +2332,9 @@ register_template(
     lazy_tokenize=True)
 
 
-def _read_video(video_path: str) -> BytesIO:
-    video_path = video_path.strip()
-    if video_path.startswith('http'):
-        content = requests.get(video_path).content
-        mp4_stream = BytesIO(content)
-    else:
-        with open(video_path, 'rb') as f:
-            mp4_stream = BytesIO(f.read())
-    return mp4_stream
-
-
 def _load_video_cogvlm2(video_path: str) -> np.ndarray:
     from decord import cpu, VideoReader, bridge
+    from .vision_utils import _read_video
     bridge.set_bridge('torch')
     mp4_stream = _read_video(video_path)
     clip_end_sec = 60
