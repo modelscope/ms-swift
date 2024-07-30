@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import binascii
 import math
@@ -89,6 +88,7 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
         processed_images.append(thumbnail_img)
     return processed_images
 
+
 def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     from PIL import Image, UnidentifiedImageError
     if isinstance(img_path, str):
@@ -115,7 +115,6 @@ def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
 
 
 _T = TypeVar('_T')
-
 
 
 def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],

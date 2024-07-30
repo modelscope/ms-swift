@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import asyncio
 import re
 from copy import deepcopy
 from types import MethodType
@@ -339,7 +338,7 @@ class Template:
 
         return new_images
 
-    async def _preprocess_media(self, example):
+    def _preprocess_media(self, example):
         from .media import MediaTag
         # Format media_keys to list
         for media_key in MediaTag.media_keys.values():
@@ -412,7 +411,7 @@ class Template:
         if history_roles is None:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
-        asyncio.run(self._preprocess_media(example))
+        self._preprocess_media(example)
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
