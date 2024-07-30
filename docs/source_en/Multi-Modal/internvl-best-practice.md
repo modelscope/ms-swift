@@ -311,14 +311,14 @@ Supports multi-turn conversations, Images support for local path or URL input, m
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]], "images": ["image_path"]}
 ```
 
 (Supports data without images)
 ```jsonl
 {"query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 In addition to the above data formats, the **InternVL2** model also supports multi-image multi-turn training. It uses the tag `<image>` to indicate the position of images in the conversation. If the tag `<image>` is not present in the dataset, the images are placed at the beginning of the last round's query by default.

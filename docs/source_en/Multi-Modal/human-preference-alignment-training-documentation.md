@@ -29,9 +29,9 @@ Vision human preference alignment training typically requires data in the format
 **Custom Dataset Format**
 
 ```jsonl
-{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 Different models have varying support for the number of images. Please refer to the corresponding best practices document for each model.
