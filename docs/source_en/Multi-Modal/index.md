@@ -2,10 +2,10 @@
 
 ### 📚 Tutorial
 
-1. [MLLM Deployment Documentation](mutlimodal-deployment.md)
+1. [Human Preference Alignment Training Documentation](human-preference-alignment-training-documentation.md)
 2. [LmDeploy-inference-acceleration](LmDeploy-inference-acceleration.md)
 3. [vLLM Inference Acceleration](vllm-inference-acceleration.md)
-4. [Human Preference Alignment Training Documentation](human-preference-alignment-training-documentation.md)
+4. [MLLM Deployment Documentation](mutlimodal-deployment.md)
 
 ### Multi-Modal Best Practice
 

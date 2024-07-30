@@ -213,7 +213,31 @@ history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/anim
 
 
 ### 使用CLI
-敬请期待...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
+
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b --infer_backend lmdeploy
+
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type qwen-vl-chat \
+    --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internlm-xcomposer2_5-7b-chat \
+    --infer_backend lmdeploy --tp 2
+```
 
 ## 部署
-敬请期待...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
+
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type internvl2-2b --infer_backend lmdeploy
+
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen-vl-chat \
+    --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internlm-xcomposer2_5-7b-chat \
+    --infer_backend lmdeploy --tp 2
+```
+
+客户端调用方式可以查看: [MLLM部署文档](MLLM部署文档.md), [vLLM推理加速文档](vLLM推理加速文档.md#部署)
