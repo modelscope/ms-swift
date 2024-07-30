@@ -192,10 +192,10 @@ You can also directly provide the above format, but please use thousandths for t
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "AAAAA"},
-        {"from": "assistant", "value": "BBBBB"},
-        {"from": "user", "value": "CCCCC"},
-        {"from": "assistant", "value": "DDDDD"}
+        {"from": "user", "value": "query1"},
+        {"from": "assistant", "value": "response1"},
+        {"from": "user", "value": "query2"},
+        {"from": "assistant", "value": "response2"}
     ]}
 ]
 ```
