@@ -526,7 +526,6 @@ def inference_vllm(llm_engine: LLMEngine,
 def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
 
-    assert args.quantization_bit == 0, 'not support bnb'
     assert not (args.sft_type == 'lora' and not args.vllm_enable_lora), 'you need to merge lora'
     # Loading Model and Tokenizer
     model_id_or_path = None

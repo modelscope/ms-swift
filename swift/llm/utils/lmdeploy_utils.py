@@ -19,8 +19,9 @@ from tqdm import tqdm
 from transformers import GenerationConfig
 
 from swift.utils import get_logger
+from .argument import InferArguments
 from .model import get_model_tokenizer
-from .template import Template
+from .template import Template, get_template
 
 logger = get_logger()
 
@@ -341,3 +342,58 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     generation_info['samples/s'] = len(generators) / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
+
+
+def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncEngine, VLAsyncEngine], Template]:
+    logger.info(f'device_count: {torch.cuda.device_count()}')
+
+    assert args.quantization_bit == 0, 'not support bnb'
+    assert not args.sft_type == 'lora', 'you need to merge lora'
+    # Loading Model and Tokenizer
+    model_id_or_path = None
+    if args.sft_type == 'full' and args.ckpt_dir is not None:
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
+    lmdeploy_engine = get_lmdeploy_engine(
+        args.model_type,
+        args.torch_dtype,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        tensor_parallel_size=args.tensor_parallel_size,
+        max_model_len=args.max_model_len,
+        disable_custom_all_reduce=args.disable_custom_all_reduce,
+        enforce_eager=args.enforce_eager,
+        use_async=use_async,
+        model_id_or_path=model_id_or_path,
+        enable_lora=args.vllm_enable_lora,
+        max_loras=min(len(args.lora_modules), 1),
+        max_lora_rank=args.vllm_max_lora_rank,
+        image_input_shape=args.image_input_shape,
+        image_feature_size=args.image_feature_size)
+    tokenizer = lmdeploy_engine.hf_tokenizer
+    model_config = lmdeploy_engine.model_config
+    logger.info(f'model_config: {model_config.hf_config}')
+
+    if not args.do_sample:
+        args.temperature = 0
+    generation_config = LmdeployGenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        stop=args.stop_words,
+        repetition_penalty=args.repetition_penalty,
+        num_beams=args.num_beams)
+    logger.info(f'generation_config: {generation_config}')
+    lmdeploy_engine.generation_config = generation_config
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=lmdeploy_engine,
+        tools_prompt=args.tools_prompt)
+    args.system = template.default_system
+    logger.info(f'system: {args.system}')
+    return lmdeploy_engine, template
