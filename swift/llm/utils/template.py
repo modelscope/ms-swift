@@ -348,10 +348,10 @@ class Template:
 
         # Parse <img></img> format images and merged into images key
         images_path = None
-        history: History = example.get('history') or []
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
-                example.get('query'), history, '<image>')
+                example.get('query'),
+                example.get('history') or [], '<image>')
         if images_path:
             images = example.get('images', [])
             images = images + images_path
@@ -369,6 +369,12 @@ class Template:
             if self.load_medias and self.grounding_type != 'real':
                 images = [rescale_image(img, self.rescale_image) for img in images]
             example['images'] = images
+
+        # Add default tags to examples to note where to put the medias into the sequence
+        self.add_default_tags(example)
+
+        # Check the example that whether matching the very template's rules
+        self.check_example(example)
 
     def preprocess(self, example):
         # Duplicate example and create a new one to prepare in-place changes
@@ -412,12 +418,6 @@ class Template:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
         self._preprocess_media(example)
-
-        # Add default tags to examples to note where to put the medias into the sequence
-        self.add_default_tags(example)
-
-        # Check the example that whether matching the very template's rules
-        self.check_example(example)
 
         # Format objects(groundings/refs) to json
         if example.get('objects') and isinstance(example['objects'], str):
