@@ -296,6 +296,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         return response
 
     async def _generate_stream():
+        print_idx_list = [[0] for _ in range(request.n)]
+        total_res = ['' for _ in range(request.n)]
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
             num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
