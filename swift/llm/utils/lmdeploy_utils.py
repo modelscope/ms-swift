@@ -15,7 +15,6 @@ from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, p
 from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
-from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
 from tqdm import tqdm
 from transformers import GenerationConfig
 
