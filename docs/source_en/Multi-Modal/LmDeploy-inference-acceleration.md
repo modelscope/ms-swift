@@ -190,4 +190,3 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internlm-xcomposer2_5-7b-chat
 ```
 
 The method for client invocation can be found in: [MLLM Deployment Documentation](mutlimodal-deployment.md), [vLLM Inference Acceleration Documentation](vllm-inference-acceleration.md#deployment).
-

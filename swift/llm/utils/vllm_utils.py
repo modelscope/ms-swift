@@ -131,7 +131,7 @@ def get_vllm_engine(
     model_config = _engine.model_config
     llm_engine.model_config = model_config
     llm_engine.dtype = model_config.dtype  # compat with pt
-    llm_engine.max_model_len =model_config.max_model_len
+    llm_engine.max_model_len = model_config.max_model_len
     llm_engine.vllm_config = vllm_config
     if len(vllm_config) > 0:
         llm_engine.is_multimodal = True
