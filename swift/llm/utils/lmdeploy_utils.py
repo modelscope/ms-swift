@@ -122,31 +122,6 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             **kwargs)
 
 
-async def _prepare_lmdeploy_inputs(lmdeploy_engine, inputs: Dict[str, Any]) -> None:
-    from .template import _findall
-    images = inputs.pop('images', None) or []
-    if len(images) > 0:
-        images = await lmdeploy_engine.vl_encoder.async_infer(images)
-
-        input_ids = inputs['input_ids']
-        idx_list = _findall(input_ids, -100)
-        assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
-        idx_list.insert(0, -1)
-        new_input_ids = []
-        ranges = []
-        for i in range(len(idx_list) - 1):
-            _range = []
-            new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
-            _range.append(len(new_input_ids))
-            new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
-            _range.append(len(new_input_ids))
-            ranges.append(_range)
-        new_input_ids += input_ids[idx_list[-1] + 1:]
-        inputs['input_embeddings'] = images
-        inputs['input_embedding_ranges'] = ranges
-        inputs['input_ids'] = new_input_ids
-
-
 def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                               template: Template,
                               request_list: List[Dict[str, Any]],
