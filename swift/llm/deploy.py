@@ -338,10 +338,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     else:
         return await _generate_full()
 
+
 @torch.inference_mode()
 async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global llm_engine, template, _args
-    from .utils import LmdeployGenerationConfig
+    from .utils.lmdeploy_utils import LmdeployGenerationConfig, _add_stop_word
 
     result = await _prepare_request(request, raw_request)
     if isinstance(result, JSONResponse):
@@ -351,29 +352,22 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     request_id = request_info['request_id']
 
     kwargs = {'max_new_tokens': request.max_tokens}
-    for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
-        kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
         new_value = getattr(request, key)
         if new_value is None:
             kwargs[key] = getattr(llm_engine.generation_config, key)
         else:
             kwargs[key] = new_value
-    kwargs['stop'] = (llm_engine.generation_config.stop or []) + (getattr(request, 'stop') or [])
 
-    generation_config = VllmGenerationConfig(**kwargs)
-    if generation_config.use_beam_search and request.stream:
-        error_msg = 'Streaming generation does not support beam search.'
-        raise ValueError(error_msg)
     tokenizer = template.tokenizer
-    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
-        generation_config.stop.append(tokenizer.eos_token)
-    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
-        generation_config.stop.append(template.suffix[-1])
-    if isinstance(template.suffix[-1], list):
-        token_str = tokenizer.decode(template.suffix[-1])
-        if token_str not in generation_config.stop:
-            generation_config.stop.append(token_str)
+    stop_words = (llm_engine.generation_config.stop_words or []).copy()
+    for stop_word in getattr(request, 'stop') or []:
+        _add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
+    _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
+    _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
+    kwargs['stop_words'] = stop_words
+
+    generation_config = LmDeployGenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stream': request.stream})
     logger.info(request_info)
@@ -495,6 +489,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
         return StreamingResponse(_generate_stream())
     else:
         return await _generate_full()
+
 
 class _GenerationConfig(GenerationConfig):
 

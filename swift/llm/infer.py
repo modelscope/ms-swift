@@ -282,10 +282,12 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
         merge_lora(args, device_map=args.merge_device_map)
 
     if args.infer_backend == 'vllm':
-        from .utils import prepare_vllm_engine_template, inference_stream_vllm as inference_stream_x, inference_vllm as inference_x
+        from .utils import (prepare_vllm_engine_template, inference_stream_vllm as inference_stream_x, inference_vllm as
+                            inference_x)
         llm_engine, template = prepare_vllm_engine_template(args)
     elif args.infer_backend == 'lmdeploy':
-        from .utils import prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x, inference_lmdeploy as inference_x
+        from .utils import (prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x,
+                            inference_lmdeploy as inference_x)
         llm_engine, template = prepare_lmdeploy_engine_template(args)
     else:
         device_map = None

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import asyncio
 import re
 from copy import deepcopy
 from types import MethodType
@@ -338,6 +339,38 @@ class Template:
 
         return new_images
 
+    async def _preprocess_media(self, example):
+        from .media import MediaTag
+        # Format media_keys to list
+        for media_key in MediaTag.media_keys.values():
+            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
+                # change images field to list
+                example[media_key] = [example[media_key]]
+
+        # Parse <img></img> format images and merged into images key
+        images_path = None
+        history: History = example.get('history') or []
+        if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
+            example['query'], example['history'], images_path = replace_img_tag(
+                example.get('query'), history, '<image>')
+        if images_path:
+            images = example.get('images', [])
+            images = images + images_path
+            example['images'] = images
+
+        # Load image into PIL format
+        from .vision_utils import load_image_async, rescale_image, _read_batch_async
+        images = example.get('images') or []
+        if images:
+            if example.get('objects') or self.load_medias or self._is_lmdeploy:
+                images = await _read_batch_async(images, load_image_async)
+            if example.get('objects'):
+                # Normalize grounding bboxes
+                self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
+            if self.load_medias and self.grounding_type != 'real':
+                images = [rescale_image(img, self.rescale_image) for img in images]
+            example['images'] = images
+
     def preprocess(self, example):
         # Duplicate example and create a new one to prepare in-place changes
         example = example.copy()
@@ -349,28 +382,37 @@ class Template:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
 
+        # Reset system (by default value and agent tools)
+        system: Optional[str] = example.get('system', None)
+        if system is None:
+            if self.use_default_system:
+                system = self.default_system
+        elif system == '':
+            system = None
+        else:
+            assert self.system_prefix is not None, (
+                f'The template does not support `system`, template_type: {template_type}')
+        if tools:
+            if isinstance(tools, str):
+                tools = json.loads(tools)
+            if system is None:
+                system = ''
+            system += get_tools_prompt(tools, self.tools_prompt)
+
+        example['system'] = system
+
         # Check whether this template supports multi-round
         history: History = example.get('history') or []
         if len(history) > 0:
             assert self.support_multi_round, (
                 f'The template does not support multi-round chat, template_type: {template_type}')
 
-        from .media import MediaTag
-        # Format media_keys to list
-        for media_key in MediaTag.media_keys.values():
-            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
-                # change images field to list
-                example[media_key] = [example[media_key]]
+        # Set history_roles
+        history_roles: Optional[History] = example.get('history_roles')
+        if history_roles is None:
+            example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
-        # Parse <img></img> format images and merged into images key
-        images_path = None
-        if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
-            example['query'], example['history'], images_path = replace_img_tag(
-                example.get('query'), history, '<image>')
-        if images_path:
-            images = example.get('images', [])
-            images = images + images_path
-            example['images'] = images
+        asyncio.run(self._preprocess_media(example))
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
@@ -394,43 +436,6 @@ class Template:
                     }
                 objects.append(object)
             example['objects'] = objects
-
-        # Reset system (by default value and agent tools)
-        system: Optional[str] = example.get('system', None)
-        if system is None:
-            if self.use_default_system:
-                system = self.default_system
-        elif system == '':
-            system = None
-        else:
-            assert self.system_prefix is not None, (
-                f'The template does not support `system`, template_type: {template_type}')
-        if tools:
-            if isinstance(tools, str):
-                tools = json.loads(tools)
-            if system is None:
-                system = ''
-            system += get_tools_prompt(tools, self.tools_prompt)
-
-        example['system'] = system
-
-        # Set history_roles
-        history_roles: Optional[History] = example.get('history_roles')
-        if history_roles is None:
-            example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
-
-        # Load image into PIL format
-        from .vision_utils import load_image, rescale_image, _read_batch
-        images = example.get('images') or []
-        if images:
-            if example.get('objects') or self.load_medias or self._is_lmdeploy:
-                images = _read_batch(images, load_image)
-            if example.get('objects'):
-                # Normalize grounding bboxes
-                self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
-            if self.load_medias and self.grounding_type != 'real':
-                images = [rescale_image(img, self.rescale_image) for img in images]
-            example['images'] = images
 
         return example
 
@@ -1900,7 +1905,7 @@ class LlavaVideoTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        images_path = example.get('images') or []
+        images = example.get('images') or []
         videos_path = example.get('videos') or []
         if len(videos_path) > 0:
             from .vision_utils import _read_batch
@@ -1908,9 +1913,7 @@ class LlavaVideoTemplate(Template):
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
-        if len(images_path) > 0:
-            from .vision_utils import _read_batch
-            images = _read_batch(images_path)
+        if len(images) > 0:
             image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values'] = image_inputs['pixel_values']

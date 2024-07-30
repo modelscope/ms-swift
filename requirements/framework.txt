@@ -1,5 +1,6 @@
 accelerate
 addict
+aiofiles
 aiohttp
 binpacking
 dacite

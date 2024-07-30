@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
@@ -16,13 +16,13 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
-from transformers import GenerationConfig, AutoConfig
+from transformers import AutoConfig, GenerationConfig
 
 from swift.utils import get_logger
 from .argument import InferArguments
 from .model import get_model_tokenizer
-from .utils import get_max_model_len
 from .template import Template, get_template
+from .utils import get_max_model_len
 
 logger = get_logger()
 
@@ -100,17 +100,17 @@ def lmdeploy_context(self: Template):
 class LmdeployGenerationConfig(_LmdeployGenerationConfig):
 
     def __init__(
-            self,
-            max_new_tokens: Optional[int] = 64,
-            temperature: float = 1.,
-            top_k: int = 50,  # -1: all
-            top_p: float = 1.,
-            repetition_penalty: float = 1.,
-            *,
-            n: int = 1,
-            stop_words: Optional[List[int]] = None,
-            skip_special_tokens: bool = False,
-            **kwargs,
+        self,
+        max_new_tokens: Optional[int] = 64,
+        temperature: float = 1.,
+        top_k: int = 50,  # -1: all
+        top_p: float = 1.,
+        repetition_penalty: float = 1.,
+        *,
+        n: int = 1,
+        stop_words: Optional[List[int]] = None,
+        skip_special_tokens: bool = False,
+        **kwargs,
     ) -> None:
         if stop_words is None:
             stop_words = []
@@ -367,10 +367,7 @@ def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncE
     elif args.model_id_or_path is not None:
         model_id_or_path = args.model_id_or_path
     lmdeploy_engine = get_lmdeploy_engine(
-        args.model_type,
-        tp=args.tp,
-        vision_batch_size=args.vision_batch_size,
-        model_id_or_path=model_id_or_path)
+        args.model_type, tp=args.tp, vision_batch_size=args.vision_batch_size, model_id_or_path=model_id_or_path)
     tokenizer = lmdeploy_engine.hf_tokenizer
 
     if not args.do_sample:

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import binascii
 import math
@@ -5,6 +6,8 @@ import os
 from io import BytesIO
 from typing import Callable, List, TypeVar, Union
 
+import aiofiles
+import aiohttp
 import numpy as np
 import requests
 import torch
@@ -89,15 +92,19 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
+async def load_image_async(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     from PIL import Image, UnidentifiedImageError
     if isinstance(img_path, str):
         img_path = img_path.strip()
         if img_path.startswith('http'):
-            content = requests.get(img_path).content
+            async with aiohttp.ClientSession() as session:
+                async with session.get(img_path) as response:
+                    content = await response.read()
             image = Image.open(BytesIO(content))
         elif os.path.exists(img_path):
-            image = Image.open(img_path)
+            async with aiofiles.open(img_path, mode='rb') as f:
+                content = await f.read()
+            image = Image.open(BytesIO(content))
         else:  # base64_str
             try:
                 image_data = base64.b64decode(img_path)
@@ -114,7 +121,21 @@ def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
     return image
 
 
+def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
+    return asyncio.run(load_image_async(img_path))
+
+
 _T = TypeVar('_T')
+
+
+async def _read_batch_async(path_list: List[Union[str, 'PIL.Image.Image', None]],
+                            load_func_async: Callable[[str], _T] = load_image_async) -> List[_T]:
+    tasks = []
+    for path in path_list:
+        if path is None:  # ignore None
+            continue
+        tasks.append(load_func_async(path))
+    return await asyncio.gather(*tasks)
 
 
 def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
