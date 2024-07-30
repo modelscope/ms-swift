@@ -187,10 +187,10 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "query1"},
-        {"from": "assistant", "value": "response1"},
-        {"from": "user", "value": "query2"},
-        {"from": "assistant", "value": "response2"}
+        {"from": "user", "value": "AAAAA"},
+        {"from": "assistant", "value": "BBBBB"},
+        {"from": "user", "value": "CCCCC"},
+        {"from": "assistant", "value": "DDDDD"}
     ]}
 ]
 ```
