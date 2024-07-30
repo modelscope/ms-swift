@@ -156,12 +156,25 @@ history: [['浙江的省会在哪？', '浙江省的省会是杭州市。'], ['�
 """
 ```
 
-
 ### 使用CLI
-敬请期待...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen2-7b-instruct --infer_backend lmdeploy
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type qwen2-7b-instruct --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type qwen2-72b-instruct --infer_backend lmdeploy --tp 2
+```
 
 ## 部署
-敬请期待...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct --infer_backend lmdeploy
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-7b-instruct --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-72b-instruct --infer_backend lmdeploy --tp 2
+```
+
+客户端调用方式可以查看: [vLLM推理加速与部署文档](VLLM推理加速与部署.md#部署)
 
 ## 多模态
 查看[这里](../Multi-Modal/LmDeploy推理加速文档.md)

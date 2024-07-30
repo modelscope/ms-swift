@@ -128,7 +128,10 @@ def get_vllm_engine(
         _engine = llm_engine.engine
     else:
         _engine = llm_engine
-    llm_engine.dtype = _engine.model_config.dtype  # compat with pt
+    model_config = _engine.model_config
+    llm_engine.model_config = model_config
+    llm_engine.dtype = model_config.dtype  # compat with pt
+    llm_engine.max_model_len = model_config.max_model_len
     llm_engine.vllm_config = vllm_config
     if len(vllm_config) > 0:
         llm_engine.is_multimodal = True
@@ -526,7 +529,6 @@ def inference_vllm(llm_engine: LLMEngine,
 def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
 
-    assert args.quantization_bit == 0, 'not support bnb'
     assert not (args.sft_type == 'lora' and not args.vllm_enable_lora), 'you need to merge lora'
     # Loading Model and Tokenizer
     model_id_or_path = None
@@ -550,11 +552,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         image_input_shape=args.image_input_shape,
         image_feature_size=args.image_feature_size)
     tokenizer = llm_engine.hf_tokenizer
-    if use_async:
-        model_config = asyncio.run(llm_engine.get_model_config())
-        llm_engine.model_config = model_config
-    else:
-        model_config = llm_engine.model_config
+    model_config = llm_engine.model_config
     logger.info(f'model_config: {model_config.hf_config}')
 
     if not args.do_sample:

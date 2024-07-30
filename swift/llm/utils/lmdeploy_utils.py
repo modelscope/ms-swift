@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
@@ -16,11 +16,13 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
-from transformers import GenerationConfig
+from transformers import AutoConfig, GenerationConfig
 
 from swift.utils import get_logger
+from .argument import InferArguments
 from .model import get_model_tokenizer
-from .template import Template
+from .template import Template, get_template
+from .utils import get_max_model_len
 
 logger = get_logger()
 
@@ -46,6 +48,7 @@ def get_lmdeploy_engine(
         revision=revision,
         download_model=True)[1]
     model_dir = tokenizer.model_dir
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
 
     if engine_kwargs is None:
         engine_kwargs = {}
@@ -69,6 +72,8 @@ def get_lmdeploy_engine(
     lmdeploy_engine.model_type = model_type
     lmdeploy_engine.is_multimodal = is_multimodal
     lmdeploy_engine.hf_tokenizer = tokenizer
+    lmdeploy_engine.model_config = model_config
+    lmdeploy_engine.max_model_len = get_max_model_len(model_config)
 
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
     if os.path.isfile(generation_config_path):
@@ -121,6 +126,19 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             **kwargs)
 
 
+def _add_stop_word(stop_words: List[int], token: Union[List[int], int, str, None], tokenizer=None) -> None:
+    if token is None:
+        return
+    elif isinstance(token, int):
+        stop_words.append(token)
+    elif isinstance(token, str) and tokenizer is not None:
+        token_list = tokenizer.encode(token, add_special_tokens=False)
+        if len(token_list) == 1 and token_list[0] not in stop_words:
+            stop_words.append(token_list[0])
+    elif isinstance(token, list) and len(token) == 1 and token[0] not in stop_words:
+        stop_words.append(token[0])
+
+
 def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                               template: Template,
                               request_list: List[Dict[str, Any]],
@@ -137,15 +155,9 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
     template.model = lmdeploy_engine
     tokenizer = template.tokenizer
-    if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in generation_config.stop_words:
-        generation_config.stop_words.append(tokenizer.eos_token_id)
-    if isinstance(template.suffix[-1], str):
-        token_list = tokenizer.encode(template.suffix[-1], add_special_tokens=False)
-        if len(token_list) == 1 and token_list not in generation_config.stop_words:
-            generation_config.stop_words.append(token_list[0])
-    if isinstance(template.suffix[-1], list) and len(
-            template.suffix[-1]) == 1 and template.suffix[-1] not in generation_config.stop_words:
-        generation_config.stop_words.append(template.suffix[-1][0])
+
+    _add_stop_word(generation_config.stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
+    _add_stop_word(generation_config.stop_words, template.suffix[-1], tokenizer=tokenizer)
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     generators = []
@@ -341,3 +353,46 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     generation_info['samples/s'] = len(generators) / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
+
+
+def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncEngine, VLAsyncEngine], Template]:
+    logger.info(f'device_count: {torch.cuda.device_count()}')
+
+    assert args.quantization_bit == 0, 'not support bnb'
+    assert not args.sft_type == 'lora', 'you need to merge lora'
+    # Loading Model and Tokenizer
+    model_id_or_path = None
+    if args.sft_type == 'full' and args.ckpt_dir is not None:
+        model_id_or_path = args.ckpt_dir
+    elif args.model_id_or_path is not None:
+        model_id_or_path = args.model_id_or_path
+    lmdeploy_engine = get_lmdeploy_engine(
+        args.model_type, tp=args.tp, vision_batch_size=args.vision_batch_size, model_id_or_path=model_id_or_path)
+    tokenizer = lmdeploy_engine.hf_tokenizer
+
+    if not args.do_sample:
+        args.temperature = 0
+
+    stop_words = []
+    for stop_word in args.stop_words:
+        _add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
+    generation_config = LmdeployGenerationConfig(
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        stop_words=stop_words,
+        repetition_penalty=args.repetition_penalty)
+    logger.info(f'generation_config: {generation_config}')
+    lmdeploy_engine.generation_config = generation_config
+    template: Template = get_template(
+        args.template_type,
+        tokenizer,
+        args.system,
+        args.max_length,
+        args.truncation_strategy,
+        model=lmdeploy_engine,
+        tools_prompt=args.tools_prompt)
+    args.system = template.default_system
+    logger.info(f'system: {args.system}')
+    return lmdeploy_engine, template

@@ -162,7 +162,31 @@ history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/anim
 ```
 
 ### Using CLI
-Comming soon...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
+
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b --infer_backend lmdeploy
+
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type qwen-vl-chat \
+    --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internlm-xcomposer2_5-7b-chat \
+    --infer_backend lmdeploy --tp 2
+```
 
 ## Deployment
-Comming soon...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
+
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type internvl2-2b --infer_backend lmdeploy
+
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen-vl-chat \
+    --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internlm-xcomposer2_5-7b-chat \
+    --infer_backend lmdeploy --tp 2
+```
+
+The method for client invocation can be found in: [MLLM Deployment Documentation](mutlimodal-deployment.md), [vLLM Inference Acceleration Documentation](vllm-inference-acceleration.md#deployment).
