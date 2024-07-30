@@ -373,25 +373,6 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     logger.info(request_info)
 
     created_time = int(time.time())
-    generate_kwargs = {}
-    if _args.vllm_enable_lora and request.model != _args.model_type:
-        lora_request = None
-        for lora_req in _args.lora_request_list:
-            if lora_req.lora_name == request.model:
-                lora_request = lora_req
-                break
-        assert lora_request is not None
-        generate_kwargs['lora_request'] = lora_request
-
-    import vllm
-    from .utils.vllm_utils import _prepare_request_inputs
-
-    if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-        request_inputs = _prepare_request_inputs(inputs)
-        result_generator = llm_engine.generate(request_inputs, generation_config, request_id, **generate_kwargs)
-    else:
-        input_ids = inputs['input_ids']
-        result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
 
     async def _generate_full():
         result = None
