@@ -5533,6 +5533,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.minicpm_llama,
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
+    support_lmdeploy=True,
     requires=['timm'],
     placeholder_tokens=['<unk>'],
     function_kwargs={'patching_embedding': True},
