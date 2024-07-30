@@ -11,10 +11,11 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
-from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, pipeline
+from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
 from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
+from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
 from tqdm import tqdm
 from transformers import GenerationConfig
 
@@ -34,6 +35,7 @@ def get_lmdeploy_engine(
         revision: Optional[str] = None,
         tp: int = 1,
         cache_max_entry_count: float = 0.8,
+        vision_batch_size: int = 1,  # max_batch_size in VisionConfig
         engine_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Union[AsyncEngine, VLAsyncEngine]:
     model_dir = kwargs.pop('model_dir', None)
@@ -56,10 +58,17 @@ def get_lmdeploy_engine(
     if isinstance(backend_config, PytorchEngineConfig):
         backend_config.thread_safe = True
     logger.info(f'backend_config: {backend_config}')
-    lmdeploy_engine = pipeline(model_dir, backend_config=backend_config)
+    pipeline_kwargs = {}
+    is_multimodal = tokenizer.is_multimodal
+    if is_multimodal:
+        vision_config = VisionConfig(max_batch_size=vision_batch_size)
+        pipeline_kwargs['vision_config'] = vision_config
+        logger.info(f'vision_config: {vision_config}')
+
+    lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
-    lmdeploy_engine.is_multimodal = tokenizer.is_multimodal
+    lmdeploy_engine.is_multimodal = is_multimodal
     lmdeploy_engine.hf_tokenizer = tokenizer
 
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
@@ -113,6 +122,31 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             **kwargs)
 
 
+async def _prepare_lmdeploy_inputs(lmdeploy_engine, inputs: Dict[str, Any]) -> None:
+    from .template import _findall
+    images = inputs.pop('images', None) or []
+    if len(images) > 0:
+        images = await lmdeploy_engine.vl_encoder.async_infer(images)
+
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
+        idx_list.insert(0, -1)
+        new_input_ids = []
+        ranges = []
+        for i in range(len(idx_list) - 1):
+            _range = []
+            new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            _range.append(len(new_input_ids))
+            new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
+            _range.append(len(new_input_ids))
+            ranges.append(_range)
+        new_input_ids += input_ids[idx_list[-1] + 1:]
+        inputs['input_embeddings'] = images
+        inputs['input_embedding_ranges'] = ranges
+        inputs['input_ids'] = new_input_ids
+
+
 def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                               template: Template,
                               request_list: List[Dict[str, Any]],
@@ -124,6 +158,9 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
         generation_info[key] = 0
 
+    if hasattr(lmdeploy_engine, 'vl_encoder'):
+        lmdeploy_engine.vl_encoder._loop_task = None
+
     template.model = lmdeploy_engine
     tokenizer = template.tokenizer
     if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in generation_config.stop_words:
@@ -134,7 +171,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
             generation_config.stop_words.append(token_list[0])
     if isinstance(template.suffix[-1], list) and len(
             template.suffix[-1]) == 1 and template.suffix[-1] not in generation_config.stop_words:
-        generation_config.stop_words.append(template.suffix[-1])
+        generation_config.stop_words.append(template.suffix[-1][0])
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     generators = []
@@ -165,7 +202,6 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
             resp_list[i] = {'response': '', 'history': request['history']}
             continue
-        generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generator = lmdeploy_engine.get_generator(False, i)
         generators.append((i, inputs, generator))
 
@@ -211,6 +247,8 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
     async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
         generator = await generator
+        await _prepare_lmdeploy_inputs(lmdeploy_engine, inputs)
+        generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         async with lmdeploy_engine.safe_run(i):
             async for output in generator.async_stream_infer(
                     session_id=i, **inputs, stream_output=True, gen_config=generation_config):
@@ -292,6 +330,8 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
 
     async def _inner_infer(i: int, inputs: Dict[str, Any], generator) -> None:
         generator = await generator
+        await _prepare_lmdeploy_inputs(lmdeploy_engine, inputs)
+        generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         async with lmdeploy_engine.safe_run(i):
             async for output in generator.async_stream_infer(
                     session_id=i, **inputs, stream_output=False, gen_config=generation_config):

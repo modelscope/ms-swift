@@ -45,8 +45,8 @@ def test_lmdeploy():
     resp_list = inference_lmdeploy(
         lmdeploy_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
     request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
     gen = inference_stream_lmdeploy(
@@ -54,8 +54,8 @@ def test_lmdeploy():
     for resp_list in gen:
         pass
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
 
 if __name__ == '__main__':

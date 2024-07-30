@@ -423,7 +423,7 @@ class Template:
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
         if images:
-            if example.get('objects') or self.load_medias:
+            if example.get('objects') or self.load_medias or self._is_lmdeploy:
                 images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
@@ -441,31 +441,6 @@ class Template:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
         return _encode(example)
-
-    def _prepare_lmdeploy_inputs(self, inputs: Dict[str, Any], example: Dict[str, Any]) -> None:
-        images = example.get('images') or []
-        if len(images) > 0:
-            from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
-            images = self.model.vl_encoder.infer(images)
-            images = [x.cpu().numpy() for x in images]
-
-            input_ids = inputs['input_ids']
-            idx_list = _findall(input_ids, -100)
-            assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
-            idx_list.insert(0, -1)
-            new_input_ids = []
-            ranges = []
-            for i in range(len(idx_list) - 1):
-                _range = []
-                new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
-                _range.append(len(new_input_ids))
-                new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
-                _range.append(len(new_input_ids))
-                ranges.append(_range)
-            new_input_ids += input_ids[idx_list[-1] + 1:]
-            inputs['input_embeddings'] = images
-            inputs['input_embedding_ranges'] = ranges
-            inputs['input_ids'] = new_input_ids
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
@@ -489,7 +464,7 @@ class Template:
             example=example,
             is_multi_modal=is_multi_modal)
         if self._is_lmdeploy:
-            self._prepare_lmdeploy_inputs(inputs, example)
+            inputs['images'] = example.get('images')
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs

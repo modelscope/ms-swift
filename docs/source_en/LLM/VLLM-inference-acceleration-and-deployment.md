@@ -1,4 +1,5 @@
 # VLLM Inference Acceleration and Deployment
+The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
@@ -24,7 +25,6 @@ pip install -r requirements/llm.txt -U
 ```
 
 ## Inference Acceleration
-The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
 
 ### Using Python
 ```python
