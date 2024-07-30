@@ -501,7 +501,7 @@ def preprocess_sa1b_dense_caption(dataset: HfDataset):
     prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
 
     def preprocess_row(row):
-        response =  ast.literal_eval(row['cap_seg'])
+        response = ast.literal_eval(row['cap_seg'])
         response = response.get('global_caption')
         query = np.random.choice(prompt)
         return {
