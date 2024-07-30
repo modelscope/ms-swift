@@ -61,7 +61,6 @@ def gradio_chat_demo(args: AppUIArguments) -> None:
         from swift.llm import prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x
         llm_engine, template = prepare_lmdeploy_engine_template(args)
     else:
-        from swift.llm import prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x
         model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Iterator[Tuple[str, History]]:
