@@ -7,12 +7,14 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import json
-from llmuses.config import TaskConfig
-from llmuses.constants import DEFAULT_ROOT_CACHE_DIR
-from llmuses.models.custom import CustomModel
-from llmuses.run import run_task
-from llmuses.summarizer import Summarizer
-from llmuses.utils import EvalBackend
+from evalscope.config import TaskConfig
+from evalscope.constants import DEFAULT_ROOT_CACHE_DIR
+from evalscope.models.custom import CustomModel
+from evalscope.run import run_task
+from evalscope.backend.opencompass import OpenCompassBackendManager
+from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
+from evalscope.summarizer import Summarizer
+from evalscope.utils import EvalBackend
 from modelscope import GenerationConfig
 from openai import APIConnectionError
 from tqdm import tqdm
@@ -191,7 +193,7 @@ def get_model_type(port, timeout):
 
 
 def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
-    from llmuses.run import run_task
+    from evalscope.run import run_task
     from swift.utils.torch_utils import _find_free_port
     logger.info(f'args: {args}')
     if args.eval_few_shot:
@@ -224,34 +226,41 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             url += '/completions'
         model_type = args.model_type
         is_chat = args.eval_is_chat_model
-    eval_limit = args.eval_limit
-    if eval_limit is not None and '[' not in eval_limit:
-        eval_limit = int(eval_limit)
-    limit_config = {'limit': eval_limit} if eval_limit else {}
-    task_cfg = dict(
-        eval_backend='OpenCompass',
-        eval_config={
-            'datasets': args.eval_dataset,
-            'work_dir': args.eval_output_dir,
-            'reuse': 'latest' if args.eval_use_cache else None,
-            'batch_size': args.eval_batch_size,
-            'models': [
-                {
-                    'path': model_type,
-                    'openai_api_base': url,
-                    'is_chat': is_chat,
-                    'key': args.eval_token,
-                },
-            ],
-            **limit_config
-        },
-    )
+    
+    nlp_datasets = set(OpenCompassBackendManager.list_datasets()) & set(args.eval_dataset)
+    mm_datasets = set(VLMEvalKitBackendManager.list_supported_datasets()) & set(args.eval_dataset)
+    
+    for dataset, backend in zip([list(nlp_datasets), list(mm_datasets)], ['OpenCompass', 'VLMEvalKit']):
+        if not dataset:
+            continue
+        eval_limit = args.eval_limit
+        if eval_limit is not None and '[' not in eval_limit:
+            eval_limit = int(eval_limit)
+        limit_config = {'limit': eval_limit} if eval_limit else {}
+        task_cfg = dict(
+            eval_backend=backend,
+            eval_config={
+                'datasets': dataset,
+                'work_dir': args.eval_output_dir,
+                'reuse': 'latest' if args.eval_use_cache else None,
+                'batch_size': args.eval_batch_size,
+                'models': [
+                    {
+                        'path': model_type,
+                        'openai_api_base': url,
+                        'is_chat': is_chat,
+                        'key': args.eval_token,
+                    },
+                ],
+                **limit_config
+            },
+        )
 
-    with EvalDatasetContext():
-        run_task(task_cfg=task_cfg)
+        with EvalDatasetContext():
+            run_task(task_cfg=task_cfg)
 
-    final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_cfg)
-    logger.info(f'Final report:{final_report}\n')
+        final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_cfg)
+        logger.info(f'Final report:{final_report}\n')
     if process:
         process.kill()
     return final_report

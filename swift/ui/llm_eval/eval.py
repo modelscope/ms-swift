@@ -114,7 +114,7 @@ class Eval(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         try:
-            from llmuses.backend.opencompass import OpenCompassBackendManager
+            from evalscope.backend.opencompass import OpenCompassBackendManager
             from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
             eval_dataset_list = (
                 OpenCompassBackendManager.list_datasets() + VLMEvalKitBackendManager.list_supported_datasets())
