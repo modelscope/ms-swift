@@ -442,6 +442,29 @@ class Template:
             _encode = MethodType(Template._encode, self)
         return _encode(example)
 
+    async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
+        images = inputs.pop('images', None) or []
+        if len(images) == 0:
+            return
+        from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
+        idx_list.insert(0, -1)
+        new_input_ids = []
+        ranges = []
+        for i in range(len(idx_list) - 1):
+            _range = []
+            new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            _range.append(len(new_input_ids))
+            new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
+            _range.append(len(new_input_ids))
+            ranges.append(_range)
+        new_input_ids += input_ids[idx_list[-1] + 1:]
+        inputs['input_embeddings'] = images
+        inputs['input_embedding_ranges'] = ranges
+        inputs['input_ids'] = new_input_ids
+
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
         query: str = example.get('query') or ''
@@ -660,13 +683,17 @@ class Template:
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
 
-    def _encode_context_list(self, context_list: List[Context],
-                             loss_scale_list: List[float]) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
+    def _encode_context_list(
+            self,
+            context_list: List[Context],
+            loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
+        if loss_scale_list is None:
+            loss_scale_list = [0.] * len(context_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
@@ -2395,6 +2422,35 @@ class MiniCPMVTemplate(Template):
     def check_example(self, example):
         images = example.get('images', [])
         assert len(images) == 1
+
+    async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
+        images = inputs.pop('images', None) or []
+        if len(images) == 0:
+            return
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        idx_list.insert(0, -1)
+        new_input_ids = []
+        features = []
+        for i in range(len(idx_list) - 1):
+            new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            context_list = ['<image>', [-100], '</image>']
+            feat = [x.squeeze() for x in images[i]['embeddings'].split(1)]
+            grid = images[i].get('grid')
+            if len(feat) > 1 and grid is not None:
+                context_list.append('<slice>')
+                for i in range(grid[1]):
+                    if i > 0:
+                        context_list.append('\n')
+                    for _ in range(grid[0]):
+                        context_list += ['<image>', [-100], '</image>']
+                context_list.append('</slice>\n')
+            new_input_ids += self._encode_context_list(context_list)[0]
+            features += feat
+        new_input_ids += input_ids[idx_list[-1] + 1:]
+        inputs['input_ids'] = new_input_ids
+        inputs['images'] = features
+        await super().prepare_lmdeploy_inputs(inputs)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
