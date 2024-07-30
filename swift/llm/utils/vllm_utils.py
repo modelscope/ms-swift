@@ -123,6 +123,7 @@ def get_vllm_engine(
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
+    llm_engine.max_model_len = llm_engine.model_config.max_model_len
 
     if use_async:
         _engine = llm_engine.engine

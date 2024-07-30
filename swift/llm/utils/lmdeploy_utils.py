@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import torch
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
@@ -16,11 +16,12 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
-from transformers import GenerationConfig
+from transformers import GenerationConfig, AutoConfig
 
 from swift.utils import get_logger
 from .argument import InferArguments
 from .model import get_model_tokenizer
+from .utils import get_max_model_len
 from .template import Template, get_template
 
 logger = get_logger()
@@ -47,6 +48,7 @@ def get_lmdeploy_engine(
         revision=revision,
         download_model=True)[1]
     model_dir = tokenizer.model_dir
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
 
     if engine_kwargs is None:
         engine_kwargs = {}
@@ -70,6 +72,8 @@ def get_lmdeploy_engine(
     lmdeploy_engine.model_type = model_type
     lmdeploy_engine.is_multimodal = is_multimodal
     lmdeploy_engine.hf_tokenizer = tokenizer
+    lmdeploy_engine.model_config = model_config
+    lmdeploy_engine.max_model_len = get_max_model_len(model_config)
 
     generation_config_path = os.path.join(model_dir, 'generation_config.json')
     if os.path.isfile(generation_config_path):
@@ -96,17 +100,17 @@ def lmdeploy_context(self: Template):
 class LmdeployGenerationConfig(_LmdeployGenerationConfig):
 
     def __init__(
-        self,
-        max_new_tokens: Optional[int] = 64,
-        temperature: float = 1.,
-        top_k: int = 50,  # -1: all
-        top_p: float = 1.,
-        repetition_penalty: float = 1.,
-        *,
-        n: int = 1,
-        stop_words: Optional[List[int]] = None,
-        skip_special_tokens: bool = False,
-        **kwargs,
+            self,
+            max_new_tokens: Optional[int] = 64,
+            temperature: float = 1.,
+            top_k: int = 50,  # -1: all
+            top_p: float = 1.,
+            repetition_penalty: float = 1.,
+            *,
+            n: int = 1,
+            stop_words: Optional[List[int]] = None,
+            skip_special_tokens: bool = False,
+            **kwargs,
     ) -> None:
         if stop_words is None:
             stop_words = []
@@ -120,6 +124,19 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             stop_words=stop_words,
             skip_special_tokens=skip_special_tokens,
             **kwargs)
+
+
+def _add_stop_word(stop_words: List[int], token: Union[List[int], int, str, None], tokenizer=None) -> None:
+    if token is None:
+        return
+    elif isinstance(token, int):
+        stop_words.append(token)
+    elif isinstance(token, str) and tokenizer is not None:
+        token_list = tokenizer.encode(token, add_special_tokens=False)
+        if len(token_list) == 1 and token_list[0] not in stop_words:
+            stop_words.append(token_list[0])
+    elif isinstance(token, list) and len(token) == 1 and token[0] not in stop_words:
+        stop_words.append(token[0])
 
 
 def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
@@ -138,15 +155,9 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
     template.model = lmdeploy_engine
     tokenizer = template.tokenizer
-    if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in generation_config.stop_words:
-        generation_config.stop_words.append(tokenizer.eos_token_id)
-    if isinstance(template.suffix[-1], str):
-        token_list = tokenizer.encode(template.suffix[-1], add_special_tokens=False)
-        if len(token_list) == 1 and token_list not in generation_config.stop_words:
-            generation_config.stop_words.append(token_list[0])
-    if isinstance(template.suffix[-1], list) and len(
-            template.suffix[-1]) == 1 and template.suffix[-1] not in generation_config.stop_words:
-        generation_config.stop_words.append(template.suffix[-1][0])
+
+    _add_stop_word(generation_config.stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
+    _add_stop_word(generation_config.stop_words, template.suffix[-1], tokenizer=tokenizer)
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     generators = []
@@ -357,33 +368,24 @@ def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncE
         model_id_or_path = args.model_id_or_path
     lmdeploy_engine = get_lmdeploy_engine(
         args.model_type,
-        args.torch_dtype,
-        gpu_memory_utilization=args.gpu_memory_utilization,
-        tensor_parallel_size=args.tensor_parallel_size,
-        max_model_len=args.max_model_len,
-        disable_custom_all_reduce=args.disable_custom_all_reduce,
-        enforce_eager=args.enforce_eager,
-        use_async=use_async,
-        model_id_or_path=model_id_or_path,
-        enable_lora=args.vllm_enable_lora,
-        max_loras=min(len(args.lora_modules), 1),
-        max_lora_rank=args.vllm_max_lora_rank,
-        image_input_shape=args.image_input_shape,
-        image_feature_size=args.image_feature_size)
+        tp=args.tp,
+        vision_batch_size=args.vision_batch_size,
+        model_id_or_path=model_id_or_path)
     tokenizer = lmdeploy_engine.hf_tokenizer
-    model_config = lmdeploy_engine.model_config
-    logger.info(f'model_config: {model_config.hf_config}')
 
     if not args.do_sample:
         args.temperature = 0
+
+    stop_words = []
+    for stop_word in args.stop_words:
+        _add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
     generation_config = LmdeployGenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_k=args.top_k,
         top_p=args.top_p,
-        stop=args.stop_words,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams)
+        stop_words=stop_words,
+        repetition_penalty=args.repetition_penalty)
     logger.info(f'generation_config: {generation_config}')
     lmdeploy_engine.generation_config = generation_config
     template: Template = get_template(

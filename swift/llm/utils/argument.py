@@ -1240,6 +1240,11 @@ class InferArguments(ArgumentsBase):
     image_input_shape: Optional[str] = None
     image_feature_size: Optional[int] = None
 
+    # lmdeploy
+    tp: int = 1
+    cache_max_entry_count: float = 0.8
+    vision_batch_size: int = 1  # max_batch_size in VisionConfig
+
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
     train_dataset_sample: int = -1  # Used for splitting the validation set.

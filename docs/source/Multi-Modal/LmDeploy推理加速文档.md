@@ -23,6 +23,8 @@ pip install lmdeploy
 
 ### 使用python
 
+[OpenGVLab/InternVL2-2B](https://modelscope.cn/models/OpenGVLab/InternVL2-2B/summary)
+
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -89,6 +91,8 @@ history: [['<image>描述图片', '这是一幅以卡通风格绘制的四只绵
 {'num_prompt_tokens': 3470, 'num_generated_tokens': 8, 'num_samples': 1, 'runtime': 0.6616258070571348, 'samples/s': 1.5114283471618646, 'tokens/s': 12.091426777294917}
 """
 ```
+
+[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5/summary)
 
 ```python
 import os

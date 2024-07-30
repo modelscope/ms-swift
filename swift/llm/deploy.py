@@ -57,8 +57,8 @@ async def get_available_models():
 
 async def check_length(request: Union[ChatCompletionRequest, CompletionRequest], input_ids: List[int]) -> Optional[str]:
     global llm_engine, model, _args
-    if _args.infer_backend == 'vllm':
-        max_model_len = llm_engine.model_config.max_model_len
+    if _args.infer_backend in {'vllm', 'lmdeploy'}:
+        max_model_len = llm_engine.max_model_len
     else:
         max_model_len = model.max_model_len
     num_tokens = len(input_ids)
@@ -103,6 +103,10 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         from .utils import vllm_context
         model_or_engine = llm_engine
         context = vllm_context(template)
+    elif _args.infer_backend == 'lmdeploy':
+        from .utils import lmdeploy_context
+        model_or_engine = llm_engine
+        context = lmdeploy_context(template)
     else:
         model_or_engine = model
         context = nullcontext(template)
@@ -334,6 +338,163 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     else:
         return await _generate_full()
 
+@torch.inference_mode()
+async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
+    global llm_engine, template, _args
+    from .utils import LmdeployGenerationConfig
+
+    result = await _prepare_request(request, raw_request)
+    if isinstance(result, JSONResponse):
+        return result
+
+    request_info, inputs, _ = result
+    request_id = request_info['request_id']
+
+    kwargs = {'max_new_tokens': request.max_tokens}
+    for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
+        kwargs[key] = getattr(request, key)
+    for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+        new_value = getattr(request, key)
+        if new_value is None:
+            kwargs[key] = getattr(llm_engine.generation_config, key)
+        else:
+            kwargs[key] = new_value
+    kwargs['stop'] = (llm_engine.generation_config.stop or []) + (getattr(request, 'stop') or [])
+
+    generation_config = VllmGenerationConfig(**kwargs)
+    if generation_config.use_beam_search and request.stream:
+        error_msg = 'Streaming generation does not support beam search.'
+        raise ValueError(error_msg)
+    tokenizer = template.tokenizer
+    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
+        generation_config.stop.append(tokenizer.eos_token)
+    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
+        generation_config.stop.append(template.suffix[-1])
+    if isinstance(template.suffix[-1], list):
+        token_str = tokenizer.decode(template.suffix[-1])
+        if token_str not in generation_config.stop:
+            generation_config.stop.append(token_str)
+    request_info['generation_config'] = generation_config
+    request_info.update({'seed': request.seed, 'stream': request.stream})
+    logger.info(request_info)
+
+    created_time = int(time.time())
+    generate_kwargs = {}
+    if _args.vllm_enable_lora and request.model != _args.model_type:
+        lora_request = None
+        for lora_req in _args.lora_request_list:
+            if lora_req.lora_name == request.model:
+                lora_request = lora_req
+                break
+        assert lora_request is not None
+        generate_kwargs['lora_request'] = lora_request
+
+    import vllm
+    from .utils.vllm_utils import _prepare_request_inputs
+
+    if version.parse(vllm.__version__) >= version.parse('0.4.3'):
+        request_inputs = _prepare_request_inputs(inputs)
+        result_generator = llm_engine.generate(request_inputs, generation_config, request_id, **generate_kwargs)
+    else:
+        input_ids = inputs['input_ids']
+        result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
+
+    async def _generate_full():
+        result = None
+        async for result in result_generator:
+            if await raw_request.is_disconnected():
+                await llm_engine.abort(request_id)
+                return create_error_response(HTTPStatus.BAD_REQUEST, 'Client disconnected')
+        assert result is not None
+        num_prompt_tokens = len(result.prompt_token_ids)
+        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+        usage_info = UsageInfo(
+            prompt_tokens=num_prompt_tokens,
+            completion_tokens=num_generated_tokens,
+            total_tokens=num_prompt_tokens + num_generated_tokens,
+        )
+
+        if isinstance(request, ChatCompletionRequest):
+            choices = []
+            for output in result.outputs:
+                response = template.generate_ids_to_response(output.token_ids)
+                action, action_input = split_action_action_input(response)
+                toolcall = None
+                if action is not None:
+                    toolcall = ChatCompletionMessageToolCall(
+                        id=f'toolcall-{random_uuid()}',
+                        type='function',
+                        function=Function(name=action, arguments=action_input))
+                choice = ChatCompletionResponseChoice(
+                    index=output.index,
+                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                    finish_reason=output.finish_reason,
+                )
+                choices.append(choice)
+            response = ChatCompletionResponse(
+                model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+        else:
+            choices = []
+            for output in result.outputs:
+                response = template.generate_ids_to_response(output.token_ids)
+                choice = CompletionResponseChoice(
+                    index=output.index,
+                    text=response,
+                    finish_reason=output.finish_reason,
+                )
+                choices.append(choice)
+            response = CompletionResponse(
+                model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+        return response
+
+    async def _generate_stream():
+        print_idx_list = [[0] for _ in range(request.n)]
+        total_res = ['' for _ in range(request.n)]
+        async for result in result_generator:
+            num_prompt_tokens = len(result.prompt_token_ids)
+            num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+            usage_info = UsageInfo(
+                prompt_tokens=num_prompt_tokens,
+                completion_tokens=num_generated_tokens,
+                total_tokens=num_prompt_tokens + num_generated_tokens,
+            )
+            for output in result.outputs:
+                output.delta_text = template.generate_ids_to_response(
+                    output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
+                total_res[output.index] += output.delta_text
+            if isinstance(request, ChatCompletionRequest):
+                choices = []
+                for output in result.outputs:
+                    toolcall = None
+                    if output.finish_reason is not None:
+                        action, action_input = split_action_action_input(total_res[output.index])
+                        if action is not None:
+                            toolcall = ChatCompletionMessageToolCall(
+                                id=f'toolcall-{random_uuid()}',
+                                type='function',
+                                function=Function(name=action, arguments=action_input))
+                    choice = ChatCompletionResponseStreamChoice(
+                        index=output.index,
+                        delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
+                        finish_reason=output.finish_reason)
+                    choices.append(choice)
+                response = ChatCompletionStreamResponse(
+                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+            else:
+                choices = []
+                for output in result.outputs:
+                    choice = CompletionResponseStreamChoice(
+                        index=output.index, text=output.delta_text, finish_reason=output.finish_reason)
+                    choices.append(choice)
+                response = CompletionStreamResponse(
+                    model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+            yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+        yield 'data:[DONE]\n\n'
+
+    if request.stream:
+        return StreamingResponse(_generate_stream())
+    else:
+        return await _generate_full()
 
 class _GenerationConfig(GenerationConfig):
 
@@ -525,6 +686,8 @@ async def create_chat_completion(request: ChatCompletionRequest, raw_request: Re
         request.stop = []
     if _args.infer_backend == 'vllm':
         return await inference_vllm_async(request, raw_request)
+    elif _args.infer_backend == 'lmdeploy':
+        return await inference_lmdeploy_async(request, raw_request)
     else:
         return await inference_pt_async(request, raw_request)
 
@@ -537,6 +700,8 @@ async def create_completion(request: CompletionRequest, raw_request: Request) ->
         request.stop = []
     if _args.infer_backend == 'vllm':
         return await inference_vllm_async(request, raw_request)
+    elif _args.infer_backend == 'lmdeploy':
+        return await inference_lmdeploy_async(request, raw_request)
     else:
         return await inference_pt_async(request, raw_request)
 
@@ -554,6 +719,9 @@ def llm_deploy(args: DeployArguments) -> None:
     if args.infer_backend == 'vllm':
         from .utils import prepare_vllm_engine_template
         llm_engine, template = prepare_vllm_engine_template(args, use_async=True)
+    elif args.infer_backend == 'lmdeploy':
+        from .utils import prepare_lmdeploy_engine_template
+        llm_engine, template = prepare_lmdeploy_engine_template(args)
     else:
         model, template = prepare_model_template(args)
     uvicorn.run(app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
