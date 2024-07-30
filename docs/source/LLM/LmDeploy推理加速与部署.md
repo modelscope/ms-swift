@@ -1,5 +1,5 @@
 # LmDeploy推理加速与部署
-lmdeploy github: [https://github.com/InternLM/lmdeploy](https://github.com/InternLM/lmdeploy). 
+lmdeploy github: [https://github.com/InternLM/lmdeploy](https://github.com/InternLM/lmdeploy).
 
 支持lmdeploy推理加速的模型可以查看[支持的模型](支持的模型和数据集.md#模型).
 
