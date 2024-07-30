@@ -358,11 +358,11 @@ class Template:
             example['images'] = images
 
         # Load image into PIL format
-        from .vision_utils import load_image_async, rescale_image, _read_batch_async
+        from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
         if images:
             if example.get('objects') or self.load_medias or self._is_lmdeploy:
-                images = await _read_batch_async(images, load_image_async)
+                images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
