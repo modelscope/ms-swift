@@ -311,24 +311,24 @@ Supports multi-turn conversations, Images support for local path or URL input, m
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+{"query": "last-round-query", "response": "last-round-response", "history": [["query1", "response1"], ["query2", "response2"]], "images": ["image_path"]}
 ```
 
 (Supports data without images)
 ```jsonl
 {"query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "last-round-query", "response": "last-round-response", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 In addition to the above data formats, the **InternVL2** model also supports multi-image multi-turn training. It uses the tag `<image>` to indicate the position of images in the conversation. If the tag `<image>` is not present in the dataset, the images are placed at the beginning of the last round's query by default.
 ```jsonl
-{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image>Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image>Describe the image", "xxxxxxx"], ["query2", "response2"]], "images": ["image_path1", "image_path2", "image_path3"]}
 ```
 Alternatively, use `<img>image_path</img>` to represent the image path and image location.
 
 ```jsonl
-{"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], }
+{"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["query2", "response2"]], }
 ```
 
 The **InternVL2** model supports training with video datasets without the need to specify a tag.

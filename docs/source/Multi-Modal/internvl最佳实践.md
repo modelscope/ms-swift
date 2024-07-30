@@ -346,24 +346,24 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+{"query": "last-round-query", "response": "last-round-response", "history": [["query1", "response1"], ["query2", "response2"]], "images": ["image_path"]}
 ```
 
 (支持纯文本数据)
 ```jsonl
 {"query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "last-round-query", "response": "last-round-response", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 **InternVL2**模型除了以上数据格式外, 还支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如果数据集中没有tag `<image>`, 默认放在最后一轮query的开头
 ```jsonl
-{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image>Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image>Describe the image", "xxxxxxx"], ["query2", "response2"]], "images": ["image_path1", "image_path2", "image_path3"]}
 ```
 或者用`<img>image_path</img>` 表示图像路径和图像位置
 
 ```jsonl
-{"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], }
+{"query": "Image-1: <img>img_path</img>\n Image-2: <img>img_path2</img>\n Describe the two images in detail.", "response": "xxxxxxxxx", "history": [["<img>img_path3</img> Describe the image", "xxxxxxx"], ["query2", "response2"]], }
 ```
 
 **InternVL2**模型支持视频数据集训练, 无需标明tag

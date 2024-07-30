@@ -43,14 +43,14 @@ format 1
 ```jsonl
 {"tools":"{API_LIST}","conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"tools":"{API_LIST}","conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "tool", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
-{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "tool", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "query1"}, {"from": "assistant", "value": "response1"}, {"from": "tool", "value": "query2"}, {"from": "assistant", "value": "response2"}]}
 ```
 
 format 2
 ```jsonl
 {"tools":"{API_LIST}","messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"tools":"{API_LIST}","messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "tool", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
-{"tools":"{API_LIST}","messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "tool", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "query1"}, {"role": "assistant", "content": "response1"}, {"role": "tool", "content": "query2"}, {"role": "assistant", "content": "response2"}]}
 ```
 
 For the tools format, please refer to [Agent-Deoloyment Document](./Agent-deployment-best-practice.md) You can choose the corresponding prompt by setting `--tools_prompt`.

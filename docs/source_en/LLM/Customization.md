@@ -37,13 +37,13 @@ Pre-Training
 response
 11111
 aaaaa
-AAAAA
+query1
 ```
 
 ```jsonl
 {"response": "11111"}
 {"response": "aaaaa"}
-{"response": "AAAAA"}
+{"response": "query1"}
 ```
 
 Single-Round Dialogue
@@ -52,13 +52,13 @@ Single-Round Dialogue
 system,query,response
 00000,11111,22222
 00001,aaaaa,bbbbb
-00002,AAAAA,BBBBB
+00002,query1,response1
 ```
 
 ```jsonl
 {"system": "00000", "query": "11111", "response": "22222"}
 {"query": "aaaaa", "response": "bbbbb"}
-{"query": "AAAAA", "response": "BBBBB"}
+{"query": "query1", "response": "response1"}
 ```
 
 Multi-Round Dialogue
@@ -66,13 +66,13 @@ Multi-Round Dialogue
 ```jsonl
 {"system": "00000", "query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "last-round-query", "response": "last-round-response", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 ```json
 [{"system": "00000", "query": "55555", "response": "66666"},
 {"query": "eeeee", "response": "fffff", "history": []},
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}]
+{"query": "last-round-query", "response": "last-round-response", "history": [["query1", "response1"], ["query2", "response2"]]}]
 ```
 
 **Format 2:**
@@ -80,7 +80,7 @@ Multi-Round Dialogue
 ```jsonl
 {"conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "user", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
-{"conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "user", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+{"conversations": [{"from": "user", "value": "query1"}, {"from": "assistant", "value": "response1"}, {"from": "user", "value": "query2"}, {"from": "assistant", "value": "response2"}]}
 ```
 
 **Format 3:**
@@ -88,7 +88,7 @@ Multi-Round Dialogue
 ```jsonl
 {"messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "user", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
-{"messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "user", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+{"messages": [{"role": "user", "content": "query1"}, {"role": "assistant", "content": "response1"}, {"role": "user", "content": "query2"}, {"role": "assistant", "content": "response2"}]}
 ```
 
 **Format 4:**
@@ -96,7 +96,7 @@ Multi-Round Dialogue
 ```jsonl
 {"system": "00000", "conversation": [{"human": "11111", "assistant": "22222"}]}
 {"conversation": [{"human": "aaaaa", "assistant": "bbbbb"}]}
-{"conversation": [{"human": "AAAAA", "assistant": "BBBBB"}, {"human": "CCCCC", "assistant": "DDDDD"}, {"human": "EEEEE", "assistant": "FFFFF"}]}
+{"conversation": [{"human": "query1", "assistant": "response1"}, {"human": "query2", "assistant": "response2"}, {"human": "last-round-query", "assistant": "last-round-response"}]}
 ```
 
 **Format 5:**
@@ -105,14 +105,14 @@ Multi-Round Dialogue
 system,instruction,input,output
 00000,11111,22222,33333
 00001,aaaaa,bbbbb,ccccc
-00002,AAAAA,BBBBB,CCCCC
+00002,query1,response1,query2
 ```
 
 **Extra pre-training format:**
 ```jsonl
 {"text": "11111"}
 {"text": "aaaaa"}
-{"text": "AAAAA"}
+{"text": "query1"}
 ```
 
 
@@ -120,9 +120,9 @@ system,instruction,input,output
 
 Language model (DPO/ORPO/SimPO/CPO)
 ```jsonl
-{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "your-system-prompt", "query": "11111", "response": "22222", "rejected_response": "33333", "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "your-system-prompt", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "your-system-prompt", "query": "query1", "response": "response1", "rejected_response": "query2", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 (Where system and history are optional.)
 
@@ -130,7 +130,7 @@ Language model (KTO)
 ```jsonl
 {"query": "11111", "response": "22222", "label": true}
 {"query": "aaaaa", "response": "bbbbb", "label": false}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "label": true, "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "your-system-prompt", "query": "query1", "response": "response1", "label": true, "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 Note:  `label` needs to be of type bool, not str.
 
@@ -141,9 +141,9 @@ Vision MLLM (DPO/ORPO/SimPO/CPO)
 
 Different models have varying support for the number of images. Please refer to the corresponding best practices document for each model.
 ```jsonl
-{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "your-system-prompt", "query": "11111", "response": "22222", "rejected_response": "33333", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "your-system-prompt", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "your-system-prompt", "query": "query1", "response": "response1", "rejected_response": "query2", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 (Where system and history are optional.)
@@ -155,14 +155,14 @@ Format 1
 ```jsonl
 {"tools":"{API_LIST}","conversations": [{"from": "system", "value": "00000"}, {"from": "user", "value": "11111"}, {"from": "assistant", "value": "22222"}]}
 {"tools":"{API_LIST}","conversations": [{"from": "user", "value": "aaaaa"}, {"from": "assistant", "value": "bbbbb"}, {"from": "tool", "value": "ccccc"}, {"from": "assistant", "value": "ddddd"}]}
-{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "AAAAA"}, {"from": "assistant", "value": "BBBBB"}, {"from": "tool", "value": "CCCCC"}, {"from": "assistant", "value": "DDDDD"}]}
+{"tools":"{API_LIST}","conversations": [{"from": "user", "value": "query1"}, {"from": "assistant", "value": "response1"}, {"from": "tool", "value": "query2"}, {"from": "assistant", "value": "response2"}]}
 ```
 
 Format 2
 ```jsonl
 {"tools":"{API_LIST}","messages": [{"role": "system", "content": "00000"}, {"role": "user", "content": "11111"}, {"role": "assistant", "content": "22222"}]}
 {"tools":"{API_LIST}","messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "tool", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
-{"tools":"{API_LIST}","messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "tool", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
+{"tools":"{API_LIST}","messages": [{"role": "user", "content": "query1"}, {"role": "assistant", "content": "response1"}, {"role": "tool", "content": "query2"}, {"role": "assistant", "content": "response2"}]}
 ```
 For the tools format, please refer to [Agent-Deoloyment Document](./Agent-deployment-best-practice.md) You can choose the corresponding prompt by setting `--tools_prompt`.
 
