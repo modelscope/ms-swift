@@ -582,7 +582,7 @@ def _prepare_inputs(model: PreTrainedModel,
     truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
     if len(inputs) == 0 and truncation_strategy == 'delete':
         # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-        return {}, tokenizer_kwargs, 0
+        return {}, tokenizer_kwargs, 0, example
 
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
