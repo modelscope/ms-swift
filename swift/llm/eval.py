@@ -192,6 +192,60 @@ def get_model_type(port, timeout):
                 time.sleep(1)
 
 
+def opencompass_runner(args: EvalArguments, dataset: List[str], model_type: str, is_chat: bool, url: str):
+    eval_limit = args.eval_limit
+    if eval_limit is not None and '[' not in eval_limit:
+        eval_limit = int(eval_limit)
+    limit_config = {'limit': eval_limit} if eval_limit else {}
+    task_cfg = dict(
+        eval_backend='OpenCompass',
+        eval_config={
+            'datasets': dataset,
+            'reuse': 'latest' if args.eval_use_cache else None,
+            'batch_size': args.eval_batch_size,
+            'work_dir': args.eval_output_dir,
+            'models': [
+                {
+                    'path': model_type,
+                    'openai_api_base': url,
+                    'is_chat': is_chat,
+                    'key': args.eval_token,
+                },
+            ],
+            **limit_config,
+        },
+    )
+    with EvalDatasetContext():
+        run_task(task_cfg=task_cfg)
+
+    return Summarizer.get_report_from_cfg(task_cfg=task_cfg)
+
+
+def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_chat: bool, url: str):
+    eval_limit = args.eval_limit
+    if eval_limit is not None and '[' not in eval_limit:
+        eval_limit = int(eval_limit)
+    limit_config = {'limit': eval_limit} if eval_limit else {}
+    task_cfg = dict(
+        eval_backend='VLMEvalKit',
+        eval_config={
+            'data': dataset,
+            'work_dir': args.eval_output_dir,
+            'model': [
+                {
+                    'name': 'CustomAPIModel',
+                    'api_base': url,
+                    'key': args.eval_token,
+                    'type': model_type,
+                },
+            ],
+            **limit_config,
+        },
+    )
+    run_task(task_cfg=task_cfg)
+    return Summarizer.get_report_from_cfg(task_cfg=task_cfg)
+
+
 def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
     from evalscope.run import run_task
     from swift.utils.torch_utils import _find_free_port
@@ -204,7 +258,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
         port = _find_free_port()
         args.port = port
         mp = multiprocessing.get_context('spawn')
-        process = mp.Process(target=run_custom_model, args=(args, ))
+        process = mp.Process(target=run_custom_model, args=(args,))
         process.start()
 
         # health check: try to get model_type until raises
@@ -226,40 +280,15 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             url += '/completions'
         model_type = args.model_type
         is_chat = args.eval_is_chat_model
-    
+
     nlp_datasets = set(OpenCompassBackendManager.list_datasets()) & set(args.eval_dataset)
     mm_datasets = set(VLMEvalKitBackendManager.list_supported_datasets()) & set(args.eval_dataset)
-    
-    for dataset, backend in zip([list(nlp_datasets), list(mm_datasets)], ['OpenCompass', 'VLMEvalKit']):
+
+    for dataset, runner in zip([list(nlp_datasets), list(mm_datasets)], [opencompass_runner, vlmeval_runner]):
         if not dataset:
             continue
-        eval_limit = args.eval_limit
-        if eval_limit is not None and '[' not in eval_limit:
-            eval_limit = int(eval_limit)
-        limit_config = {'limit': eval_limit} if eval_limit else {}
-        task_cfg = dict(
-            eval_backend=backend,
-            eval_config={
-                'datasets': dataset,
-                'work_dir': args.eval_output_dir,
-                'reuse': 'latest' if args.eval_use_cache else None,
-                'batch_size': args.eval_batch_size,
-                'models': [
-                    {
-                        'path': model_type,
-                        'openai_api_base': url,
-                        'is_chat': is_chat,
-                        'key': args.eval_token,
-                    },
-                ],
-                **limit_config
-            },
-        )
-
-        with EvalDatasetContext():
-            run_task(task_cfg=task_cfg)
-
-        final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_cfg)
+        
+        final_report = runner(args, dataset, model_type, is_chat, url)
         logger.info(f'Final report:{final_report}\n')
     if process:
         process.kill()
