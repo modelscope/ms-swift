@@ -7,12 +7,12 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import json
+from evalscope.backend.opencompass import OpenCompassBackendManager
+from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
 from evalscope.config import TaskConfig
 from evalscope.constants import DEFAULT_ROOT_CACHE_DIR
 from evalscope.models.custom import CustomModel
 from evalscope.run import run_task
-from evalscope.backend.opencompass import OpenCompassBackendManager
-from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
 from evalscope.summarizer import Summarizer
 from evalscope.utils import EvalBackend
 from modelscope import GenerationConfig
@@ -226,6 +226,8 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
     if eval_limit is not None and '[' not in eval_limit:
         eval_limit = int(eval_limit)
     limit_config = {'limit': eval_limit} if eval_limit else {}
+    if args.batch_size or args.eval_use_cache:
+        logger.warn('VLMEval does not support `batch_size` or `eval_use_cache`')
     task_cfg = dict(
         eval_backend='VLMEvalKit',
         eval_config={
@@ -258,7 +260,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
         port = _find_free_port()
         args.port = port
         mp = multiprocessing.get_context('spawn')
-        process = mp.Process(target=run_custom_model, args=(args,))
+        process = mp.Process(target=run_custom_model, args=(args, ))
         process.start()
 
         # health check: try to get model_type until raises
@@ -287,7 +289,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
     for dataset, runner in zip([list(nlp_datasets), list(mm_datasets)], [opencompass_runner, vlmeval_runner]):
         if not dataset:
             continue
-        
+
         final_report = runner(args, dataset, model_type, is_chat, url)
         logger.info(f'Final report:{final_report}\n')
     if process:
@@ -330,7 +332,7 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
     final_report: List[dict] = Summarizer.get_report_from_cfg(task_cfg=task_configs)
     logger.info(f'Final report:{final_report}\n')
 
-    result_dir = args.eval_output_dir
+    result_dir = os.path.join(args.eval_output_dir, tm)
     if result_dir is None:
         result_dir = eval_model.llm_engine.model_dir if args.infer_backend == 'vllm' else eval_model.model.model_dir
     assert result_dir is not None
