@@ -58,8 +58,8 @@ def get_model_info_table():
         for r in res:
             ms_url = f'https://modelscope.cn/models/{r[1]}/summary'
             if r[8] != '-':
-                hf_url = f'https://huggingface.co/{r[8]}'
-                hf_model_id_str = f'[{r[8]}]({hf_url})'
+                hf_url = f'https://huggingface.co/{r[9]}'
+                hf_model_id_str = f'[{r[9]}]({hf_url})'
             else:
                 hf_model_id_str = '-'
             text[i] += (

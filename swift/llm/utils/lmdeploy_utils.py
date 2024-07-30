@@ -127,7 +127,6 @@ async def _prepare_lmdeploy_inputs(lmdeploy_engine, inputs: Dict[str, Any]) -> N
     images = inputs.pop('images', None) or []
     if len(images) > 0:
         images = await lmdeploy_engine.vl_encoder.async_infer(images)
-        images = [x.cpu().numpy() for x in images]
 
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
