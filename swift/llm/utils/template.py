@@ -1681,6 +1681,7 @@ class InternvlPhi3Template(InternvlTemplate):
             self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
+        self.padding_side = 'left'
 
 
 class Internvl2Phi3Template(Internvl2Template):
@@ -1691,6 +1692,7 @@ class Internvl2Phi3Template(Internvl2Template):
             self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
+        self.padding_side = 'left'
 
 
 register_template(
