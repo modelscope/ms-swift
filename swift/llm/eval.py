@@ -226,7 +226,7 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
     if eval_limit is not None and '[' not in eval_limit:
         eval_limit = int(eval_limit)
     limit_config = {'limit': eval_limit} if eval_limit else {}
-    if args.batch_size or args.eval_use_cache:
+    if args.eval_batch_size or args.eval_use_cache:
         logger.warn('VLMEval does not support `batch_size` or `eval_use_cache`')
     task_cfg = dict(
         eval_backend='VLMEvalKit',
