@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
@@ -203,9 +203,9 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
                               generation_config: Optional[LmdeployGenerationConfig] = None,
                               generation_info: Optional[Dict[str, Any]] = None,
                               use_tqdm: bool = False,
-                              **kwargs) -> List[Dict[str, Any]]:
+                              **kwargs) -> Iterator[List[Dict[str, Any]]]:
     if len(request_list) == 0:
-        return []
+        return
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
