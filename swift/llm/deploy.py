@@ -100,9 +100,7 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         if not is_valid:
             return create_error_response(HTTPStatus.BAD_REQUEST, 'API key error')
 
-    if _args.infer_backend == 'vllm':
-        model_or_engine = llm_engine
-    elif _args.infer_backend == 'lmdeploy':
+    if _args.infer_backend in {'vllm', 'lmdeploy'}:
         model_or_engine = llm_engine
     else:
         model_or_engine = model
