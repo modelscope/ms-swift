@@ -15,14 +15,17 @@ def clear_session() -> History:
 def gradio_generation_demo(args: AppUIArguments) -> None:
     import gradio as gr
     if args.infer_backend == 'vllm':
-        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm
+        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm as inference_stream_x
         llm_engine, template = prepare_vllm_engine_template(args)
+    elif args.infer_backend == 'lmdeploy':
+        from swift.llm import prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x
+        llm_engine, template = prepare_lmdeploy_engine_template(args)
     else:
         model, template = prepare_model_template(args)
 
     def model_generation(query: str) -> Iterator[str]:
-        if args.infer_backend == 'vllm':
-            gen = inference_stream_vllm(llm_engine, template, [{'query': query}])
+        if args.infer_backend in {'vllm', 'lmdeploy'}:
+            gen = inference_stream_x(llm_engine, template, [{'query': query}])
             for resp_list in gen:
                 response = resp_list[0]['response']
                 yield response
@@ -52,15 +55,18 @@ def gradio_generation_demo(args: AppUIArguments) -> None:
 def gradio_chat_demo(args: AppUIArguments) -> None:
     import gradio as gr
     if args.infer_backend == 'vllm':
-        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm
+        from swift.llm import prepare_vllm_engine_template, inference_stream_vllm as inference_stream_x
         llm_engine, template = prepare_vllm_engine_template(args)
+    elif args.infer_backend == 'lmdeploy':
+        from swift.llm import prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x
+        llm_engine, template = prepare_lmdeploy_engine_template(args)
     else:
         model, template = prepare_model_template(args)
 
     def model_chat(query: str, history: History) -> Iterator[Tuple[str, History]]:
         old_history, history = limit_history_length(template, query, history, args.max_length)
-        if args.infer_backend == 'vllm':
-            gen = inference_stream_vllm(llm_engine, template, [{'query': query, 'history': history}])
+        if args.infer_backend in {'vllm', 'lmdeploy'}:
+            gen = inference_stream_x(llm_engine, template, [{'query': query, 'history': history}])
             for resp_list in gen:
                 history = resp_list[0]['history']
                 total_history = old_history + history

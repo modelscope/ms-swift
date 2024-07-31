@@ -4,7 +4,6 @@ import inspect
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
 from dataclasses import asdict
 from http import HTTPStatus
 from typing import List, Optional, Union
@@ -101,17 +100,10 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         if not is_valid:
             return create_error_response(HTTPStatus.BAD_REQUEST, 'API key error')
 
-    if _args.infer_backend == 'vllm':
-        from .utils import vllm_context
+    if _args.infer_backend in {'vllm', 'lmdeploy'}:
         model_or_engine = llm_engine
-        context = vllm_context(template)
-    elif _args.infer_backend == 'lmdeploy':
-        from .utils import lmdeploy_context
-        model_or_engine = llm_engine
-        context = lmdeploy_context(template)
     else:
         model_or_engine = model
-        context = nullcontext(template)
 
     error_msg = await check_model(request)
     if error_msg is not None:
@@ -147,10 +139,9 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 example['tools'] = [tool]
             elif request.tool_choice == 'auto':
                 example['tools'] = request.tools
-        with context:
-            executor = ThreadPoolExecutor(max_workers=1)
-            loop = asyncio.get_running_loop()
-            inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
+        executor = ThreadPoolExecutor(max_workers=1)
+        loop = asyncio.get_running_loop()
+        inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = messages
     else:
@@ -167,10 +158,9 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         example = {'query': prompt}
         if len(images) > 0:
             example['images'] = images
-        with context:
-            executor = ThreadPoolExecutor(max_workers=1)
-            loop = asyncio.get_running_loop()
-            inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
+        executor = ThreadPoolExecutor(max_workers=1)
+        loop = asyncio.get_running_loop()
+        inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = prompt
 
@@ -709,9 +699,11 @@ def llm_deploy(args: DeployArguments) -> None:
     if args.infer_backend == 'vllm':
         from .utils import prepare_vllm_engine_template
         llm_engine, template = prepare_vllm_engine_template(args, use_async=True)
+        template._is_vllm = True
     elif args.infer_backend == 'lmdeploy':
         from .utils import prepare_lmdeploy_engine_template
         llm_engine, template = prepare_lmdeploy_engine_template(args)
+        template._is_lmdeploy = True
     else:
         model, template = prepare_model_template(args)
     uvicorn.run(app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
