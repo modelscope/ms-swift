@@ -27,7 +27,6 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
-from swift.utils.torch_utils import _find_local_mac
 from .template import TemplateType
 from .utils import get_max_model_len, is_unsloth_available
 
@@ -35,15 +34,6 @@ logger = get_logger()
 
 # Model Home: 'https://modelscope.cn/models/{model_id_or_path}'
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
-
-if int(os.getenv('NNODES', 1)) > 1:
-    mac = _find_local_mac().replace(':', '')
-    transformers.utils.hub.TRANSFORMERS_DYNAMIC_MODULE_NAME = (
-        transformers.utils.hub.TRANSFORMERS_DYNAMIC_MODULE_NAME + mac)
-    transformers.utils.TRANSFORMERS_DYNAMIC_MODULE_NAME = transformers.utils.hub.TRANSFORMERS_DYNAMIC_MODULE_NAME
-    transformers.TRANSFORMERS_DYNAMIC_MODULE_NAME = transformers.utils.hub.TRANSFORMERS_DYNAMIC_MODULE_NAME
-    transformers.dynamic_module_utils.TRANSFORMERS_DYNAMIC_MODULE_NAME = (
-        transformers.utils.hub.TRANSFORMERS_DYNAMIC_MODULE_NAME)
 
 
 class ModelType:
