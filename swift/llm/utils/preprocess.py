@@ -350,7 +350,8 @@ class RenameColumnsPreprocessor:
 
     def __call__(self, dataset: HfDataset) -> HfDataset:
         for old_name, new_name in self.rename_mapping.items():
-            dataset = dataset.rename_column(old_name, new_name)
+            if old_name in dataset.features:
+                dataset = dataset.rename_column(old_name, new_name)
         return dataset
 
 
@@ -413,6 +414,13 @@ class SmartPreprocessor:
             'sharegpt': {
                 'required': ['conversation'],
                 'preprocessor': preprocess_sharegpt
+            },
+            'pretrain': {
+                'required': ['text'],
+                'preprocessor': RenameColumnsPreprocessor({
+                    'prompt': 'query',
+                    'text': 'response'
+                })
             }
         }
 

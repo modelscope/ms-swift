@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import inspect
 import os
 import time
@@ -127,7 +128,10 @@ def get_vllm_engine(
         _engine = llm_engine.engine
     else:
         _engine = llm_engine
-    llm_engine.dtype = _engine.model_config.dtype  # compat with pt
+    model_config = _engine.model_config
+    llm_engine.model_config = model_config
+    llm_engine.dtype = model_config.dtype  # compat with pt
+    llm_engine.max_model_len = model_config.max_model_len
     llm_engine.vllm_config = vllm_config
     if len(vllm_config) > 0:
         llm_engine.is_multimodal = True
@@ -310,13 +314,15 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
     is_multimodal = getattr(llm_engine, 'is_multimodal', False)
+    max_workers = os.cpu_count()
     if not is_multimodal:
         use_tqdm = False
-    for i, request in enumerate(tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)):
-        history = request.get('history', None)
-        if history is None:
-            history = []
+        max_workers = 1
 
+    prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
+
+    def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
+        history = request.get('history') or []
         # agent support
         is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
         act_length = None
@@ -325,14 +331,24 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
             act_length = len(history[-1][-1])
             request['query'] = None
         agent_state.append((is_observation, act_length))
-
         request['history'] = history
-        with vllm_context(template):
-            inputs = template.encode(request)[0]
+
+        inputs = template.encode(request)[0]
+        prog_bar.update()
+        return inputs
+
+    with vllm_context(template), concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(max_workers, len(request_list))) as executor:
+        futures = [executor.submit(_prepare_inputs, request) for request in request_list]
+        concurrent.futures.wait(futures)
+        inputs_list = [future.result() for future in futures]
+    prog_bar.close()
+
+    for i, (inputs, request) in enumerate(zip(inputs_list, request_list)):
         truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
         if len(inputs) == 0 and truncation_strategy == 'delete':
             # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-            resp_list[i] = {'response': '', 'history': history}
+            resp_list[i] = {'response': '', 'history': request['history']}
             continue
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generation_info['num_samples'] += 1
@@ -360,6 +376,8 @@ def inference_stream_vllm(
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    if len(request_list) == 0:
+        return
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
@@ -452,6 +470,8 @@ def inference_vllm(llm_engine: LLMEngine,
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    if len(request_list) == 0:
+        return []
     runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
@@ -513,7 +533,6 @@ def inference_vllm(llm_engine: LLMEngine,
 def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
 
-    assert args.quantization_bit == 0, 'not support bnb'
     assert not (args.sft_type == 'lora' and not args.vllm_enable_lora), 'you need to merge lora'
     # Loading Model and Tokenizer
     model_id_or_path = None
@@ -537,11 +556,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         image_input_shape=args.image_input_shape,
         image_feature_size=args.image_feature_size)
     tokenizer = llm_engine.hf_tokenizer
-    if use_async:
-        model_config = asyncio.run(llm_engine.get_model_config())
-        llm_engine.model_config = model_config
-    else:
-        model_config = llm_engine.model_config
+    model_config = llm_engine.model_config
     logger.info(f'model_config: {model_config.hf_config}')
 
     if not args.do_sample:

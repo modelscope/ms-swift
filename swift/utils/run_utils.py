@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from typing import Callable, List, Type, TypeVar, Union
 
@@ -24,6 +25,10 @@ def get_main(args_class: Type[_TArgsClass],
                 logger.warning(f'remaining_argv: {remaining_argv}')
             else:
                 raise ValueError(f'remaining_argv: {remaining_argv}')
+        from swift.llm import AppUIArguments, WebuiArguments
+        if (isinstance(args, (AppUIArguments, WebuiArguments)) and 'JUPYTER_NAME' in os.environ
+                and 'dsw-' in os.environ['JUPYTER_NAME'] and 'GRADIO_ROOT_PATH' not in os.environ):
+            os.environ['GRADIO_ROOT_PATH'] = f"/{os.environ['JUPYTER_NAME']}/proxy/7860"
         result = llm_x(args, **kwargs)
         logger.info(f'End time of running main: {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")}')
         return result

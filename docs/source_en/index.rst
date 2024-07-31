@@ -66,9 +66,10 @@ Swift DOCUMENTATION
    Multi-Modal/cogvlm2-video-best-practice.md
    Multi-Modal/minicpm-v-best-practice.md
    Multi-Modal/internvl-best-practice.md
-   Multi-Modal/mutlimodal-deployment.md
-   Multi-Modal/vllm-inference-acceleration.md
    Multi-Modal/human-preference-alignment-training-documentation.md
+   Multi-Modal/LmDeploy-inference-acceleration.md
+   Multi-Modal/vllm-inference-acceleration.md
+   Multi-Modal/mutlimodal-deployment.md
 
 .. toctree::
    :maxdepth: 2

@@ -24,27 +24,26 @@ Output: (supports passing in local path or URL)
 ```python
 """
 <<< who are you
-Input a video path or URL <<<
 I am Vicuna, a language model trained by researchers from Large Model Systems Organization (LMSYS).
 --------------------------------------------------
 <<< clear
-<<< Describe this video.
+<<< <video>Describe this video.
 Input a video path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4
 In the video, a young child is seen sitting on a bed, engrossed in reading a book. The child is wearing glasses and appears to be enjoying the book. The bed is covered with a white blanket, and there are some toys scattered around the room. The child's focus on the book suggests that they are deeply immersed in the story. The room appears to be a comfortable and cozy space, with the child's playful demeanor adding to the overall warmth of the scene.
 --------------------------------------------------
 <<< clear
-<<< Describe this video.
+<<< <video>Describe this video.
 Input a video path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/fire.mp4
 In the video, we see a person's hands holding a bag of chips. The person is standing in front of a fire pit, which is surrounded by a wooden fence. The fire pit is filled with wood, and there is a small fire burning in it. The person is holding the bag of chips over the fire pit, and we can see the flames from the fire reflected on the bag. The person then opens the bag and throws the chips onto the fire, causing them to sizzle and pop as they land on the burning wood. The sound of the chips hitting the fire can be heard clearly in the video. Overall, the video captures a simple yet satisfying moment of someone enjoying a snack while surrounded by the warmth and light of a fire pit.
 --------------------------------------------------
 <<< clear
-<<< Describe this image.
-Input a video path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
+<<< <image>Describe this image.
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 This is a close-up photograph of a kitten with a soft, blurred background. The kitten has a light brown coat with darker brown stripes and patches, typical of a calico pattern. Its eyes are wide open, and its nose is pink, which is common for young kittens. The kitten's whiskers are visible, and its ears are perked up, suggesting alertness. The image has a shallow depth of field, with the kitten in focus and the background out of focus, creating a bokeh effect.
 --------------------------------------------------
 <<< clear
-<<< How many sheep are in the picture?
-Input a video path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
+<<< <image>How many sheep are in the picture?
+Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 """
 ```
@@ -68,20 +67,20 @@ print(f'template_type: {template_type}')
 
 model, tokenizer = get_model_tokenizer(model_type, torch.float16,
                                        model_kwargs={'device_map': 'auto'})
-model.generation_config.max_new_tokens = 256
+model.generation_config.max_new_tokens = 1024
 template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
-query = 'Describe this video.'
+query = '<video>Describe this video.'
 response, _ = inference(model, template, query, videos=videos)
 print(f'query: {query}')
 print(f'response: {response}')
 
 # Streaming
-videos = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
-query = 'How many sheep are in the picture?'
-gen = inference_stream(model, template, query, videos=videos)
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+query = '<image>How many sheep are in the picture?'
+gen = inference_stream(model, template, query, images=images)
 print_idx = 0
 print(f'query: {query}\nresponse: ', end='')
 for response, _ in gen:
@@ -91,9 +90,9 @@ for response, _ in gen:
 print()
 
 """
-query: Describe this video.
-response: In the video, a young child is seen sitting on a bed, engrossed in reading a book. The child is wearing a pair of glasses, which adds a touch of innocence to the scene. The child's focus is entirely on the book, indicating a sense of curiosity and interest in the content. The bed, covered with a white blanket, provides a cozy and comfortable setting for the child's reading session. The overall atmosphere of the video is one of tranquility and peacefulness, as the child enjoys a quiet moment of reading.
-query: How many sheep are in the picture?
+query: <video>Describe this video.
+response: In the video, a young child is seen sitting on a bed, engrossed in reading a book. The child is wearing a pair of glasses, which adds a touch of innocence to the scene. The child's focus is entirely on the book, indicating a sense of curiosity and interest in the content. The bed, covered with a white blanket, provides a cozy and comfortable setting for the child's reading session. The video captures a simple yet beautiful moment of a child's learning and exploration.
+query: <image>How many sheep are in the picture?
 response: There are four sheep in the picture.
 """
 ```
@@ -120,7 +119,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
 ```jsonl
 {"query": "55555", "response": "66666", "videos": ["video_path"]}
 {"query": "eeeee", "response": "fffff", "videos": ["video_path"]}
-{"query": "EEEEE", "response": "FFFFF", "videos": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```
 
 

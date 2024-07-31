@@ -114,13 +114,13 @@ Example of multi-turn multi-image input:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b
 ```
-image1: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img> image2: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img> What is the difference bewteen the two images?
+
 ```
-<<< <image> describe the image
+<<< <image>describe the image
 Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 The image depicts a kitten with striking blue eyes and a mix of white and black fur. The kitten's fur appears soft and fluffy, and its ears are large and pointed. The eyes of the kitten are particularly expressive, giving it a curious and endearing appearance. The background is blurred, drawing attention to the kitten's detailed features. The overall composition of the image highlights the kitten's innocence and charm.
 --------------------------------------------------
-<<< <image> What is the difference from the last picture
+<<< <image>What is the difference from the last picture
 Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 The difference between the last picture and the one in the image is primarily in the facial expressions and the overall demeanor of the sheep.
 
@@ -135,7 +135,6 @@ In the fourth picture, the sheep have a more neutral and calm expression. Their 
 Overall, the main difference is the facial expressions and the overall demeanor of the sheep, with the second picture showing a more alert and focused look compared to the other three pictures.
 --------------------------------------------------
 <<< What the two pictures have in common
-Input an image path or URL <<<
 The two pictures have several similarities:
 
 1. **Foreground Sheep**: All four sheep in the images are in the foreground, standing on a grassy field. This creates a sense of unity and focus on the sheep.
@@ -149,12 +148,22 @@ The two pictures have several similarities:
 5. **Overall Composition**: The composition of the images is similar, with the sheep standing in the foreground and the background featuring a blurred natural landscape.
 
 These similarities create a cohesive and engaging visual experience, despite the differences in expressions and demeanor.
-```
+--------------------------------------------------
+<<< clear
+<<< <video>Describe this video.
+Input a video path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4
+In the video, a young child is seen sitting on a bed, engrossed in reading a book. The child is wearing a light blue shirt and dark glasses, and appears to be very focused on the book. The bed has a floral patterned cover, and there is a white blanket spread over it. The child's legs are crossed, and they are holding the book with both hands. The book is open, and the child is reading it with great interest.
 
-Example of single-turn multi-image input:
-```
+As the child continues to read, they occasionally glance at the camera, seemingly curious about who is watching them. The child's expression is one of concentration and enjoyment, as they seem to be fully immersed in the story. The camera captures the child's face and the book, providing a clear view of their actions.
+
+In the background, there is a glimpse of a room with a white wall and a wooden door. There is also a chair visible in the background, and a small table with a lamp on it. The room appears to be a bedroom, and the child seems to be in a comfortable and cozy environment.
+
+The child's actions are repetitive, as they continue to read the book with great enthusiasm. The camera captures their movements and expressions, providing a detailed view of their reading experience. The child's focus and dedication to the book are evident, and the video conveys a sense of innocence and curiosity.
+
+Overall, the video captures a heartwarming moment of a young child reading a book, showcasing their love for books and the joy of reading. The setting is simple and cozy, with a focus on the child's engagement with the book. The video is a delightful portrayal of childhood innocence and the simple pleasures of reading.
+--------------------------------------------------
+<<< clear
 <<< image1: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img> image2: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img> What is the difference bewteen the two images?
-Input an image path or URL <<<
 The two images are of the same kitten, but the first image is a close-up shot, while the second image is a more distant, artistic illustration. The close-up image captures the kitten in detail, showing its fur, eyes, and facial features in sharp focus. In contrast, the artistic illustration is more abstract and stylized, with a blurred background and a different color palette. The distant illustration gives the kitten a more whimsical and dreamy appearance, while the close-up image emphasizes the kitten's realism and detail.
 ```
 
@@ -302,19 +311,19 @@ Supports multi-turn conversations, Images support for local path or URL input, m
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]], "images": ["image_path"]}
 ```
 
 (Supports data without images)
 ```jsonl
 {"query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 In addition to the above data formats, the **InternVL2** model also supports multi-image multi-turn training. It uses the tag `<image>` to indicate the position of images in the conversation. If the tag `<image>` is not present in the dataset, the images are placed at the beginning of the last round's query by default.
 ```jsonl
-{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image>Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
 ```
 Alternatively, use `<img>image_path</img>` to represent the image path and image location.
 

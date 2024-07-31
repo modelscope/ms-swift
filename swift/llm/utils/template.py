@@ -1,14 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
 from copy import deepcopy
-from io import BytesIO
+from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import numpy as np
-import requests
 import torch
 import torch.nn.functional as F
+import transformers
+from packaging import version
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
@@ -162,7 +163,7 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
-    special_tokens = ['<image>', '<video_label>', '<audio_label>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio_label>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = '<image>'
@@ -204,6 +205,7 @@ class Template:
         self.tools_prompt = tools_prompt
         self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
         self._is_vllm = False
+        self._is_lmdeploy = False
         self.padding_side = padding_side
 
     @staticmethod
@@ -242,6 +244,7 @@ class Template:
                        model=None,
                        **kwargs) -> None:
         assert self._is_init is False, 'The template has been initialized.'
+        self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self._is_init = True
         self.tokenizer = tokenizer
         # if default_system is None. not change self.default_system
@@ -265,6 +268,7 @@ class Template:
                 self.response_loss_scale_map = self.response_loss_scale_map['response']
 
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
+        self.rescale_image = kwargs.get('rescale_image', -1)
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
             value = getattr(self, key)
@@ -277,24 +281,37 @@ class Template:
     def add_default_tags(self, example: Dict[str, Any]) -> None:
         history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>'), ('audios', '<audio_label>')]:
-            if example.get(media_key) and media_tag not in ('\n'.join([h[0] for h in history]) + f'\n{query}'):
+        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio_label>')]:
+            if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
-                    assert len(example[media_key]) == len(history) + 1
-                    for h, m in zip(history, example[media_key][:-1]):
+                    n_round = len(example[media_key])
+                    assert n_round == len(history) + 1
+                    for i, h, m in zip(range(n_round), history + [[query, None]], example[media_key]):
+                        num_media_tags = len(re.findall(media_tag, h[0]))
                         if m:
-                            h[0] = media_tag + h[0]
-                    if example[media_key][-1]:
-                        query = media_tag + query
+                            assert num_media_tags <= 1, f'num_media_tags: {num_media_tags}'
+                            if num_media_tags == 0:
+                                h[0] = media_tag + h[0]
+                        else:
+                            assert num_media_tags == 0, f'num_media_tags: {num_media_tags}'
+                        if i == n_round - 1:
+                            query = h[0]
+                        else:
+                            history[i][0] = h[0]
+
                     example[media_key] = [m for m in example[media_key] if m]
+
                 else:
+                    num_media_tags = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
                     example[media_key] = [m for m in example[media_key] if m]
-                    media_len = len(example[media_key])
+                    num_media = len(example[media_key])
+                    num_new_tags = num_media - num_media_tags
+                    assert num_new_tags >= 0, f'num_new_tags: {num_new_tags}'
                     if history:
-                        history[0][0] = media_tag * media_len + history[0][0]
+                        history[0][0] = media_tag * num_new_tags + history[0][0]
                     else:
-                        query = media_tag * media_len + query
+                        query = media_tag * num_new_tags + query
 
         example['query'] = query
         example['history'] = history
@@ -321,6 +338,44 @@ class Template:
 
         return new_images
 
+    def _preprocess_media(self, example):
+        from .media import MediaTag
+        # Format media_keys to list
+        for media_key in MediaTag.media_keys.values():
+            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
+                # change images field to list
+                example[media_key] = [example[media_key]]
+
+        # Parse <img></img> format images and merged into images key
+        images_path = None
+        if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
+            example['query'], example['history'], images_path = replace_img_tag(
+                example.get('query'),
+                example.get('history') or [], '<image>')
+        if images_path:
+            images = example.get('images', [])
+            images = images + images_path
+            example['images'] = images
+
+        # Load image into PIL format
+        from .vision_utils import load_image, rescale_image, _read_batch
+        images = example.get('images') or []
+        if images:
+            if example.get('objects') or self.load_medias or self._is_lmdeploy:
+                images = _read_batch(images, load_image)
+            if example.get('objects'):
+                # Normalize grounding bboxes
+                self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
+            if self.load_medias and self.grounding_type != 'real':
+                images = [rescale_image(img, self.rescale_image) for img in images]
+            example['images'] = images
+
+        # Add default tags to examples to note where to put the medias into the sequence
+        self.add_default_tags(example)
+
+        # Check the example that whether matching the very template's rules
+        self.check_example(example)
+
     def preprocess(self, example):
         # Duplicate example and create a new one to prepare in-place changes
         example = example.copy()
@@ -331,50 +386,6 @@ class Template:
         if not self._is_init:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
-
-        # Check whether this template supports multi-round
-        history: History = example.get('history') or []
-        if len(history) > 0:
-            assert self.support_multi_round, (
-                f'The template does not support multi-round chat, template_type: {template_type}')
-
-        from .media import MediaTag
-        # Format media_keys to list
-        for media_key in MediaTag.media_keys.values():
-            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
-                # change images field to list
-                example[media_key] = [example[media_key]]
-
-        # Parse <img></img> format images and merged into images key
-        example['query'], example['history'], images_path = replace_img_tag(example['query'], history,
-                                                                            self.image_placeholder)
-        if images_path:
-            images = example.get('images', [])
-            images.extend(images_path)
-            example['images'] = images
-
-        # Add default tags to examples to note where to put the medias into the sequence
-        self.add_default_tags(example)
-
-        # Check the example that whether matching the very template's rules
-        self.check_example(example)
-
-        # Format objects(groundings/refs) to json
-        if example.get('objects') and isinstance(example['objects'], str):
-            # reload grounding from str
-            example['objects'] = json.loads(example['objects'])
-            objects = []
-            for object in example['objects']:
-                # Compatible with list format
-                if isinstance(object, list):
-                    object = {
-                        'caption': object[0],
-                        'bbox': object[1],
-                        'bbox_type': None,
-                        'image': 0,
-                    }
-                objects.append(object)
-            example['objects'] = objects
 
         # Reset system (by default value and agent tools)
         system: Optional[str] = example.get('system', None)
@@ -395,27 +406,68 @@ class Template:
 
         example['system'] = system
 
+        # Check whether this template supports multi-round
+        history: History = example.get('history') or []
+        if len(history) > 0:
+            assert self.support_multi_round, (
+                f'The template does not support multi-round chat, template_type: {template_type}')
+
         # Set history_roles
         history_roles: Optional[History] = example.get('history_roles')
         if history_roles is None:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
-        # Load image into PIL format
-        from .vision_utils import load_image, _read_batch
-        if example.get('images'):
-            images = example['images']
-            if example.get('objects') or self.load_medias:
-                images = _read_batch(images, load_image)
-            if example.get('objects'):
-                # Normalize grounding bboxes
-                self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
-            if self.load_medias:
-                example['images'] = images
+        self._preprocess_media(example)
+
+        # Format objects(groundings/refs) to json
+        if example.get('objects') and isinstance(example['objects'], str):
+            # reload grounding from str
+            example['objects'] = json.loads(example['objects'])
+            objects = []
+            for object in example['objects']:
+                # Compatible with list format
+                if isinstance(object, list):
+                    object = {
+                        'caption': object[0],
+                        'bbox': object[1],
+                        'bbox_type': None,
+                        'image': 0,
+                    }
+                objects.append(object)
+            example['objects'] = objects
+
         return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
-        return self._encode(example)
+        _encode = self._encode
+        if self._is_lmdeploy:
+            assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
+            _encode = MethodType(Template._encode, self)
+        return _encode(example)
+
+    async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
+        images = inputs.pop('images', None) or []
+        if len(images) == 0:
+            return
+        from lmdeploy.vl.constants import IMAGE_DUMMY_TOKEN_INDEX
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
+        idx_list.insert(0, -1)
+        new_input_ids = []
+        ranges = []
+        for i in range(len(idx_list) - 1):
+            _range = []
+            new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            _range.append(len(new_input_ids))
+            new_input_ids += [IMAGE_DUMMY_TOKEN_INDEX] * images[i].shape[0]
+            _range.append(len(new_input_ids))
+            ranges.append(_range)
+        new_input_ids += input_ids[idx_list[-1] + 1:]
+        inputs['input_embeddings'] = images
+        inputs['input_embedding_ranges'] = ranges
+        inputs['input_ids'] = new_input_ids
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """return: inputs, tokenizer_kwargs"""
@@ -438,6 +490,8 @@ class Template:
             auto_add_bos=self.auto_add_bos,
             example=example,
             is_multi_modal=is_multi_modal)
+        if self._is_lmdeploy:
+            inputs['images'] = example.get('images')
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -535,9 +589,12 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            return ['<image>']
+            if self._is_lmdeploy:
+                return [[-100]]
+            else:
+                return [self.image_placeholder]
         if media_type == 'video':
-            return ['<video_label>']
+            return ['<video>']
         if media_type == 'audio':
             return ['<audio_label>']
 
@@ -604,15 +661,19 @@ class Template:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
+        replace_tag = self.replace_tag
+        if self._is_lmdeploy:
+            replace_tag = MethodType(Template.replace_tag, self)
+
         for context, loss_scale in zip(context_list, loss_scale_list):
             if context == '<image>':
-                c_list = self.replace_tag('image', example.get('image_index', 0), example)
+                c_list = replace_tag('image', example.get('image_index', 0), example)
                 example['image_index'] = example.get('image_index', 0) + 1
-            elif context == '<video_label>':
-                c_list = self.replace_tag('video', example.get('video_index', 0), example)
+            elif context == '<video>':
+                c_list = replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
             elif context == '<audio_label>':
-                c_list = self.replace_tag('audio', example.get('audio_index', 0), example)
+                c_list = replace_tag('audio', example.get('audio_index', 0), example)
                 example['audio_index'] = example.get('audio_index', 0) + 1
             elif context == '<ref-object>':
                 c_list = self.replace_object(example.get('object_index', 0), example)
@@ -626,13 +687,17 @@ class Template:
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
 
-    def _encode_context_list(self, context_list: List[Context],
-                             loss_scale_list: List[float]) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
+    def _encode_context_list(
+            self,
+            context_list: List[Context],
+            loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float], Dict[str, Any]]:
         """return: input_ids, labels, tokenizer_kwargs"""
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
         tokenizer_kwargs = {}
+        if loss_scale_list is None:
+            loss_scale_list = [0.] * len(context_list)
         for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
             if isinstance(context, str):
                 # tokenizer_kwargs is the returned tokenizer_kwargs,
@@ -1049,7 +1114,7 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
     pass
 
 
-register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True, media_type='audio')
+register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
 register_template(
     TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
@@ -1565,7 +1630,7 @@ class Internvl2Template(InternvlTemplate):
         labels = inputs.get('labels')
         from .vision_utils import transform_image
         pixel_values_images = [transform_image(image) for image in example.get('images', [])]
-        videos_path = example.get('videos_path', [])
+        videos_path = example.get('videos', [])
         if pixel_values_images:
             pixel_values = pixel_values_images
             assert len(pixel_values) == len(idx_list)
@@ -1606,37 +1671,6 @@ class Internvl2Template(InternvlTemplate):
         inputs.pop('loss_scale', None)
         return inputs, {}
 
-    def add_default_tags(self, example: Dict[str, Any]) -> None:
-        history: History = deepcopy(example.get('history') or [])
-        query: str = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video_label>'), ('images', '<image>')]:
-            medias = example.get(media_key)
-            if medias:
-                num_media_tag = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
-                num_media = sum([1 for m in medias if m])  # ignore None
-                num_res_media = num_media - num_media_tag
-                assert num_res_media >= 0, \
-                    'The number of media tags {num_media_tag} is greater than the number of media objects {num_media}.'
-                if num_res_media == 0:
-                    # Each media tag corresponds to an media object.
-                    return
-                # process res media, add default media tag
-                if num_res_media == len(history) + 1:
-                    # In this case, add at the beginning of each round's query.
-                    for h, m in zip(history, example[media_key][:-1]):
-                        if m:
-                            h[0] = media_tag + h[0]
-                    if example[media_key][-1]:
-                        query = media_tag + query
-                    example[media_key] = [m for m in example[media_key] if m]
-                else:
-                    # add the res image tag at the beginning of the last query
-                    query = media_tag * num_res_media + query
-                break
-
-        example['query'] = query
-        example['history'] = history
-
 
 class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
@@ -1646,6 +1680,7 @@ class InternvlPhi3Template(InternvlTemplate):
             self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
+        self.padding_side = 'left'
 
 
 class Internvl2Phi3Template(Internvl2Template):
@@ -1656,6 +1691,7 @@ class Internvl2Phi3Template(Internvl2Template):
             self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
+        self.padding_side = 'left'
 
 
 register_template(
@@ -1664,11 +1700,9 @@ register_template(
 register_template(
     TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
-register_template(
-    TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
+register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
 
-register_template(
-    TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='round')
+register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
 
 
 class FlorenceTemplate(Template):
@@ -1828,7 +1862,8 @@ class LlavaHfTemplate(Template):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.padding_side = 'left'
+        if version.parse(transformers.__version__) < version.parse('4.43.0'):
+            self.padding_side = 'left'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
@@ -1857,6 +1892,9 @@ class LlavaHfTemplate(Template):
 class LlavaVideoTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+
+        if media_type == 'image':
+            return ['<image>\n']
         assert media_type == 'video'
         media_file = example['videos'][index]
         if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
@@ -1868,24 +1906,15 @@ class LlavaVideoTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        media_files = example.get('videos', [])
-        images_path, videos_path = [], []
-        for media_file in media_files:
-            if media_file is None:
-                continue
-            if media_file.rsplit('.', 1)[1] in {'jpg', 'png'}:
-                images_path.append(media_file)
-            else:
-                videos_path.append(media_file)
+        images = example.get('images') or []
+        videos_path = example.get('videos') or []
         if len(videos_path) > 0:
             from .vision_utils import _read_batch
             videos = _read_batch(videos_path, _load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
-        if len(images_path) > 0:
-            from .vision_utils import _read_batch
-            images = _read_batch(images_path)
+        if len(images) > 0:
             image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values'] = image_inputs['pixel_values']
@@ -1897,8 +1926,6 @@ register_template(
     TemplateType.llava_next_video,
     LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
     use_model=True,
-    infer_media_type='round',
-    media_type='video',
     lazy_tokenize=True)
 
 register_template(
@@ -1906,7 +1933,6 @@ register_template(
     LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
     use_model=True,
     infer_media_type='round',
-    media_type='video',
     lazy_tokenize=True)
 
 
@@ -1916,8 +1942,7 @@ class Llava1_5Template(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
 
 
-register_template(
-    TemplateType.llava1_5, Llava1_5Template(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava1_5, Llava1_5Template(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaTemplate(Template):
@@ -1967,20 +1992,25 @@ class LLavaTemplate(Template):
         return generate_ids[0].tolist()
 
 
-class Llava1_6MistralTemplate(LlavaHfTemplate):
+class Llava1_6Template(LlavaHfTemplate):
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        for b in batch:
+            pixel_values = b.get('pixel_values')
+            if pixel_values is not None:
+                b['pixel_values'] = pixel_values.squeeze(0)
+        res = super().data_collator(batch, padding_to)
+        return res
+
+
+class Llava1_6MistralTemplate(Llava1_6Template):
 
     def __init__(self):
         super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
                          system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
 
-
-class Llava1_6VicunaTemplate(LlavaHfTemplate):
+class Llava1_6VicunaTemplate(Llava1_6Template):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
               "The assistant gives helpful, detailed, and polite answers to the human's questions.")
 
@@ -1989,47 +2019,34 @@ class Llava1_6VicunaTemplate(LlavaHfTemplate):
                          self.system,
                          system_prefix=['<s>{{SYSTEM}} '])
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
+
+register_template(TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, lazy_tokenize=True)
+
+register_template(TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, lazy_tokenize=True)
 
 
-register_template(
-    TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
-
-register_template(
-    TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
-
-
-class LLavaYiTemplate(LlavaHfTemplate):
+class LLava1_6YiTemplate(Llava1_6Template):
 
     def __init__(self):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
-    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
-        if 'pixel_values' in inputs:
-            inputs['pixel_values'] = inputs['pixel_values'].squeeze(0)
-        return inputs, {}
 
-
-register_template(
-    TemplateType.llava_yi, LLavaYiTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Template):
-    llavallama_query_template = ('<|start_header_id|>user<|end_header_id|>\n\n'
-                                 '{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n')
+
+    def __init__(self):
+        Template.__init__(self, ['<|begin_of_text|>'], [
+            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+            '<|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         return ['<image>\n']
-
-    def __init__(self):
-        Template.__init__(self, [], [self.llavallama_query_template], ['<|eot_id|>'], ['<|eot_id|>'])
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -2037,17 +2054,12 @@ class LLavaLlamaTemplate(Template):
             return inputs, {}
         raw_image = example.get('images', [])
         if raw_image:
-            pixel_values = self.tokenizer.processor.image_processor(raw_image[0], return_tensors='pt')['pixel_values']
+            pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
         return inputs, {}
 
 
-register_template(
-    TemplateType.llava_llama_instruct,
-    LLavaLlamaTemplate(),
-    use_model=True,
-    infer_media_type='round',
-    lazy_tokenize=True)
+register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class PaliGemmaTemplate(Template):
@@ -2100,9 +2112,6 @@ class Phi3VisionTemplate(Template):
         Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
 
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        return ['<|image|>']
-
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images = example.get('images', [])
         inputs, _ = super()._encode(example)
@@ -2150,19 +2159,14 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
                      'and assist the user with a variety of tasks using natural language.'
 
     def __init__(self):
-        Template.__init__(self, [], [
-            '<|start_header_id|>user<|end_header_id|>\n\n',
-            '\n{{QUERY}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n'
+        Template.__init__(self, ['<|begin_of_text|>'], [
+            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+            '<|start_header_id|>assistant<|end_header_id|>\n\n'
         ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}'])
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
 
 
-register_template(
-    TemplateType.llama_llava_next,
-    LlamaLlavaNextTemplate(),
-    use_model=True,
-    infer_media_type='round',
-    lazy_tokenize=True)
+register_template(TemplateType.llama_llava_next, LlamaLlavaNextTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaQwenTemplate(LLavaTemplate):
@@ -2174,8 +2178,7 @@ class LLavaQwenTemplate(LLavaTemplate):
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
 
 
-register_template(
-    TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, infer_media_type='round', lazy_tokenize=True)
+register_template(TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:
@@ -2201,10 +2204,6 @@ class DeepseekVLTemplate(Template):
     def __init__(self):
         super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
                          ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        assert media_type == 'image'
-        return ['<image_placeholder>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -2338,19 +2337,9 @@ register_template(
     lazy_tokenize=True)
 
 
-def _read_video(video_path: str) -> BytesIO:
-    video_path = video_path.strip()
-    if video_path.startswith('http'):
-        content = requests.get(video_path).content
-        mp4_stream = BytesIO(content)
-    else:
-        with open(video_path, 'rb') as f:
-            mp4_stream = BytesIO(f.read())
-    return mp4_stream
-
-
 def _load_video_cogvlm2(video_path: str) -> np.ndarray:
     from decord import cpu, VideoReader, bridge
+    from .vision_utils import _read_video
     bridge.set_bridge('torch')
     mp4_stream = _read_video(video_path)
     clip_end_sec = 60
@@ -2438,6 +2427,35 @@ class MiniCPMVTemplate(Template):
         images = example.get('images', [])
         assert len(images) == 1
 
+    async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
+        images = inputs.pop('images', None) or []
+        if len(images) == 0:
+            return
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        idx_list.insert(0, -1)
+        new_input_ids = []
+        features = []
+        for i in range(len(idx_list) - 1):
+            new_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]]
+            context_list = ['<image>', [-100], '</image>']
+            feat = [x.squeeze() for x in images[i]['embeddings'].split(1)]
+            grid = images[i].get('grid')
+            if len(feat) > 1 and grid is not None:
+                context_list.append('<slice>')
+                for i in range(grid[1]):
+                    if i > 0:
+                        context_list.append('\n')
+                    for _ in range(grid[0]):
+                        context_list += ['<image>', [-100], '</image>']
+                context_list.append('</slice>\n')
+            new_input_ids += self._encode_context_list(context_list)[0]
+            features += feat
+        new_input_ids += input_ids[idx_list[-1] + 1:]
+        inputs['input_ids'] = new_input_ids
+        inputs['images'] = features
+        await super().prepare_lmdeploy_inputs(inputs)
+
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
@@ -2495,6 +2513,7 @@ class MiniCPMVTemplate(Template):
         if tgt_sizes is not None:
             data['tgt_sizes'] = [tgt_sizes]
         inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        inputs_embeds = inputs_embeds.detach()
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         inputs['inputs_embeds'] = inputs_embeds[0]

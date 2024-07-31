@@ -43,6 +43,8 @@ except Exception as e:
 try:
     if is_lmdeploy_available():
         from .lmdeploy_utils import (
+            prepare_lmdeploy_engine_template,
+            lmdeploy_context,
             LmdeployGenerationConfig,
             get_lmdeploy_engine,
             inference_stream_lmdeploy,

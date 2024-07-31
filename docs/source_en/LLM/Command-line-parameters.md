@@ -4,7 +4,7 @@
 
 - [sft Parameters](#sft-parameters)
 - [dpo Parameters](#dpo-parameters)
-- [merge-lora infer Parameters](#merge-lora-infer-parameters)
+- [infer merge-lora Parameters](#infer-merge-lora-parameters)
 - [export Parameters](#export-parameters)
 - [eval Parameters](#eval-parameters)
 - [app-ui Parameters](#app-ui-parameters)
@@ -252,7 +252,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is 1.0.
 - `--undesirable_weight`: The loss weight for undesirable responses $\lambda_U$ in the KTO paper, default is 1.0. Let $n_d$ and $n_u$ represent the number of desirable and undesirable examples in the dataset, respectively. The paper recommends controlling $\frac{\lambda_D n_D}{\lambda_Un_U} \in [1,\frac{4}{3}]$.
 
-## merge-lora infer Parameters
+## infer merge-lora Parameters
 
 - `--model_type`: Default is `None`, see `sft.sh command line arguments` for parameter details.
 - `--model_id_or_path`: Default is `None`, see `sft.sh command line arguments` for parameter details. Recommended to use model_type to specify.
@@ -303,18 +303,28 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--save_safetensors`: Whether to save as `safetensors` file or `bin` file. Default is `True`.
 - `--overwrite_generation_config`: Whether to save the generation_config used for evaluation as `generation_config.json` file, default is `None`. If `ckpt_dir` is specified, set to `True`, otherwise set to `False`. The generation_config file saved during training will be overwritten.
 - `--verbose`: If set to False, use tqdm style inference. If set to True, output inference query, response, label. Default is `None`, for auto selection, i.e. when `len(val_dataset) >= 100`, set to False, otherwise set to True. This parameter only takes effect when using dataset evaluation.
-- `--gpu_memory_utilization`: Parameter for initializing vllm engine `EngineArgs`, default is `0.9`. This parameter only takes effect when using vllm. VLLM inference acceleration and deployment can be found in [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md).
-- `--tensor_parallel_size`: Parameter for initializing vllm engine `EngineArgs`, default is `1`. This parameter only takes effect when using vllm.
-- `--max_model_len`: Override model's max_model__len, default is `None`. This parameter only takes effect when using vllm.
-- `--disable_custom_all_reduce`: Whether to disable the custom all-reduce kernel and fallback to NCCL. The default is `True`, which is different from the default value of vLLM.
-- `--enforce_eager`: vllm uses the PyTorch eager mode or builds the CUDA graph. Default is `False`. Setting to True can save memory, but it may affect efficiency.
-- `--vllm_enable_lora`: Default `False`. Whether to support vllm with lora.
-- `--vllm_max_lora_rank`: Default `16`.  Lora rank in VLLM.
 - `--lora_modules`: Default`[]`, the input format is `'{lora_name}={lora_path}'`, e.g. `--lora_modules lora_name1=lora_path1 lora_name2=lora_path2`. `ckpt_dir` will be added with `f'default-lora={args.ckpt_dir}'` by default.
 - `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
 - `--custom_dataset_info`: Default is `None`. Pass in the path to an external `dataset_info.json`, a JSON string, or a dictionary. Used for expanding datasets.
 - `--rope_scaling`: Default `None`, Support `linear` and `dynamic` to scale positional embeddings. Use when `max_length` exceeds `max_position_embeddings`.
 
+
+### vLLM Parameters
+
+- `--gpu_memory_utilization`: Parameter for initializing vllm engine `EngineArgs`, default is `0.9`. This parameter only takes effect when using vllm. vLLM inference acceleration and deployment can be found in [vLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md).
+- `--tensor_parallel_size`: Parameter for initializing vllm engine `EngineArgs`, default is `1`. This parameter only takes effect when using vllm.
+- `--max_model_len`: Override model's max_model__len, default is `None`. This parameter only takes effect when using vllm.
+- `--disable_custom_all_reduce`: Whether to disable the custom all-reduce kernel and fallback to NCCL. The default is `True`, which is different from the default value of vLLM.
+- `--enforce_eager`: vllm uses the PyTorch eager mode or builds the CUDA graph. Default is `False`. Setting to True can save memory, but it may affect efficiency.
+- `--vllm_enable_lora`: Default `False`. Whether to support vllm with lora.
+- `--vllm_max_lora_rank`: Default `16`.  Lora rank in vLLM.
+- `--lora_modules`: Introduced.
+
+
+### lmdeploy Parameters
+- `--tp`: Tensor parallelism, a parameter for initializing the lmdeploy engine, default value is `1`.
+- `--cache_max_entry_count`: Parameter to initialize the lmdeploy engine, default value is `0.8`.
+- `--vision_batch_size`: Parameter to initialize the lmdeploy engine, default value is `1`. This parameter is effective only when using multimodal models.
 
 ## export Parameters
 
@@ -326,6 +336,7 @@ export parameters inherit from infer parameters, with the following added parame
 - `--dataset`: This parameter is already defined in InferArguments, for export it means quantization dataset. Default is `[]`. More details: including how to customize quantization dataset, can be found in [LLM Quantization Documentation](LLM-quantization.md).
 - `--quant_n_samples`: Quantization parameter, default is `256`. When set to `--quant_method awq`, if OOM occurs during quantization, you can moderately reduce `--quant_n_samples` and `--quant_seqlen`. `--quant_method gptq` generally does not encounter quantization OOM.
 - `--quant_seqlen`: Quantization parameter, default is `2048`.
+- `--quant_batch_size`: Calibrating batch_size，Default `1`.
 - `--quant_device_map`: Default is `'cpu'`, to save memory. You can specify 'cuda:0', 'auto', 'cpu', etc., representing the device to load model during quantization. This parameter is independent of the actual device that performs the quantization, such as AWQ and GPTQ which will carry out quantization on cuda:0.
 - `quant_output_dir`: Default is `None`, the default quant_output_dir will be printed in the command line.
 - `--push_to_hub`: Default is `False`. Whether to push the final `ckpt_dir` to ModelScope Hub. If you specify `merge_lora`, full parameters will be pushed; if you also specify `quant_bits`, quantized model will be pushed.

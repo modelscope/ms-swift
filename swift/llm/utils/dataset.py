@@ -49,7 +49,7 @@ def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
     for k in dataset.features.keys():
         if k in {
                 'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
-                'objects', 'videos', 'audios', 'tools'
+                'objects', 'videos', 'audios', 'tools', 'label'
         }:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
@@ -194,6 +194,9 @@ class DatasetName:
 
     llava_instruct_150k = 'llava-instruct-150k'
     llava_pretrain = 'llava-pretrain'
+
+    sa1b_dense_caption = 'sa1b-dense-caption'
+    sa1b_paired_caption = 'sa1b-paired-caption'
 
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
@@ -464,6 +467,63 @@ register_dataset(
     split=['images'],
     tags=['vqa', 'multi-modal'],
     hf_dataset_id='OpenGVLab/ShareGPT-4o')
+
+
+def preprocess_sa1b_paired_caption(dataset: HfDataset):
+
+    prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
+
+    def preprocess_row(row):
+        response = row['global_caption']
+        query = np.random.choice(prompt)
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(
+        preprocess_row, load_from_cache_file=dataset_enable_cache).rename_column('opensource_url', 'images')
+
+
+register_dataset(
+    DatasetName.sa1b_paired_caption,
+    'Tongyi-DataEngine/SA1B-Paired-Captions-Images',
+    None,
+    preprocess_sa1b_paired_caption,
+    get_dataset_from_repo,
+    split=['train'],
+    huge_dataset=True,
+    tags=['zh', 'multi-modal', 'vqa'])
+
+
+def preprocess_sa1b_dense_caption(dataset: HfDataset):
+
+    prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
+
+    def preprocess_row(row):
+        response = ast.literal_eval(row['cap_seg'])
+        response = response.get('global_caption')
+        query = np.random.choice(prompt)
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(
+        preprocess_row,
+        load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response')).rename_column(
+            'url', 'images')
+
+
+register_dataset(
+    DatasetName.sa1b_dense_caption,
+    'Tongyi-DataEngine/SA1B-Dense-Caption',
+    None,
+    preprocess_sa1b_dense_caption,
+    get_dataset_from_repo,
+    split=['train'],
+    huge_dataset=True,
+    tags=['zh', 'multi-modal', 'vqa'])
 
 
 def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
@@ -1433,14 +1493,9 @@ def process_shareai_dpo(dataset):
 
 def process_ultrafeedback_kto(dataset: HfDataset):
 
-    def reorganize_row(row):
-        return {
-            'query': row['prompt'],
-            'response': row['completion'],
-            'label': row['label'],
-        }
+    new_column_names = {'prompt': 'query', 'completion': 'response'}
 
-    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+    return dataset.rename_columns(new_column_names)
 
 
 register_dataset(

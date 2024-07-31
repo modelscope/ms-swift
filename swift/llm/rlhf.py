@@ -179,6 +179,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
 
+    template_kwargs['rescale_image'] = args.rescale_image
+
     template: Template = get_template(
         args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     if not template.support_multi_round and 'history' in train_dataset[0]:

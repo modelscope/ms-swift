@@ -42,20 +42,20 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type llava1_6-yi-34b-instruct
 Output: (supports passing in local path or URL)
 ```python
 """
-<<< Describe this image.
+<<< <image>Describe this image.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png
 The image shows a close-up of a kitten with a soft, blurred background that suggests a natural, outdoor setting. The kitten has a mix of white and gray fur with darker stripes, typical of a tabby pattern. Its eyes are wide open, with a striking blue color that contrasts with the kitten's fur. The kitten's nose is small and pink, and its whiskers are long and white, adding to the kitten's cute and innocent appearance. The lighting in the image is soft and diffused, creating a gentle and warm atmosphere. The focus is sharp on the kitten's face, while the rest of the image is slightly out of focus, which draws attention to the kitten's features.
 --------------------------------------------------
-<<< How many sheep are in the picture?
+<<< <image>How many sheep are in the picture?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png
 There are four sheep in the picture.
 --------------------------------------------------
 <<< clear
-<<< What is the calculation result?
+<<< <image>What is the calculation result?
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png
 The calculation result is 1452 + 453004 = 453006.
 --------------------------------------------------
-<<< Write a poem based on the content of the picture.
+<<< <image>Write a poem based on the content of the picture.
 Input a media path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png
 In the quiet of the night,
 A solitary boat takes flight,
@@ -87,7 +87,7 @@ In the vast expanse of the universe's beauty,
 A lone journey, a solitary quest,
 In the quiet of the night, it finds its rest.
 --------------------------------------------------
-<<< Perform OCR on the image.
+<<< <image>Perform OCR on the image.
 Input a media path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr_en.png
 The text in the image is as follows:
 
@@ -145,7 +145,7 @@ template = get_template(template_type, tokenizer)
 seed_everything(42)
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png']
-query = 'How far is it from each city?'
+query = '<image>How far is it from each city?'
 response, _ = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
@@ -219,12 +219,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 swift sft \
 
 [Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
-(Only single-turn dialogue is supported. Each turn of dialogue must contain one image. Local paths or URLs can be passed in.)
+(Supports multi-turn dialogues, where each turn can contain multiple images or no images, and supports passing in local paths or URLs)
 
 ```jsonl
-{"query": "55555", "response": "66666", "images": ["image_path"]}
-{"query": "eeeee", "response": "fffff", "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "images": ["image_path"]}
+{"query": "<image>55555", "response": "66666", "images": ["image_path"]}
+{"query": "<image>eeeee", "response": "fffff", "images": ["image_path"]}
+{"query": "<image>EEEEE", "response": "FFFFF", "images": ["image_path"]}
 ```
 
 

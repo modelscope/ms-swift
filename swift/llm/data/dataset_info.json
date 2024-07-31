@@ -63,26 +63,17 @@
         "huge_dataset": true
     },
     "chinese-c4": {
-        "columns": {
-            "text": "response"
-        },
         "dataset_id": "swift/chinese-c4",
         "tags": ["pretrain", "zh", "quality"],
         "hf_dataset_id": "shjwudp/chinese-c4",
         "huge_dataset": true
     },
     "c4": {
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain", "quality"],
         "hf_dataset_id": "allenai/c4",
         "huge_dataset": true
     },
     "dolma": {
-        "columns": {
-            "text": "response"
-        },
         "subsets": ["v1_7"],
         "dataset_id": "swift/dolma",
         "tags": ["pretrain", "quality"],
@@ -167,9 +158,6 @@
         "tags": ["chat", "multi-lingual", "quality"]
     },
     "fineweb": {
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain", "quality"],
         "hf_dataset_id": "HuggingFaceFW/fineweb",
         "huge_dataset": true
@@ -184,9 +172,6 @@
     },
     "rwkv-pretrain-web": {
         "dataset_id": "mapjack/openwebtext_dataset",
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain", "zh", "quality"],
         "huge_dataset": true
     },
@@ -320,10 +305,6 @@
     },
     "cosmopedia": {
         "hf_dataset_id": "HuggingFaceTB/cosmopedia",
-        "columns": {
-            "prompt": "query",
-            "text": "response"
-        },
         "subsets": ["auto_math_text", "khanacademy", "openstax",
             "stanford", "stories", "web_samples_v1", "web_samples_v2", "wikihow"],
         "tags": ["multi-domain", "en", "qa"],
@@ -332,10 +313,6 @@
     "cosmopedia-100k": {
         "dataset_id": "swift/cosmopedia-100k",
         "hf_dataset_id": "HuggingFaceTB/cosmopedia-100k",
-        "columns": {
-            "prompt": "query",
-            "text": "response"
-        },
         "tags": ["multi-domain", "en", "qa"]
     },
     "coig-cqia": {
@@ -374,9 +351,6 @@
     "redpajama-data-1t": {
         "dataset_id": "swift/RedPajama-Data-1T",
         "hf_dataset_id": "togethercomputer/RedPajama-Data-1T",
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain", "quality"],
         "huge_dataset": true
     },
@@ -412,9 +386,6 @@
     "wikipedia": {
         "dataset_id": "swift/wikipedia",
         "hf_dataset_id": "wikipedia",
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain", "quality"],
         "huge_dataset": true
     },
@@ -437,18 +408,12 @@
     "pile": {
         "dataset_id": "AI-ModelScope/pile",
         "hf_dataset_id": "EleutherAI/pile",
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain"],
         "huge_dataset": true
     },
     "skypile": {
         "dataset_id": "AI-ModelScope/SkyPile-150B",
         "hf_dataset_id": "Skywork/SkyPile-150B",
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain", "quality", "zh"],
         "huge_dataset": true
     },
@@ -572,9 +537,6 @@
     },
     "slim-pajama-627b": {
         "hf_dataset_id": "cerebras/SlimPajama-627B",
-        "columns": {
-            "text": "response"
-        },
         "tags": ["pretrain", "quality"],
         "huge_dataset": true
     },
@@ -641,7 +603,6 @@
     },
     "pileval": {
         "dataset_id": "swift/pile-val-backup",
-        "columns": {"text": "response"},
         "split": ["validation"],
         "tags": ["text-generation", "awq"],
         "hf_dataset_id": "mit-han-lab/pile-val-backup"

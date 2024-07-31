@@ -1,5 +1,6 @@
 import base64
 import binascii
+import math
 import os
 from io import BytesIO
 from typing import Callable, List, TypeVar, Union
@@ -23,6 +24,19 @@ def build_transform(input_size):
         T.Normalize(mean=MEAN, std=STD)
     ])
     return transform
+
+
+def rescale_image(img: 'PIL.Image.Image', rescale_image: int = -1) -> 'PIL.Image.Image':
+    import torchvision.transforms as T
+    width = img.width
+    height = img.height
+    if rescale_image <= 0 or width * height <= rescale_image:
+        return img
+
+    ratio = width / height
+    height_scaled = math.pow(rescale_image / ratio, 0.5)
+    width_scaled = height_scaled * ratio
+    return T.Resize((int(width_scaled), int(height_scaled)))(img)
 
 
 def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
@@ -88,8 +102,11 @@ def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
             try:
                 image_data = base64.b64decode(img_path)
                 image = Image.open(BytesIO(image_data))
-            except (binascii.Error, UnidentifiedImageError) as error:
-                raise ValueError(f'invalid image: {error}')
+            except (ValueError, binascii.Error, UnidentifiedImageError) as error:
+                if len(img_path) < 200:
+                    raise ValueError(f'invalid image: "{img_path}"')
+                else:
+                    raise ValueError(f'invalid image: {error}')
     else:
         image = img_path
     if image.mode != 'RGB':
@@ -131,10 +148,21 @@ def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
     return frame_indices
 
 
+def _read_video(video_path: str) -> BytesIO:
+    video_path = video_path.strip()
+    if video_path.startswith('http'):
+        content = requests.get(video_path).content
+        mp4_stream = BytesIO(content)
+    else:
+        with open(video_path, 'rb') as f:
+            mp4_stream = BytesIO(f.read())
+    return mp4_stream
+
+
 def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
     from decord import VideoReader, cpu
     from PIL import Image
-    vr = VideoReader(video_path, ctx=cpu(0), num_threads=1)
+    vr = VideoReader(_read_video(video_path), ctx=cpu(0), num_threads=1)
     max_frame = len(vr) - 1
     fps = float(vr.get_avg_fps())
 

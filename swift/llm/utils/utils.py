@@ -582,7 +582,7 @@ def _prepare_inputs(model: PreTrainedModel,
     truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
     if len(inputs) == 0 and truncation_strategy == 'delete':
         # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-        return {}, tokenizer_kwargs, 0
+        return {}, tokenizer_kwargs, 0, example
 
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
@@ -966,6 +966,12 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
 def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     INF = int(1e9)
     max_model_len = INF
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(config, k, None)
+        if llm_config is not None:
+            config = llm_config
+            break
+
     possible_keys = [
         'seq_length',  # qwen, chatglm
         'max_position_embeddings',  # qwen1.5, llama2

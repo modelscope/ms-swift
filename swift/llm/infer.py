@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
 import os
+import re
 import shutil
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -247,18 +248,31 @@ def prepare_model_template(args: InferArguments,
     return model, template
 
 
-def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue'],
-                    media_type: Literal['image', 'video', 'audio']) -> None:
-    media_key = MediaTag.media_keys[media_type]
-    a_an = 'an' if media_type[0] in {'i', 'a'} else 'a'
-    text = f'Input {a_an} {media_type} path or URL <<< '
-    media_files = infer_kwargs.get(media_key) or []
+def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue', 'interleave'],
+                    media_type: Literal['image', 'video', 'audio'], query: str) -> None:
     if infer_media_type == 'none':
         return
-    if infer_media_type == 'round' or len(media_files) == 0:
+
+    def _input_media(media_type: Literal['image', 'video', 'audio']) -> None:
+        media_key = MediaTag.media_keys[media_type]
+        media_files = infer_kwargs.get(media_key) or []
+        a_an = 'an' if media_type[0] in {'i', 'a'} else 'a'
+        text = f'Input {a_an} {media_type} path or URL <<< '
         media_files += [input(text) or None]
-    if len(media_files) > 0:
         infer_kwargs[media_key] = media_files
+
+    if infer_media_type == 'interleave':
+        media_tags = re.findall('|'.join(list(MediaTag.standard_tags.values())), query)
+        standard_tags_r = {v: k for k, v in MediaTag.standard_tags.items()}
+        for tag in media_tags:
+            media_type = standard_tags_r[tag]
+            _input_media(media_type)
+        return
+
+    media_key = MediaTag.media_keys[media_type]
+    media_files = infer_kwargs.get(media_key) or []
+    if infer_media_type == 'round' or len(media_files) == 0:
+        _input_media(media_type)
 
 
 def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
@@ -268,8 +282,13 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
         merge_lora(args, device_map=args.merge_device_map)
 
     if args.infer_backend == 'vllm':
-        from .utils import prepare_vllm_engine_template, inference_stream_vllm, inference_vllm
+        from .utils import (prepare_vllm_engine_template, inference_stream_vllm as inference_stream_x, inference_vllm as
+                            inference_x)
         llm_engine, template = prepare_vllm_engine_template(args)
+    elif args.infer_backend == 'lmdeploy':
+        from .utils import (prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x,
+                            inference_lmdeploy as inference_x)
+        llm_engine, template = prepare_lmdeploy_engine_template(args)
     else:
         device_map = None
         if args.device_map_config_path is not None:
@@ -308,7 +327,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
     if args.save_result:
         result_dir = args.ckpt_dir
         if result_dir is None:
-            result_dir = llm_engine.model_dir if args.infer_backend == 'vllm' else model.model_dir
+            result_dir = llm_engine.model_dir if args.infer_backend in {'vllm', 'lmdeploy'} else model.model_dir
         if result_dir is not None:
             result_dir = os.path.join(result_dir, 'infer_result')
             os.makedirs(result_dir, exist_ok=True)
@@ -372,14 +391,14 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 history = []
                 infer_kwargs = {}
 
-            read_media_file(infer_kwargs, args.infer_media_type, args.media_type)
+            read_media_file(infer_kwargs, args.infer_media_type, args.media_type, query)
             infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:
                 system = template.default_system
-            if args.infer_backend == 'vllm':
+            if args.infer_backend in {'vllm', 'lmdeploy'}:
                 request_list = [{'query': query, 'history': history, 'system': system, **infer_kwargs}]
                 if args.stream:
-                    gen = inference_stream_vllm(llm_engine, template, request_list, lora_request=lora_request)
+                    gen = inference_stream_x(llm_engine, template, request_list, lora_request=lora_request)
                     print_idx = 0
                     for resp_list in gen:
                         response = resp_list[0]['response']
@@ -389,7 +408,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                             print_idx = len(response)
                     print()
                 else:
-                    resp_list = inference_vllm(llm_engine, template, request_list, lora_request=lora_request)
+                    resp_list = inference_x(llm_engine, template, request_list, lora_request=lora_request)
                     response = resp_list[0]['response']
                     new_history = resp_list[0]['history']
                     print(response)
@@ -451,7 +470,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             args.stream = False
             logger.info(f'Setting args.stream: {args.stream}')
 
-        if args.infer_backend == 'vllm' and not args.stream:
+        if args.infer_backend in {'vllm', 'lmdeploy'} and not args.stream:
             if args.verbose:
                 args.verbose = False
                 logger.info('Setting args.verbose: False')
@@ -476,7 +495,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                         request[media_key] = media_files
                 request['truncation_strategy'] = args.truncation_strategy
                 request_list.append(request)
-            resp_list = inference_vllm(llm_engine, template, request_list, use_tqdm=True)
+            resp_list = inference_x(llm_engine, template, request_list, use_tqdm=True)
             result = []
             if label_list is not None:
                 for request, label in zip(request_list, label_list):
@@ -522,11 +541,11 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 if objects is not None:
                     kwargs['objects'] = objects
                 kwargs['truncation_strategy'] = args.truncation_strategy
-                if args.infer_backend == 'vllm':
+                if args.infer_backend in {'vllm', 'lmdeploy'}:
                     assert args.stream
                     if args.verbose:
                         print(f"[QUERY]{data['query']}\n[RESPONSE]", end='')
-                    gen = inference_stream_vllm(llm_engine, template, [kwargs], lora_request=lora_request)
+                    gen = inference_stream_x(llm_engine, template, [kwargs], lora_request=lora_request)
                     print_idx = 0
                     for resp_list in gen:
                         response = resp_list[0]['response']

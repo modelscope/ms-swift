@@ -165,7 +165,6 @@ Input an image path or URL <<< http://modelscope-open.oss-cn-hangzhou.aliyuncs.c
 这些差异使得这张图片与上一张图片在视觉上存在显著的差异。
 --------------------------------------------------
 <<< 两张图片的共同点是什么
-Input an image path or URL <<<
 两张图片的共同点如下：
 
 1. **动物种类不同**：
@@ -181,12 +180,22 @@ Input an image path or URL <<<
    - 两张图片在风格上有所不同，但都具有卡通和简化的特点。
 
 这些共同点使得两张图片在视觉上存在显著的差异，但它们都展示了可爱的动物形象。
-```
+--------------------------------------------------
+<<< clear
+<<< <video>Describe this video.
+Input a video path or URL <<< https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4
+In the video, a young child is seen sitting on a bed, engrossed in reading a book. The child is wearing a light blue shirt and dark glasses, and appears to be very focused on the book. The bed has a floral patterned cover, and there is a white blanket spread over it. The child's legs are crossed, and they are holding the book with both hands. The book is open, and the child is reading it with great interest.
 
-单轮多图示例
-```
+As the child continues to read, they occasionally glance at the camera, seemingly curious about who is watching them. The child's expression is one of concentration and enjoyment, as they seem to be fully immersed in the story. The camera captures the child's face and the book, providing a clear view of their actions.
+
+In the background, there is a glimpse of a room with a white wall and a wooden door. There is also a chair visible in the background, and a small table with a lamp on it. The room appears to be a bedroom, and the child seems to be in a comfortable and cozy environment.
+
+The child's actions are repetitive, as they continue to read the book with great enthusiasm. The camera captures their movements and expressions, providing a detailed view of their reading experience. The child's focus and dedication to the book are evident, and the video conveys a sense of innocence and curiosity.
+
+Overall, the video captures a heartwarming moment of a young child reading a book, showcasing their love for books and the joy of reading. The setting is simple and cozy, with a focus on the child's engagement with the book. The video is a delightful portrayal of childhood innocence and the simple pleasures of reading.
+--------------------------------------------------
+<<< clear
 <<< image1: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img> image2: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img> What is the difference bewteen the two images?
-Input an image path or URL <<<
 The two images are of the same kitten, but the first image is a close-up shot, while the second image is a more distant, artistic illustration. The close-up image captures the kitten in detail, showing its fur, eyes, and facial features in sharp focus. In contrast, the artistic illustration is more abstract and stylized, with a blurred background and a different color palette. The distant illustration gives the kitten a more whimsical and dreamy appearance, while the close-up image emphasizes the kitten's realism and detail.
 ```
 
@@ -337,19 +346,19 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path1", "image_path2"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]], "images": ["image_path"]}
 ```
 
 (支持纯文本数据)
 ```jsonl
 {"query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 **InternVL2**模型除了以上数据格式外, 还支持多图多轮训练, 使用tag `<image>` 标明图片在对话中的位置, 如果数据集中没有tag `<image>`, 默认放在最后一轮query的开头
 ```jsonl
-{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image> Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
+{"query": "Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.", "response": "xxxxxxxxx", "history": [["<image>Describe the image", "xxxxxxx"], ["CCCCC", "DDDDD"]], "images": ["image_path1", "image_path2", "image_path3"]}
 ```
 或者用`<img>image_path</img>` 表示图像路径和图像位置
 

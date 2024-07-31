@@ -1,11 +1,11 @@
-def test_lmdeploy():
+def test_lmdeploy_vlm():
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     from swift.llm import (ModelType, get_lmdeploy_engine, get_default_template_type, get_template, inference_lmdeploy,
                            inference_stream_lmdeploy)
 
-    model_type = ModelType.qwen_7b_chat
+    model_type = ModelType.deepseek_vl_1_3b_chat
     lmdeploy_engine = get_lmdeploy_engine(model_type)
     template_type = get_default_template_type(model_type)
     template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
@@ -13,7 +13,14 @@ def test_lmdeploy():
     lmdeploy_engine.generation_config.max_new_tokens = 256
     generation_info = {}
 
-    request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
+    request_list = [{
+        'query':
+        '这两张图片有什么区别：'
+        '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
+        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>'
+    }, {
+        'query': '你好'
+    }]
     resp_list = inference_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
     for request, resp in zip(request_list, resp_list):
         print(f"query: {request['query']}")
@@ -21,8 +28,8 @@ def test_lmdeploy():
     print(generation_info)
 
     # stream
-    history1 = resp_list[1]['history']
-    request_list = [{'query': '这有什么好吃的', 'history': history1}]
+    history0 = resp_list[0]['history']
+    request_list = [{'query': '有几只羊', 'history': history0}]
     gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
     query = request_list[0]['query']
     print_idx = 0
@@ -41,14 +48,24 @@ def test_lmdeploy():
 
     # batched
     n_batched = 100
-    request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
+    request_list = [{
+        'query':
+        '这两张图片有什么区别：'
+        '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
+        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>'
+    } for i in range(n_batched)]
     resp_list = inference_lmdeploy(
         lmdeploy_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched
     print(resp_list[0]['history'])
     print(generation_info)
 
-    request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
+    request_list = [{
+        'query':
+        '这两张图片有什么区别：'
+        '<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>'
+        '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>'
+    } for i in range(n_batched)]
     gen = inference_stream_lmdeploy(
         lmdeploy_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     for resp_list in gen:
@@ -59,4 +76,4 @@ def test_lmdeploy():
 
 
 if __name__ == '__main__':
-    test_lmdeploy()
+    test_lmdeploy_vlm()

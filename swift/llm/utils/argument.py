@@ -31,7 +31,7 @@ from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
-from .utils import is_quant_model, is_vllm_available
+from .utils import is_lmdeploy_available, is_quant_model, is_vllm_available
 
 logger = get_logger()
 
@@ -562,10 +562,12 @@ class SftArguments(ArgumentsBase):
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
+
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
+
     # note: bf16 and quantization have requirements for gpu architecture
     # awq, gptq, and aqlm need to be pre-quantized models,
     # while bnb, hqq, and eetq can be quantized during SFT using the original models.
@@ -577,6 +579,10 @@ class SftArguments(ArgumentsBase):
     bnb_4bit_quant_type: Literal['fp4', 'nf4'] = 'nf4'
     bnb_4bit_use_double_quant: bool = True
     bnb_4bit_quant_storage: Optional[str] = None
+
+    # multi-modal
+    rescale_image: int = -1
+
     # lora
     lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     lora_target_regex: Optional[str] = None
@@ -1155,7 +1161,7 @@ class InferArguments(ArgumentsBase):
     sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'lora'
     template_type: str = field(
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
-    infer_backend: Literal['AUTO', 'vllm', 'pt'] = 'AUTO'
+    infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = False
@@ -1233,6 +1239,11 @@ class InferArguments(ArgumentsBase):
     lora_modules: List[str] = field(default_factory=list)
     image_input_shape: Optional[str] = None
     image_feature_size: Optional[int] = None
+
+    # lmdeploy
+    tp: int = 1
+    cache_max_entry_count: float = 0.8
+    vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
     # compatibility. (Deprecated)
     self_cognition_sample: int = 0
@@ -1312,6 +1323,7 @@ class InferArguments(ArgumentsBase):
     def handle_infer_backend(self):
         model_info = MODEL_MAPPING[self.model_type]
         support_vllm = model_info.get('support_vllm', False)
+        support_lmdeploy = model_info.get('support_lmdeploy', False)
         self.lora_request_list = None
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
@@ -1321,14 +1333,26 @@ class InferArguments(ArgumentsBase):
                     self.infer_backend = 'vllm'
                 if self.vllm_enable_lora:
                     self.infer_backend = 'vllm'
+            if is_lmdeploy_available() and support_lmdeploy and self.is_multimodal:
+                if ((self.sft_type == 'full' or self.sft_type == 'lora' and self.merge_lora)
+                        and self.quantization_bit == 0):
+                    self.infer_backend = 'lmdeploy'
         if self.infer_backend == 'vllm':
             require_version('vllm')
-            assert self.quantization_bit == 0, 'VLLM does not support bnb.'
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
             if self.sft_type == 'lora' and not self.vllm_enable_lora:
-                assert self.merge_lora, ('To use VLLM, you need to provide the complete weight parameters. '
+                assert self.merge_lora, ('To use vLLM, you need to provide the complete weight parameters. '
                                          'Please set `--merge_lora true`.')
+        if self.infer_backend == 'lmdeploy':
+            require_version('lmdeploy')
+            assert self.quantization_bit == 0, 'lmdeploy does not support bnb.'
+            if not support_lmdeploy:
+                logger.warning(f'lmdeploy not support `{self.model_type}`')
+            if self.sft_type == 'lora':
+                assert self.merge_lora, ('To use LMDeploy, you need to provide the complete weight parameters. '
+                                         'Please set `--merge_lora true`.')
+
         if (self.infer_backend == 'vllm' and self.vllm_enable_lora
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
@@ -1340,6 +1364,8 @@ class InferArguments(ArgumentsBase):
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
+        if self.infer_media_type == 'none' and self.is_multimodal:
+            self.infer_media_type = 'interleave'
         self.media_type = template_info.get('media_type', 'image')
         self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
@@ -1449,6 +1475,7 @@ class ExportArguments(InferArguments):
     quant_seqlen: int = 2048
     quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
     quant_output_dir: Optional[str] = None
+    quant_batch_size: int = 1
 
     # push to ms hub
     push_to_hub: bool = False

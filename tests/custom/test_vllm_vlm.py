@@ -1,11 +1,13 @@
-def test_vllm():
+def test_vllm_vlm():
     import os
+    import vllm
+    from packaging import version
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
+    assert version.parse('0.5.0') <= version.parse(vllm.__version__) < version.parse('0.5.1')
     from swift.llm import (ModelType, get_vllm_engine, get_default_template_type, get_template, inference_vllm,
                            inference_stream_vllm)
 
-    model_type = ModelType.qwen_7b_chat
+    model_type = ModelType.llava1_6_mistral_7b_instruct
     llm_engine = get_vllm_engine(model_type)
     template_type = get_default_template_type(model_type)
     template = get_template(template_type, llm_engine.hf_tokenizer)
@@ -13,7 +15,8 @@ def test_vllm():
     llm_engine.generation_config.max_new_tokens = 256
     generation_info = {}
 
-    request_list = [{'query': '你好!'}, {'query': '浙江的省会在哪？'}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+    request_list = [{'query': 'who are you'}, {'query': 'Describe this image.', 'images': images}]
     resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info)
     for request, resp in zip(request_list, resp_list):
         print(f"query: {request['query']}")
@@ -22,7 +25,7 @@ def test_vllm():
 
     # stream
     history1 = resp_list[1]['history']
-    request_list = [{'query': '这有什么好吃的', 'history': history1}]
+    request_list = [{'query': '有几只羊', 'history': history1, 'images': images}]
     gen = inference_stream_vllm(llm_engine, template, request_list, generation_info=generation_info)
     query = request_list[0]['query']
     print_idx = 0
@@ -41,13 +44,15 @@ def test_vllm():
 
     # batched
     n_batched = 100
-    request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+    request_list = [{'query': 'Describe this image.', 'images': images} for i in range(n_batched)]
     resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched
     print(resp_list[0]['history'])
     print(generation_info)
 
-    request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+    request_list = [{'query': 'Describe this image.', 'images': images} for i in range(n_batched)]
     gen = inference_stream_vllm(llm_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     for resp_list in gen:
         pass
@@ -57,4 +62,4 @@ def test_vllm():
 
 
 if __name__ == '__main__':
-    test_vllm()
+    test_vllm_vlm()
