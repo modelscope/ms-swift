@@ -1,7 +1,7 @@
-attrdict
 accelerate
 addict
 aiohttp
+attrdict
 binpacking
 dacite
 datasets<2.19
