@@ -288,12 +288,16 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True
 
-        outputs = model(
-            concatenated_batch['concatenated_input_ids'],
-            attention_mask=concatenated_batch['concatenated_attention_mask'],
-            use_cache=False,
-            **model_kwargs,
-        )
+        if 'concatenated_input_ids' in concatenated_batch:
+            outputs = model(
+                input_ids=concatenated_batch['concatenated_input_ids'],
+                attention_mask=concatenated_batch['concatenated_attention_mask'],
+                use_cache=False,
+                **model_kwargs,
+            )
+        else:
+            # TODO: embeds
+            pass
         all_logits = outputs.logits
 
         if all_logits.shape[:2] != concatenated_batch['concatenated_labels'].shape[:2]:
