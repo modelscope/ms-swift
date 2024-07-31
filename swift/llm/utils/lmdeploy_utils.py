@@ -204,6 +204,8 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
                               generation_info: Optional[Dict[str, Any]] = None,
                               use_tqdm: bool = False,
                               **kwargs) -> List[Dict[str, Any]]:
+    if len(request_list) == 0:
+        return []
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
@@ -292,6 +294,8 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                        prompt_prefix: str = '[PROMPT]',
                        output_prefix: str = '[OUTPUT]',
                        **kwargs) -> List[Dict[str, Any]]:
+    if len(request_list) == 0:
+        return []
     runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())

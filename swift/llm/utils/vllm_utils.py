@@ -376,6 +376,8 @@ def inference_stream_vllm(
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    if len(request_list) == 0:
+        return []
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
@@ -468,6 +470,8 @@ def inference_vllm(llm_engine: LLMEngine,
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    if len(request_list) == 0:
+        return []
     runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
