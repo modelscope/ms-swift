@@ -1,4 +1,3 @@
-attrdict
 charset_normalizer
 cpm_kernels
 fastapi
