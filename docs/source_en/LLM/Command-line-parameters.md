@@ -3,7 +3,8 @@
 ## Table of Contents
 
 - [sft Parameters](#sft-parameters)
-- [dpo Parameters](#dpo-parameters)
+- [pt Parameters](#pt-parameters)
+- [rlhf Parameters](#rlhf-parameters)
 - [infer merge-lora Parameters](#infer-merge-lora-parameters)
 - [export Parameters](#export-parameters)
 - [eval Parameters](#eval-parameters)
@@ -236,6 +237,17 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 - `--ia3_target_modules`: Specify IA3 target modules, default is `['DEFAULT']`. See `lora_target_modules` for specific meaning.
 - `--ia3_feedforward_modules`: Specify the Linear name of IA3's MLP, this name must be in `ia3_target_modules`.
 - `--ia3_modules_to_save`: Additional modules participating in IA3 training. See meaning of `lora_modules_to_save`.
+
+
+## PT Parameters
+
+PT parameters inherit from the SFT parameters with some modifications to the default values:
+
+- `--sft_type`: Default value is `'full'`.
+- `--lora_target_modules`: Default value is `'ALL'`.
+- `--lazy_tokenize`: Default value is `True`.
+- `--eval_steps`: Default value is `500`.
+
 
 ## RLHF Parameters
 RLHF parameters are an extension of the sft parameters, with the addition of the following options:

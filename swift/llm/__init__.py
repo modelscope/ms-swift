@@ -22,7 +22,7 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': ['merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
         'rome': ['rome_main'],
-        'sft': ['sft_main'],
+        'sft': ['sft_main', 'pt_main'],
         'export': ['export_main'],
         'eval': ['eval_main'],
     }

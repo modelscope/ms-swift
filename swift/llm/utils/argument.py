@@ -937,7 +937,7 @@ class SftArguments(ArgumentsBase):
             if isinstance(self.additional_trainable_parameters, str):
                 self.additional_trainable_parameters = [self.additional_trainable_parameters]
             if self.learning_rate is None:
-                self.learning_rate = 5e-6
+                self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
             if self.eval_steps is None:
@@ -1556,8 +1556,10 @@ class ExportArguments(InferArguments):
 @dataclass
 class PtArguments(SftArguments):
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
-    lazy_tokenize: bool = True
+    lora_target_modules: List[str] = field(default_factory=lambda: ['ALL'])
+    lazy_tokenize: Optional[bool] = True
     eval_steps: int = 500
+
 
 @dataclass
 class RLHFArguments(SftArguments):
