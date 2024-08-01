@@ -9,6 +9,7 @@ import json
 import peft
 import torch
 import torch.nn
+import transformers
 from modelscope import snapshot_download
 from peft import (AdaLoraConfig, BOFTConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
                   PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
@@ -81,6 +82,11 @@ def _create_and_replace_hook(self, *args, **kwargs):
                 break
 
     if target and target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
+        return
+
+    all_supported_types = ('conv', 'linear', 'embedding')
+
+    if target and not any([type in target.__class__.__name__.lower() for type in all_supported_types]):
         return
 
     return self._create_and_replace_origin(*args, **kwargs)
