@@ -22,8 +22,11 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.template = template
         self.sft_beta = sft_beta
         is_vision = kwargs.pop('is_vision')
-
+        self.keys = []
         super().__init__(*args, **kwargs)
+        self.train_dataset = self.train_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
+        if self.eval_dataset is not None:
+            self.eval_dataset = self.eval_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
         train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
         val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
         self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
@@ -53,11 +56,11 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
-            
+
             # Skip examples that do not contain 'input_ids'
             if 'input_ids' not in prompt_tokens:
-                return None
-            
+                return {k: None for k in self.keys}
+
             # resolve conflict in data_collator when labels are None, pop it afterwards
             prompt_tokens['labels'] = prompt_tokens['input_ids']
             # Batching image-related information for paired response using template
@@ -175,7 +178,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                     labels=torch.tensor(batch['chosen_labels']))
 
             batch.update(prompt_tokens)
-
+        if not self.keys:
+            self.keys = (list(batch.keys()))
         return batch
 
     def get_batch_loss_metrics(
@@ -292,16 +296,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True
 
-        if 'concatenated_input_ids' in concatenated_batch:
-            outputs = model(
-                input_ids=concatenated_batch['concatenated_input_ids'],
-                attention_mask=concatenated_batch['concatenated_attention_mask'],
-                use_cache=False,
-                **model_kwargs,
-            )
-        else:
-            # TODO: embeds
-            pass
+        outputs = model(
+            input_ids=concatenated_batch['concatenated_input_ids'],
+            attention_mask=concatenated_batch['concatenated_attention_mask'],
+            use_cache=False,
+            **model_kwargs,
+        )
         all_logits = outputs.logits
 
         if all_logits.shape[:2] != concatenated_batch['concatenated_labels'].shape[:2]:
