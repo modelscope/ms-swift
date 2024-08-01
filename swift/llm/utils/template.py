@@ -359,6 +359,9 @@ class Template:
             images = images + images_path
             example['images'] = images
 
+        # Add default tags to examples to note where to put the medias into the sequence
+        self.add_default_tags(example)
+
         # Load image into PIL format
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
@@ -371,9 +374,6 @@ class Template:
             if self.load_medias and self.grounding_type != 'real':
                 images = [rescale_image(img, self.rescale_image) for img in images]
             example['images'] = images
-
-        # Add default tags to examples to note where to put the medias into the sequence
-        self.add_default_tags(example)
 
         # Check the example that whether matching the very template's rules
         self.check_example(example)
