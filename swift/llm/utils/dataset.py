@@ -12,7 +12,7 @@ import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets
+from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
 from pandas import DataFrame
@@ -300,7 +300,8 @@ def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -
 
 def load_ms_dataset(dataset_id: str,
                     subset_split_list: Optional[List[SubsetSplit]],
-                    use_hf: bool = False) -> Optional[HfDataset]:
+                    use_hf: bool = False,
+                    streaming: bool = False) -> Optional[HfDataset]:
     if not use_hf:
         from modelscope import MsDataset
 
@@ -314,7 +315,7 @@ def load_ms_dataset(dataset_id: str,
         subset_name, split = subset_split
         if use_hf:
             try:
-                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
+                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split, streaming=streaming)
             except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
@@ -328,7 +329,7 @@ def load_ms_dataset(dataset_id: str,
                 force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
             try:
-                dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
+                dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode, use_streaming=streaming)
             except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
@@ -338,8 +339,10 @@ def load_ms_dataset(dataset_id: str,
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
-    return concatenate_datasets(dataset_list)
-
+    if not streaming:
+        return concatenate_datasets(dataset_list)
+    else:
+        return interleave_datasets(dataset_list, stopping_strategy='all_exhausted')
 
 def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Optional[RandomState] = None) -> HfDataset:
     if dataset_sample in {None, -1, len(dataset)}:
@@ -361,7 +364,11 @@ def _post_preprocess(
     preprocess_func: Optional[PreprocessFunc] = None,
     dataset_test_ratio: float = 0.,
     remove_useless_columns: bool = True,
+    streaming: bool = False,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
+    # TODO: set dataset_sample = 0 in args.post_init
+    if streaming:
+        return 
     assert train_dataset is not None
     if dataset_sample == -1:
         dataset_sample = len(train_dataset)
@@ -406,7 +413,8 @@ def get_dataset_from_repo(dataset_id: str,
                           random_state: Optional[RandomState] = None,
                           dataset_test_ratio: float = 0.,
                           remove_useless_columns: bool = True,
-                          use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+                          use_hf: bool = False,
+                          streaming: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     if subsets is None:
         subsets = []
     assert len(split) > 0
@@ -414,7 +422,7 @@ def get_dataset_from_repo(dataset_id: str,
         subset_split_list = split
     else:
         subset_split_list = list(itertools.product(subsets, split))
-    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf)
+    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf, streaming=streaming)
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns)
 
