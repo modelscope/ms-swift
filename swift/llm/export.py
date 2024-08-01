@@ -119,6 +119,7 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
         return module_output
 
+    import awq
     from awq.quantize import quantizer
     from transformers import AwqConfig
     if version.parse(awq.__version__) >= version.parse('0.2.6'):
