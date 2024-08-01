@@ -295,6 +295,10 @@ class Template:
                                 h[0] = media_tag + h[0]
                         else:
                             assert num_media_tags == 0, f'num_media_tags: {num_media_tags}'
+                        if i == n_round - 1:
+                            query = h[0]
+                        else:
+                            history[i][0] = h[0]
 
                     example[media_key] = [m for m in example[media_key] if m]
 
