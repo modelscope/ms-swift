@@ -87,7 +87,7 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         super().__init__(*args, **kwargs)
         train_ds_info = self.stat_dataset(self.train_dataset)
         if self.eval_dataset is not None:
-            val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
+            val_ds_info = self.stat_dataset(self.eval_dataset)
             self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
         else:
             self.dataset_info = {'train_dataset': train_ds_info}
