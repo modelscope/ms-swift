@@ -289,12 +289,8 @@ class Template:
                     assert n_round == len(history) + 1
                     for i, h, m in zip(range(n_round), history + [[query, None]], example[media_key]):
                         num_media_tags = len(re.findall(media_tag, h[0]))
-                        if m:
-                            assert num_media_tags <= 1, f'num_media_tags: {num_media_tags}'
-                            if num_media_tags == 0:
-                                h[0] = media_tag + h[0]
-                        else:
-                            assert num_media_tags == 0, f'num_media_tags: {num_media_tags}'
+                        if m and num_media_tags == 0:
+                            h[0] = media_tag + h[0]
                         if i == n_round - 1:
                             query = h[0]
                         else:
@@ -306,8 +302,7 @@ class Template:
                     num_media_tags = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
                     example[media_key] = [m for m in example[media_key] if m]
                     num_media = len(example[media_key])
-                    num_new_tags = num_media - num_media_tags
-                    assert num_new_tags >= 0, f'num_new_tags: {num_new_tags}'
+                    num_new_tags = max(num_media - num_media_tags, 0)
                     if history:
                         history[0][0] = media_tag * num_new_tags + history[0][0]
                     else:
