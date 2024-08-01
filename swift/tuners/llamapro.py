@@ -1,13 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Optional
 
 import torch
 from torch import nn
 
 from swift.utils.logger import get_logger
-from .module_mapping import MODEL_KEYS_MAPPING, ModelKeys
+from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()

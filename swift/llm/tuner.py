@@ -12,8 +12,8 @@ from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift, VeraConfig)
 from swift.tuners.llamapro import LLaMAProConfig
-from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
+from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
 
 logger = get_logger()

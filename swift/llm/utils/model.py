@@ -27,6 +27,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
+from swift.utils.module_mapping import get_regex_for_mm_default_lora
 from .template import TemplateType
 from .utils import get_max_model_len, is_unsloth_available
 
@@ -496,22 +497,32 @@ class ModelType:
 
 
 class LoRATM(NamedTuple):
-    # default lora target modules. qkv
+    # default lora target modules for multi-modals
+    qwen_audio = f'{get_regex_for_mm_default_lora("qwen_audio")}'
+    glm4v = f'{get_regex_for_mm_default_lora("glm4v")}'
+    qwen_vl = f'{get_regex_for_mm_default_lora("qwen_vl")}'
+    llava_next_video = f'{get_regex_for_mm_default_lora("llava_next_video")}'
+    llava_next = f'{get_regex_for_mm_default_lora("llava_next")}'
+    llava_llama = f'{get_regex_for_mm_default_lora("llava_llama")}'
+    llava = f'{get_regex_for_mm_default_lora("llava")}'
+    yi_vl = f'{get_regex_for_mm_default_lora("yi_vl")}'
+    internlm_xcomposer = f'{get_regex_for_mm_default_lora("internlm_xcomposer")}'
+    internvl = f'{get_regex_for_mm_default_lora("internvl")}'
+    deepseek_vl = f'{get_regex_for_mm_default_lora("deepseek_vl")}'
+    paligemma = f'{get_regex_for_mm_default_lora("paligemma")}'
+    minicpm_v = f'{get_regex_for_mm_default_lora("minicpm_v")}'
+    phi3v = f'{get_regex_for_mm_default_lora("phi3v")}'
+    cogvlm2 = f'{get_regex_for_mm_default_lora("cogvlm2")}'
+    cogvlm = f'{get_regex_for_mm_default_lora("cogvlm")}'
+    cogagent = f'{get_regex_for_mm_default_lora("cogagent")}'
+    florence = f'{get_regex_for_mm_default_lora("florence")}'
+    # default lora target modules for nlp llms.
     baichuan = ['W_pack']
     chatglm = ['query_key_value']
     llama = ['q_proj', 'k_proj', 'v_proj']
     qwen = ['c_attn']
     polylm = ['c_attn']
     bloom = ['query_key_value']
-    cogagent = [
-        'vision_expert_query_key_value', 'vision_expert_dense', 'language_expert_query_key_value',
-        'language_expert_dense', 'query', 'key_value', 'dense'
-    ]
-    cogvlm = [
-        'vision_expert_query_key_value', 'vision_expert_dense', 'language_expert_query_key_value',
-        'language_expert_dense'
-    ]
-    glm4v = ['self_attention.query_key_value']
     phi = ['Wqkv']
     phi3 = ['qkv_proj']
     phi3_small = ['query_key_value']  # what the hell???
@@ -537,10 +548,6 @@ class LoRATM(NamedTuple):
         'kv_b_proj',
         'o_proj',
     ]
-    minicpm_llama = r'.*model\.layers\.(?:[0-9]|[12][0-9]|3[01])\.(?:self_attn\.(?:q_proj|k_proj|v_proj))'
-    internvl2 = r'.*(wqkv|wo|w[123]|mlp1\.(1|3))$'
-    internvl2_llama = r'.*(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj|mlp1\.(1|3))$'
-    internvl2_phi3 = r'.*(qkv_proj|o_proj|gate_up_proj|down_proj|mlp1\.(1|3))$'
     # compat
     llama2 = llama
 
@@ -1003,7 +1010,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
 @register_model(
     ModelType.cogvlm2_video_13b_chat,
     'ZhipuAI/cogvlm2-video-llama3-chat',
-    LoRATM.cogvlm,
+    LoRATM.cogvlm2,
     TemplateType.cogvlm2_video,
     support_gradient_checkpointing=False,
     requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
@@ -1013,7 +1020,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
 @register_model(
     ModelType.cogvlm2_en_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chat-19B',
-    LoRATM.cogvlm,
+    LoRATM.cogvlm2,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     support_lmdeploy=True,
@@ -1024,7 +1031,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
 @register_model(
     ModelType.cogvlm2_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
-    LoRATM.cogvlm,
+    LoRATM.cogvlm2,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     support_lmdeploy=True,
@@ -1052,7 +1059,7 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
 @register_model(
     ModelType.llava_llama3_8b_v1_1,
     'AI-ModelScope/llava-llama-3-8b-v1_1-transformers',
-    LoRATM.llama,
+    LoRATM.llava,
     TemplateType.llava_llama_instruct,
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -1275,7 +1282,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_224,
     'AI-ModelScope/paligemma-3b-pt-224',
-    LoRATM.llama,
+    LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1285,7 +1292,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_448,
     'AI-ModelScope/paligemma-3b-pt-448',
-    LoRATM.llama,
+    LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1295,7 +1302,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_896,
     'AI-ModelScope/paligemma-3b-pt-896',
-    LoRATM.llama,
+    LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1305,7 +1312,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_224,
     'AI-ModelScope/paligemma-3b-mix-224',
-    LoRATM.llama,
+    LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1315,7 +1322,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_448,
     'AI-ModelScope/paligemma-3b-mix-448',
-    LoRATM.llama,
+    LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
     requires=['transformers>=4.41'],
@@ -1344,7 +1351,7 @@ def _clone_hook(module, input, output):
 @register_model(
     ModelType.phi3_vision_128k_instruct,
     'LLM-Research/Phi-3-vision-128k-instruct',
-    LoRATM.phi3,
+    LoRATM.phi3v,
     TemplateType.phi3_vl,
     # https://github.com/vllm-project/vllm/blob/main/examples/phi3v_example.py
     support_flash_attn=True,
@@ -2805,35 +2812,39 @@ def fix_florence_forward(model) -> None:
 @register_model(
     ModelType.florence_2_base,
     'AI-ModelScope/Florence-2-base',
-    LoRATM.llama,
+    LoRATM.florence,
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-base')
+    hf_model_id='microsoft/Florence-2-base',
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.florence_2_base_ft,
     'AI-ModelScope/Florence-2-base-ft',
-    LoRATM.llama,
+    LoRATM.florence,
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-base-ft')
+    hf_model_id='microsoft/Florence-2-base-ft',
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.florence_2_large,
     'AI-ModelScope/Florence-2-large',
-    LoRATM.llama,
+    LoRATM.florence,
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-large')
+    hf_model_id='microsoft/Florence-2-large',
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.florence_2_large_ft,
     'AI-ModelScope/Florence-2-large-ft',
-    LoRATM.llama,
+    LoRATM.florence,
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-large-ft')
+    hf_model_id='microsoft/Florence-2-large-ft',
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_florence(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -3914,7 +3925,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
-    LoRATM.internlm2,
+    LoRATM.internvl,
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3925,7 +3936,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl_chat_v1_5_int8,
     'AI-ModelScope/InternVL-Chat-V1-5-int8',
-    LoRATM.internlm2,
+    LoRATM.internvl,
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3935,7 +3946,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.mini_internvl_chat_2b_v1_5,
     'OpenGVLab/Mini-InternVL-Chat-2B-V1-5',
-    LoRATM.internlm2,
+    LoRATM.internvl,
     TemplateType.internvl,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3946,7 +3957,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.mini_internvl_chat_4b_v1_5,
     'OpenGVLab/Mini-InternVL-Chat-4B-V1-5',
-    LoRATM.phi3,
+    LoRATM.internvl,
     TemplateType.internvl_phi3,
     requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
@@ -3957,7 +3968,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_1b,
     'OpenGVLab/InternVL2-1B',
-    LoRATM.internvl2_llama,
+    LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3968,7 +3979,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_2b,
     'OpenGVLab/InternVL2-2B',
-    LoRATM.internvl2,
+    LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -3979,7 +3990,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_4b,
     'OpenGVLab/InternVL2-4B',
-    LoRATM.internvl2_phi3,
+    LoRATM.internvl,
     TemplateType.internvl2_phi3,
     requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
@@ -3990,7 +4001,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_8b,
     'OpenGVLab/InternVL2-8B',
-    LoRATM.internvl2,
+    LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -4001,7 +4012,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_26b,
     'OpenGVLab/InternVL2-26B',
-    LoRATM.internvl2,
+    LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -4012,7 +4023,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_40b,
     'OpenGVLab/InternVL2-40B',
-    LoRATM.internvl2_llama,
+    LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -4023,7 +4034,7 @@ def patch_internvl_forward(model) -> None:
 @register_model(
     ModelType.internvl2_llama3_76b,
     'OpenGVLab/InternVL2-Llama3-76B',
-    LoRATM.internvl2_llama,
+    LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
@@ -4128,7 +4139,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 @register_model(
     ModelType.internlm_xcomposer2_5_7b_chat,
     'Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b',
-    LoRATM.internlm2,
+    LoRATM.internlm_xcomposer,
     TemplateType.internlm_xcomposer2_5,
     eos_token='<|im_end|>',
     support_flash_attn=True,
@@ -4139,7 +4150,7 @@ def get_model_tokenizer_internvl(model_dir: str,
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
-    LoRATM.internlm2,
+    LoRATM.internlm_xcomposer,
     TemplateType.internlm_xcomposer2,
     support_lmdeploy=True,
     eos_token='[UNUSED_TOKEN_145]',
@@ -4298,7 +4309,7 @@ def _patch_deepseek_vl(model) -> None:
 @register_model(
     ModelType.deepseek_vl_7b_chat,
     'deepseek-ai/deepseek-vl-7b-chat',
-    LoRATM.llama,
+    LoRATM.deepseek_vl,
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -4307,7 +4318,7 @@ def _patch_deepseek_vl(model) -> None:
 @register_model(
     ModelType.deepseek_vl_1_3b_chat,
     'deepseek-ai/deepseek-vl-1.3b-chat',
-    LoRATM.llama,
+    LoRATM.deepseek_vl,
     TemplateType.deepseek_vl,
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -4983,7 +4994,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
 @register_model(
     ModelType.qwen_vl_chat,
     'qwen/Qwen-VL-Chat',
-    LoRATM.qwen,
+    LoRATM.qwen_vl,
     TemplateType.qwen_vl,
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -4992,7 +5003,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
 @register_model(
     ModelType.qwen_vl,
     'qwen/Qwen-VL',
-    LoRATM.qwen,
+    LoRATM.qwen_vl,
     TemplateType.default_generation,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
     support_flash_attn=True,
@@ -5058,7 +5069,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
 @register_model(
     ModelType.qwen_audio_chat,
     'qwen/Qwen-Audio-Chat',
-    LoRATM.qwen,
+    LoRATM.qwen_audio,
     TemplateType.qwen_audio,
     support_flash_attn=True,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_chat},
@@ -5067,7 +5078,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
 @register_model(
     ModelType.qwen_audio,
     'qwen/Qwen-Audio',
-    LoRATM.qwen,
+    LoRATM.qwen_audio,
     TemplateType.qwen_audio_generation,
     support_flash_attn=True,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
@@ -5467,7 +5478,7 @@ def get_model_tokenizer_orion(model_dir: str,
 @register_model(
     ModelType.yi_vl_34b_chat,
     '01ai/Yi-VL-34B',
-    LoRATM.llama,
+    LoRATM.yi_vl,
     TemplateType.yi_vl,
     support_flash_attn=True,
     requires=['transformers>=4.34'],
@@ -5476,7 +5487,7 @@ def get_model_tokenizer_orion(model_dir: str,
 @register_model(
     ModelType.yi_vl_6b_chat,
     '01ai/Yi-VL-6B',
-    LoRATM.llama,
+    LoRATM.yi_vl,
     TemplateType.yi_vl,
     support_flash_attn=True,
     requires=['transformers>=4.34'],
@@ -5569,7 +5580,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 @register_model(
     ModelType.minicpm_v_3b_chat,
     'OpenBMB/MiniCPM-V',
-    LoRATM.llama,
+    LoRATM.minicpm_v,
     TemplateType.minicpm_v,
     support_flash_attn=True,
     requires=['timm', 'transformers<4.42'],
@@ -5578,7 +5589,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 @register_model(
     ModelType.minicpm_v_v2_chat,
     'OpenBMB/MiniCPM-V-2',
-    LoRATM.llama,
+    LoRATM.minicpm_v,
     TemplateType.minicpm_v,
     support_flash_attn=True,
     requires=['timm', 'transformers<4.42'],
@@ -5601,7 +5612,7 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
 @register_model(
     ModelType.minicpm_v_v2_5_chat,
     'OpenBMB/MiniCPM-Llama3-V-2_5',
-    LoRATM.minicpm_llama,
+    LoRATM.minicpm_v,
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
     requires=['timm', 'transformers>=4.36'],
@@ -5666,7 +5677,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 @register_model(
     ModelType.llava1_5_13b_instruct,
     'swift/llava-1.5-13b-hf',
-    LoRATM.llama,
+    LoRATM.llava,
     TemplateType.llava1_5,
     eos_token='</s>',
     support_flash_attn=True,
@@ -5684,7 +5695,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 @register_model(
     ModelType.llava1_5_7b_instruct,
     'swift/llava-1.5-7b-hf',
-    LoRATM.llama,
+    LoRATM.llava,
     TemplateType.llava1_5,
     eos_token='</s>',
     support_flash_attn=True,
@@ -5709,7 +5720,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 @register_model(
     ModelType.llava1_6_vicuna_7b_instruct,
     'swift/llava-v1.6-vicuna-7b-hf',
-    LoRATM.llama,
+    LoRATM.llava,
     TemplateType.llava_vicuna,
     support_flash_attn=True,
     support_vllm=True,
@@ -5726,7 +5737,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 @register_model(
     ModelType.llava1_6_vicuna_13b_instruct,
     'swift/llava-v1.6-vicuna-13b-hf',
-    LoRATM.llama,
+    LoRATM.llava,
     TemplateType.llava_vicuna,
     support_flash_attn=True,
     support_vllm=True,
@@ -5743,7 +5754,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 @register_model(
     ModelType.llava1_6_mistral_7b_instruct,
     'swift/llava-v1.6-mistral-7b-hf',
-    LoRATM.llama,
+    LoRATM.llava,
     TemplateType.llava_mistral,
     support_flash_attn=True,
     support_vllm=True,
@@ -5767,7 +5778,7 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
 @register_model(
     ModelType.llava1_6_yi_34b_instruct,
     'swift/llava-v1.6-34b-hf',
-    LoRATM.llama,
+    LoRATM.llava,
     TemplateType.llava_yi,
     support_flash_attn=True,
     support_vllm=True,
@@ -5792,7 +5803,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 @register_model(
     ModelType.llava_next_video_7b_dpo_instruct,
     'swift/LLaVA-NeXT-Video-7B-DPO-hf',
-    LoRATM.llama,
+    LoRATM.llava_next_video,
     TemplateType.llava_next_video,
     support_flash_attn=True,
     requires=['transformers>=4.42', 'av'],
@@ -5801,7 +5812,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 @register_model(
     ModelType.llava_next_video_7b_32k_instruct,
     'swift/LLaVA-NeXT-Video-7B-32K-hf',
-    LoRATM.llama,
+    LoRATM.llava_next_video,
     TemplateType.llava_next_video,
     support_flash_attn=True,
     requires=['transformers>=4.42', 'av'],
@@ -5810,7 +5821,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
 @register_model(
     ModelType.llava_next_video_7b_instruct,
     'swift/LLaVA-NeXT-Video-7B-hf',
-    LoRATM.llama,
+    LoRATM.llava_next_video,
     TemplateType.llava_next_video,
     support_flash_attn=True,
     requires=['transformers>=4.42', 'av'],
@@ -5825,7 +5836,7 @@ def get_model_tokenizer_llava_next_video(*args, **kwargs):
 @register_model(
     ModelType.llava_next_video_34b_instruct,
     'swift/LLaVA-NeXT-Video-34B-hf',
-    LoRATM.llama,
+    LoRATM.llava_next_video,
     TemplateType.llava_next_video_yi,
     support_flash_attn=True,
     requires=['transformers>=4.42', 'av'],
@@ -5842,7 +5853,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 @register_model(
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
-    LoRATM.llama,
+    LoRATM.llava_llama,
     TemplateType.llama_llava_next,
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -5852,7 +5863,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 @register_model(
     ModelType.llava_next_72b,
     'AI-Modelscope/llava-next-72b',
-    LoRATM.llama,
+    LoRATM.llava_next,
     TemplateType.llava_qwen_instruct,
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -5862,7 +5873,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 @register_model(
     ModelType.llava_next_110b,
     'AI-Modelscope/llava-next-110b',
-    LoRATM.llama,
+    LoRATM.llava_next,
     TemplateType.llava_qwen_instruct,
     support_flash_attn=True,
     support_lmdeploy=True,
