@@ -5,6 +5,7 @@ import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
+from functools import wraps
 from queue import Queue
 from threading import Thread
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
@@ -16,7 +17,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
-from transformers import AutoConfig, GenerationConfig
+from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
 from swift.utils import get_logger
 from .argument import InferArguments
@@ -69,7 +70,16 @@ def get_lmdeploy_engine(
         pipeline_kwargs['vision_config'] = vision_config
         logger.info(f'vision_config: {vision_config}')
 
+    _old_from_pretrained = AutoTokenizer.from_pretrained
+
+    @wraps(_old_from_pretrained)
+    def _from_pretrained(self, *args, **kwargs):
+        return tokenizer
+
+    AutoTokenizer.from_pretrained = _from_pretrained
     lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
+    AutoTokenizer.from_pretrained = _old_from_pretrained  # recover
+
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
     lmdeploy_engine.is_multimodal = is_multimodal
