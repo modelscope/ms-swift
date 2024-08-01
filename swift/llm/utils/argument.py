@@ -795,7 +795,6 @@ class SftArguments(ArgumentsBase):
             if isinstance(default_lora_tm, str):
                 return default_lora_tm
             target_modules += default_lora_tm
-            self.lora_use_default = True
         if 'EMBEDDING' in target_modules:
             target_modules.remove('EMBEDDING')
             self.lora_use_embedding = True
@@ -870,7 +869,6 @@ class SftArguments(ArgumentsBase):
 
         self.lora_use_embedding = False
         self.lora_use_all = False
-        self.lora_use_default = False
         self.lora_m2s_use_embedding = False
         self.lora_m2s_use_ln = False
         if self.sft_type == 'ia3':

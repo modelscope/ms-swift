@@ -4,7 +4,6 @@ import heapq
 import importlib.util
 import logging
 import os
-import re
 import shutil
 import time
 from copy import deepcopy
@@ -443,11 +442,7 @@ def is_quant_model(model_type: Optional[str] = None, model=None) -> bool:
     return False
 
 
-def find_all_linears(model: Module,
-                     quantization_bit: int,
-                     model_type: str,
-                     quant_method: str,
-                     target_modules=None) -> List[str]:
+def find_all_linears(model: Module, quantization_bit: int, model_type: str, quant_method: str) -> List[str]:
     """ref: https://github.com/artidoro/qlora"""
     head_module_name = 'lm_head'
     if model_type in MODEL_KEYS_MAPPING:
@@ -489,13 +484,6 @@ def find_all_linears(model: Module,
     # O(n^2logn), n represents the number of nodes, n<1000.
     inner_nodes = set()
     for name, module in model.named_modules():
-        if target_modules:
-            if isinstance(target_modules, list):
-                if not any([name.endswith(t) for t in target_modules]):
-                    continue
-            if isinstance(target_modules, str):
-                if not re.fullmatch(target_modules, name):
-                    continue
         if not isinstance(module, tuple(linear_cls)):
             inner_nodes.add(name)
     target_module_names = set()
