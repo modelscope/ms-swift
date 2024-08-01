@@ -361,4 +361,4 @@ def get_regex_for_mm_default_lora(model_type: str):
     if resampler:
         _regex += f'|{resampler}'
     _regex += ').*'
-    return f'^({llm}|{projector}|{resampler}).*'
+    return _regex
