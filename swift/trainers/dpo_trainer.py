@@ -28,8 +28,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if self.eval_dataset is not None:
             self.eval_dataset = self.eval_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
         train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
-        val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
-        self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
+
+        if self.eval_dataset is not None:
+            val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
+            self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
+        else:
+            self.dataset_info = {'train_dataset': train_ds_info}
         if test_oom_error:
             self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
         # performance
