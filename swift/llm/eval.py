@@ -241,7 +241,7 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
                     'type': model_type,
                 },
             ],
-            'nproc': 8,
+            'nproc': 4,
             **limit_config,
         },
     )
