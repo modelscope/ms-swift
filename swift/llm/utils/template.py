@@ -289,8 +289,14 @@ class Template:
                     assert n_round == len(history) + 1
                     for i, h, m in zip(range(n_round), history + [[query, None]], example[media_key]):
                         num_media_tags = len(re.findall(media_tag, h[0]))
-                        if m and num_media_tags == 0:
-                            h[0] = media_tag + h[0]
+                        if m:
+                            assert num_media_tags <= 1, (
+                                'The model includes at most one media per round. However, '
+                                f'this round contains {num_media_tags} media_tags. query: {h[0]}')
+                            if num_media_tags == 0:
+                                h[0] = media_tag + h[0]
+                        else:
+                            assert num_media_tags == 0, f'Missing media. query: {h[0]}'
                         if i == n_round - 1:
                             query = h[0]
                         else:
@@ -302,7 +308,8 @@ class Template:
                     num_media_tags = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
                     example[media_key] = [m for m in example[media_key] if m]
                     num_media = len(example[media_key])
-                    num_new_tags = max(num_media - num_media_tags, 0)
+                    num_new_tags = num_media - num_media_tags
+                    assert num_new_tags >= 0, (f'Number of media: {num_media}, number of media_tags: {num_media_tags}')
                     if history:
                         history[0][0] = media_tag * num_new_tags + history[0][0]
                     else:
@@ -1037,9 +1044,10 @@ class QwenVLTemplate(QwenTemplate):
     load_medias = False
 
     def check_example(self, example):
-        images = example.get('images') or []
-        from .utils import fetch_one
-        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
+        if not self._is_lmdeploy:
+            images = example.get('images') or []
+            from .utils import fetch_one
+            assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:

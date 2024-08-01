@@ -89,7 +89,7 @@
 - `--learning_rate`: Default is `None`, i.e. set to 1e-4 if `sft_type` is lora, set to 1e-5 if `sft_type` is full.
 - `--weight_decay`: Default is `0.01`.
 - `--gradient_accumulation_steps`: Gradient accumulation, default is `None`, set to `math.ceil(16 / self.batch_size / world_size)`. `total_batch_size =  batch_size * gradient_accumulation_steps * world_size`.
-- `--max_grad_norm`: Gradient clipping, default is `0.5`.
+- `--max_grad_norm`: Gradient clipping, default is `1`.
 - `--predict_with_generate`: Whether to use generation for evaluation, default is `False`. If set to False, evaluate using `loss`. If set to True, evaluate using `ROUGE-L` and other metrics. Generative evaluation takes a long time, choose carefully.
 - `--lr_scheduler_type`: Default is `'cosine'`, options: 'linear', 'cosine', 'constant', etc.
 - `--warmup_ratio`: Proportion of warmup in total training steps, default is `0.05`.
@@ -238,7 +238,6 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 - `--ia3_feedforward_modules`: Specify the Linear name of IA3's MLP, this name must be in `ia3_target_modules`.
 - `--ia3_modules_to_save`: Additional modules participating in IA3 training. See meaning of `lora_modules_to_save`.
 
-
 ## PT Parameters
 
 PT parameters inherit from the SFT parameters with some modifications to the default values:
@@ -247,7 +246,6 @@ PT parameters inherit from the SFT parameters with some modifications to the def
 - `--lora_target_modules`: Default value is `'ALL'`.
 - `--lazy_tokenize`: Default value is `True`.
 - `--eval_steps`: Default value is `500`.
-
 
 ## RLHF Parameters
 RLHF parameters are an extension of the sft parameters, with the addition of the following options:

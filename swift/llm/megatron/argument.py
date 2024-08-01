@@ -75,7 +75,7 @@ class MegatronMixin:
     recompute_granularity: Optional[str] = 'selective'
     no_rope_fusion: bool = True
     use_flash_attn: bool = False
-    use_cpu_initialization: Optional[bool] = None 
+    use_cpu_initialization: Optional[bool] = None
 
     dataloader_type: str = 'cyclic'
     lr: float = 1e-5
