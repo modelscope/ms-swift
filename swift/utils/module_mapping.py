@@ -254,19 +254,13 @@ PHI3V_KEYS = MultiModelKeys(
     vision_tower='model.vision_embed_tokens.img_processor',
 )
 
-COGVLM2_KEYS = MultiModelKeys(
+COGVLM_KEYS = MultiModelKeys(
     language_model='model.layers',
     projector=None,
     vision_tower='model.vision',
 )
 
-COGAGENT_KEYS = COGVLM2_KEYS
-
-COGVLM_KEYS = MultiModelKeys(
-    language_model='lm',
-    projector='mlp',
-    vision_tower='eva',
-)
+COGAGENT_KEYS = COGVLM_KEYS
 
 FLORENCE_KEYS = MultiModelKeys(
     language_model='language_model',
@@ -308,7 +302,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('paligemma', PALIGEMMA_KEYS),
     ('minicpm_v', MINICPM_V_KEYS),
     ('phi3v', PHI3V_KEYS),
-    ('cogvlm2', COGVLM2_KEYS),
+    ('cogvlm2', COGVLM_KEYS),
     ('cogvlm', COGVLM_KEYS),
     ('cogagent', COGAGENT_KEYS),
     ('florence', FLORENCE_KEYS),
