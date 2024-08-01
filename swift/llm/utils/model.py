@@ -5572,6 +5572,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.llama,
     TemplateType.minicpm_v,
     support_flash_attn=True,
+    requires=['timm', 'transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V')
 @register_model(
@@ -5580,44 +5581,53 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.llama,
     TemplateType.minicpm_v,
     support_flash_attn=True,
-    requires=['timm'],
+    requires=['timm', 'transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V-2')
-@register_model(
-    ModelType.minicpm_v_v2_5_chat,
-    'OpenBMB/MiniCPM-Llama3-V-2_5',
-    LoRATM.minicpm_llama,
-    TemplateType.minicpm_v_v2_5,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    requires=['timm'],
-    placeholder_tokens=['<unk>'],
-    function_kwargs={'patching_embedding': True},
-    tags=['multi-modal', 'vision'],
-    hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    patching_embedding = kwargs.pop('patching_embedding', False)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if load_model:
         model.resampler.to(torch_dtype)  # fix float32
         _patch_minicpm_v_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         _use_submodel_func(model, 'llm', func_list)
-        if patching_embedding:
-            embedding = model.get_input_embeddings()
-            if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-                old_forward = embedding.forward
+    return model, tokenizer
 
-                @wraps(old_forward)
-                def _new_forward(*args, **kwargs):
-                    return old_forward(*args, **kwargs).requires_grad_(True).clone()
 
-                embedding.__old_forward = old_forward
-                embedding.forward = _new_forward
+@register_model(
+    ModelType.minicpm_v_v2_5_chat,
+    'OpenBMB/MiniCPM-Llama3-V-2_5',
+    LoRATM.minicpm_llama,
+    TemplateType.minicpm_v_v2_5,
+    support_flash_attn=True,
+    requires=['timm', 'transformers>=4.36'],
+    placeholder_tokens=['<unk>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
+def get_model_tokenizer_minicpm_v_2_5(model_dir: str,
+                                      torch_dtype: Dtype,
+                                      model_kwargs: Dict[str, Any],
+                                      load_model: bool = True,
+                                      **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+    if load_model:
+        embedding = model.get_input_embeddings()
+        if not hasattr(embedding, '__old_forward'):  # Avoid double patching
+            old_forward = embedding.forward
+
+            @wraps(old_forward)
+            def _new_forward(*args, **kwargs):
+                return old_forward(*args, **kwargs).requires_grad_(True).clone()
+
+            embedding.__old_forward = old_forward
+            embedding.forward = _new_forward
     return model, tokenizer
 
 
