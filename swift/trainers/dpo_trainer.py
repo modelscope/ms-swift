@@ -53,7 +53,11 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
-
+            
+            # Skip examples that do not contain 'input_ids'
+            if 'input_ids' not in prompt_tokens:
+                return None
+            
             # resolve conflict in data_collator when labels are None, pop it afterwards
             prompt_tokens['labels'] = prompt_tokens['input_ids']
             # Batching image-related information for paired response using template
