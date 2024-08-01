@@ -1550,6 +1550,12 @@ class ExportArguments(InferArguments):
 
 
 @dataclass
+class PtArguments(SftArguments):
+    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
+    lazy_tokenize: bool = True
+    eval_steps: int = 500
+
+@dataclass
 class RLHFArguments(SftArguments):
     rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
     ref_model_type: Optional[str] = field(
