@@ -1059,7 +1059,7 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
 @register_model(
     ModelType.llava_llama3_8b_v1_1,
     'AI-ModelScope/llava-llama-3-8b-v1_1-transformers',
-    LoRATM.llava_llama,
+    LoRATM.llava,
     TemplateType.llava_llama_instruct,
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -2816,7 +2816,8 @@ def fix_florence_forward(model) -> None:
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-base')
+    hf_model_id='microsoft/Florence-2-base',
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.florence_2_base_ft,
     'AI-ModelScope/Florence-2-base-ft',
@@ -2824,7 +2825,8 @@ def fix_florence_forward(model) -> None:
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-base-ft')
+    hf_model_id='microsoft/Florence-2-base-ft',
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.florence_2_large,
     'AI-ModelScope/Florence-2-large',
@@ -2832,7 +2834,8 @@ def fix_florence_forward(model) -> None:
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-large')
+    hf_model_id='microsoft/Florence-2-large',
+    tags=['multi-modal', 'vision'])
 @register_model(
     ModelType.florence_2_large_ft,
     'AI-ModelScope/Florence-2-large-ft',
@@ -2840,7 +2843,8 @@ def fix_florence_forward(model) -> None:
     TemplateType.florence,
     support_vllm=False,
     support_flash_attn=True,
-    hf_model_id='microsoft/Florence-2-large-ft')
+    hf_model_id='microsoft/Florence-2-large-ft',
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_florence(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -5849,7 +5853,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 @register_model(
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
-    LoRATM.llava_next,
+    LoRATM.llava_llama,
     TemplateType.llama_llava_next,
     support_flash_attn=True,
     support_lmdeploy=True,

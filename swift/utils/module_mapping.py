@@ -211,10 +211,9 @@ LLAVA_NEXT_VIDEO_KEYS = MultiModelKeys(
 )
 
 LLAVA_LLAMA_KEYS = MultiModelKeys(
-    language_model='model',
-    projector='mm_projector',
-    vision_tower='vision_tower',
-    vision_resampler='vision_resampler',
+    language_model='model.layers',
+    projector='model.mm_projector',
+    vision_tower='model.vision_tower',
 )
 
 YI_VL_KEYS = LLAVA_LLAMA_KEYS
@@ -245,8 +244,8 @@ PALIGEMMA_KEYS = MultiModelKeys(
 
 MINICPM_V_KEYS = MultiModelKeys(
     language_model='llm',
-    projector='multi_modal_projector',
-    vision_tower='resampler',
+    projector='resampler',
+    vision_tower='vpm',
 )
 
 PHI3V_KEYS = MultiModelKeys(
@@ -360,5 +359,5 @@ def get_regex_for_mm_default_lora(model_type: str):
         _regex += f'|{projector}'
     if resampler:
         _regex += f'|{resampler}'
-    _regex += ').*'
+    _regex += ')(?!.*(lm_head|output|emb|wte|shared)).*'
     return _regex
