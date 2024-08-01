@@ -2471,14 +2471,15 @@ class MiniCPMVTemplate(Template):
         slice_mode = getattr(config, 'slice_mode', False)
         if slice_mode:
             if self.is_v2_5:
+                from .utils import to_device
                 image_processor = self.tokenizer.processor.image_processor
                 image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
                 placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
-                pixel_values = image_inputs['pixel_values'][0]
+                pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
                 tgt_sizes = image_inputs['tgt_sizes']
             else:
                 images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
-                pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
+                pixel_values = [[self.model.transform(img).to(device=self.model.device) for img in images]]
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -2500,11 +2501,11 @@ class MiniCPMVTemplate(Template):
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-            pixel_values = [self.model.transform(image).to(device=self.model.device)]
+            pixel_values = [[self.model.transform(image).to(device=self.model.device)]]
         data = {
             'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
             'image_bound': image_bound,
-            'pixel_values': [pixel_values]
+            'pixel_values': pixel_values
         }
         if tgt_sizes is not None:  # v2.5
             data['tgt_sizes'] = tgt_sizes
