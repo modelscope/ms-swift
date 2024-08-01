@@ -119,6 +119,9 @@ def prepare_model(model, args: SftArguments):
                 'init_lora_weights': args.init_lora_weights,
             }
             if args.sft_type in ('lora', 'longlora'):
+                # Fix the name of the layer in xcomposer that contains Plora.
+                if any(['lora_' in n for n, p in model.named_parameters()]):
+                    model.requires_grad_(False)
                 if args.lora_dtype == 'AUTO':
                     args.lora_dtype = None
                 if args.tuner_backend == 'swift':

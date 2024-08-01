@@ -325,11 +325,15 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
     result: List[Dict[str, Any]] = []
     jsonl_path = None
     if args.save_result:
-        result_dir = args.ckpt_dir
-        if result_dir is None:
-            result_dir = llm_engine.model_dir if args.infer_backend in {'vllm', 'lmdeploy'} else model.model_dir
+        if args.result_dir:
+            result_dir = args.result_dir
+        else:
+            result_dir = args.ckpt_dir
+            if result_dir is None:
+                result_dir = llm_engine.model_dir if args.infer_backend in {'vllm', 'lmdeploy'} else model.model_dir
+            if result_dir is not None:
+                result_dir = os.path.join(result_dir, 'infer_result')
         if result_dir is not None:
-            result_dir = os.path.join(result_dir, 'infer_result')
             os.makedirs(result_dir, exist_ok=True)
             time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
             jsonl_path = os.path.join(result_dir, f'{time}.jsonl')

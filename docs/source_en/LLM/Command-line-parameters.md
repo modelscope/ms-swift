@@ -324,6 +324,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 ### lmdeploy Parameters
 - `--tp`: Tensor parallelism, a parameter for initializing the lmdeploy engine, default value is `1`.
 - `--cache_max_entry_count`: Parameter to initialize the lmdeploy engine, default value is `0.8`.
+- `--quant_policy`: Quantization of Key-Value Cache, parameters for initializing the lmdeploy engine, default value is `0`, you can set it to 4 or 8.
 - `--vision_batch_size`: Parameter to initialize the lmdeploy engine, default value is `1`. This parameter is effective only when using multimodal models.
 
 ## export Parameters

@@ -18,6 +18,7 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 
+# There is a correspondence between lmdeploy and CUDA versions. Please follow the installation instructions at `https://github.com/InternLM/lmdeploy#installation`.
 pip install lmdeploy
 ```
 

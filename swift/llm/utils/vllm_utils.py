@@ -377,7 +377,7 @@ def inference_stream_vllm(
         The keys to be included will be: 'response', 'history'.
     """
     if len(request_list) == 0:
-        return []
+        return
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())

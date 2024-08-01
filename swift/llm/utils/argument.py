@@ -1163,6 +1163,7 @@ class InferArguments(ArgumentsBase):
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
+    result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
@@ -1243,6 +1244,7 @@ class InferArguments(ArgumentsBase):
     # lmdeploy
     tp: int = 1
     cache_max_entry_count: float = 0.8
+    quant_policy: int = 0  # e.g. 4, 8
     vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
     # compatibility. (Deprecated)
