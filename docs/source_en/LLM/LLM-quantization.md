@@ -29,7 +29,7 @@ pip install autoawq -U
 
 # Using GPTQ quantization:
 # Auto_GPTQ and CUDA versions have a corresponding relationship, please select the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`
-pip install auto_gptq -U
+pip install auto_gptq optimum -U
 
 # Using bnb quantization:
 pip install bitsandbytes -U
