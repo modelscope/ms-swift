@@ -1037,9 +1037,10 @@ class QwenVLTemplate(QwenTemplate):
     load_medias = False
 
     def check_example(self, example):
-        images = example.get('images') or []
-        from .utils import fetch_one
-        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
+        if not self._is_lmdeploy:
+            images = example.get('images') or []
+            from .utils import fetch_one
+            assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
