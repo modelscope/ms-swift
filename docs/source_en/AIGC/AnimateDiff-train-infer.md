@@ -150,7 +150,7 @@ seed: int = 42 # Random seed.
 
 lora_rank: int = 8 # lora parameter.
 lora_alpha: int = 32 # lora parameter.
-lora_dropout_p: float = 0.05 # lora parameter.
+lora_dropout: float = 0.05 # lora parameter.
 lora_dtype: str = 'fp32' # lora module dtype type. If `AUTO`, it follows the dtype setting of the original module.
 
 gradient_checkpointing: bool = False # Whether to enable gc, disabled by default. Note: The current version of diffusers has a problem and does not support this parameter being True.

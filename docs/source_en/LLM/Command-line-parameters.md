@@ -3,7 +3,8 @@
 ## Table of Contents
 
 - [sft Parameters](#sft-parameters)
-- [dpo Parameters](#dpo-parameters)
+- [pt Parameters](#pt-parameters)
+- [rlhf Parameters](#rlhf-parameters)
 - [infer merge-lora Parameters](#infer-merge-lora-parameters)
 - [export Parameters](#export-parameters)
 - [eval Parameters](#eval-parameters)
@@ -66,7 +67,7 @@
 - `--lora_target_regex`: The lora target regex in `Optional[str]`. default is `None`. If this argument is specified, the `lora_target_modules` will have no effect.
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
-- `--lora_dropout_p`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
+- `--lora_dropout`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
 - `--init_lora_weights`: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, or `pissa_niter_[number of iters]`. Default value `true`.
 - `--lora_bias_trainable`: Default is `'none'`, options: 'none', 'all'. Set to `'all'` to make all biases trainable.
 - `--lora_modules_to_save`: Default is `[]`. If you want to train embedding, lm_head, or layer_norm, you can set this parameter, e.g. `--lora_modules_to_save EMBEDDING LN lm_head`. If passed `'EMBEDDING'`, Embedding layer will be added to `lora_modules_to_save`. If passed `'LN'`, `RMSNorm` and `LayerNorm` will be added to `lora_modules_to_save`.
@@ -83,12 +84,12 @@
 - `--max_steps`: Max_steps for training, default is `-1`. If `max_steps >= 0`, this overrides `num_train_epochs`.
 - `--optim`: Default is `'adamw_torch'`.
 - `--adam_beta1`: Default is `0.9`.
-- `--adam_beta2`: Default is `0.999`.
+- `--adam_beta2`: Default is `0.95`.
 - `--adam_epsilon`: Default is `1e-8`.
 - `--learning_rate`: Default is `None`, i.e. set to 1e-4 if `sft_type` is lora, set to 1e-5 if `sft_type` is full.
 - `--weight_decay`: Default is `0.01`.
 - `--gradient_accumulation_steps`: Gradient accumulation, default is `None`, set to `math.ceil(16 / self.batch_size / world_size)`. `total_batch_size =  batch_size * gradient_accumulation_steps * world_size`.
-- `--max_grad_norm`: Gradient clipping, default is `0.5`.
+- `--max_grad_norm`: Gradient clipping, default is `1`.
 - `--predict_with_generate`: Whether to use generation for evaluation, default is `False`. If set to False, evaluate using `loss`. If set to True, evaluate using `ROUGE-L` and other metrics. Generative evaluation takes a long time, choose carefully.
 - `--lr_scheduler_type`: Default is `'cosine'`, options: 'linear', 'cosine', 'constant', etc.
 - `--warmup_ratio`: Proportion of warmup in total training steps, default is `0.05`.
@@ -236,6 +237,15 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 - `--ia3_target_modules`: Specify IA3 target modules, default is `['DEFAULT']`. See `lora_target_modules` for specific meaning.
 - `--ia3_feedforward_modules`: Specify the Linear name of IA3's MLP, this name must be in `ia3_target_modules`.
 - `--ia3_modules_to_save`: Additional modules participating in IA3 training. See meaning of `lora_modules_to_save`.
+
+## PT Parameters
+
+PT parameters inherit from the SFT parameters with some modifications to the default values:
+
+- `--sft_type`: Default value is `'full'`.
+- `--lora_target_modules`: Default value is `'ALL'`.
+- `--lazy_tokenize`: Default value is `True`.
+- `--eval_steps`: Default value is `500`.
 
 ## RLHF Parameters
 RLHF parameters are an extension of the sft parameters, with the addition of the following options:
