@@ -291,12 +291,12 @@ class Template:
                         num_media_tags = len(re.findall(media_tag, h[0]))
                         if m:
                             assert num_media_tags <= 1, (
-                                'The model includes at most one image per epoch. However, '
+                                'The model includes at most one media per round. However, '
                                 f'this round contains {num_media_tags} media_tags. query: {h[0]}')
                             if num_media_tags == 0:
                                 h[0] = media_tag + h[0]
                         else:
-                            assert num_media_tags == 0, f'Missing image input. query: {h[0]}'
+                            assert num_media_tags == 0, f'Missing media. query: {h[0]}'
                         if i == n_round - 1:
                             query = h[0]
                         else:
