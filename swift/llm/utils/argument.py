@@ -1163,6 +1163,7 @@ class InferArguments(ArgumentsBase):
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
+    result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
