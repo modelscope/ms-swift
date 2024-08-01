@@ -21,10 +21,17 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         self.template = template
         kwargs.pop('gamma', None)
         is_vision = kwargs.pop('is_vision')
-
+        self.keys = []
         super().__init__(*args, **kwargs)
+        self.train_dataset = self.train_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
+        if self.eval_dataset is not None:
+            self.eval_dataset = self.eval_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
         train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
-        val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
+        if self.eval_dataset is not None:
+            val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
+            self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
+        else:
+            self.dataset_info = {'train_dataset': train_ds_info}
         self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
         if test_oom_error:
             self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
@@ -52,6 +59,10 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
+
+            # Skip examples that do not contain 'input_ids'
+            if 'input_ids' not in prompt_tokens:
+                return {k: None for k in self.keys}
 
             # resolve conflict in data_collator when labels are None, pop it afterwards
             prompt_tokens['labels'] = prompt_tokens['input_ids']
@@ -170,7 +181,8 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                     labels=torch.tensor(batch['chosen_labels']))
 
             batch.update(prompt_tokens)
-
+        if not self.keys:
+            self.keys = (list(batch.keys()))
         return batch
 
     def concatenated_forward(
@@ -216,7 +228,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
             model_kwargs['output_router_logits'] = True
 
         outputs = model(
-            concatenated_batch['concatenated_input_ids'],
+            input_ids=concatenated_batch['concatenated_input_ids'],
             attention_mask=concatenated_batch['concatenated_attention_mask'],
             use_cache=False,
             **model_kwargs,

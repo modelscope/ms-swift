@@ -6,7 +6,7 @@ import sys
 from typing import Dict, List, Optional
 
 ROUTE_MAPPING: Dict[str, str] = {
-    'pt': 'swift.cli.sft',
+    'pt': 'swift.cli.pt',
     'sft': 'swift.cli.sft',
     'infer': 'swift.cli.infer',
     'app-ui': 'swift.cli.app_ui',
@@ -53,7 +53,7 @@ def cli_main() -> None:
         argv = ['--rlhf_type', method_name] + argv
     file_path = importlib.util.find_spec(ROUTE_MAPPING[method_name]).origin
     torchrun_args = get_torchrun_args()
-    if torchrun_args is None or method_name not in ('sft', 'dpo', 'orpo', 'simpo', 'rlhf', 'pt'):
+    if torchrun_args is None or method_name not in ('pt', 'sft', 'dpo', 'orpo', 'simpo', 'rlhf'):
         try:
             python_cmd = 'python'
             subprocess.run(
