@@ -2582,18 +2582,11 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
         assert isinstance(dataset_path, str)
         df: DataFrame
         if dataset_path.endswith('.csv'):
-            df = pd.read_csv(dataset_path, na_filter=False, dtype=str)
-        elif dataset_path.endswith('.jsonl'):
-            df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
-        elif dataset_path.endswith('.json'):
-            with open(dataset_path, 'r', encoding='utf-8') as f:
-                obj_list = json.load(f)
-            df = transform_jsonl_to_df(obj_list)
+            dataset = HfDataset.from_csv(dataset_path, na_filter=False)
+        elif dataset_path.endswith('.jsonl') or dataset_path.endswith('.json'):
+            dataset = HfDataset.from_json(dataset_path)
         else:
-            raise ValueError('The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
-                             '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
-                             'for more information.')
-        dataset = HfDataset.from_dict(df.to_dict(orient='list'))
+            raise ValueError('The custom dataset only supports CSV, JSONL or JSON format.')
         dataset_list.append(preprocess_func(dataset))
     return concatenate_datasets(dataset_list)
 
