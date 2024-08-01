@@ -58,7 +58,7 @@ torchrun \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
+    --lora_dropout 0.05 \
     --lora_dtype AUTO \
     --lora_target_modules DEFAULT \
     --gradient_checkpointing true \

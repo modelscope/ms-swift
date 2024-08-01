@@ -298,6 +298,8 @@ class ArgumentsBase:
                 self.deepspeed = self.deepspeed_config_path
             if self.eval_strategy is not None:
                 self.evaluation_strategy = self.eval_strategy
+            if self.lora_dropout_p is not None:
+                self.lora_dropout = self.lora_dropout_p
 
     def handle_custom_dataset_info(self: Union['SftArguments', 'InferArguments']):
         if self.custom_dataset_info is None:
@@ -588,7 +590,7 @@ class SftArguments(ArgumentsBase):
     lora_target_regex: Optional[str] = None
     lora_rank: int = 8
     lora_alpha: int = 32
-    lora_dropout_p: float = 0.05
+    lora_dropout: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     lora_modules_to_save: List[str] = field(default_factory=list)
@@ -674,12 +676,12 @@ class SftArguments(ArgumentsBase):
     max_steps: int = -1
     optim: str = 'adamw_torch'
     adam_beta1: float = 0.9
-    adam_beta2: float = 0.999
+    adam_beta2: float = 0.95
     adam_epsilon: float = 1e-8
     learning_rate: Optional[float] = None
     weight_decay: float = 0.1
     gradient_accumulation_steps: Optional[int] = None
-    max_grad_norm: float = 0.5
+    max_grad_norm: float = 1
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[str] = None  # json
@@ -774,6 +776,7 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
+    lora_dropout_p: Optional[float] = None
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
@@ -934,7 +937,7 @@ class SftArguments(ArgumentsBase):
             if isinstance(self.additional_trainable_parameters, str):
                 self.additional_trainable_parameters = [self.additional_trainable_parameters]
             if self.learning_rate is None:
-                self.learning_rate = 1e-5
+                self.learning_rate = 5e-6
             if self.save_only_model is None:
                 self.save_only_model = True
             if self.eval_steps is None:
@@ -1158,7 +1161,7 @@ class InferArguments(ArgumentsBase):
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'lora'
     template_type: str = field(
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
@@ -1552,7 +1555,7 @@ class ExportArguments(InferArguments):
 
 @dataclass
 class PtArguments(SftArguments):
-    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
     lazy_tokenize: bool = True
     eval_steps: int = 500
 

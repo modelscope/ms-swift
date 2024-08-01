@@ -66,7 +66,7 @@
 - `--lora_target_regex`: The lora target regex in `Optional[str]`. default is `None`. If this argument is specified, the `lora_target_modules` will have no effect.
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
-- `--lora_dropout_p`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
+- `--lora_dropout`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
 - `--init_lora_weights`: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, or `pissa_niter_[number of iters]`. Default value `true`.
 - `--lora_bias_trainable`: Default is `'none'`, options: 'none', 'all'. Set to `'all'` to make all biases trainable.
 - `--lora_modules_to_save`: Default is `[]`. If you want to train embedding, lm_head, or layer_norm, you can set this parameter, e.g. `--lora_modules_to_save EMBEDDING LN lm_head`. If passed `'EMBEDDING'`, Embedding layer will be added to `lora_modules_to_save`. If passed `'LN'`, `RMSNorm` and `LayerNorm` will be added to `lora_modules_to_save`.
@@ -83,7 +83,7 @@
 - `--max_steps`: Max_steps for training, default is `-1`. If `max_steps >= 0`, this overrides `num_train_epochs`.
 - `--optim`: Default is `'adamw_torch'`.
 - `--adam_beta1`: Default is `0.9`.
-- `--adam_beta2`: Default is `0.999`.
+- `--adam_beta2`: Default is `0.95`.
 - `--adam_epsilon`: Default is `1e-8`.
 - `--learning_rate`: Default is `None`, i.e. set to 1e-4 if `sft_type` is lora, set to 1e-5 if `sft_type` is full.
 - `--weight_decay`: Default is `0.01`.

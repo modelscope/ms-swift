@@ -155,7 +155,7 @@ seed: int = 42 # 随机种子
 
 lora_rank: int = 8 # lora 参数
 lora_alpha: int = 32 # lora 参数
-lora_dropout_p: float = 0.05 # lora 参数
+lora_dropout: float = 0.05 # lora 参数
 lora_dtype: str = 'fp32' # lora模块dtype类型，如果为`AUTO`则跟随原始模块的dtype设定
 
 gradient_checkpointing: bool = False # 是否开启gc，默认不开启。注：当前版本diffusers有问题，不支持该参数为True

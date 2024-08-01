@@ -206,7 +206,7 @@ torchrun \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
+    --lora_dropout 0.05 \
     --lora_target_modules ALL \
     --self_cognition_sample 3000 \
     --model_name 卡卡罗特 \
@@ -494,7 +494,7 @@ torchrun \
     --check_dataset_strategy warning \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --lora_dropout_p 0.05 \
+    --lora_dropout 0.05 \
     --lora_target_modules ALL \
     --self_cognition_sample 3000 \
     --model_name 卡卡罗特 \

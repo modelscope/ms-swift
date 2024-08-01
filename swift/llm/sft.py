@@ -19,8 +19,8 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (LazyLLMDataset, SftArguments, Template, dataset_map, get_dataset, get_model_tokenizer, get_template,
-                    get_time_info, print_example, set_generation_config, sort_by_max_length, stat_dataset)
+from .utils import (LazyLLMDataset, SftArguments, PtArguments, Template, dataset_map, get_dataset, get_model_tokenizer, get_template,
+                    get_time_info, print_example, set_generation_config, sort_by_max_length, stat_dataset, TEMPLATE_MAPPING)
 
 logger = get_logger()
 
@@ -424,3 +424,4 @@ def get_sft_main(args, llm):
 
 
 sft_main = get_sft_main(SftArguments, llm_sft)
+pt_main = get_sft_main(PtArguments, llm_sft)
