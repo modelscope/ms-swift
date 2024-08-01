@@ -89,7 +89,9 @@ def _create_and_replace_hook(self, *args, **kwargs):
 
     is_multimodal = getattr(self.model, 'is_multimodal', False)
 
-    if is_multimodal and target and (not any([name in target.__class__.__name__.lower() for name in all_supported_names]) and not any([isinstance(target, type) for type in all_supported_types])):
+    if is_multimodal and target and (not any(
+        [name in target.__class__.__name__.lower()
+         for name in all_supported_names]) and not any([isinstance(target, type) for type in all_supported_types])):
         return
 
     return self._create_and_replace_origin(*args, **kwargs)

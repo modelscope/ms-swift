@@ -27,7 +27,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
-from ...utils.module_mapping import MODEL_KEYS_MAPPING, get_regex_for_mm_default_lora
+from swift.utils.module_mapping import get_regex_for_mm_default_lora
 from .template import TemplateType
 from .utils import get_max_model_len, is_unsloth_available
 
