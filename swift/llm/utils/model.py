@@ -5572,6 +5572,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.llama,
     TemplateType.minicpm_v,
     support_flash_attn=True,
+    requires=['timm', 'transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V')
 @register_model(
@@ -5580,7 +5581,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.llama,
     TemplateType.minicpm_v,
     support_flash_attn=True,
-    requires=['timm'],
+    requires=['timm', 'transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V-2')
 def get_model_tokenizer_minicpm_v(model_dir: str,
