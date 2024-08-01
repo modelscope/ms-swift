@@ -51,13 +51,18 @@ Swift DOCUMENTATION
    :caption: Multi-Modal LLM Training and Inference
 
    Multi-Modal/index.md
+   Multi-Modal/human-preference-alignment-training-documentation.md
+   Multi-Modal/LmDeploy-inference-acceleration.md
+   Multi-Modal/vllm-inference-acceleration.md
+   Multi-Modal/mutlimodal-deployment.md
    Multi-Modal/qwen-vl-best-practice.md
    Multi-Modal/qwen-audio-best-practice.md
+   Multi-Modal/llava-best-practice.md
+   Multi-Modal/llava-video-best-practice.md
+   Multi-Modal/internvl-best-practice.md
    Multi-Modal/deepseek-vl-best-practice.md
    Multi-Modal/internlm-xcomposer2-best-practice.md
    Multi-Modal/phi3-vision-best-practice.md
-   Multi-Modal/llava-best-practice.md
-   Multi-Modal/llava-video-best-practice.md
    Multi-Modal/yi-vl-best-practice.md
    Multi-Modal/florence-best-pratice.md
    Multi-Modal/cogvlm-best-practice.md
@@ -65,11 +70,6 @@ Swift DOCUMENTATION
    Multi-Modal/glm4v-best-practice.md
    Multi-Modal/cogvlm2-video-best-practice.md
    Multi-Modal/minicpm-v-best-practice.md
-   Multi-Modal/internvl-best-practice.md
-   Multi-Modal/human-preference-alignment-training-documentation.md
-   Multi-Modal/LmDeploy-inference-acceleration.md
-   Multi-Modal/vllm-inference-acceleration.md
-   Multi-Modal/mutlimodal-deployment.md
 
 .. toctree::
    :maxdepth: 2

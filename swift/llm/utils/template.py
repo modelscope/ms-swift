@@ -1878,10 +1878,10 @@ class LlavaHfTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images', [])
-        image_processor = self.tokenizer.processor.image_processor
         if self._is_vllm:
             images = self._prepare_vllm_images(images)
         if images:
+            image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
@@ -2470,7 +2470,16 @@ class MiniCPMVTemplate(Template):
         tgt_sizes = None
         slice_mode = getattr(config, 'slice_mode', False)
         if slice_mode:
-            images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+            if self.is_v2_5:
+                from .utils import to_device
+                image_processor = self.tokenizer.processor.image_processor
+                image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+                placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
+                pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
+                tgt_sizes = image_inputs['tgt_sizes']
+            else:
+                images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+                pixel_values = [[self.model.transform(img).to(device=self.model.device) for img in images]]
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -2485,18 +2494,6 @@ class MiniCPMVTemplate(Template):
                 torch.hstack(
                     [image_start_idx[:valid_image_nums].unsqueeze(-1), image_end_idx[:valid_image_nums].unsqueeze(-1)])
             ]
-            if self.is_v2_5:
-                pixel_values = []
-                tgt_sizes = []
-                config = self.model.config
-                for image in images:
-                    image = self.model.transform(image).to(device=self.model.device)
-                    H, W = image.shape[1:]
-                    pixel_values.append(self.model.reshape_by_patch(image))
-                    tgt_sizes.append(torch.Tensor([H // config.patch_size, W // config.patch_size]).type(torch.int32))
-                tgt_sizes = torch.vstack(tgt_sizes)
-            else:
-                pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
         else:
             placeholder = '<image>' + '<unk>' * config.query_num + '</image>\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
@@ -2504,14 +2501,14 @@ class MiniCPMVTemplate(Template):
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-            pixel_values = [self.model.transform(image).to(device=self.model.device)]
+            pixel_values = [[self.model.transform(image).to(device=self.model.device)]]
         data = {
             'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
             'image_bound': image_bound,
-            'pixel_values': [pixel_values]
+            'pixel_values': pixel_values
         }
-        if tgt_sizes is not None:
-            data['tgt_sizes'] = [tgt_sizes]
+        if tgt_sizes is not None:  # v2.5
+            data['tgt_sizes'] = tgt_sizes
         inputs_embeds, _ = self.model.get_vllm_embedding(data)
         inputs_embeds = inputs_embeds.detach()
         inputs['input_ids'] = input_ids

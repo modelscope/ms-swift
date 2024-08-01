@@ -174,6 +174,9 @@ class ModelType:
     # llama3.1
     llama3_1_8b = 'llama3_1-8b'
     llama3_1_8b_instruct = 'llama3_1-8b-instruct'
+    llama3_1_8b_instruct_awq = 'llama3_1-8b-instruct-awq'
+    llama3_1_8b_instruct_gptq_int4 = 'llama3_1-8b-instruct-gptq-int4'
+    llama3_1_8b_instruct_bnb = 'llama3_1-8b-instruct-bnb'
     llama3_1_70b = 'llama3_1-70b'
     llama3_1_70b_instruct = 'llama3_1-70b-instruct'
     llama3_1_70b_instruct_fp8 = 'llama3_1-70b-instruct-fp8'
@@ -2205,6 +2208,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-6B-Chat-4bits')
 @register_model(
     ModelType.yi_6b_chat_int8,
@@ -2239,6 +2243,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='01-ai/Yi-34B-Chat-4bits')
 @register_model(
     ModelType.yi_34b_chat_int8,
@@ -2577,8 +2582,9 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ',
-    support_vllm=True)
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-AWQ')
 @register_model(
     ModelType.yi_1_5_6b_chat_gptq_int4,
     'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
@@ -2588,8 +2594,8 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ',
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='modelscope/Yi-1.5-6B-Chat-GPTQ')
 @register_model(
     ModelType.yi_1_5_9b_chat_awq_int4,
     'AI-ModelScope/Yi-1.5-9B-Chat-AWQ',
@@ -2599,8 +2605,9 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ',
-    support_vllm=True)
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-AWQ')
 @register_model(
     ModelType.yi_1_5_9b_chat_gptq_int4,
     'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
@@ -2610,8 +2617,8 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ',
-    support_vllm=True)
+    support_vllm=True,
+    hf_model_id='modelscope/Yi-1.5-9B-Chat-GPTQ')
 @register_model(
     ModelType.yi_1_5_34b_chat_awq_int4,
     'AI-ModelScope/Yi-1.5-34B-Chat-AWQ',
@@ -2621,8 +2628,9 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
-    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ',
-    support_vllm=True)
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='modelscope/Yi-1.5-34B-Chat-AWQ')
 @register_model(
     ModelType.yi_1_5_34b_chat_gptq_int4,
     'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
@@ -3041,6 +3049,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=False,
     function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
@@ -3052,6 +3061,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
@@ -3063,6 +3073,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
@@ -3074,6 +3085,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
@@ -3125,6 +3137,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=False,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3136,6 +3149,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3147,6 +3161,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3158,6 +3173,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3169,6 +3185,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3180,6 +3197,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3191,6 +3209,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3202,6 +3221,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -3213,6 +3233,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
@@ -4368,6 +4389,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     TemplateType.llama3,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.43', 'autoawq'],
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
@@ -4431,6 +4453,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     TemplateType.llama3,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     requires=['transformers>=4.43', 'autoawq'],
     torch_dtype=torch.float16,
     function_kwargs={'is_awq': True},
@@ -4468,6 +4491,37 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     ignore_file_pattern=[r'.+\.pth$'],
     hf_model_id='meta-llama/Meta-Llama-3.1-70B')
 @register_model(
+    ModelType.llama3_1_8b_instruct_bnb,
+    'LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'bitsandbytes'],
+    hf_model_id='hugging-quants/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
+@register_model(
+    ModelType.llama3_1_8b_instruct_gptq_int4,
+    'LLM-Research/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'auto_gptq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'gptq_bits': 4},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4')
+@register_model(
+    ModelType.llama3_1_8b_instruct_awq,
+    'LLM-Research/Meta-Llama-3.1-8B-Instruct-AWQ-INT4',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43', 'autoawq'],
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    hf_model_id='hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4')
+@register_model(
     ModelType.llama3_1_8b_instruct,
     'LLM-Research/Meta-Llama-3.1-8B-Instruct',
     LoRATM.llama,
@@ -4499,6 +4553,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_70b_instruct_int8,
@@ -4532,6 +4587,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-AWQ')
 @register_model(
     ModelType.llama3_8b_instruct_int8,
@@ -5516,6 +5572,7 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.llama,
     TemplateType.minicpm_v,
     support_flash_attn=True,
+    requires=['timm', 'transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V')
 @register_model(
@@ -5524,44 +5581,53 @@ def _patch_minicpm_v_device_map(model) -> None:
     LoRATM.llama,
     TemplateType.minicpm_v,
     support_flash_attn=True,
-    requires=['timm'],
+    requires=['timm', 'transformers<4.42'],
     tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-V-2')
-@register_model(
-    ModelType.minicpm_v_v2_5_chat,
-    'OpenBMB/MiniCPM-Llama3-V-2_5',
-    LoRATM.minicpm_llama,
-    TemplateType.minicpm_v_v2_5,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    requires=['timm'],
-    placeholder_tokens=['<unk>'],
-    function_kwargs={'patching_embedding': True},
-    tags=['multi-modal', 'vision'],
-    hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
 def get_model_tokenizer_minicpm_v(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    patching_embedding = kwargs.pop('patching_embedding', False)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if load_model:
         model.resampler.to(torch_dtype)  # fix float32
         _patch_minicpm_v_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         _use_submodel_func(model, 'llm', func_list)
-        if patching_embedding:
-            embedding = model.get_input_embeddings()
-            if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-                old_forward = embedding.forward
+    return model, tokenizer
 
-                @wraps(old_forward)
-                def _new_forward(*args, **kwargs):
-                    return old_forward(*args, **kwargs).requires_grad_(True).clone()
 
-                embedding.__old_forward = old_forward
-                embedding.forward = _new_forward
+@register_model(
+    ModelType.minicpm_v_v2_5_chat,
+    'OpenBMB/MiniCPM-Llama3-V-2_5',
+    LoRATM.minicpm_llama,
+    TemplateType.minicpm_v_v2_5,
+    support_flash_attn=True,
+    requires=['timm', 'transformers>=4.36'],
+    placeholder_tokens=['<unk>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
+def get_model_tokenizer_minicpm_v_2_5(model_dir: str,
+                                      torch_dtype: Dtype,
+                                      model_kwargs: Dict[str, Any],
+                                      load_model: bool = True,
+                                      **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+    if load_model:
+        embedding = model.get_input_embeddings()
+        if not hasattr(embedding, '__old_forward'):  # Avoid double patching
+            old_forward = embedding.forward
+
+            @wraps(old_forward)
+            def _new_forward(*args, **kwargs):
+                return old_forward(*args, **kwargs).requires_grad_(True).clone()
+
+            embedding.__old_forward = old_forward
+            embedding.forward = _new_forward
     return model, tokenizer
 
 
