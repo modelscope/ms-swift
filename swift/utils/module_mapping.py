@@ -353,11 +353,8 @@ def get_regex_for_mm_default_lora(model_type: str):
         return None
     llm = mapping.language_model
     projector = mapping.projector
-    resampler = mapping.vision_resampler
     _regex = f'^({llm}'
     if projector:
         _regex += f'|{projector}'
-    if resampler:
-        _regex += f'|{resampler}'
     _regex += ')(?!.*(lm_head|output|emb|wte|shared)).*'
     return _regex
