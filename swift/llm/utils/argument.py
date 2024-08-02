@@ -505,7 +505,7 @@ class ArgumentsBase:
                 continue
             if key in {
                     'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
-                    'custom_dataset_info'
+                    'custom_dataset_info', 'dataset_seed'
             } and value is not None:
                 continue
             if key in {'template_type', 'dtype'} and value != 'AUTO':
@@ -555,7 +555,7 @@ class SftArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_seed: int = 42
+    dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
     loss_scale_config_path: str = 'DEFAULT'
@@ -728,7 +728,7 @@ class SftArguments(ArgumentsBase):
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = False
     evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
-    save_strategy: Literal['steps', 'epoch', 'no', None] = None
+    save_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
@@ -799,10 +799,8 @@ class SftArguments(ArgumentsBase):
                 return default_lora_tm
             target_modules += default_lora_tm
         if 'EMBEDDING' in target_modules:
-            target_modules.remove('EMBEDDING')
             self.lora_use_embedding = True
         if 'ALL' in target_modules:
-            target_modules.remove('ALL')
             self.lora_use_all = True
         return target_modules
 
@@ -863,6 +861,8 @@ class SftArguments(ArgumentsBase):
             self.load_from_ckpt_dir(True)
             if self.sft_type == 'full' or self.train_backend == 'megatron':
                 self.model_id_or_path = self.resume_from_checkpoint
+        if self.dataset_seed is None:
+            self.dataset_seed = self.seed
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -951,8 +951,6 @@ class SftArguments(ArgumentsBase):
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if self.save_strategy is None:
-            self.save_strategy = self.evaluation_strategy
 
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
@@ -1123,6 +1121,7 @@ class SftArguments(ArgumentsBase):
             fsdp=self.fsdp,
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
+            seed=self.seed,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
@@ -1179,7 +1178,7 @@ class InferArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_seed: int = 42
+    dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 10
     save_result: bool = True
@@ -1278,6 +1277,8 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+        if self.dataset_seed is None:
+            self.dataset_seed = self.seed
         self._handle_dataset_sample()
         self._register_self_cognition()
         self.handle_custom_register()
