@@ -14,7 +14,7 @@ from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, L
 from swift.tuners.llamapro import LLaMAProConfig
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
+from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter, patch_accelerate
 
 logger = get_logger()
 
@@ -351,6 +351,9 @@ def prepare_model(model, args: SftArguments):
             model=model)
         lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
         callbacks.append(lisa_callback)
+
+        # Patch accelerate in case of huge model state_dict pending
+        patch_accelerate()
 
     class TrainerAdapterCallback(TrainerCallback):
 

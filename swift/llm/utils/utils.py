@@ -20,9 +20,11 @@ import requests
 import torch
 import torch.distributed as dist
 import transformers
+from accelerate import Accelerator, DistributedType
 from datasets import Dataset as HfDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
+from peft import PeftModel
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -34,6 +36,7 @@ from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
+from swift.tuners import SwiftModel
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_local_master, safe_ddp_context, stat_array,
                          upper_bound, use_torchacc)
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
@@ -1022,3 +1025,48 @@ if is_ddp_plus_mp() or use_torchacc():
     trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
         self, device_placement=device_placement, *args, **kwargs))
     trainer.Accelerator.verify_device_map = lambda *args, **kwargs: False
+
+
+def get_state_dict(self, model, unwrap=True):
+    unwrapped = self.unwrap_model(model)
+    exclude_frozen_parameters = False
+    if isinstance(unwrapped, SwiftModel) and unwrapped.has_additional_modules:
+        exclude_frozen_parameters = True
+    if isinstance(unwrapped, PeftModel):
+        exclude_frozen_parameters = True
+    if self.distributed_type == DistributedType.DEEPSPEED:
+        if self.deepspeed_config['zero_optimization']['stage'] == 3:
+            if model.zero_gather_16bit_weights_on_model_save():
+                # Patch here to reduce memory usage
+                state_dict = model._zero3_consolidated_16bit_state_dict(
+                    exclude_frozen_parameters=exclude_frozen_parameters)
+            else:
+                raise ValueError('Cannot get 16bit model weights because `stage3_gather_16bit_weights_on_model_save` '
+                                 'in DeepSpeed config is False. To save the model weights in 16bit, '
+                                 'set `stage3_gather_16bit_weights_on_model_save` to True in DeepSpeed config file or '
+                                 'set `zero3_save_16bit_model` to True when using `accelerate config`. '
+                                 'To save the full checkpoint, run `model.save_checkpoint(save_dir)` '
+                                 'and use `zero_to_fp32.py` to recover weights.')
+        else:
+            from deepspeed.checkpoint.utils import clone_tensors_for_torch_save
+
+            state_dict = clone_tensors_for_torch_save(self.unwrap_model(model).state_dict())
+    elif self.distributed_type == DistributedType.FSDP:
+        from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+        full_state_dict_config = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+        with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, full_state_dict_config):
+            state_dict = model.state_dict()
+    else:
+        if unwrap:
+            model = self.unwrap_model(model)
+        state_dict = model.state_dict()
+
+    return state_dict
+
+
+def patch_accelerate():
+    from transformers.integrations import is_deepspeed_zero3_enabled
+    if is_deepspeed_zero3_enabled():
+        Accelerator.get_state_dict = get_state_dict
