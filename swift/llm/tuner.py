@@ -31,8 +31,10 @@ def handle_target_modules(model, args: SftArguments) -> None:
     else:
         target_modules = args.lora_target_modules
     if args.lora_use_embedding:
+        target_modules.remove('EMBEDDING')
         target_modules += find_embedding(model)
     if args.lora_use_all:
+        target_modules.remove('ALL')
         target_modules += find_all_linears(model, args.quantization_bit, args.model_type, args.quant_method)
     if args.sft_type == 'ia3':
         args.ia3_target_modules = target_modules
