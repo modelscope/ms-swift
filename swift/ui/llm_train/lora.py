@@ -39,7 +39,7 @@ class LoRA(BaseUI):
                 'en': 'The LoRA alpha'
             }
         },
-        'lora_dropout_p': {
+        'lora_dropout': {
             'label': {
                 'zh': 'LoRA的dropout',
                 'en': 'The LoRA dropout'
@@ -88,7 +88,7 @@ class LoRA(BaseUI):
                     gr.Textbox(elem_id='lora_lr_ratio')
                     gr.Checkbox(elem_id='use_rslora')
                     gr.Checkbox(elem_id='use_dora')
-                    gr.Textbox(elem_id='lora_dropout_p')
+                    gr.Textbox(elem_id='lora_dropout')
 
             def update_lora(choice):
                 if choice is not None:

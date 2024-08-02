@@ -110,7 +110,7 @@ def prepare_model(model, args: SftArguments):
                 'r': args.lora_rank,
                 'target_modules': args.lora_target_regex or args.lora_target_modules,
                 'lora_alpha': args.lora_alpha,
-                'lora_dropout': args.lora_dropout_p,
+                'lora_dropout': args.lora_dropout,
                 'bias': args.lora_bias_trainable,
                 'modules_to_save': args.lora_modules_to_save,
                 'use_rslora': args.use_rslora,
