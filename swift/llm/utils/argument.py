@@ -37,7 +37,7 @@ logger = get_logger()
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'}
+    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'}
 
 
 class ArgumentsBase:
@@ -301,26 +301,26 @@ class ArgumentsBase:
             if self.lora_dropout_p is not None:
                 self.lora_dropout = self.lora_dropout_p
 
-            if self.boft_target_modules is not None:
+            if self.boft_target_modules:
                 self.target_modules = self.boft_target_modules
-            if self.boft_modules_to_save is not None:
+            if self.boft_modules_to_save:
                 self.modules_to_save = self.boft_modules_to_save
 
-            if self.ia3_target_modules is not None:
+            if self.ia3_target_modules:
                 self.target_modules = self.ia3_target_modules
-            if self.ia3_modules_to_save is not None:
+            if self.ia3_modules_to_save:
                 self.modules_to_save = self.ia3_modules_to_save
 
-            if self.vera_target_modules is not None:
+            if self.vera_target_modules:
                 self.target_modules = self.vera_target_modules
-            if self.vera_modules_to_save is not None:
+            if self.vera_modules_to_save:
                 self.modules_to_save = self.vera_modules_to_save
 
-            if self.lora_target_modules is not None:
+            if self.lora_target_modules:
                 self.target_modules = self.lora_target_modules
-            if self.lora_modules_to_save is not None:
+            if self.lora_modules_to_save:
                 self.modules_to_save = self.lora_modules_to_save
-            if self.lora_target_regex is not None:
+            if self.lora_target_regex:
                 self.target_regex = self.lora_target_regex
 
     def handle_custom_dataset_info(self: Union['SftArguments', 'InferArguments']):
@@ -802,14 +802,14 @@ class SftArguments(ArgumentsBase):
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
     lora_dropout_p: Optional[float] = None
-    lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    lora_target_modules: List[str] = field(default_factory=list)
     lora_target_regex: Optional[str] = None
     lora_modules_to_save: List[str] = field(default_factory=list)
-    boft_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    boft_target_modules: List[str] = field(default_factory=list)
     boft_modules_to_save: List[str] = field(default_factory=list)
-    vera_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    vera_target_modules: List[str] = field(default_factory=list)
     vera_modules_to_save: List[str] = field(default_factory=list)
-    ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    ia3_target_modules: List[str] = field(default_factory=list)
     ia3_modules_to_save: List[str] = field(default_factory=list)
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
