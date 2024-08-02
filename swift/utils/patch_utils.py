@@ -33,4 +33,5 @@ def get_state_dict(self, model, unwrap=True):
     return state_dict
 
 
-Accelerator.get_state_dict = get_state_dict
+def patch_accelerate():
+    Accelerator.get_state_dict = get_state_dict
