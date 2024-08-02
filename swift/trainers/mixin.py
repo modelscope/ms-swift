@@ -430,7 +430,8 @@ class SwiftMixin:
                     exclude_frozen_parameters = True
                 return _model._zero3_consolidated_16bit_state_dict_origin(exclude_frozen_parameters)
 
-            self.deepspeed._zero3_consolidated_16bit_state_dict_origin = self.deepspeed._zero3_consolidated_16bit_state_dict
+            self.deepspeed._zero3_consolidated_16bit_state_dict_origin = (
+                self.deepspeed._zero3_consolidated_16bit_state_dict)
             self.deepspeed._zero3_consolidated_16bit_state_dict = MethodType(_zero3_consolidated_16bit_state_dict,
                                                                              self.deepspeed)
         if version.parse(transformers.__version__) >= version.parse('4.36') or not self.args.save_only_model:
