@@ -1742,7 +1742,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B')
 @register_model(
@@ -1753,6 +1752,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B')
 @register_model(
@@ -1763,6 +1763,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1.5B')
 @register_model(
@@ -1773,6 +1774,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B')
 @register_model(
@@ -1783,6 +1785,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B')
 @register_model(
@@ -2950,7 +2953,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
     requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
@@ -2962,7 +2964,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct')
 @register_model(
@@ -3109,6 +3110,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B-Instruct')
 @register_model(
@@ -3119,6 +3121,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1.5B-Instruct')
 @register_model(
@@ -3129,6 +3132,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B-Instruct')
 @register_model(
@@ -3139,6 +3143,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct')
 @register_model(
