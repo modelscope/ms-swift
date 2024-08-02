@@ -1012,8 +1012,9 @@ def register_template(template_type: str, template: Template, *, exist_ok: bool 
 
 register_template(
     TemplateType.default,
-    Template([], ['### Human:\n{{QUERY}}\n\n### Assistant:\n'], ['\n\n'], [['eos_token_id']], DEFAULT_SYSTEM,
-             ['{{SYSTEM}}\n\n']))
+    Template([], ['### Human:\n{{QUERY}}\n\n### Assistant:\n'], ['\n\n'], [['eos_token_id']],
+             DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n'],
+             auto_add_bos=True))
 
 
 # You can set the query as '' to serve as a template for pre-training.
