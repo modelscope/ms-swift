@@ -11,11 +11,10 @@ import torch
 import torch.nn
 import transformers
 from modelscope import snapshot_download
-from peft import (AdaLoraConfig, BOFTConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, 
-                  LoraModel, OFTConfig, VeraModel, BOFTModel, IA3Model, FourierFTModel,
-                  PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM, 
+from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, FourierFTModel, IA3Config, IA3Model, LoftQConfig, LoHaConfig,
+                  LoKrConfig, LoraModel, OFTConfig, PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                   PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
-                  PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, get_peft_config,
+                  PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, VeraModel, get_peft_config,
                   get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
 from peft.tuners.lora import Embedding
