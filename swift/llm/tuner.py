@@ -352,9 +352,6 @@ def prepare_model(model, args: SftArguments):
         lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
         callbacks.append(lisa_callback)
 
-    # Patch accelerate in case of huge model state_dict pending
-    patch_accelerate()
-
     class TrainerAdapterCallback(TrainerCallback):
 
         def __init__(self):

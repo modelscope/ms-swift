@@ -378,6 +378,23 @@ class SwiftMixin:
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         save_safetensors = self.args.save_safetensors
+
+        if is_deepspeed_zero3_enabled() and hasattr(self.model, '_zero3_consolidated_16bit_state_dict') and not hasattr(
+                self.model, '_zero3_consolidated_16bit_state_dict_origin'):
+
+            def _zero3_consolidated_16bit_state_dict(_model, exclude_frozen_parameters=False):
+                unwrapped = self.unwrap_model(_model)
+                exclude_frozen_parameters = False
+                if isinstance(unwrapped, SwiftModel) and unwrapped.has_additional_modules:
+                    exclude_frozen_parameters = True
+                if isinstance(unwrapped, PeftModel):
+                    exclude_frozen_parameters = True
+                return _model._zero3_consolidated_16bit_state_dict_origin(exclude_frozen_parameters)
+
+            self.model._zero3_consolidated_16bit_state_dict_origin = self.model._zero3_consolidated_16bit_state_dict
+            self.model._zero3_consolidated_16bit_state_dict = MethodType(_zero3_consolidated_16bit_state_dict,
+                                                                         self.model)
+
         if not isinstance(self.model, supported_classes):
             if state_dict is None:
                 state_dict = self.model.state_dict()
