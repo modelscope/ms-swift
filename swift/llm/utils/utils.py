@@ -20,11 +20,9 @@ import requests
 import torch
 import torch.distributed as dist
 import transformers
-from accelerate import Accelerator, DistributedType
 from datasets import Dataset as HfDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
-from peft import PeftModel
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -36,7 +34,6 @@ from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
-from swift.tuners import SwiftModel
 from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_local_master, safe_ddp_context, stat_array,
                          upper_bound, use_torchacc)
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
