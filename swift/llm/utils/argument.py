@@ -37,7 +37,7 @@ logger = get_logger()
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'}
+    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'}
 
 
 class ArgumentsBase:
@@ -301,6 +301,28 @@ class ArgumentsBase:
             if self.lora_dropout_p is not None:
                 self.lora_dropout = self.lora_dropout_p
 
+            if self.boft_target_modules:
+                self.target_modules = self.boft_target_modules
+            if self.boft_modules_to_save:
+                self.modules_to_save = self.boft_modules_to_save
+
+            if self.ia3_target_modules:
+                self.target_modules = self.ia3_target_modules
+            if self.ia3_modules_to_save:
+                self.modules_to_save = self.ia3_modules_to_save
+
+            if self.vera_target_modules:
+                self.target_modules = self.vera_target_modules
+            if self.vera_modules_to_save:
+                self.modules_to_save = self.vera_modules_to_save
+
+            if self.lora_target_modules:
+                self.target_modules = self.lora_target_modules
+            if self.lora_modules_to_save:
+                self.modules_to_save = self.lora_modules_to_save
+            if self.lora_target_regex:
+                self.target_regex = self.lora_target_regex
+
     def handle_custom_dataset_info(self: Union['SftArguments', 'InferArguments']):
         if self.custom_dataset_info is None:
             return
@@ -525,7 +547,8 @@ class SftArguments(ArgumentsBase):
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
+                      'fourierft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
@@ -585,21 +608,27 @@ class SftArguments(ArgumentsBase):
     # multi-modal
     rescale_image: int = -1
 
+    # tuners
+    target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    target_regex: Optional[str] = None
+    # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
+    modules_to_save: List[str] = field(default_factory=list)
+
     # lora
-    lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
-    lora_target_regex: Optional[str] = None
     lora_rank: int = 8
     lora_alpha: int = 32
     lora_dropout: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
-    # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
-    lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
-    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false']
+    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false']
     init_lora_weights: str = 'true'
+
+    # fourierft
+    fourier_n_frequency: int = 2000
+    fourier_scaling: float = 300.0
 
     # rope-scaling
     rope_scaling: Literal['linear', 'dynamic'] = None
@@ -608,17 +637,13 @@ class SftArguments(ArgumentsBase):
     boft_block_size: int = 4
     boft_block_num: int = 0
     boft_n_butterfly_factor: int = 1
-    boft_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     boft_dropout: float = 0.0
-    boft_modules_to_save: List[str] = field(default_factory=list)
 
     # Vera
     vera_rank: int = 256
-    vera_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     vera_projection_prng_key: int = 0
     vera_dropout: float = 0.0
     vera_d_initial: float = 0.1
-    vera_modules_to_save: List[str] = field(default_factory=list)
 
     # adapter
     adapter_act: str = 'gelu'
@@ -626,8 +651,8 @@ class SftArguments(ArgumentsBase):
 
     # galore
     use_galore: bool = False
-    galore_rank: int = 128
     galore_target_modules: Optional[List[str]] = None
+    galore_rank: int = 128
     galore_update_proj_gap: int = 50
     galore_scale: float = 1.0
     galore_proj_type: str = 'std'
@@ -650,10 +675,10 @@ class SftArguments(ArgumentsBase):
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
+
     # ia3
-    ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     ia3_feedforward_modules: List[str] = field(default_factory=list)
-    ia3_modules_to_save: List[str] = field(default_factory=list)
+
     # llamapro
     llamapro_num_new_blocks: int = 4
     llamapro_num_groups: Optional[int] = None
@@ -777,6 +802,15 @@ class SftArguments(ArgumentsBase):
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
     lora_dropout_p: Optional[float] = None
+    lora_target_modules: List[str] = field(default_factory=list)
+    lora_target_regex: Optional[str] = None
+    lora_modules_to_save: List[str] = field(default_factory=list)
+    boft_target_modules: List[str] = field(default_factory=list)
+    boft_modules_to_save: List[str] = field(default_factory=list)
+    vera_target_modules: List[str] = field(default_factory=list)
+    vera_modules_to_save: List[str] = field(default_factory=list)
+    ia3_target_modules: List[str] = field(default_factory=list)
+    ia3_modules_to_save: List[str] = field(default_factory=list)
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
@@ -874,19 +908,8 @@ class SftArguments(ArgumentsBase):
         self.lora_use_all = False
         self.lora_m2s_use_embedding = False
         self.lora_m2s_use_ln = False
-        if self.sft_type == 'ia3':
-            self.ia3_feedforward_modules = self._prepare_target_modules(self.ia3_feedforward_modules)
-            self.ia3_target_modules = self._prepare_target_modules(self.ia3_target_modules)
-            self.ia3_modules_to_save = self._prepare_modules_to_save(self.ia3_modules_to_save)
-        elif self.sft_type == 'vera':
-            self.vera_target_modules = self._prepare_target_modules(self.vera_target_modules)
-            self.vera_modules_to_save = self._prepare_modules_to_save(self.vera_modules_to_save)
-        elif self.sft_type == 'boft':
-            self.boft_target_modules = self._prepare_target_modules(self.boft_target_modules)
-            self.boft_modules_to_save = self._prepare_modules_to_save(self.boft_modules_to_save)
-        else:
-            self.lora_target_modules = self._prepare_target_modules(self.lora_target_modules)
-            self.lora_modules_to_save = self._prepare_modules_to_save(self.lora_modules_to_save)
+        self.target_modules = self._prepare_target_modules(self.target_modules)
+        self.modules_to_save = self._prepare_modules_to_save(self.modules_to_save)
         if self.use_self_cognition and self.sft_type == 'lora' and not self.lora_use_all:
             logger.warning('Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
                            'For example: `--lora_target_modules ALL`. '

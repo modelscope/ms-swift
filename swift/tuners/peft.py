@@ -11,10 +11,10 @@ import torch
 import torch.nn
 import transformers
 from modelscope import snapshot_download
-from peft import (AdaLoraConfig, BOFTConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
-                  PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
+from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, FourierFTModel, IA3Config, IA3Model, LoftQConfig, LoHaConfig,
+                  LoKrConfig, LoraModel, OFTConfig, PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                   PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
-                  PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, get_peft_config,
+                  PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, VeraModel, get_peft_config,
                   get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
 from peft.tuners.lora import Embedding
@@ -276,6 +276,14 @@ def hot_patch_peft_module():
     # Fix Lora does not support NonDynamicallyQuantizableLinear
     LoraModel._create_and_replace_origin = LoraModel._create_and_replace
     LoraModel._create_and_replace = _create_and_replace_hook
+    VeraModel._create_and_replace_origin = VeraModel._create_and_replace
+    VeraModel._create_and_replace = _create_and_replace_hook
+    BOFTModel._create_and_replace_origin = BOFTModel._create_and_replace
+    BOFTModel._create_and_replace = _create_and_replace_hook
+    IA3Model._create_and_replace_origin = IA3Model._create_and_replace
+    IA3Model._create_and_replace = _create_and_replace_hook
+    FourierFTModel._create_and_replace_origin = FourierFTModel._create_and_replace
+    FourierFTModel._create_and_replace = _create_and_replace_hook
 
     # Support type conversion
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name):

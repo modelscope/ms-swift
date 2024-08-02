@@ -362,6 +362,23 @@ class Template:
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
 
+        # Format objects(groundings/refs) to json
+        if example.get('objects') and isinstance(example['objects'], str):
+            # reload grounding from str
+            example['objects'] = json.loads(example['objects'])
+            objects = []
+            for object in example['objects']:
+                # Compatible with list format
+                if isinstance(object, list):
+                    object = {
+                        'caption': object[0],
+                        'bbox': object[1],
+                        'bbox_type': None,
+                        'image': 0,
+                    }
+                objects.append(object)
+            example['objects'] = objects
+
         # Load image into PIL format
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
@@ -420,24 +437,6 @@ class Template:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
         self._preprocess_media(example)
-
-        # Format objects(groundings/refs) to json
-        if example.get('objects') and isinstance(example['objects'], str):
-            # reload grounding from str
-            example['objects'] = json.loads(example['objects'])
-            objects = []
-            for object in example['objects']:
-                # Compatible with list format
-                if isinstance(object, list):
-                    object = {
-                        'caption': object[0],
-                        'bbox': object[1],
-                        'bbox_type': None,
-                        'image': 0,
-                    }
-                objects.append(object)
-            example['objects'] = objects
-
         return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
