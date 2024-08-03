@@ -60,7 +60,12 @@ def get_qwen2_model():
     return model
 
 
-def get_megatron_model_convert(model_type: str):
+@register_megatron_model([model_type for model_type in MODEL_MAPPING.keys() if model_type.startswith('qwen1half')],
+                         'qwen.hf2megatron_qwen1_5')
+def get_qwen1half_model():
+    return None
+
+def get_megatron_model_convert(model_type: str, load_model: bool=True):
     model_info = MEGATRON_MODEL_MAPPING[model_type]
     get_function = model_info['get_function']
     convert_module = model_info['convert_module']
