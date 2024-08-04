@@ -302,10 +302,12 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 action, action_input = split_action_action_input(response)
                 toolcall = None
                 if action is not None:
-                    toolcall = ChatCompletionMessageToolCall(
-                        id=f'toolcall-{random_uuid()}',
-                        type='function',
-                        function=Function(name=action, arguments=action_input))
+                    toolcall = [
+                        ChatCompletionMessageToolCall(
+                            id=f'toolcall-{random_uuid()}',
+                            type='function',
+                            function=Function(name=action, arguments=action_input))
+                    ]
                 choice = ChatCompletionResponseChoice(
                     index=output.index,
                     message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -353,10 +355,12 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                     if output.finish_reason is not None:
                         action, action_input = split_action_action_input(total_res[output.index])
                         if action is not None:
-                            toolcall = ChatCompletionMessageToolCall(
-                                id=f'toolcall-{random_uuid()}',
-                                type='function',
-                                function=Function(name=action, arguments=action_input))
+                            toolcall = [
+                                ChatCompletionMessageToolCall(
+                                    id=f'toolcall-{random_uuid()}',
+                                    type='function',
+                                    function=Function(name=action, arguments=action_input))
+                            ]
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
                         delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
@@ -446,10 +450,12 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
             action, action_input = split_action_action_input(response)
             toolcall = None
             if action is not None:
-                toolcall = ChatCompletionMessageToolCall(
-                    id=f'toolcall-{random_uuid()}',
-                    type='function',
-                    function=Function(name=action, arguments=action_input))
+                toolcall = [
+                    ChatCompletionMessageToolCall(
+                        id=f'toolcall-{random_uuid()}',
+                        type='function',
+                        function=Function(name=action, arguments=action_input))
+                ]
             choices = [
                 ChatCompletionResponseChoice(
                     index=0,
@@ -504,10 +510,12 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                     if finish_reason == 'stop':
                         action, action_input = split_action_action_input(total_response)
                         if action is not None:
-                            toolcall = ChatCompletionMessageToolCall(
-                                id=f'toolcall-{random_uuid()}',
-                                type='function',
-                                function=Function(name=action, arguments=action_input))
+                            toolcall = [
+                                ChatCompletionMessageToolCall(
+                                    id=f'toolcall-{random_uuid()}',
+                                    type='function',
+                                    function=Function(name=action, arguments=action_input))
+                            ]
                     choices = [
                         ChatCompletionResponseStreamChoice(
                             index=0,
@@ -631,10 +639,12 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             action, action_input = split_action_action_input(response)
             toolcall = None
             if action is not None:
-                toolcall = ChatCompletionMessageToolCall(
-                    id=f'toolcall-{random_uuid()}',
-                    type='function',
-                    function=Function(name=action, arguments=action_input))
+                toolcall = [
+                    ChatCompletionMessageToolCall(
+                        id=f'toolcall-{random_uuid()}',
+                        type='function',
+                        function=Function(name=action, arguments=action_input))
+                ]
             choices = [
                 ChatCompletionResponseChoice(
                     index=0,
@@ -690,10 +700,12 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 if is_finished:
                     action, action_input = split_action_action_input(response)
                     if action:
-                        toolcall = ChatCompletionMessageToolCall(
-                            id=f'toolcall-{random_uuid()}',
-                            type='function',
-                            function=Function(name=action, arguments=action_input))
+                        toolcall = [
+                            ChatCompletionMessageToolCall(
+                                id=f'toolcall-{random_uuid()}',
+                                type='function',
+                                function=Function(name=action, arguments=action_input))
+                        ]
                 choices = [
                     ChatCompletionResponseStreamChoice(
                         index=0,

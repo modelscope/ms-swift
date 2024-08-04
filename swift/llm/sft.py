@@ -5,8 +5,10 @@ from typing import Any, Dict, Optional, Tuple
 
 import json
 import torch
+import transformers
 from datasets import Dataset as HfDataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from packaging import version
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
@@ -427,8 +429,9 @@ def get_sft_main(args, llm):
     if use_torchacc():
         logger.warning('TorchAcc is currently only available internally within Alibaba Cloud.')
         import torchacc as ta
-        # This patch should be called before `llm_sft`.
-        ta.accelerate_hf_trainer()
+        if version.parse(transformers.__version__) < version.parse('4.41.0'):
+            # This patch should be called before `llm_sft`.
+            ta.accelerate_hf_trainer()
     return get_main(args, llm)
 
 

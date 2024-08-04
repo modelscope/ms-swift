@@ -379,13 +379,7 @@ def patch_acc_model(model, args):
 
 def patch_llama_model(model):
 
-    def update_causal_mask(
-        self,
-        attention_mask: torch.Tensor,
-        input_tensor: torch.Tensor,
-        cache_position: torch.Tensor,
-        past_seen_tokens: int,
-    ):
+    def update_causal_mask(self, *args, **kwargs):
         # attention_mask is not supported in TorchAcc.
         return None
 
@@ -443,7 +437,7 @@ def patch_llama_model(model):
     for layer in model.model.layers:
         layer.self_attn.forward = types.MethodType(llama_attn_forward, layer.self_attn)
 
-    if version.parse(transformers.__version__) >= version.parse('4.40'):
+    if version.parse(transformers.__version__) >= version.parse('4.38'):
         model.model._update_causal_mask = types.MethodType(update_causal_mask, model.model)
 
     return model

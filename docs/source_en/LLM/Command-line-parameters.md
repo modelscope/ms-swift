@@ -12,7 +12,7 @@
 - [deploy Parameters](#deploy-parameters)
 
 ## sft Parameters
-- `--model_type`: Represents the selected model type, default is `None`. `model_type` specifies the default `lora_target_modules`, `template_type`, and other information for the corresponding model. You can fine-tune by specifying only `model_type`. The corresponding `model_id_or_path` will use default settings, and the model will be downloaded from ModelScope and use the default cache path. One of model_type and model_id_or_path must be specified. You can see the list of available `model_type` [here](Supported-models-datasets.md#Models). You can set the `USE_HF` environment variable to control downloading models and datasets from the HF Hub, see [HuggingFace Ecosystem Compatibility Documentation](Compat-HF.md).
+- `--model_type`: Represents the selected model type, default is `None`. `model_type` specifies the default `target_modules`, `template_type`, and other information for the corresponding model. You can fine-tune by specifying only `model_type`. The corresponding `model_id_or_path` will use default settings, and the model will be downloaded from ModelScope and use the default cache path. One of model_type and model_id_or_path must be specified. You can see the list of available `model_type` [here](Supported-models-datasets.md#Models). You can set the `USE_HF` environment variable to control downloading models and datasets from the HF Hub, see [HuggingFace Ecosystem Compatibility Documentation](Compat-HF.md).
 - `--model_id_or_path`: Represents the `model_id` in the ModelScope/HuggingFace Hub or a local path for the model, default is `None`. If the provided `model_id_or_path` has already been registered, the `model_type` will be inferred based on the `model_id_or_path`. If it has not been registered, both `model_type` and `model_id_or_path` must be specified, e.g. `--model_type <model_type> --model_id_or_path <model_id_or_path>`.
 - `--model_revision`: The version number corresponding to `model_id` on ModelScope Hub, default is `None`. If `model_revision` is `None`, use the revision registered in `MODEL_MAPPING`. Otherwise, force use of the `model_revision` passed from command line.
 - `--local_repo_path`: Some models rely on a GitHub repo for loading. To avoid network issues during `git clone`, you can directly use the local repo. This parameter requires input of the local repo path, and defaults to `None`. These models include:
@@ -20,7 +20,7 @@
   - DeepSeek-VL model: `https://github.com/deepseek-ai/DeepSeek-VL`
   - YI-VL model: `https://github.com/01-ai/Yi`
   - LLAVA model: `https://github.com/haotian-liu/LLaVA.git`
-- `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
+- `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
 - `--packing`: pack the dataset length to `max-length`, default `False`.
 - `--freeze_parameters`: When sft_type is set to 'full', freeze the bottommost parameters of the model. Range is 0. ~ 1., default is `0.`. This provides a compromise between lora and full fine-tuning.
 - `--additional_trainable_parameters`: In addition to freeze_parameters, only allowed when sft_type is 'full', default is `[]`. For example, if you want to train embedding layer in addition to 50% of parameters, you can set `--freeze_parameters 0.5 --additional_trainable_parameters transformer.wte`, all parameters starting with `transformer.wte` will be activated. You can also set `--freeze_parameters 1 --additional_trainable_parameters xxx` to customize the trainable layers.
@@ -63,14 +63,14 @@
 - `--bnb_4bit_quant_type`: Quantization method for 4bit quantization, default is `'nf4'`. Options: 'nf4', 'fp4'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization for 4bit quantization, default is `True`. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_storage`: Default vlaue `None`.This sets the storage type to pack the quanitzed 4-bit prarams. Has no effect when quantization_bit is 0.
-- `--lora_target_modules`: Specify lora modules, default is `['DEFAULT']`. If lora_target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `lora_target_modules` in `MODEL_MAPPING` based on `model_type` (default specifies qkv). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'.
-- `--lora_target_regex`: The lora target regex in `Optional[str]`. default is `None`. If this argument is specified, the `lora_target_modules` will have no effect.
+- `--target_modules`: Specify lora modules, default is `['DEFAULT']`. If target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `target_modules` in `MODEL_MAPPING` based on `model_type` (default specifies qkv). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
+- `--target_regex`: The lora target regex in `Optional[str]`. default is `None`. If this argument is specified, the `target_modules` will have no effect. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_dropout`: Default is `0.05`, only takes effect when `sft_type` is 'lora'.
 - `--init_lora_weights`: Method to initialize LoRA weights, can be specified as `true`, `false`, `gaussian`, `pissa`, or `pissa_niter_[number of iters]`. Default value `true`.
 - `--lora_bias_trainable`: Default is `'none'`, options: 'none', 'all'. Set to `'all'` to make all biases trainable.
-- `--lora_modules_to_save`: Default is `[]`. If you want to train embedding, lm_head, or layer_norm, you can set this parameter, e.g. `--lora_modules_to_save EMBEDDING LN lm_head`. If passed `'EMBEDDING'`, Embedding layer will be added to `lora_modules_to_save`. If passed `'LN'`, `RMSNorm` and `LayerNorm` will be added to `lora_modules_to_save`.
+- `--modules_to_save`: Default is `[]`. If you want to train embedding, lm_head, or layer_norm, you can set this parameter, e.g. `--modules_to_save EMBEDDING LN lm_head`. If passed `'EMBEDDING'`, Embedding layer will be added to `modules_to_save`. If passed `'LN'`, `RMSNorm` and `LayerNorm` will be added to `modules_to_save`. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
 - `--lora_dtype`: Default is `'AUTO'`, specifies dtype for lora modules. If `AUTO`, follow dtype of original module. Options: 'fp16', 'bf16', 'fp32', 'AUTO'.
 - `--use_dora`: Default is `False`, whether to use `DoRA`.
 - `--use_rslora`: Default is `False`, whether to use `RS-LoRA`.
@@ -156,22 +156,29 @@
 
 - `--sequence_parallel_size`: Default value `1`, a positive value can be used to split a sequence to multiple GPU to reduce memory usage. The value should divide the GPU count.
 
+### FourierFt Parameters
+
+FourierFt uses `target_modules`, `target_regex`, `modules_to_save`.
+
+- `--fourier_n_frequency`: Num of learnable frequencies for the Discrete Fourier Transform, `int` type, like `r` in LoRA. Default value `2000`.
+- `--fourier_scaling`: The scaling value for the delta W matrix, `float` type, like `lora_alpha` in LoRA. Default value `300.0`.
+
 ### BOFT Parameters
+
+BOFT uses `target_modules`, `target_regex`, `modules_to_save`.
 
 - `--boft_block_size`: BOFT block size, default value is 4.
 - `--boft_block_num`: Number of BOFT blocks, cannot be used simultaneously with `boft_block_size`.
-- `--boft_target_modules`: BOFT target modules. Default is `['DEFAULT']`. If `boft_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `boft_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as BOFT modules.
 - `--boft_dropout`: Dropout value for BOFT, default is 0.0.
-- `--boft_modules_to_save`: Additional modules to be trained and saved, default is `None`.
 
 ### Vera Parameters
 
+Vera uses `target_modules`, `target_regex`, `modules_to_save`.
+
 - `--vera_rank`: Size of Vera Attention, default value is 256.
 - `--vera_projection_prng_key`: Whether to store the Vera projection matrix, default is True.
-- `--vera_target_modules`: Vera target modules. Default is `['DEFAULT']`. If `vera_target_modules` is set to `'DEFAULT'` or `'AUTO'`, it will look up `vera_target_modules` in the `MODEL_MAPPING` based on `model_type` (default specified as qkv). If set to `'ALL'`, all Linear layers (excluding the head) will be designated as Vera modules. Vera modules need to share a same shape.
 - `--vera_dropout`: Dropout value for Vera, default is 0.0.
 - `--vera_d_initial`: Initial value for Vera's d matrix, default is 0.1.
-- `--vera_modules_to_save`: Additional modules to be trained and saved, default is `None`.
 
 ### LoRA+ Fine-tuning Parameters
 
@@ -232,11 +239,11 @@ The following parameters take effect when `sft_type` is set to `adalora`. AdaLoR
 
 ### IA3 Fine-tuning Parameters
 
+Vera uses `target_modules`, `target_regex`, `modules_to_save`.
+
 The following parameters take effect when `sft_type` is set to `ia3`.
 
-- `--ia3_target_modules`: Specify IA3 target modules, default is `['DEFAULT']`. See `lora_target_modules` for specific meaning.
 - `--ia3_feedforward_modules`: Specify the Linear name of IA3's MLP, this name must be in `ia3_target_modules`.
-- `--ia3_modules_to_save`: Additional modules participating in IA3 training. See meaning of `lora_modules_to_save`.
 
 ## PT Parameters
 

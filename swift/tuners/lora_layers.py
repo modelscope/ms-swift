@@ -24,7 +24,6 @@ from peft.tuners.lora import LoraModel as _LoraModel
 from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
 from peft.utils import _get_submodules, get_auto_gptq_quant_linear, get_quantization_config
-from peft.utils.other import transpose
 from transformers import Conv1D
 
 from swift import LoraConfig, get_logger
@@ -546,72 +545,6 @@ class Linear(LoRAActivationMixin, _Linear):
         self.set_activation(args[1], True)
         super(ActivationMixin, self).__init__(*args, **kwargs)
 
-        def device_hook(module, args):
-            for active_adapter in self.active_adapters:
-                if active_adapter in self.lora_A:
-                    self.lora_A[active_adapter].to(args[0].device)
-                    self.lora_B[active_adapter].to(args[0].device)
-
-        self.register_forward_pre_hook(device_hook)
-
-    def update_layer(self,
-                     adapter_name,
-                     r,
-                     lora_alpha,
-                     lora_dropout,
-                     init_lora_weights,
-                     use_rslora,
-                     use_dora: bool = False):
-        # This code works for linear layers, override for other layer types
-        if r <= 0:
-            raise ValueError(f'`r` should be a positive integer value but the value passed is {r}')
-
-        self.r[adapter_name] = r
-        self.lora_alpha[adapter_name] = lora_alpha
-        if lora_dropout > 0.0:
-            lora_dropout_layer = nn.Dropout(p=lora_dropout)
-        else:
-            lora_dropout_layer = nn.Identity()
-
-        self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
-        # Actual trainable parameters
-        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
-        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=False)
-        if use_rslora:
-            self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
-        else:
-            self.scaling[adapter_name] = lora_alpha / r
-
-        if isinstance(init_lora_weights, str) and init_lora_weights.startswith('pissa'):
-            self.pissa_init(adapter_name, init_lora_weights)
-        elif init_lora_weights == 'loftq':
-            self.loftq_init(adapter_name)
-        elif init_lora_weights:
-            self.reset_lora_parameters(adapter_name, init_lora_weights)
-
-        # check weight and qweight (for GPTQ)
-        for weight_name in ('weight', 'qweight'):
-            weight = getattr(self.get_base_layer(), weight_name, None)
-            if weight is not None:
-                if weight.device != torch.device('meta'):
-                    # the layer is already completely initialized, this is an update
-                    if weight.dtype.is_floating_point or weight.dtype.is_complex:
-                        self.to(weight.device, dtype=weight.dtype)
-                    else:
-                        self.to(weight.device)
-                    break
-                elif weight.dtype.is_floating_point or weight.dtype.is_complex:
-                    self.to(dtype=weight.dtype)
-                    break
-
-        if use_dora:
-            self.dora_init(adapter_name)
-            self.use_dora[adapter_name] = True
-        else:
-            self.use_dora[adapter_name] = False
-
-        self.set_adapter(self.active_adapters)
-
 
 class Conv2d(LoRAActivationMixin, _Conv2d):
 
@@ -681,6 +614,11 @@ class LoraModel(_LoraModel):
         peft_config = self._prepare_adapter_config(peft_config, model_config)
 
         from peft.tuners.tuners_utils import _maybe_include_all_linear_layers
+        from peft.utils.constants import DUMMY_TARGET_MODULES
+        if getattr(peft_config, 'target_modules', None) == DUMMY_TARGET_MODULES:
+            # dummy adapter, we allow not matching any module
+            key_list = []
+            is_target_modules_in_base_model = True
         # update peft_config.target_modules if required
         peft_config = _maybe_include_all_linear_layers(peft_config, model)
         self._prepare_model(peft_config, model)
@@ -712,7 +650,8 @@ class LoraModel(_LoraModel):
             parent, target, target_name = _get_submodules(model, key)
             self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
-        if not is_target_modules_in_base_model:
+        # Handle X-LoRA case.
+        if not is_target_modules_in_base_model and hasattr(peft_config, 'target_modules'):
             raise ValueError(f'Target modules {peft_config.target_modules} not found in the base model. '
                              f'Please check the target modules and try again.')
 
@@ -783,6 +722,7 @@ class LoraModel(_LoraModel):
             'init_lora_weights': lora_config.init_lora_weights,
             'use_rslora': lora_config.use_rslora,
             'use_dora': lora_config.use_dora,
+            'ephemeral_gpu_offload': lora_config.runtime_config.ephemeral_gpu_offload,
             'loaded_in_8bit': getattr(self.model, 'is_loaded_in_8bit', False),
             'loaded_in_4bit': getattr(self.model, 'is_loaded_in_4bit', False),
         }
@@ -815,7 +755,7 @@ class LoraModel(_LoraModel):
             new_module = self._create_new_module(lora_config, adapter_name, target, current_key=current_key, **kwargs)
             if new_module is not None:
                 ActivationMixin.mark_all_sub_modules_as_plugin(new_module)
-                if adapter_name != self.active_adapter:
+                if adapter_name not in self.active_adapters:
                     # adding an additional adapter: it is not automatically trainable
                     new_module.requires_grad_(False)
                 self._replace_module(parent, target_name, new_module, target)
@@ -831,7 +771,10 @@ class LoraModel(_LoraModel):
             child = child.base_layer
 
         if not hasattr(new_module, 'base_layer'):
-            new_module.weight = child.weight
+            if hasattr(new_module, 'W_q'):  # HQQ
+                new_module.W_q = child.W_q
+            else:
+                new_module.weight = child.weight
             if hasattr(child, 'bias'):
                 new_module.bias = child.bias
 
@@ -846,8 +789,8 @@ class LoraModel(_LoraModel):
         for name, module in new_module.named_modules():
             if (self.prefix in name) or ('ranknum' in name):
                 weight = (
-                    child.qweight
-                    if hasattr(child, 'qweight') else child.W_q if hasattr(child, 'W_q') else child.weight)
+                    child.qweight if hasattr(child, 'qweight') else child.W_q if hasattr(child, 'W_q') else
+                    child.weight if hasattr(child, 'weight') else next(child.parameters()))
                 module.to(weight.device)
 
     @staticmethod
