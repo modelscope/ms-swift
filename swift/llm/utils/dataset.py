@@ -12,6 +12,7 @@ import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
+from datasets import IterableDataset
 from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
@@ -342,18 +343,26 @@ def load_ms_dataset(dataset_id: str,
     if not streaming:
         return concatenate_datasets(dataset_list)
     else:
-        return interleave_datasets(dataset_list, stopping_strategy='all_exhausted')
+        return interleave_datasets(dataset_list, stopping_strategy='all_exhausted') # TODO: set arg stopping_strategy
 
-def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Optional[RandomState] = None) -> HfDataset:
-    if dataset_sample in {None, -1, len(dataset)}:
+def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Optional[RandomState] = None, streaming=False, train=False) -> HfDataset:
+    if dataset_sample in {None, -1}:
         return dataset
-    if random_state is None:
-        random_state = RandomState()
+    elif not streaming and dataset_sample == len(dataset):
+        return dataset
+    
+    if not streaming:
+        if random_state is None:
+            random_state = RandomState()
 
-    idx_repeat = np.tile(range(len(dataset)), dataset_sample // len(dataset))
-    idx_random = random_state.permutation(len(dataset))[:dataset_sample % len(dataset)]
-    idx = np.concatenate([idx_repeat, idx_random])
-    dataset = dataset.select(idx)
+        idx_repeat = np.tile(range(len(dataset)), dataset_sample // len(dataset))
+        idx_random = random_state.permutation(len(dataset))[:dataset_sample % len(dataset)]
+        idx = np.concatenate([idx_repeat, idx_random])
+        dataset = dataset.select(idx)
+        
+    else:
+        # TODO
+        dataset = dataset
     return dataset
 
 
