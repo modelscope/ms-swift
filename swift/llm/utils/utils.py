@@ -2,7 +2,6 @@
 # Part of the implementation is borrowed from huggingface/transformers.
 import heapq
 import importlib.util
-import logging
 import os
 import shutil
 import time
@@ -22,7 +21,6 @@ import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
-from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -34,23 +32,12 @@ from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_local_master, safe_ddp_context, stat_array,
-                         upper_bound, use_torchacc)
+from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, safe_ddp_context, stat_array, upper_bound,
+                         use_torchacc)
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
-ms_logger = get_ms_logger()
-
-logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
-
-logger.handlers[0].setFormatter(logger_format)
-ms_logger.handlers[0].setFormatter(logger_format)
-log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-if is_local_master():
-    ms_logger.setLevel(log_level)
-else:
-    ms_logger.setLevel(logging.ERROR)
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
