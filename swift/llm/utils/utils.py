@@ -34,9 +34,9 @@ from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.hub import ModelScopeConfig
-from swift.tuners.module_mapping import MODEL_KEYS_MAPPING
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_local_master, safe_ddp_context,
-                         stat_array, upper_bound, use_torchacc)
+from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_local_master, safe_ddp_context, stat_array,
+                         upper_bound, use_torchacc)
+from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
 
 logger = get_logger()
@@ -582,7 +582,7 @@ def _prepare_inputs(model: PreTrainedModel,
     truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
     if len(inputs) == 0 and truncation_strategy == 'delete':
         # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-        return {}, tokenizer_kwargs, 0
+        return {}, tokenizer_kwargs, 0, example
 
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
@@ -613,7 +613,7 @@ def _prepare_inputs(model: PreTrainedModel,
         if max_length and token_len + generation_config.max_new_tokens > max_length:
             generation_config.max_new_tokens = max_length - token_len
             if generation_config.max_new_tokens <= 0:
-                raise AssertionError('Current sentence length exceeds' f'the model max_length: {max_length}')
+                raise AssertionError(f'Current sentence length exceeds the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
     inputs = to_device(inputs, device)
@@ -966,6 +966,12 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
 def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     INF = int(1e9)
     max_model_len = INF
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(config, k, None)
+        if llm_config is not None:
+            config = llm_config
+            break
+
     possible_keys = [
         'seq_length',  # qwen, chatglm
         'max_position_embeddings',  # qwen1.5, llama2
