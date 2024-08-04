@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 import torch
 
-from .model import MEGATRON_MODEL_MAPPING, get_megatron_model_convert
+from .model import get_megatron_model_convert
 
 
 def convert_hf_to_megatron(
@@ -29,8 +29,7 @@ def convert_hf_to_megatron(
         if save_torch_dtype is not None:
             hf_model.to(save_torch_dtype)
         convert_module.check_hf_mg_forward(hf_model, mg_model, args)
-    if hasattr(convert_module, 'save_mgmodel'):
-        convert_module.save_mgmodel(mg_model, args)
+    convert_module.save_mgmodel(mg_model, args)
 
 
 def convert_megatron_to_hf(
