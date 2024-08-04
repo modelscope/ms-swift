@@ -29,6 +29,7 @@ def init_megatron_env() -> None:
             'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='6fd5d050b240fd959f0ba69f1e9cd9a053e5a81d')
         os.environ['PAI_MEGATRON_PATCH_PATH'] = megatron_patch_path
     sys.path.append(os.environ['PAI_MEGATRON_PATCH_PATH'])
+    sys.path.append(os.path.join(megatron_patch_path, 'toolkits/model_checkpoints_convertor'))
 
 
 def patch_megatron(tokenizer):
