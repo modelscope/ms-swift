@@ -40,6 +40,6 @@ def convert_megatron_to_hf(
     args = get_args()
 
     model_provider, convert_module = get_megatron_model_convert(args.model_type)
-    convert_module.model_provider = lambda *args, **kwargs: model_provider()
+    convert_module.model_provider = model_provider
     mg_model = convert_module.load_megatron_model(args)  # no copy
     convert_module.convert_checkpoint_from_megatron_to_transformers(mg_model, hf_model, args)
