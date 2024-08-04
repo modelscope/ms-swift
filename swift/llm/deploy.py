@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import logging
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
@@ -417,16 +418,17 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     if _args.verbose:
         logger.info(request_info)
 
-    generator = await llm_engine.get_generator(False, created_time)
+    session_id = created_time * int(10e8) + random.randint(0, int(10e8 - 1))  # long long
+    generator = await llm_engine.get_generator(False, session_id)
     images = inputs.pop('images', None) or []
     if len(images) > 0:
         inputs['images'] = await llm_engine.vl_encoder.async_infer(images)
         await template.prepare_lmdeploy_inputs(inputs)
 
     async def _generate_full():
-        async with llm_engine.safe_run(created_time):
+        async with llm_engine.safe_run(session_id):
             async for output in generator.async_stream_infer(
-                    session_id=created_time, **inputs, stream_output=False, gen_config=generation_config):
+                    session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
                 pass
         response = template.generate_ids_to_response(output.token_ids)
         num_prompt_tokens = len(inputs['input_ids'])
@@ -473,9 +475,9 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
         num_prompt_tokens = len(inputs['input_ids'])
         total_response = ''
         print_idx = [0]
-        async with llm_engine.safe_run(created_time):
+        async with llm_engine.safe_run(session_id):
             async_iter = generator.async_stream_infer(
-                session_id=created_time, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
+                session_id=session_id, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
             is_finished = False
             response = None
             while not is_finished:
