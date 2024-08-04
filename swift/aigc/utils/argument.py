@@ -31,7 +31,7 @@ class AnimateDiffArguments:
 
     lora_rank: int = 8
     lora_alpha: int = 32
-    lora_dropout_p: float = 0.05
+    lora_dropout: float = 0.05
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'fp32'
 
     gradient_checkpointing: bool = False
@@ -93,6 +93,8 @@ class AnimateDiffArguments:
     clip_sample: bool = False
 
     use_wandb: bool = False
+    # compat
+    lora_dropout_p: Optional[float] = None
 
     def __post_init__(self) -> None:
         handle_compatibility(self)
@@ -170,3 +172,6 @@ def handle_compatibility(args: Union[AnimateDiffArguments, AnimateDiffInferArgum
     if isinstance(args, AnimateDiffInferArguments):
         if args.merge_lora_and_save is not None:
             args.merge_lora = args.merge_lora_and_save
+    if isinstance(args, AnimateDiffArguments):
+        if args.lora_dropout_p is not None:
+            args.lora_dropout = args.lora_dropout_p

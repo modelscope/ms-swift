@@ -37,7 +37,7 @@ logger = get_logger()
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'}
+    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'}
 
 
 class ArgumentsBase:
@@ -298,6 +298,30 @@ class ArgumentsBase:
                 self.deepspeed = self.deepspeed_config_path
             if self.eval_strategy is not None:
                 self.evaluation_strategy = self.eval_strategy
+            if self.lora_dropout_p is not None:
+                self.lora_dropout = self.lora_dropout_p
+
+            if self.boft_target_modules:
+                self.target_modules = self.boft_target_modules
+            if self.boft_modules_to_save:
+                self.modules_to_save = self.boft_modules_to_save
+
+            if self.ia3_target_modules:
+                self.target_modules = self.ia3_target_modules
+            if self.ia3_modules_to_save:
+                self.modules_to_save = self.ia3_modules_to_save
+
+            if self.vera_target_modules:
+                self.target_modules = self.vera_target_modules
+            if self.vera_modules_to_save:
+                self.modules_to_save = self.vera_modules_to_save
+
+            if self.lora_target_modules:
+                self.target_modules = self.lora_target_modules
+            if self.lora_modules_to_save:
+                self.modules_to_save = self.lora_modules_to_save
+            if self.lora_target_regex:
+                self.target_regex = self.lora_target_regex
 
     def handle_custom_dataset_info(self: Union['SftArguments', 'InferArguments']):
         if self.custom_dataset_info is None:
@@ -503,7 +527,7 @@ class ArgumentsBase:
                 continue
             if key in {
                     'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
-                    'custom_dataset_info'
+                    'custom_dataset_info', 'dataset_seed'
             } and value is not None:
                 continue
             if key in {'template_type', 'dtype'} and value != 'AUTO':
@@ -523,7 +547,8 @@ class SftArguments(ArgumentsBase):
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
+                      'fourierft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
@@ -553,7 +578,7 @@ class SftArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_seed: int = 42
+    dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
     use_loss_scale: bool = False  # for agent
     loss_scale_config_path: str = 'DEFAULT'
@@ -583,21 +608,27 @@ class SftArguments(ArgumentsBase):
     # multi-modal
     rescale_image: int = -1
 
+    # tuners
+    target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    target_regex: Optional[str] = None
+    # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
+    modules_to_save: List[str] = field(default_factory=list)
+
     # lora
-    lora_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
-    lora_target_regex: Optional[str] = None
     lora_rank: int = 8
     lora_alpha: int = 32
-    lora_dropout_p: float = 0.05
+    lora_dropout: float = 0.05
     lora_bias_trainable: Literal['none', 'all'] = 'none'
-    # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
-    lora_modules_to_save: List[str] = field(default_factory=list)
     lora_dtype: Literal['fp16', 'bf16', 'fp32', 'AUTO'] = 'AUTO'
     lora_lr_ratio: float = None
     use_rslora: bool = False
     use_dora: bool = False
-    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'loftq', 'true', 'false']
+    # Literal['gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'true', 'false']
     init_lora_weights: str = 'true'
+
+    # fourierft
+    fourier_n_frequency: int = 2000
+    fourier_scaling: float = 300.0
 
     # rope-scaling
     rope_scaling: Literal['linear', 'dynamic'] = None
@@ -606,17 +637,13 @@ class SftArguments(ArgumentsBase):
     boft_block_size: int = 4
     boft_block_num: int = 0
     boft_n_butterfly_factor: int = 1
-    boft_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     boft_dropout: float = 0.0
-    boft_modules_to_save: List[str] = field(default_factory=list)
 
     # Vera
     vera_rank: int = 256
-    vera_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     vera_projection_prng_key: int = 0
     vera_dropout: float = 0.0
     vera_d_initial: float = 0.1
-    vera_modules_to_save: List[str] = field(default_factory=list)
 
     # adapter
     adapter_act: str = 'gelu'
@@ -624,8 +651,8 @@ class SftArguments(ArgumentsBase):
 
     # galore
     use_galore: bool = False
-    galore_rank: int = 128
     galore_target_modules: Optional[List[str]] = None
+    galore_rank: int = 128
     galore_update_proj_gap: int = 50
     galore_scale: float = 1.0
     galore_proj_type: str = 'std'
@@ -648,10 +675,10 @@ class SftArguments(ArgumentsBase):
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
+
     # ia3
-    ia3_target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
     ia3_feedforward_modules: List[str] = field(default_factory=list)
-    ia3_modules_to_save: List[str] = field(default_factory=list)
+
     # llamapro
     llamapro_num_new_blocks: int = 4
     llamapro_num_groups: Optional[int] = None
@@ -674,12 +701,12 @@ class SftArguments(ArgumentsBase):
     max_steps: int = -1
     optim: str = 'adamw_torch'
     adam_beta1: float = 0.9
-    adam_beta2: float = 0.999
+    adam_beta2: float = 0.95
     adam_epsilon: float = 1e-8
     learning_rate: Optional[float] = None
     weight_decay: float = 0.1
     gradient_accumulation_steps: Optional[int] = None
-    max_grad_norm: float = 0.5
+    max_grad_norm: float = 1
     predict_with_generate: bool = False
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[str] = None  # json
@@ -726,7 +753,7 @@ class SftArguments(ArgumentsBase):
     acc_strategy: Literal['token', 'sentence'] = 'token'
     save_on_each_node: bool = False
     evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
-    save_strategy: Literal['steps', 'epoch', 'no', None] = None
+    save_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
     save_safetensors: bool = True
     gpu_memory_fraction: Optional[float] = None
     include_num_input_tokens_seen: Optional[bool] = False
@@ -774,6 +801,16 @@ class SftArguments(ArgumentsBase):
     neftune_alpha: Optional[float] = None
     deepspeed_config_path: Optional[str] = None
     model_cache_dir: Optional[str] = None
+    lora_dropout_p: Optional[float] = None
+    lora_target_modules: List[str] = field(default_factory=list)
+    lora_target_regex: Optional[str] = None
+    lora_modules_to_save: List[str] = field(default_factory=list)
+    boft_target_modules: List[str] = field(default_factory=list)
+    boft_modules_to_save: List[str] = field(default_factory=list)
+    vera_target_modules: List[str] = field(default_factory=list)
+    vera_modules_to_save: List[str] = field(default_factory=list)
+    ia3_target_modules: List[str] = field(default_factory=list)
+    ia3_modules_to_save: List[str] = field(default_factory=list)
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
@@ -796,10 +833,8 @@ class SftArguments(ArgumentsBase):
                 return default_lora_tm
             target_modules += default_lora_tm
         if 'EMBEDDING' in target_modules:
-            target_modules.remove('EMBEDDING')
             self.lora_use_embedding = True
         if 'ALL' in target_modules:
-            target_modules.remove('ALL')
             self.lora_use_all = True
         return target_modules
 
@@ -860,6 +895,8 @@ class SftArguments(ArgumentsBase):
             self.load_from_ckpt_dir(True)
             if self.sft_type == 'full' or self.train_backend == 'megatron':
                 self.model_id_or_path = self.resume_from_checkpoint
+        if self.dataset_seed is None:
+            self.dataset_seed = self.seed
         self.set_model_type()
         self.check_flash_attn()
         self.handle_generation_config()
@@ -871,19 +908,8 @@ class SftArguments(ArgumentsBase):
         self.lora_use_all = False
         self.lora_m2s_use_embedding = False
         self.lora_m2s_use_ln = False
-        if self.sft_type == 'ia3':
-            self.ia3_feedforward_modules = self._prepare_target_modules(self.ia3_feedforward_modules)
-            self.ia3_target_modules = self._prepare_target_modules(self.ia3_target_modules)
-            self.ia3_modules_to_save = self._prepare_modules_to_save(self.ia3_modules_to_save)
-        elif self.sft_type == 'vera':
-            self.vera_target_modules = self._prepare_target_modules(self.vera_target_modules)
-            self.vera_modules_to_save = self._prepare_modules_to_save(self.vera_modules_to_save)
-        elif self.sft_type == 'boft':
-            self.boft_target_modules = self._prepare_target_modules(self.boft_target_modules)
-            self.boft_modules_to_save = self._prepare_modules_to_save(self.boft_modules_to_save)
-        else:
-            self.lora_target_modules = self._prepare_target_modules(self.lora_target_modules)
-            self.lora_modules_to_save = self._prepare_modules_to_save(self.lora_modules_to_save)
+        self.target_modules = self._prepare_target_modules(self.target_modules)
+        self.modules_to_save = self._prepare_modules_to_save(self.modules_to_save)
         if self.use_self_cognition and self.sft_type == 'lora' and not self.lora_use_all:
             logger.warning('Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
                            'For example: `--lora_target_modules ALL`. '
@@ -948,8 +974,6 @@ class SftArguments(ArgumentsBase):
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
-        if self.save_strategy is None:
-            self.save_strategy = self.evaluation_strategy
 
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
@@ -1120,6 +1144,7 @@ class SftArguments(ArgumentsBase):
             fsdp=self.fsdp,
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
+            seed=self.seed,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
@@ -1158,7 +1183,7 @@ class InferArguments(ArgumentsBase):
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
-    sft_type: Literal['lora', 'longlora', 'full', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'lora'
     template_type: str = field(
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
@@ -1176,7 +1201,7 @@ class InferArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
-    dataset_seed: int = 42
+    dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
     show_dataset_sample: int = 10
     save_result: bool = True
@@ -1275,6 +1300,8 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+        if self.dataset_seed is None:
+            self.dataset_seed = self.seed
         self._handle_dataset_sample()
         self._register_self_cognition()
         self.handle_custom_register()
@@ -1548,6 +1575,14 @@ class ExportArguments(InferArguments):
                 self.hf_output_dir = os.path.join(self.ckpt_dir, f'{self.model_type}-hf')
             self.hf_output_dir = self._check_path(self.hf_output_dir)
             logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
+
+
+@dataclass
+class PtArguments(SftArguments):
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
+    lora_target_modules: List[str] = field(default_factory=lambda: ['ALL'])
+    lazy_tokenize: Optional[bool] = True
+    eval_steps: int = 500
 
 
 @dataclass

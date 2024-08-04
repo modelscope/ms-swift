@@ -32,7 +32,6 @@ class ExtraMegatronArguments:
 
 @dataclass
 class MegatronMixin:
-    # model
     num_layers: Optional[int] = None
     hidden_size: Optional[int] = None
     ffn_hidden_size: Optional[int] = None
@@ -46,7 +45,6 @@ class MegatronMixin:
     disable_bias_linear: bool = True
     add_qkv_bias: bool = True
 
-    # train
     train_iters: Optional[int] = None
     lr_warmup_iters: Optional[int] = None
     eval_iters: Optional[int] = None
@@ -64,7 +62,7 @@ class MegatronMixin:
     no_bias_swiglu_fusion: bool = False
     attention_dropout: float = 0.
     hidden_dropout: float = 0.
-    # train
+
     optimizer: str = 'adam'
     weight_decay: float = 0.1
     clip_grad: float = 1.
@@ -77,6 +75,7 @@ class MegatronMixin:
     recompute_granularity: Optional[str] = 'selective'
     no_rope_fusion: bool = True
     use_flash_attn: bool = False
+    use_cpu_initialization: Optional[bool] = None
 
     dataloader_type: str = 'cyclic'
     lr: float = 1e-5
