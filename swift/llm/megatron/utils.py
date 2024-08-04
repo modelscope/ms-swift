@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import shutil
 import sys
 from functools import partial, wraps
 from typing import Any, Dict, List, Optional
-import shutil
+
 import torch
 import torch.distributed as dist
 
@@ -25,8 +26,8 @@ def init_megatron_env() -> None:
     sys.path.append(megatron_path)
 
     if 'PAI_MEGATRON_PATCH_PATH' not in os.environ:
-        megatron_patch_path = git_clone_github('https://github.com/alibaba/Pai-Megatron-Patch',
-        commit_hash='6fd5d050b240fd959f0ba69f1e9cd9a053e5a81d')
+        megatron_patch_path = git_clone_github(
+            'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='6fd5d050b240fd959f0ba69f1e9cd9a053e5a81d')
         os.environ['PAI_MEGATRON_PATCH_PATH'] = megatron_patch_path
     sys.path.append(os.environ['PAI_MEGATRON_PATCH_PATH'])
 
@@ -39,6 +40,7 @@ def init_megatron_env() -> None:
             new_path = os.path.join(dir_path, fname.replace('qwen1.', 'qwen1_'))
             if old_path != new_path:
                 shutil.move(old_path, new_path)
+
 
 def patch_megatron(tokenizer):
 

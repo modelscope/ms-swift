@@ -113,7 +113,8 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         seed_everything(request.seed, verbose=False)
     _request = {'model': request.model}
     if isinstance(request, ChatCompletionRequest):
-        if is_generation_template(template.template_type):
+        if is_generation_template(
+                template.template_type) and not (len(request.messages) == 1 and request.messages[0]['role'] == 'user'):
             return create_error_response(
                 HTTPStatus.BAD_REQUEST, f'The chat template `{template.template_type}` corresponding to '
                 f'the model `{model_or_engine.model_type}` is in text generation format. '

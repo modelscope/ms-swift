@@ -65,7 +65,8 @@ def get_qwen2_model():
 def get_qwen1half_model():
     return None
 
-def get_megatron_model_convert(model_type: str, load_model: bool=True):
+
+def get_megatron_model_convert(model_type: str, load_model: bool = True):
     model_info = MEGATRON_MODEL_MAPPING[model_type]
     get_function = model_info['get_function']
     convert_module = model_info['convert_module']
