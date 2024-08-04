@@ -424,7 +424,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     if _args.verbose:
         logger.info(request_info)
 
-    session_id = created_time * int(10e8) + random.randint(0, int(10e8 - 1))  # long long
+    session_id = time.time_ns()
     generator = await llm_engine.get_generator(False, session_id)
     images = inputs.pop('images', None) or []
     if len(images) > 0:
