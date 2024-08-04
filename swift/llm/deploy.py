@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from http import HTTPStatus
+from threading import Thread
 from typing import List, Optional, Union
 
 import json
@@ -67,7 +68,8 @@ def _update_stats(response) -> None:
 def lifespan(app: FastAPI):
     global _args
     if _args.log_interval > 0:
-        asyncio.create_task(_log_stats_hook(_args.log_interval))
+        thread = Thread(target=lambda: asyncio.run(_log_stats_hook(_args.log_interval)))
+        thread.start()
     yield
 
 
