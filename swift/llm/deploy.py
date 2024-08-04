@@ -56,6 +56,8 @@ async def _log_stats_hook(log_interval: int):
 
 
 def _update_stats(response) -> None:
+    if response is None:
+        return
     usage_info = response.usage
     global_stats['num_prompt_tokens'] += usage_info.prompt_tokens
     global_stats['num_generated_tokens'] += usage_info.completion_tokens
@@ -377,7 +379,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 response = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
-        if _args.log_interval > 0 and response is not None:
+        if _args.log_interval > 0:
             _update_stats(response)
         yield 'data:[DONE]\n\n'
 
@@ -529,7 +531,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                     response = CompletionStreamResponse(
                         model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
                 yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
-            if _args.log_interval > 0 and response is not None:
+            if _args.log_interval > 0:
                 _update_stats(response)
             yield 'data:[DONE]\n\n'
 
@@ -721,7 +723,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 resp = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
-        if _args.log_interval > 0 and resp is not None:
+        if _args.log_interval > 0:
             _update_stats(resp)
         yield 'data:[DONE]\n\n'
 
