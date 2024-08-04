@@ -398,6 +398,8 @@ deploy parameters inherit from infer parameters, with the following added parame
 - `--api_key`: The default is `None`, meaning that the request will not be subjected to api_key verification.
 - `--ssl_keyfile`: Default is `None`.
 - `--ssl_certfile`: Default is `None`.
+- `--verbose`: Whether to print the request content. Defaults to `True`.
+- `--log_interval`: Interval for printing statistical information, in seconds. Defaults to 0, meaning no statistical information will be printed.
 
 ## web-ui Parameters
 

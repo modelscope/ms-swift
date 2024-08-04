@@ -28,7 +28,47 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
 
 logger = get_logger()
 
-app = FastAPI()
+global_stats = {}
+default_global_stats = {
+    'num_prompt_tokens': 0,
+    'num_generated_tokens': 0,
+    'num_samples': 0,
+    'runtime': 0.,
+    'samples/s': 0.,
+    'tokens/s': 0.
+}
+
+
+async def _log_stats_hook(log_interval: int):
+    global global_stats
+    while True:
+        global_stats = default_global_stats.copy()
+        t = time.perf_counter()
+        await asyncio.sleep(log_interval)
+        runtime = time.perf_counter() - t
+        global_stats['runtime'] = runtime
+        global_stats['samples/s'] = global_stats['num_samples'] / runtime
+        global_stats['tokens/s'] = global_stats['num_generated_tokens'] / runtime
+        for k, v in global_stats.items():
+            global_stats[k] = round(v, 8)
+        logger.info(global_stats)
+
+
+def _update_stats(response) -> None:
+    usage_info = response.usage
+    global_stats['num_prompt_tokens'] += usage_info.prompt_tokens
+    global_stats['num_generated_tokens'] += usage_info.completion_tokens
+    global_stats['num_samples'] += 1
+
+
+async def lifespan(app: FastAPI):
+    global _args
+    if _args.log_interval > 0:
+        asyncio.create_task(_log_stats_hook(_args.log_interval))
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 _args: Optional[DeployArguments] = None
 model = None
 llm_engine = None
@@ -216,7 +256,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             generation_config.stop.append(token_str)
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stream': request.stream})
-    logger.info(request_info)
+    if _args.verbose:
+        logger.info(request_info)
 
     generate_kwargs = {}
     if _args.vllm_enable_lora and request.model != _args.model_type:
@@ -284,11 +325,14 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 choices.append(choice)
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+        if _args.log_interval > 0:
+            _update_stats(response)
         return response
 
     async def _generate_stream():
         print_idx_list = [[0] for _ in range(request.n)]
         total_res = ['' for _ in range(request.n)]
+        response = None
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
             num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
@@ -328,6 +372,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 response = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+        if _args.log_interval > 0 and response is not None:
+            _update_stats(response)
         yield 'data:[DONE]\n\n'
 
     if request.stream:
@@ -368,7 +414,8 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     generation_config = LmdeployGenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
     request_info.update({'seed': request.seed, 'stream': request.stream})
-    logger.info(request_info)
+    if _args.verbose:
+        logger.info(request_info)
 
     generator = await llm_engine.get_generator(False, created_time)
     images = inputs.pop('images', None) or []
@@ -418,6 +465,8 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
             )]
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+        if _args.log_interval > 0:
+            _update_stats(response)
         return response
 
     async def _generate_stream():
@@ -428,6 +477,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
             async_iter = generator.async_stream_infer(
                 session_id=created_time, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
             is_finished = False
+            response = None
             while not is_finished:
                 try:
                     output = await async_iter.__anext__()
@@ -469,6 +519,8 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                     response = CompletionStreamResponse(
                         model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
                 yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+            if _args.log_interval > 0 and response is not None:
+                _update_stats(response)
             yield 'data:[DONE]\n\n'
 
     if request.stream:
@@ -540,7 +592,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     request_info['generation_config'] = generation_config
     stop = (_args.stop_words or []) + (getattr(request, 'stop') or [])
     request_info.update({'seed': request.seed, 'stop': stop, 'stream': request.stream})
-    logger.info(request_info)
+    if _args.verbose:
+        logger.info(request_info)
 
     adapter_kwargs = {}
     if _args.lora_request_list is not None:
@@ -597,6 +650,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             )]
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
+        if _args.log_interval > 0:
+            _update_stats(response)
         return response
 
     def _generate_stream():
@@ -613,6 +668,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         print_idx = 0
         response = ''
         is_finished = False
+        resp = None
         while not is_finished:
             try:
                 response, _ = next(gen)
@@ -651,6 +707,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 resp = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
+        if _args.log_interval > 0 and resp is not None:
+            _update_stats(resp)
         yield 'data:[DONE]\n\n'
 
     if request.stream:
@@ -660,7 +718,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
 
 @app.post('/v1/chat/completions')
-async def create_chat_completion(request: ChatCompletionRequest, raw_request: Request) -> ChatCompletionResponse:
+async def create_chat_completion(request: ChatCompletionRequest, raw_request: Request):
     global _args
     assert _args is not None
     if request.stop is None:
@@ -674,7 +732,7 @@ async def create_chat_completion(request: ChatCompletionRequest, raw_request: Re
 
 
 @app.post('/v1/completions')
-async def create_completion(request: CompletionRequest, raw_request: Request) -> CompletionResponse:
+async def create_completion(request: CompletionRequest, raw_request: Request):
     global _args
     assert _args is not None
     if request.stop is None:
