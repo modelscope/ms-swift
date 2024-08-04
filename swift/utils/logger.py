@@ -99,6 +99,6 @@ def add_file_handler_if_needed(logger, log_file, file_mode, log_level):
 
     if is_worker0 and log_file is not None:
         file_handler = logging.FileHandler(log_file, file_mode)
-        file_handler.setFormatter(formatter)
+        file_handler.setFormatter(logger_format)
         file_handler.setLevel(log_level)
         logger.addHandler(file_handler)
