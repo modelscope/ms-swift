@@ -12,21 +12,29 @@ def register_megatron_model(
         model_module: str,  # GPTModel
         config_cls,  # transformer_config_cls
         get_function: Optional[Callable] = None):
-    model_info = {
+    megatron_model_info = {
         'convert_module': convert_module,
         'model_module': model_module,
         'config_cls': config_cls,
     }
+    res_model_type_list = []
+    for model_type in model_type_list:
+        model_info = MODEL_MAPPING[model_type]
+        support_megatron = model_info.get('support_megatron', False)
+        if support_megatron:
+            res_model_type_list.append(model_type)
+    model_type_list = res_model_type_list
+
     if get_function is not None:
-        model_info['get_function'] = get_function
+        megatron_model_info['get_function'] = get_function
         for model_type in model_type_list:
-            MEGATRON_MODEL_MAPPING[model_type] = model_info
+            MEGATRON_MODEL_MAPPING[model_type] = megatron_model_info
         return
 
     def _register_model(get_function: Callable) -> Callable:
-        model_info['get_function'] = get_function
+        megatron_model_info['get_function'] = get_function
         for model_type in model_type_list:
-            MEGATRON_MODEL_MAPPING[model_type] = model_info
+            MEGATRON_MODEL_MAPPING[model_type] = megatron_model_info
         return get_function
 
     return _register_model
@@ -35,8 +43,9 @@ def register_megatron_model(
 qwen1half_model_type = [model_type for model_type in MODEL_MAPPING.keys() if model_type.startswith('qwen1half')]
 
 
-@register_megatron_model([model_type for model_type in qwen1half_model_type if '32b' not in model_type],
-                         'qwen.hf2mcore_qwen1_5_dense_mha', 'qwen1_5', 'QwenTransformerConfig')
+@register_megatron_model(
+    [model_type for model_type in qwen1half_model_type if ('32b' not in model_type or '110b' not in model_type)],
+    'qwen.hf2mcore_qwen1_5_dense_mha', 'qwen1_5', 'QwenTransformerConfig')
 @register_megatron_model([model_type for model_type in MODEL_MAPPING.keys() if model_type.startswith('qwen2')],
                          'qwen.hf2mcore_qwen2_dense_and_moe_gqa', 'qwen2', 'Qwen2TransformerConfig')
 def get_model_provider(args, gpt_model_cls, config, transformer_layer_spec):
