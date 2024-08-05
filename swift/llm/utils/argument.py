@@ -1582,7 +1582,7 @@ class ExportArguments(InferArguments):
 @dataclass
 class PtArguments(SftArguments):
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
-    lora_target_modules: List[str] = field(default_factory=lambda: ['ALL'])
+    target_modules: List[str] = field(default_factory=lambda: ['ALL'])
     lazy_tokenize: Optional[bool] = True
     eval_steps: int = 500
 

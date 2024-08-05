@@ -105,7 +105,6 @@ response: 在这张图像中，有四只羊。
 
 LoRA微调:
 
-(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`.)
 ```shell
 # Experimental environment: A10, 3090, V100...
 # 21GB GPU memory
