@@ -48,9 +48,15 @@ qwen1half_model_type = [model_type for model_type in MODEL_MAPPING.keys() if mod
     'qwen.hf2mcore_qwen1_5_dense_mha', 'qwen1_5', 'QwenTransformerConfig')
 @register_megatron_model([model_type for model_type in MODEL_MAPPING.keys() if model_type.startswith('qwen2')],
                          'qwen.hf2mcore_qwen2_dense_and_moe_gqa', 'qwen2', 'Qwen2TransformerConfig')
-def get_model_provider(args, gpt_model_cls, config, transformer_layer_spec):
+def get_model_provider(gpt_model_cls, transformer_config_cls, layer_spec_module):
 
     def model_provider(pre_process=True, post_process=True):
+        from megatron.training import get_args
+        from megatron.training.arguments import core_transformer_config_from_args
+        args = get_args()
+        config = core_transformer_config_from_args(args, transformer_config_cls)
+        transformer_layer_spec = layer_spec_module.get_gpt_layer_with_transformer_engine_spec(
+            args.num_experts, args.moe_grouped_gemm, args.qk_layernorm)
         model = gpt_model_cls(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
@@ -71,9 +77,6 @@ def get_model_provider(args, gpt_model_cls, config, transformer_layer_spec):
 
 
 def get_megatron_model_convert(model_type: str):
-    from megatron.training import get_args
-    from megatron.training.arguments import core_transformer_config_from_args
-    args = get_args()
     model_info = MEGATRON_MODEL_MAPPING[model_type]
     model_module = model_info['model_module']
     config_cls = model_info['config_cls']
@@ -81,11 +84,7 @@ def get_megatron_model_convert(model_type: str):
     gpt_model_cls = importlib.import_module(f'megatron_patch.model.{model_module}.model').GPTModel
     transformer_config_cls = getattr(
         importlib.import_module(f'megatron_patch.model.{model_module}.transformer_config'), config_cls)
-    layer_specs = importlib.import_module(f'megatron_patch.model.{model_module}.layer_specs')
-    transformer_layer_spec = layer_specs.get_gpt_layer_with_transformer_engine_spec(args.num_experts,
-                                                                                    args.moe_grouped_gemm,
-                                                                                    args.qk_layernorm)
-    config = core_transformer_config_from_args(args, transformer_config_cls)
-    model_provider = model_info['get_function'](args, gpt_model_cls, config, transformer_layer_spec)
+    layer_spec_module = importlib.import_module(f'megatron_patch.model.{model_module}.layer_specs')
+    model_provider = model_info['get_function'](gpt_model_cls, transformer_config_cls, layer_spec_module)
     convert_module = importlib.import_module(f"toolkits.model_checkpoints_convertor.{model_info['convert_module']}")
     return model_provider, convert_module
