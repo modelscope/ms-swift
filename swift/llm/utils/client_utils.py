@@ -198,7 +198,6 @@ def _pre_inference_client(model_type: str,
                           request_config: Optional[XRequestConfig] = None,
                           host: str = '127.0.0.1',
                           port: str = '8000',
-                          api_key: str = 'EMPTY',
                           **kwargs) -> Tuple[str, Dict[str, Any], bool]:
     if images is None:
         images = []
@@ -265,7 +264,7 @@ def inference_client(
         request_config = XRequestConfig()
     model_list = None
     if is_chat_request is None or is_multimodal is None:
-        model_list = get_model_list_client(host, port, **kwargs)
+        model_list = get_model_list_client(host, port, api_key=api_key, **kwargs)
 
     url, data, is_chat_request = _pre_inference_client(
         model_type,
@@ -281,7 +280,6 @@ def inference_client(
         request_config=request_config,
         host=host,
         port=port,
-        api_key=api_key,
         **kwargs)
 
     if request_config.stream:
@@ -336,7 +334,7 @@ async def inference_client_async(
         request_config = XRequestConfig()
     model_list = None
     if is_chat_request is None or is_multimodal is None:
-        model_list = await get_model_list_client_async(host, port, **kwargs)
+        model_list = await get_model_list_client_async(host, port, api_key=api_key, **kwargs)
 
     url, data, is_chat_request = _pre_inference_client(
         model_type,
@@ -352,7 +350,6 @@ async def inference_client_async(
         request_config=request_config,
         host=host,
         port=port,
-        api_key=api_key,
         **kwargs)
 
     if request_config.stream:

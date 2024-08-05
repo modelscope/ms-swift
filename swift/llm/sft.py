@@ -5,8 +5,10 @@ from typing import Any, Dict, Optional, Tuple
 
 import json
 import torch
+import transformers
 from datasets import Dataset as HfDataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
+from packaging import version
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
@@ -56,7 +58,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         f'Please run `CUDA_VISIBLE_DEVICES=0 swift export --model_type {args.model_type} --tp {args.tp} --pp {args.pp} '
         f'--megatron_output_dir {args.resume_from_checkpoint} --to_megatron true` '
         'to convert the weights to Megatron format.')
-    from swift.llm.megatron import (MegatronArguments, get_model_seires, patch_megatron, model_provider, forward_step,
+    from swift.llm.megatron import (MegatronArguments, patch_megatron, get_megatron_model_convert, forward_step,
                                     train_valid_test_datasets_provider as _train_valid_test_datasets_provider)
     from megatron.core.enums import ModelType
     from megatron.training import pretrain
@@ -76,7 +78,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
 
     res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
     res.update(MegatronArguments.from_sft_args(args, train_dataset, val_dataset))
-    res['model_series'] = get_model_seires(args.model_type)
+    model_provider, _ = get_megatron_model_convert(args.model_type)
     megatron_args = MegatronArguments(**res)
     extra_args = megatron_args.parse_to_megatron()
 
@@ -427,8 +429,9 @@ def get_sft_main(args, llm):
     if use_torchacc():
         logger.warning('TorchAcc is currently only available internally within Alibaba Cloud.')
         import torchacc as ta
-        # This patch should be called before `llm_sft`.
-        ta.accelerate_hf_trainer()
+        if version.parse(transformers.__version__) < version.parse('4.41.0'):
+            # This patch should be called before `llm_sft`.
+            ta.accelerate_hf_trainer()
     return get_main(args, llm)
 
 

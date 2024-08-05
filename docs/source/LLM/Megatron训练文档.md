@@ -19,7 +19,7 @@ pip install -e '.[llm]'
 
 # 安装megatron相关依赖 (你不需要安装megatron-ml等其他依赖库)
 pip install pybind11
-# transformer_engine (如果跑不通请安装: release_v1.7)
+# transformer_engine (如果安装不成功请尝试: release_v1.7)
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 # apex
 git clone https://github.com/NVIDIA/apex

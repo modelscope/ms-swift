@@ -253,7 +253,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \
     --load_dataset_config true \
 
-# 如果需要更换验证数据集
+# 如果需要更换val_dataset
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --val_dataset <your-val-dataset>
 
