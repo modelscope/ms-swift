@@ -97,8 +97,8 @@ class TestRun2(unittest.TestCase):
         output = sft_main(
             SftArguments(
                 model_type=ModelType.glm4v_9b_chat,
-                #   dataset=DatasetName.capcha_images,
-                lora_target_modules='ALL',
+                # dataset=DatasetName.capcha_images,
+                # lora_target_modules='ALL',
                 train_dataset_sample=100,
                 eval_steps=5,
                 custom_train_dataset_path=[os.path.join(folder, 'multi_modal_3.jsonl')],
