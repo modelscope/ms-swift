@@ -5,6 +5,7 @@ import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
+from functools import wraps
 from queue import Queue
 from threading import Thread
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
@@ -16,7 +17,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
-from transformers import AutoConfig, GenerationConfig
+from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
 from swift.utils import get_logger
 from .argument import InferArguments
@@ -36,6 +37,7 @@ def get_lmdeploy_engine(
         revision: Optional[str] = None,
         tp: int = 1,
         cache_max_entry_count: float = 0.8,
+        quant_policy: int = 0,  # e.g. 4, 8
         vision_batch_size: int = 1,  # max_batch_size in VisionConfig
         engine_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs) -> Union[AsyncEngine, VLAsyncEngine]:
@@ -54,6 +56,7 @@ def get_lmdeploy_engine(
         engine_kwargs = {}
     engine_kwargs['tp'] = tp
     engine_kwargs['cache_max_entry_count'] = cache_max_entry_count
+    engine_kwargs['quant_policy'] = quant_policy
 
     backend_config = TurbomindEngineConfig(**engine_kwargs)
     backend_config = autoget_backend_config(model_dir, backend_config)
@@ -67,7 +70,16 @@ def get_lmdeploy_engine(
         pipeline_kwargs['vision_config'] = vision_config
         logger.info(f'vision_config: {vision_config}')
 
+    _old_from_pretrained = AutoTokenizer.from_pretrained
+
+    @wraps(_old_from_pretrained)
+    def _from_pretrained(self, *args, **kwargs):
+        return tokenizer
+
+    AutoTokenizer.from_pretrained = _from_pretrained
     lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
+    AutoTokenizer.from_pretrained = _old_from_pretrained  # recover
+
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
     lmdeploy_engine.is_multimodal = is_multimodal
@@ -371,7 +383,12 @@ def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncE
     elif args.model_id_or_path is not None:
         model_id_or_path = args.model_id_or_path
     lmdeploy_engine = get_lmdeploy_engine(
-        args.model_type, tp=args.tp, vision_batch_size=args.vision_batch_size, model_id_or_path=model_id_or_path)
+        args.model_type,
+        tp=args.tp,
+        cache_max_entry_count=args.cache_max_entry_count,
+        quant_policy=args.quant_policy,
+        vision_batch_size=args.vision_batch_size,
+        model_id_or_path=model_id_or_path)
     tokenizer = lmdeploy_engine.hf_tokenizer
 
     if not args.do_sample:

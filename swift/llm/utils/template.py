@@ -290,11 +290,13 @@ class Template:
                     for i, h, m in zip(range(n_round), history + [[query, None]], example[media_key]):
                         num_media_tags = len(re.findall(media_tag, h[0]))
                         if m:
-                            assert num_media_tags <= 1, f'num_media_tags: {num_media_tags}'
+                            assert num_media_tags <= 1, (
+                                'The model includes at most one media per round. However, '
+                                f'this round contains {num_media_tags} media_tags. query: {h[0]}')
                             if num_media_tags == 0:
                                 h[0] = media_tag + h[0]
                         else:
-                            assert num_media_tags == 0, f'num_media_tags: {num_media_tags}'
+                            assert num_media_tags == 0, f'Missing media. query: {h[0]}'
                         if i == n_round - 1:
                             query = h[0]
                         else:
@@ -307,7 +309,7 @@ class Template:
                     example[media_key] = [m for m in example[media_key] if m]
                     num_media = len(example[media_key])
                     num_new_tags = num_media - num_media_tags
-                    assert num_new_tags >= 0, f'num_new_tags: {num_new_tags}'
+                    assert num_new_tags >= 0, (f'Number of media: {num_media}, number of media_tags: {num_media_tags}')
                     if history:
                         history[0][0] = media_tag * num_new_tags + history[0][0]
                     else:
@@ -357,6 +359,26 @@ class Template:
             images = images + images_path
             example['images'] = images
 
+        # Add default tags to examples to note where to put the medias into the sequence
+        self.add_default_tags(example)
+
+        # Format objects(groundings/refs) to json
+        if example.get('objects') and isinstance(example['objects'], str):
+            # reload grounding from str
+            example['objects'] = json.loads(example['objects'])
+            objects = []
+            for object in example['objects']:
+                # Compatible with list format
+                if isinstance(object, list):
+                    object = {
+                        'caption': object[0],
+                        'bbox': object[1],
+                        'bbox_type': None,
+                        'image': 0,
+                    }
+                objects.append(object)
+            example['objects'] = objects
+
         # Load image into PIL format
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
@@ -369,9 +391,6 @@ class Template:
             if self.load_medias and self.grounding_type != 'real':
                 images = [rescale_image(img, self.rescale_image) for img in images]
             example['images'] = images
-
-        # Add default tags to examples to note where to put the medias into the sequence
-        self.add_default_tags(example)
 
         # Check the example that whether matching the very template's rules
         self.check_example(example)
@@ -418,24 +437,6 @@ class Template:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
         self._preprocess_media(example)
-
-        # Format objects(groundings/refs) to json
-        if example.get('objects') and isinstance(example['objects'], str):
-            # reload grounding from str
-            example['objects'] = json.loads(example['objects'])
-            objects = []
-            for object in example['objects']:
-                # Compatible with list format
-                if isinstance(object, list):
-                    object = {
-                        'caption': object[0],
-                        'bbox': object[1],
-                        'bbox_type': None,
-                        'image': 0,
-                    }
-                objects.append(object)
-            example['objects'] = objects
-
         return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1010,8 +1011,9 @@ def register_template(template_type: str, template: Template, *, exist_ok: bool 
 
 register_template(
     TemplateType.default,
-    Template([], ['### Human:\n{{QUERY}}\n\n### Assistant:\n'], ['\n\n'], [['eos_token_id']], DEFAULT_SYSTEM,
-             ['{{SYSTEM}}\n\n']))
+    Template([], ['### Human:\n{{QUERY}}\n\n### Assistant:\n'], ['\n\n'], [['eos_token_id']],
+             DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n'],
+             auto_add_bos=True))
 
 
 # You can set the query as '' to serve as a template for pre-training.
@@ -1042,9 +1044,10 @@ class QwenVLTemplate(QwenTemplate):
     load_medias = False
 
     def check_example(self, example):
-        images = example.get('images') or []
-        from .utils import fetch_one
-        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
+        if not self._is_lmdeploy:
+            images = example.get('images') or []
+            from .utils import fetch_one
+            assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -1878,10 +1881,10 @@ class LlavaHfTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images', [])
-        image_processor = self.tokenizer.processor.image_processor
         if self._is_vllm:
             images = self._prepare_vllm_images(images)
         if images:
+            image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
@@ -2470,7 +2473,16 @@ class MiniCPMVTemplate(Template):
         tgt_sizes = None
         slice_mode = getattr(config, 'slice_mode', False)
         if slice_mode:
-            images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+            if self.is_v2_5:
+                from .utils import to_device
+                image_processor = self.tokenizer.processor.image_processor
+                image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+                placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
+                pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
+                tgt_sizes = image_inputs['tgt_sizes']
+            else:
+                images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+                pixel_values = [[self.model.transform(img).to(device=self.model.device) for img in images]]
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -2485,18 +2497,6 @@ class MiniCPMVTemplate(Template):
                 torch.hstack(
                     [image_start_idx[:valid_image_nums].unsqueeze(-1), image_end_idx[:valid_image_nums].unsqueeze(-1)])
             ]
-            if self.is_v2_5:
-                pixel_values = []
-                tgt_sizes = []
-                config = self.model.config
-                for image in images:
-                    image = self.model.transform(image).to(device=self.model.device)
-                    H, W = image.shape[1:]
-                    pixel_values.append(self.model.reshape_by_patch(image))
-                    tgt_sizes.append(torch.Tensor([H // config.patch_size, W // config.patch_size]).type(torch.int32))
-                tgt_sizes = torch.vstack(tgt_sizes)
-            else:
-                pixel_values = [self.model.transform(img).to(device=self.model.device) for img in images]
         else:
             placeholder = '<image>' + '<unk>' * config.query_num + '</image>\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
@@ -2504,14 +2504,14 @@ class MiniCPMVTemplate(Template):
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-            pixel_values = [self.model.transform(image).to(device=self.model.device)]
+            pixel_values = [[self.model.transform(image).to(device=self.model.device)]]
         data = {
             'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
             'image_bound': image_bound,
-            'pixel_values': [pixel_values]
+            'pixel_values': pixel_values
         }
-        if tgt_sizes is not None:
-            data['tgt_sizes'] = [tgt_sizes]
+        if tgt_sizes is not None:  # v2.5
+            data['tgt_sizes'] = tgt_sizes
         inputs_embeds, _ = self.model.get_vllm_embedding(data)
         inputs_embeds = inputs_embeds.detach()
         inputs['input_ids'] = input_ids

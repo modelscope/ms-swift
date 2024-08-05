@@ -19,6 +19,7 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 
+# lmdeploy与cuda版本有对应关系，请按照`https://github.com/InternLM/lmdeploy#installation`进行安装
 pip install lmdeploy
 ```
 

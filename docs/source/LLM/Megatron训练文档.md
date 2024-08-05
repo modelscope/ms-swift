@@ -19,7 +19,7 @@ pip install -e '.[llm]'
 
 # 安装megatron相关依赖 (你不需要安装megatron-ml等其他依赖库)
 pip install pybind11
-# transformer_engine
+# transformer_engine (如果安装不成功请尝试: release_v1.7)
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -30,7 +30,6 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 其他两个依赖库为[Megatron-LM](https://github.com/NVIDIA/Megatron-LM)和[Pai-Megatron-Patch](https://github.com/alibaba/Pai-Megatron-Patch). 会由swift进行git clone并安装, 不需要用户进行安装. 你也可以通过环境变量`MEGATRON_LM_PATH`, `PAI_MEGATRON_PATCH_PATH`指定已经下载好的repo路径.
 
 
-
 ## SFT案例
 这里介绍可以很快跑通的使用megatron训练的案例，通过此案例，你可以熟悉magatron训练的全流程。使用HF Trainer进行微调的对应案例可以查看[自我认知微调最佳实践](自我认知微调最佳实践.md).
 
@@ -39,6 +38,10 @@ pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation -
 # 默认输出路径: --megatron_output_dir {model_type}-tp{tp}-pp{pp}
 CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct \
     --to_megatron true --tp 2 --dtype bf16
+
+# 如果使用qwen2-72b-instruct，转换命令如下:
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift export --model_type qwen2-72b-instruct \
+    --to_megatron true --tp 8 --dtype bf16
 ```
 
 2. 使用megatron格式权重进行微调，命令脚本如下:
@@ -66,6 +69,10 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 # 微调后模型
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx --to_hf true
+
+# 如果使用qwen2-72b-instruct，转换命令如下:
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift export \
+    --ckpt_dir qwen2-72b-instruct-tp8-pp1 --to_hf true
 ```
 
 4. 对获得的权重进行推理测试，并使用vLLM进行加速:
