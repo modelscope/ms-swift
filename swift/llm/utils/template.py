@@ -1636,7 +1636,8 @@ class Internvl2Template(InternvlTemplate):
         videos_path = example.get('videos', [])
         if pixel_values_images:
             pixel_values = pixel_values_images
-            assert len(pixel_values) == len(idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
+            assert len(pixel_values) == len(
+                idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
             added_tokens_len = 0
             patches = 0
             for idx, pv in zip(idx_list, pixel_values):
@@ -1657,7 +1658,8 @@ class Internvl2Template(InternvlTemplate):
             assert len(videos_path) == 1, f'videos_path: {videos_path}'
             from .vision_utils import load_video
             pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
-            assert len(num_patches) == len(idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+            assert len(num_patches) == len(
+                idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
             added_tokens_len = 0
             for idx, num_patch in zip(idx_list, num_patches):
                 img_tokens: List[int] = self.tokenizer.encode(

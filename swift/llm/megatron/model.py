@@ -59,10 +59,12 @@ def get_qwen2_model(pre_process=True, post_process=True):
         seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor)
     return model
 
+
 @register_megatron_model([model_type for model_type in MODEL_MAPPING.keys() if model_type.startswith('qwen1half')],
                          'qwen.hf2megatron_qwen1_5')
 def get_qwen1half_model():
     return None
+
 
 def get_megatron_model_convert(model_type: str):
     model_info = MEGATRON_MODEL_MAPPING[model_type]
@@ -70,4 +72,3 @@ def get_megatron_model_convert(model_type: str):
     convert_module = model_info['convert_module']
     convert_module = importlib.import_module(convert_module)
     return model_provider, convert_module
-
