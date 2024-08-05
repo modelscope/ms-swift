@@ -19,7 +19,8 @@ def convert_hf_to_megatron(
     initialize_megatron(args_defaults=extra_args)
     args = get_args()
 
-    mg_model, convert_module = get_megatron_model_convert(args.model_type)
+    model_provider, convert_module = get_megatron_model_convert(args.model_type)
+    mg_model = model_provider()
     convert_module.convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
     if save_torch_dtype is not None:
         mg_model.to(save_torch_dtype)
