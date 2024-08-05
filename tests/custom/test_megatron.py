@@ -5,17 +5,12 @@ from swift.llm import ExportArguments, InferArguments, SftArguments, export_main
 
 def convert2megatron():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    export_main(ExportArguments(model_type='qwen2-7b-instruct', to_megatron=True, tp=2))
+    export_main(ExportArguments(model_type='qwen1half-7b-chat', to_megatron=True, tp=2))
 
 
 def convert2hf():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    export_main(ExportArguments(ckpt_dir='qwen2-7b-instruct-tp2-pp1', to_hf=True, tp=2))
-
-
-def test_convert():
-    convert2megatron()
-    convert2hf()
+    export_main(ExportArguments(ckpt_dir='qwen1half-7b-chat-tp2-pp1', to_hf=True, tp=2))
 
 
 def sft():
@@ -32,6 +27,7 @@ def infer():
 
 
 if __name__ == '__main__':
-    test_convert()
+    convert2megatron()
+    # convert2hf()
     # infer()
     # sft()
