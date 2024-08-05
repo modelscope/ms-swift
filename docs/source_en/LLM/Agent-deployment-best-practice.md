@@ -248,7 +248,7 @@ You can also select a tool from the tools field by specifying the `tool_choice` 
 
 result
 ```json
-{"model":"llama3-8b-instruct","choices":[[{"index":0,"message":{"role":"assistant","content":"Question: What's the weather like in Boston today?\n\nThought: I need to get the current weather in Boston to answer this question.\n\nAction: get_current_weather\n\nAction Input: {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\nObservation:","tool_calls":{"id":"toolcall-f534d907ae254f2ab96e06c25179ddf9","function":{"arguments":" {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\n","name":"get_current_weather"},"type":"function"}},"finish_reason":"stop"}]],"usage":{"prompt_tokens":262,"completion_tokens":54,"total_tokens":316},"id":"chatcmpl-8630e8d675c941c0aca958a37633a3c9","object":"chat.completion","created":1717590756}
+{"model":"llama3-8b-instruct","choices":[[{"index":0,"message":{"role":"assistant","content":"Question: What's the weather like in Boston today?\n\nThought: I need to get the current weather in Boston to answer this question.\n\nAction: get_current_weather\n\nAction Input: {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\nObservation:","tool_calls":[{"id":"toolcall-f534d907ae254f2ab96e06c25179ddf9","function":{"arguments":" {'location': 'Boston, MA', 'unit': 'fahrenheit'}\n\n","name":"get_current_weather"},"type":"function"}]},"finish_reason":"stop"}]],"usage":{"prompt_tokens":262,"completion_tokens":54,"total_tokens":316},"id":"chatcmpl-8630e8d675c941c0aca958a37633a3c9","object":"chat.completion","created":1717590756}
 ```
 
 You can also test with OpenAI SDK, for example
@@ -290,7 +290,7 @@ resp = client.chat.completions.create(
     tools = tools,
     messages=messages,
     seed=42)
-tool_calls = resp.choices[0].message.tool_calls
+tool_calls = resp.choices[0].message.tool_calls[0]
 print(f'query: {query}')
 print(f'tool_calls: {tool_calls}')
 
@@ -306,7 +306,7 @@ print(f'query: {query}')
 print('response: ', end='')
 for chunk in stream_resp:
     print(chunk.choices[0].delta.content, end='', flush=True)
-print()
+print(chunk.choices[0].delta.tool_calls[0])
 
 """
 query: What's the weather like in Boston today?

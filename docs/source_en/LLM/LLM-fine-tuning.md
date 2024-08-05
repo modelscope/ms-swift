@@ -248,6 +248,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \
     --load_dataset_config true \
 
+# If you need to replace the val_dataset
+CUDA_VISIBLE_DEVICES=0 swift infer \
+    --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' --val_dataset <your-val-dataset>
+
 # Merge LoRA incremental weights and infer
 # If you need quantization, you can specify `--quant_bits 4`.
 CUDA_VISIBLE_DEVICES=0 swift export \

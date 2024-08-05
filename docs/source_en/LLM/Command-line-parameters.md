@@ -271,11 +271,11 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 
 ## infer merge-lora Parameters
 
-- `--model_type`: Default is `None`, see `sft.sh command line arguments` for parameter details.
-- `--model_id_or_path`: Default is `None`, see `sft.sh command line arguments` for parameter details. Recommended to use model_type to specify.
-- `--model_revision`: Default is `None`. See `sft.sh command line arguments` for parameter details. If `model_id_or_path` is None or a local model directory, this parameter has no effect.
-- `--sft_type`: Default is `'lora'`, see `sft.sh command line arguments` for parameter details.
-- `--template_type`: Default is `'AUTO'`, see `sft.sh command line arguments` for parameter details.
+- `--model_type`: Default is `None`, see `sft command line arguments` for parameter details.
+- `--model_id_or_path`: Default is `None`, see `sft command line arguments` for parameter details. Recommended to use model_type to specify.
+- `--model_revision`: Default is `None`. See `sft command line arguments` for parameter details. If `model_id_or_path` is None or a local model directory, this parameter has no effect.
+- `--sft_type`: Default is `'lora'`, see `sft command line arguments` for parameter details.
+- `--template_type`: Default is `'AUTO'`, see `sft command line arguments` for parameter details.
 - `--infer_backend`: Options are 'AUTO', 'vllm', 'pt'. Default uses 'AUTO', for intelligent selection, i.e. if `ckpt_dir` is not passed or using full fine-tuning, and vllm is installed and model supports vllm, then use vllm engine, otherwise use native torch for inference. vllm environment setup can be found in [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md), vllm supported models can be found in [Supported Models](Supported-models-datasets.md).
 - `--ckpt_dir`: Required, value is the checkpoint path saved in SFT stage, e.g. `'/path/to/your/vx-xxx/checkpoint-xxx'`.
 - `--load_args_from_ckpt_dir`: Whether to read model configuration info from `sft_args.json` file in `ckpt_dir`. Default is `True`.
@@ -283,28 +283,28 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--eval_human`: Whether to evaluate using validation set portion of dataset or manual evaluation. Default is `None`, for intelligent selection, if no datasets (including custom datasets) are passed, manual evaluation will be used. If datasets are passed, dataset evaluation will be used.
 - `--device_map_config_path`: Manually configure the model's device map from a local file, defaults to None.
 - `--device_max_memory`: The max memory of each device can use for `device_map`, `List`, default is `[]`, The number of values must equal to the device count. Like `10GB 10GB`.
-- `--seed`: Default is `42`, see `sft.sh command line arguments` for parameter details.
-- `--dtype`: Default is `'AUTO`, see `sft.sh command line arguments` for parameter details.
-- `--dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
-- `--val_dataset`: Default is `[]`, see `sft.sh command line arguments` for parameter details.
-- `--dataset_seed`: Default is `None`, see `sft.sh command line arguments` for parameter details.
-`--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft.sh command line arguments`.
+- `--seed`: Default is `42`, see `sft command line arguments` for parameter details.
+- `--dtype`: Default is `'AUTO`, see `sft command line arguments` for parameter details.
+- `--dataset`: Default is `[]`, see `sft command line arguments` for parameter details.
+- `--val_dataset`: Default is `[]`, see `sft command line arguments` for parameter details.
+- `--dataset_seed`: Default is `None`, see `sft command line arguments` for parameter details.
+`--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft command line arguments`.
 - `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
-- `--system`: Default is `None`. See `sft.sh command line arguments` for parameter details.
-- `--tools_prompt`: Default is `react_en`. See `sft.sh command line arguments` for parameter details.
-- `--max_length`: Default is `-1`. See `sft.sh command line arguments` for parameter details.
-- `--truncation_strategy`: Default is `'delete'`. See `sft.sh command line arguments` for parameter details.
-- `--check_dataset_strategy`: Default is `'none'`, see `sft.sh command line arguments` for parameter details.
+- `--system`: Default is `None`. See `sft command line arguments` for parameter details.
+- `--tools_prompt`: Default is `react_en`. See `sft command line arguments` for parameter details.
+- `--max_length`: Default is `-1`. See `sft command line arguments` for parameter details.
+- `--truncation_strategy`: Default is `'delete'`. See `sft command line arguments` for parameter details.
+- `--check_dataset_strategy`: Default is `'none'`, see `sft command line arguments` for parameter details.
 - `--custom_train_dataset_path`: Default value is `[]`. This parameter has been deprecated, please use `--dataset {dataset_path}`.
 - `--custom_val_dataset_path`: Default value is `[]`. This parameter is deprecated. Please use `--val_dataset {dataset_path}` instead.
-- `--quantization_bit`: Default is 0. See `sft.sh command line arguments` for parameter details.
+- `--quantization_bit`: Default is 0. See `sft command line arguments` for parameter details.
 - `--quant_method`: Quantization method, default is None. You can choose from 'bnb', 'hqq', 'eetq'.
 - `--hqq_axis`: Hqq argument. Axis along which grouping is performed. Supported values are 0 or 1. default is `0`
 - `--hqq_dynamic_config_path`: Parameters for dynamic configuration. The key is the name tag of the layer and the value is a quantization config. If set, each layer specified by its id will use its dedicated quantization configuration.[ref](https://github.com/mobiusml/hqq?tab=readme-ov-file#custom-quantization-configurations-%EF%B8%8F)
-- `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
-- `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
-- `--bnb_4bit_use_double_quant`: Default is `True`.  See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
-- `--bnb_4bit_quant_storage`: Default value `None`.See `sft.sh command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
+- `--bnb_4bit_comp_dtype`: Default is `'AUTO'`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
+- `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
+- `--bnb_4bit_use_double_quant`: Default is `True`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
+- `--bnb_4bit_quant_storage`: Default value `None`.See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--max_new_tokens`: Maximum number of new tokens to generate, default is `2048`.
 - `--do_sample`: Whether to use greedy generation or sampling generation, default is `True`.
 - `--temperature`: Default is `0.3`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
@@ -312,8 +312,8 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--top_p`: Default is `0.7`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
 - `--repetition_penalty`: Default is `1.`. This parameter will be used as default value in deployment parameters.
 - `--num_beams`: Default is `1`.
-- `--use_flash_attn`: Default is `None`, i.e. 'auto'. See `sft.sh command line arguments` for parameter details.
-- `--ignore_args_error`: Default is `False`, see `sft.sh command line arguments` for parameter details.
+- `--use_flash_attn`: Default is `None`, i.e. 'auto'. See `sft command line arguments` for parameter details.
+- `--ignore_args_error`: Default is `False`, see `sft command line arguments` for parameter details.
 - `--stream`: Whether to use streaming output, default is `True`. This parameter only takes effect when using dataset evaluation and verbose is True.
 - `--merge_lora`: Whether to merge lora weights into base model and save full weights, default is `False`. Weights will be saved in the same level directory as `ckpt_dir`, e.g. `'/path/to/your/vx-xxx/checkpoint-xxx-merged'` directory.
 - `--merge_device_map`: device_map used when merge-lora, default is `None`, to reduce memory usage, use `auto` only during merge-lora process, otherwise default is `cpu`.
@@ -359,8 +359,8 @@ export parameters inherit from infer parameters, with the following added parame
 - `quant_output_dir`: Default is `None`, the default quant_output_dir will be printed in the command line.
 - `--push_to_hub`: Default is `False`. Whether to push the final `ckpt_dir` to ModelScope Hub. If you specify `merge_lora`, full parameters will be pushed; if you also specify `quant_bits`, quantized model will be pushed.
 - `--hub_model_id`: Default is `None`. Model_id to push to on ModelScope Hub. If `push_to_hub` is set to True, this parameter must be set.
-- `--hub_token`: Default is `None`. See `sft.sh command line arguments` for parameter details.
-- `--hub_private_repo`: Default is `False`. See `sft.sh command line arguments` for parameter details.
+- `--hub_token`: Default is `None`. See `sft command line arguments` for parameter details.
+- `--hub_private_repo`: Default is `False`. See `sft command line arguments` for parameter details.
 - `--commit_message`: Default is `'update files'`.
 - `--to_ollama`: Export to ollama modelfile.
 - `--ollama_output_dir`: ollama output dir. Default is `<modeltype>-ollama`.
@@ -405,6 +405,8 @@ deploy parameters inherit from infer parameters, with the following added parame
 - `--api_key`: The default is `None`, meaning that the request will not be subjected to api_key verification.
 - `--ssl_keyfile`: Default is `None`.
 - `--ssl_certfile`: Default is `None`.
+- `--verbose`: Whether to print the request content. Defaults to `True`.
+- `--log_interval`: Interval for printing statistical information, in seconds. Defaults to 0, meaning no statistical information will be printed.
 
 ## web-ui Parameters
 
