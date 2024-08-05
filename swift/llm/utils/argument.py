@@ -1522,7 +1522,6 @@ class ExportArguments(InferArguments):
     hf_output_dir: Optional[str] = None
     tp: int = 1
     pp: int = 1
-    check_model_forward: bool = False
 
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token
