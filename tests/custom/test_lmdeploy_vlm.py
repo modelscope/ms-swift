@@ -1,6 +1,6 @@
 def test_lmdeploy_vlm():
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
     from swift.llm import (ModelType, get_lmdeploy_engine, get_default_template_type, get_template, inference_lmdeploy,
                            inference_stream_lmdeploy)
@@ -47,7 +47,7 @@ def test_lmdeploy_vlm():
     print(generation_info)
 
     # batched
-    n_batched = 100
+    n_batched = 1000
     request_list = [{
         'query':
         '这两张图片有什么区别：'
@@ -57,8 +57,8 @@ def test_lmdeploy_vlm():
     resp_list = inference_lmdeploy(
         lmdeploy_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
     request_list = [{
         'query':
@@ -71,8 +71,8 @@ def test_lmdeploy_vlm():
     for resp_list in gen:
         pass
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
 
 if __name__ == '__main__':

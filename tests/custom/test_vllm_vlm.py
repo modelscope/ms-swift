@@ -43,13 +43,13 @@ def test_vllm_vlm():
     print(generation_info)
 
     # batched
-    n_batched = 100
+    n_batched = 1000
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
     request_list = [{'query': 'Describe this image.', 'images': images} for i in range(n_batched)]
     resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
     request_list = [{'query': 'Describe this image.', 'images': images} for i in range(n_batched)]
@@ -57,8 +57,8 @@ def test_vllm_vlm():
     for resp_list in gen:
         pass
     assert len(resp_list) == n_batched
-    print(generation_info)
     print(resp_list[0]['history'])
+    print(generation_info)
 
 
 if __name__ == '__main__':

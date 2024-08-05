@@ -1,4 +1,7 @@
 # LmDeploy Inference Acceleration and Deployment
+lmdeploy github: [https://github.com/InternLM/lmdeploy](https://github.com/InternLM/lmdeploy).
+
+Models that support inference acceleration using lmdeploy can be found at [Supported Models](Supported-models-datasets.md#LLM).
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
@@ -16,6 +19,7 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 
+# There is a correspondence between lmdeploy and CUDA versions. Please follow the installation instructions at `https://github.com/InternLM/lmdeploy#installation`.
 pip install lmdeploy
 ```
 
@@ -86,10 +90,24 @@ history: [['Where is the capital of Zhejiang?', 'The capital of Zhejiang is Hang
 ```
 
 ### Using CLI
-Comming soon...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen2-7b-instruct --infer_backend lmdeploy
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type qwen2-7b-instruct --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type qwen2-72b-instruct --infer_backend lmdeploy --tp 2
+```
 
 ## Deployment
-Comming soon...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct --infer_backend lmdeploy
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-7b-instruct --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-72b-instruct --infer_backend lmdeploy --tp 2
+```
+
+The method for client invocation can be found in: [vLLM Inference Acceleration and Deployment Documentation](VLLM-inference-acceleration-and-deployment.md#deployment).
 
 ## Multimodal
 Check [here](../Multi-Modal/LmDeploy-inference-acceleration-and-deployment.md)

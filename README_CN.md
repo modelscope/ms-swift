@@ -15,7 +15,7 @@
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.5-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.17-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
 <a href="https://github.com/modelscope/swift/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/swift"></a>
 <a href="https://pepy.tech/project/ms-swift"><img src="https://pepy.tech/badge/ms-swift"></a>
@@ -56,7 +56,8 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
-- 🔥2024.07.30: 支持多模态数据集的评测！命令行完全一致，新增了许多[多模态数据集](https://swift.readthedocs.io/zh-cn/latest/LLM/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html#id2).
+- 🔥2024.08.05: 支持多模态数据集的评测！命令行完全一致，新增了许多[多模态数据集](https://swift.readthedocs.io/zh-cn/latest/LLM/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html#id2).
+- 🔥2024.08.02: 支持Fourier Ft训练. 使用方式为`--sft_type fourierft`, 参数可以参考[这里](https://swift.readthedocs.io/zh-cn/latest/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html).
 - 🔥2024.07.29: 支持使用lmdeploy对LLM和VLM模型进行推理加速. 文档可以查看[这里](docs/source/Multi-Modal/LmDeploy推理加速文档.md).
 - 🔥2024.07.24: 人类偏好对齐算法支持视觉多模态大模型, 包括DPO/ORPO/SimPO/CPO, 训练参考[文档](docs/source/Multi-Modal/人类偏好对齐训练文档.md). 支持数据集RLAIF-V.
 - 🔥2024.07.24: 支持使用megatron对qwen2系列进行CPT和SFT. 可以查看[megatron训练文档](docs/source/LLM/Megatron训练文档.md).

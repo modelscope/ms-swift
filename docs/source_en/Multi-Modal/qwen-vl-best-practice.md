@@ -130,7 +130,6 @@ Multimodal large model fine-tuning usually uses **custom datasets**. Here is a d
 
 LoRA fine-tuning:
 
-(By default, only the qkv part of the LLM is lora fine-tuned. If you want to fine-tune all linear modules including the vision model, you can specify `--lora_target_modules ALL`)
 ```shell
 # Experimental environment: 3090
 # 23GB GPU memory

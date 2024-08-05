@@ -195,6 +195,9 @@ class DatasetName:
     llava_instruct_150k = 'llava-instruct-150k'
     llava_pretrain = 'llava-pretrain'
 
+    sa1b_dense_caption = 'sa1b-dense-caption'
+    sa1b_paired_caption = 'sa1b-paired-caption'
+
     @classmethod
     def get_dataset_name_list(cls) -> List[str]:
         res = []
@@ -464,6 +467,63 @@ register_dataset(
     split=['images'],
     tags=['vqa', 'multi-modal'],
     hf_dataset_id='OpenGVLab/ShareGPT-4o')
+
+
+def preprocess_sa1b_paired_caption(dataset: HfDataset):
+
+    prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
+
+    def preprocess_row(row):
+        response = row['global_caption']
+        query = np.random.choice(prompt)
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(
+        preprocess_row, load_from_cache_file=dataset_enable_cache).rename_column('opensource_url', 'images')
+
+
+register_dataset(
+    DatasetName.sa1b_paired_caption,
+    'Tongyi-DataEngine/SA1B-Paired-Captions-Images',
+    None,
+    preprocess_sa1b_paired_caption,
+    get_dataset_from_repo,
+    split=['train'],
+    huge_dataset=True,
+    tags=['zh', 'multi-modal', 'vqa'])
+
+
+def preprocess_sa1b_dense_caption(dataset: HfDataset):
+
+    prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
+
+    def preprocess_row(row):
+        response = ast.literal_eval(row['cap_seg'])
+        response = response.get('global_caption')
+        query = np.random.choice(prompt)
+        return {
+            'query': query,
+            'response': response,
+        }
+
+    return dataset.map(
+        preprocess_row,
+        load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response')).rename_column(
+            'url', 'images')
+
+
+register_dataset(
+    DatasetName.sa1b_dense_caption,
+    'Tongyi-DataEngine/SA1B-Dense-Caption',
+    None,
+    preprocess_sa1b_dense_caption,
+    get_dataset_from_repo,
+    split=['train'],
+    huge_dataset=True,
+    tags=['zh', 'multi-modal', 'vqa'])
 
 
 def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
@@ -2522,18 +2582,11 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
         assert isinstance(dataset_path, str)
         df: DataFrame
         if dataset_path.endswith('.csv'):
-            df = pd.read_csv(dataset_path, na_filter=False, dtype=str)
-        elif dataset_path.endswith('.jsonl'):
-            df = transform_jsonl_to_df(read_from_jsonl(dataset_path))
-        elif dataset_path.endswith('.json'):
-            with open(dataset_path, 'r', encoding='utf-8') as f:
-                obj_list = json.load(f)
-            df = transform_jsonl_to_df(obj_list)
+            dataset = HfDataset.from_csv(dataset_path, na_filter=False)
+        elif dataset_path.endswith('.jsonl') or dataset_path.endswith('.json'):
+            dataset = HfDataset.from_json(dataset_path)
         else:
-            raise ValueError('The custom dataset only supports CSV, JSONL or JSON format. You can refer to the link '
-                             '`https://github.com/modelscope/swift/blob/main/docs/source/LLM/自定义与拓展.md#注册数据集的方式` '
-                             'for more information.')
-        dataset = HfDataset.from_dict(df.to_dict(orient='list'))
+            raise ValueError('The custom dataset only supports CSV, JSONL or JSON format.')
         dataset_list.append(preprocess_func(dataset))
     return concatenate_datasets(dataset_list)
 

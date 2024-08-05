@@ -128,7 +128,10 @@ def get_vllm_engine(
         _engine = llm_engine.engine
     else:
         _engine = llm_engine
-    llm_engine.dtype = _engine.model_config.dtype  # compat with pt
+    model_config = _engine.model_config
+    llm_engine.model_config = model_config
+    llm_engine.dtype = model_config.dtype  # compat with pt
+    llm_engine.max_model_len = model_config.max_model_len
     llm_engine.vllm_config = vllm_config
     if len(vllm_config) > 0:
         llm_engine.is_multimodal = True
@@ -287,7 +290,8 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
                           use_tqdm: bool = False,
                           **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
     for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
-        generation_info[key] = 0
+        if key not in generation_info:
+            generation_info[key] = 0
 
     template.model = llm_engine
     tokenizer = template.tokenizer
@@ -373,6 +377,8 @@ def inference_stream_vllm(
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    if len(request_list) == 0:
+        return
     start_runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
@@ -452,6 +458,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    *,
                    generation_config: Optional[VllmGenerationConfig] = None,
                    generation_info: Optional[Dict[str, Any]] = None,
+                   max_batch_size: Optional[int] = None,
                    lora_request: Optional['LoRARequest'] = None,
                    use_tqdm: bool = False,
                    verbose: bool = False,
@@ -465,17 +472,51 @@ def inference_vllm(llm_engine: LLMEngine,
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
     """
+    if len(request_list) == 0:
+        return []
     runtime = time.perf_counter()
+
+    is_multimodal = getattr(llm_engine, 'is_multimodal', False)
+    if is_multimodal and max_batch_size is None:
+        max_batch_size = 512
+
+    _inner_call = kwargs.get('_inner_call', False)
+    if generation_info is None:
+        generation_info = {}
+    elif not _inner_call:
+        generation_info.clear()
+    if max_batch_size is not None and len(request_list) > max_batch_size:
+        i = 0
+        resp_list = []
+        kwargs['_inner_call'] = True
+        while i < len(request_list):
+            resp_list += inference_vllm(
+                llm_engine,
+                template,
+                request_list[i:i + max_batch_size],
+                generation_config=generation_config,
+                generation_info=generation_info,
+                max_batch_size=max_batch_size,
+                lora_request=lora_request,
+                use_tqdm=use_tqdm,
+                verbose=verbose,
+                prompt_prefix=prompt_prefix,
+                output_prefix=output_prefix,
+                **kwargs)
+            i += max_batch_size
+        runtime = time.perf_counter() - runtime
+        generation_info['runtime'] = runtime
+        generation_info['samples/s'] = generation_info['num_samples'] / runtime
+        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
+        return resp_list
+
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
-    if generation_info is None:
-        generation_info = {}
-    else:
-        generation_info.clear()
 
+    old_num_samples = generation_info.get('num_samples', 0)
     resp_list, agent_state = _prepare_vllm_request(
         llm_engine,
         template,
@@ -489,7 +530,7 @@ def inference_vllm(llm_engine: LLMEngine,
     tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
-    prog_bar = tqdm(total=generation_info['num_samples'], dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=generation_info['num_samples'] - old_num_samples, dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
@@ -518,7 +559,7 @@ def inference_vllm(llm_engine: LLMEngine,
             print(tokenizer.decode(output.outputs[0].token_ids, False))
     runtime = time.perf_counter() - runtime
     generation_info['runtime'] = runtime
-    generation_info['samples/s'] = len(outputs) / runtime
+    generation_info['samples/s'] = generation_info['num_samples'] / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
 
@@ -526,7 +567,6 @@ def inference_vllm(llm_engine: LLMEngine,
 def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) -> Tuple[LLMEngine, Template]:
     logger.info(f'device_count: {torch.cuda.device_count()}')
 
-    assert args.quantization_bit == 0, 'not support bnb'
     assert not (args.sft_type == 'lora' and not args.vllm_enable_lora), 'you need to merge lora'
     # Loading Model and Tokenizer
     model_id_or_path = None
@@ -550,11 +590,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         image_input_shape=args.image_input_shape,
         image_feature_size=args.image_feature_size)
     tokenizer = llm_engine.hf_tokenizer
-    if use_async:
-        model_config = asyncio.run(llm_engine.get_model_config())
-        llm_engine.model_config = model_config
-    else:
-        model_config = llm_engine.model_config
+    model_config = llm_engine.model_config
     logger.info(f'model_config: {model_config.hf_config}')
 
     if not args.do_sample:

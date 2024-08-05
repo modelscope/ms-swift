@@ -1,4 +1,7 @@
 # LmDeploy推理加速与部署
+lmdeploy github: [https://github.com/InternLM/lmdeploy](https://github.com/InternLM/lmdeploy).
+
+支持lmdeploy推理加速的多模态模型可以查看[支持的模型](../LLM/支持的模型和数据集.md#多模态大模型).
 
 ## 目录
 - [环境准备](#环境准备)
@@ -15,12 +18,15 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 
+# lmdeploy与cuda版本有对应关系，请按照`https://github.com/InternLM/lmdeploy#installation`进行安装
 pip install lmdeploy
 ```
 
 ## 推理加速
 
 ### 使用python
+
+[OpenGVLab/InternVL2-2B](https://modelscope.cn/models/OpenGVLab/InternVL2-2B/summary)
 
 ```python
 import os
@@ -89,6 +95,62 @@ history: [['<image>描述图片', '这是一幅以卡通风格绘制的四只绵
 """
 ```
 
+[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5/summary)
+
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    ModelType, get_lmdeploy_engine, get_default_template_type,
+    get_template, inference_lmdeploy, inference_stream_lmdeploy
+)
+
+model_type = ModelType.minicpm_v_v2_5_chat
+lmdeploy_engine = get_lmdeploy_engine(model_type)
+template_type = get_default_template_type(model_type)
+template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
+# 与`transformers.GenerationConfig`类似的接口
+lmdeploy_engine.generation_config.max_new_tokens = 256
+generation_info = {}
+
+request_list = [{'query': '<image>描述图片', 'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']},
+               ]
+resp_list = inference_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
+for request, resp in zip(request_list, resp_list):
+    print(f"query: {request['query']}")
+    print(f"response: {resp['response']}")
+print(generation_info)
+
+# stream
+history0 = resp_list[0]['history']
+request_list = [{'query': '有几只羊', 'history': history0, 'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']}]
+gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
+query = request_list[0]['query']
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for resp_list in gen:
+    resp = resp_list[0]
+    response = resp['response']
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
+
+history = resp_list[0]['history']
+print(f'history: {history}')
+print(generation_info)
+"""
+query: <image>描述图片
+response: 这幅图片展示了四只羊站在一个具有山和多云天空背景的充满生机和色彩的郁郁葱葱的绿色田野上的卡通形象。从左到右，这些羊似乎从大到小，以类似于年龄增长或是兄弟姐妹关系的顺序。最大的羊在左边，眼睛朝前，面带温和的表情。中间的第二只羊在看向一侧，稍微带有奇怪或好奇的表情。第三只羊是最小的，双眼睁得大大的，好像在惊讶或震惊地看着什么。右边最后一只羊看起来微笑着，似乎在友好地仰望。所有的羊都有突出的胡须，毛发是奶油色的。草地的绿色在山丘上起伏不定，在天空中，白云在蓝天上优雅地飘动。这幅图片散发出一种宁静和家庭的氛围。
+{'num_prompt_tokens': 506, 'num_generated_tokens': 225, 'num_samples': 1, 'runtime': 3.6352556169731542, 'samples/s': 0.27508381950665584, 'tokens/s': 61.89385938899756}
+query: 有几只羊
+response: 这幅图片中有四只羊。
+history: [['<image>描述图片', '这幅图片展示了四只羊站在一个具有山和多云天空背景的充满生机和色彩的郁郁葱葱的绿色田野上的卡通形象。从左到右，这些羊似乎从大到小，以类似于年龄增长或是兄弟姐妹关系的顺序。最大的羊在左边，眼睛朝前，面带温和的表情。中间的第二只羊在看向一侧，稍微带有奇怪或好奇的表情。第三只羊是最小的，双眼睁得大大的，好像在惊讶或震惊地看着什么。右边最后一只羊看起来微笑着，似乎在友好地仰望。所有的羊都有突出的胡须，毛发是奶油色的。草地的绿色在山丘上起伏不定，在天空中，白云在蓝天上优雅地飘动。这幅图片散发出一种宁静和家庭的氛围。'], ['有几只羊', '这幅图片中有四只羊。']]
+{'num_prompt_tokens': 745, 'num_generated_tokens': 9, 'num_samples': 1, 'runtime': 0.6171438449528068, 'samples/s': 1.6203677767805824, 'tokens/s': 14.58330999102524}
+"""
+```
+
 **TP:**
 
 ```python
@@ -154,7 +216,31 @@ history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/anim
 
 
 ### 使用CLI
-敬请期待...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
+
+CUDA_VISIBLE_DEVICES=0 swift infer --model_type internvl2-2b --infer_backend lmdeploy
+
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type qwen-vl-chat \
+    --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internlm-xcomposer2_5-7b-chat \
+    --infer_backend lmdeploy --tp 2
+```
 
 ## 部署
-敬请期待...
+```bash
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
+
+CUDA_VISIBLE_DEVICES=0 swift deploy --model_type internvl2-2b --infer_backend lmdeploy
+
+# TP
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen-vl-chat \
+    --infer_backend lmdeploy --tp 2
+
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internlm-xcomposer2_5-7b-chat \
+    --infer_backend lmdeploy --tp 2
+```
+
+客户端调用方式可以查看: [MLLM部署文档](MLLM部署文档.md), [vLLM推理加速文档](vLLM推理加速文档.md#部署)

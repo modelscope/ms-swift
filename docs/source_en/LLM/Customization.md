@@ -66,13 +66,13 @@ Multi-Round Dialogue
 ```jsonl
 {"system": "00000", "query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 ```json
 [{"system": "00000", "query": "55555", "response": "66666"},
 {"query": "eeeee", "response": "fffff", "history": []},
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}]
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}]
 ```
 
 **Format 2:**
@@ -120,33 +120,34 @@ system,instruction,input,output
 
 Language model (DPO/ORPO/SimPO/CPO)
 ```jsonl
-{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
-(Where system and history are optional.)
+- system and history are optional.
 
 Language model (KTO)
 ```jsonl
 {"query": "11111", "response": "22222", "label": true}
 {"query": "aaaaa", "response": "bbbbb", "label": false}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "label": true, "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "label": true, "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 Note:  `label` needs to be of type bool, not str.
 
-(Where system and history are optional.)
+- system and history are optional.
 
 
 Vision MLLM (DPO/ORPO/SimPO/CPO)
 
-Different models have varying support for the number of images. Please refer to the corresponding best practices document for each model.
 ```jsonl
-{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
-{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "images": ["image_path"], "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]]}
+{"system": "123", "query": "11111", "response": "22222", "rejected_response": "33333", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "123", "query": "aaaaa", "response": "bbbbb", "rejected_response": "ccccc", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "123", "query": "AAAAA", "response": "BBBBB", "rejected_response": "CCCCC", "images": ["image_path"], "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
-(Where system and history are optional.)
+- different models have varying support for the number of images. Please refer to the corresponding best practices document for each model.
+
+- system and history are optional.
 
 
 **Tool-Calling Agent**

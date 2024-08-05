@@ -103,7 +103,6 @@ response: The video shows a person lighting a fire in a backyard setting. The pe
 ## Fine-tuning
 Fine-tuning multimodal large models usually uses **custom datasets**. Here is a demo that can be run directly:
 
-(By default, lora fine-tuning is performed on the qkv of LLM. If you want to fine-tune all linears, you can specify `--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A100
 # 40GB GPU memory
@@ -130,7 +129,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 ```jsonl
 {"query": "55555", "response": "66666", "videos": ["video_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "videos": ["video_path"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "videos": ["video_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]], "videos": ["video_path"]}
 ```
 
 

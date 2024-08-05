@@ -152,7 +152,6 @@ road:
 ## Fine-tuning
 Fine-tuning multimodal large models usually uses **custom datasets**. Here is a demo that can be run directly:
 
-(By default, lora fine-tuning is performed on the qkv of the language and vision models. If you want to fine-tune all linears, you can specify `--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A100
 # 40GB GPU memory
@@ -175,7 +174,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
 ```jsonl
 {"query": "55555", "response": "66666", "images": ["image_path"]}
 {"query": "eeeee", "response": "fffff", "history": [], "images": ["image_path"]}
-{"query": "EEEEE", "response": "FFFFF", "history": [["AAAAA", "BBBBB"], ["CCCCC", "DDDDD"]], "images": ["image_path"]}
+{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]], "images": ["image_path"]}
 ```
 
 
