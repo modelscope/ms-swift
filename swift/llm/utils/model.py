@@ -333,6 +333,7 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
+    gemma2_2b = 'gemma2-2b'
     gemma2_9b = 'gemma2-9b'
     gemma2_27b = 'gemma2-27b'
     gemma2_2b_instruct = 'gemma2-2b-instruct'
@@ -1701,6 +1702,15 @@ def get_model_tokenizer_glm4v(model_dir: str,
 
 
 @register_model(
+    ModelType.gemma2_2b,
+    'LLM-Research/gemma-2-2b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-2b')
+@register_model(
     ModelType.gemma2_9b,
     'LLM-Research/gemma-2-9b',
     LoRATM.llama,
@@ -1752,7 +1762,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B')
 @register_model(
@@ -1763,6 +1772,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B')
 @register_model(
@@ -1773,6 +1783,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1.5B')
 @register_model(
@@ -1783,6 +1794,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B')
 @register_model(
@@ -1793,6 +1805,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B')
 @register_model(
@@ -2962,7 +2975,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
     requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
@@ -2974,7 +2986,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct')
 @register_model(
@@ -3121,6 +3132,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B-Instruct')
 @register_model(
@@ -3131,6 +3143,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1.5B-Instruct')
 @register_model(
@@ -3141,6 +3154,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B-Instruct')
 @register_model(
@@ -3151,6 +3165,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct')
 @register_model(
@@ -4225,7 +4240,10 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
     return model, tokenizer
 
 
-def git_clone_github(github_url: str, local_repo_name: Optional[str] = None, branch: Optional[str] = None) -> str:
+def git_clone_github(github_url: str,
+                     local_repo_name: Optional[str] = None,
+                     branch: Optional[str] = None,
+                     commit_hash: Optional[str] = None) -> str:
     git_cache_dir = os.path.join(get_cache_dir(), '_github')
     os.makedirs(git_cache_dir, exist_ok=True)
     if local_repo_name is None:
@@ -4243,6 +4261,14 @@ def git_clone_github(github_url: str, local_repo_name: Optional[str] = None, bra
                 command_str += f' --branch {branch}'
             logger.info(f'Run the command: `{command_str}`')
             subprocess_run(command)
+
+            if commit_hash is not None:
+                git_cache_path = os.path.join(git_cache_dir, local_repo_name)
+                command = ['git', '-C', git_cache_path, 'reset', '--hard', commit_hash]
+                command_str = f"git -C '{git_cache_path}' reset '--hard' {commit_hash}"
+                logger.info(f'Run the command: `{command_str}`')
+                subprocess_run(command)
+
         logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
 

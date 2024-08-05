@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import transformers
 from packaging import version
-from peft import FourierFTConfig
 
 from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
@@ -199,6 +198,7 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, boft_config)
                 logger.info(f'boft_config: {boft_config}')
             elif args.sft_type == 'fourierft':
+                from peft import FourierFTConfig
                 fourier_config = FourierFTConfig(
                     target_modules=args.target_modules,
                     modules_to_save=args.modules_to_save,
