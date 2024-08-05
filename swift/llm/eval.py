@@ -136,16 +136,17 @@ class EvalModel(CustomModel):
 
 
 def run_custom_model(args: EvalArguments):
-    from swift.llm.deploy import llm_deploy
+    from swift.llm import deploy_main
     port = args.port
     args = args.__dict__
     attrs = dir(DeployArguments)
     for key in list(args.keys()):
         if key not in attrs:
             args.pop(key)
+    args['verbose'] = False
     deploy_args = DeployArguments(**args)
     deploy_args.port = port
-    llm_deploy(deploy_args)
+    deploy_main(deploy_args)
 
 
 class EvalDatasetContext:
