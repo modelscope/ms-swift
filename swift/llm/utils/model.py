@@ -4403,14 +4403,14 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
 
 @register_model(
     ModelType.openbuddy_llama3_1_8b_chat,
-    'OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k',
+    'OpenBuddy/openbuddy-llama3.1-8b-v22.2-131k',
     LoRATM.llama,
     TemplateType.openbuddy2,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
     requires=['transformers>=4.43'],
-    hf_model_id='OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k')
+    hf_model_id='OpenBuddy/openbuddy-llama3.1-8b-v22.2-131k')
 @register_model(
     ModelType.llama3_1_405b_instruct_bnb,
     'LLM-Research/Meta-Llama-3.1-405B-Instruct-BNB-NF4',
