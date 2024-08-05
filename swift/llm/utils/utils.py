@@ -21,6 +21,7 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HfIterableDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from modelscope.utils.logger import get_logger as get_ms_logger
 from torch import device as Device
@@ -38,6 +39,8 @@ from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, is_local_
                          upper_bound, use_torchacc)
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
+
+DATASET_TYPE = Optional[Union[HfDataset, HfIterableDataset]]
 
 logger = get_logger()
 ms_logger = get_ms_logger()
@@ -322,7 +325,13 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[s
     return data
 
 
-def dataset_map(dataset: HfDataset, map_func: MapFunc, num_proc: int = 1) -> Optional[LLMDataset]:
+def dataset_map(dataset: DATASET_TYPE,
+                map_func: MapFunc,
+                num_proc: int = 1,
+                streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
+    if streaming:
+        return dataset.map(map_func)  # num_proc is not supported for IterableDataset
+
     single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
         data = []

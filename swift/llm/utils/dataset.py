@@ -12,7 +12,7 @@ import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import IterableDataset
+from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
@@ -30,6 +30,8 @@ from .utils import download_dataset
 
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
+DATASET_TYPE = Optional[Union[HfDataset, HfIterableDataset]]
+
 
 def _update_fingerprint_mac(*args, **kwargs):
     mac = _find_local_mac().replace(':', '')
@@ -45,9 +47,14 @@ datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
-def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
+def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
     k_list = []
-    for k in dataset.features.keys():
+    if isinstance(dataset, HfIterableDataset) and dataset.features is None:
+        features = next(iter(dataset)).keys()
+    else:
+        features = dataset.features.keys()
+
+    for k in features:
         if k in {
                 'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
                 'objects', 'videos', 'audios', 'tools', 'label'
@@ -333,7 +340,12 @@ def load_ms_dataset(dataset_id: str,
                 force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
             try:
-                dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode, use_streaming=streaming)
+                dataset = MsDataset.load(
+                    dataset_id,
+                    subset_name=subset_name,
+                    split=split,
+                    download_mode=download_mode,
+                    use_streaming=streaming)
             except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
@@ -346,31 +358,30 @@ def load_ms_dataset(dataset_id: str,
     if not streaming:
         return concatenate_datasets(dataset_list)
     else:
-        return interleave_datasets(dataset_list, stopping_strategy='all_exhausted') # TODO: set arg stopping_strategy
+        return interleave_datasets(dataset_list, stopping_strategy='all_exhausted')  # TODO: set arg stopping_strategy?
 
-def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Optional[RandomState] = None, streaming=False, train=False) -> HfDataset:
+
+def sample_dataset(dataset: HfDataset,
+                   dataset_sample: int,
+                   random_state: Optional[RandomState] = None,
+                   streaming=False,
+                   train=False) -> HfDataset:
     if dataset_sample in {None, -1}:
         return dataset
     elif not streaming and dataset_sample == len(dataset):
         return dataset
-    
-    if not streaming:
-        if random_state is None:
-            random_state = RandomState()
+    if random_state is None:
+        random_state = RandomState()
 
-        idx_repeat = np.tile(range(len(dataset)), dataset_sample // len(dataset))
-        idx_random = random_state.permutation(len(dataset))[:dataset_sample % len(dataset)]
-        idx = np.concatenate([idx_repeat, idx_random])
-        dataset = dataset.select(idx)
-        
-    else:
-        # TODO
-        dataset = dataset
+    idx_repeat = np.tile(range(len(dataset)), dataset_sample // len(dataset))
+    idx_random = random_state.permutation(len(dataset))[:dataset_sample % len(dataset)]
+    idx = np.concatenate([idx_repeat, idx_random])
+    dataset = dataset.select(idx)
     return dataset
 
 
 def _post_preprocess(
-    train_dataset: HfDataset,
+    train_dataset: DATASET_TYPE,
     dataset_sample: int,
     random_state: Optional[RandomState] = None,
     preprocess_func: Optional[PreprocessFunc] = None,
@@ -378,39 +389,48 @@ def _post_preprocess(
     remove_useless_columns: bool = True,
     streaming: bool = False,
 ) -> Tuple[HfDataset, Optional[HfDataset]]:
-    # TODO: set dataset_sample = 0 in args.post_init
-    if streaming:
-        return 
+    # process train/val dataset and remove useless columns
     assert train_dataset is not None
-    if dataset_sample == -1:
-        dataset_sample = len(train_dataset)
-    assert 0 <= dataset_test_ratio <= 1
-    if dataset_test_ratio == 1:
-        train_dataset, val_dataset = None, train_dataset
-        val_sample = dataset_sample
-        assert val_sample <= len(val_dataset), f'dataset_sample: {dataset_sample}, len(val_dataset): {len(val_dataset)}'
-        val_dataset = sample_dataset(val_dataset, val_sample, random_state)
-    else:
-        if dataset_test_ratio == 0:
-            train_sample = dataset_sample
-            val_dataset = None
+    if not streaming:
+        if dataset_sample == -1:
+            dataset_sample = len(train_dataset)
+        assert 0 <= dataset_test_ratio <= 1
+        if dataset_test_ratio == 1:
+            train_dataset, val_dataset = None, train_dataset
+            val_sample = dataset_sample
+            assert val_sample <= len(
+                val_dataset), f'dataset_sample: {dataset_sample}, len(val_dataset): {len(val_dataset)}'
+            val_dataset = sample_dataset(val_dataset, val_sample, random_state)
         else:
-            # Avoid having a high train_sample causing a high val_sample.
-            _train_len = min(len(train_dataset), dataset_sample)
-            val_sample = max(int(_train_len * dataset_test_ratio), 1)
-            train_sample = dataset_sample - val_sample
-            assert isinstance(val_sample, int)
-            train_dataset, val_dataset = train_dataset.train_test_split(
-                test_size=val_sample, seed=get_seed(random_state), load_from_cache_file=dataset_enable_cache).values()
+            if dataset_test_ratio == 0:
+                train_sample = dataset_sample
+                val_dataset = None
+            else:
+                # Avoid having a high train_sample causing a high val_sample.
+                _train_len = min(len(train_dataset), dataset_sample)
+                val_sample = max(int(_train_len * dataset_test_ratio), 1)
+                train_sample = dataset_sample - val_sample
+                assert isinstance(val_sample, int)
+                train_dataset, val_dataset = train_dataset.train_test_split(
+                    test_size=val_sample, seed=get_seed(random_state),
+                    load_from_cache_file=dataset_enable_cache).values()
 
-        assert train_sample > 0
-        train_dataset = sample_dataset(train_dataset, train_sample, random_state)
+            assert train_sample > 0
+            train_dataset = sample_dataset(train_dataset, train_sample, random_state)
+    else:
+        val_dataset = None
+        if dataset_test_ratio == 1:
+            train_dataset, val_dataset = None, train_dataset
+        if dataset_sample > 0:
+            train_dataset = train_dataset.shuffle(
+                seed=get_seed(random_state), buffer_size=16384)  # TODO: set buffer_size
+            train_dataset = train_dataset.take(dataset_sample)
 
     res = []
     for dataset in [train_dataset, val_dataset]:
         if dataset is not None and preprocess_func is not None:
             dataset = preprocess_func(dataset)
-        if dataset is not None and len(dataset) > 0 and remove_useless_columns:
+        if dataset is not None and (streaming or len(dataset) > 0) and remove_useless_columns:
             dataset = _remove_useless_columns(dataset)
         res.append(dataset)
     return tuple(res)
@@ -435,8 +455,14 @@ def get_dataset_from_repo(dataset_id: str,
     else:
         subset_split_list = list(itertools.product(subsets, split))
     dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf, streaming=streaming)
-    return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
-                            remove_useless_columns)
+    return _post_preprocess(
+        dataset,
+        dataset_sample,
+        random_state,
+        preprocess_func,
+        dataset_test_ratio,
+        remove_useless_columns,
+        streaming=streaming)
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
@@ -2507,7 +2533,8 @@ def get_dataset(
         *,
         # for self-cognition
         model_name: Union[Tuple[str, str], List[str], None] = None,
-        model_author: Union[Tuple[str, str], List[str], None] = None) -> Tuple[HfDataset, Optional[HfDataset]]:
+        model_author: Union[Tuple[str, str], List[str], None] = None,
+        streaming: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
     """Returns train_dataset and val_dataset"""
     if isinstance(dataset_name_list, str):
         dataset_name_list = [dataset_name_list]
@@ -2554,7 +2581,8 @@ def get_dataset(
             random_state=random_state,
             dataset_test_ratio=dataset_test_ratio,
             remove_useless_columns=remove_useless_columns,
-            use_hf=use_hf)
+            use_hf=use_hf,
+            streaming=streaming)
 
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
@@ -2574,20 +2602,23 @@ def get_dataset(
 
     train_dataset = None
     if len(train_dataset_list) > 0:
-        train_dataset = concatenate_datasets(train_dataset_list)
+        train_dataset = concatenate_datasets(train_dataset_list) if not streaming else interleave_datasets(
+            train_dataset_list)
     val_dataset = None
     if len(val_dataset_list) > 0:
-        val_dataset = concatenate_datasets(val_dataset_list)
+        val_dataset = concatenate_datasets(val_dataset_list) if not streaming else interleave_datasets(val_dataset_list)
     if check_dataset_strategy != 'none':
         logger.info('check dataset...')
         logger.info(f"check_dataset_strategy: '{check_dataset_strategy}'")
-    train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
-    val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
+
+    if not streaming:
+        train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
+        val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
     return train_dataset, val_dataset
 
 
-def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
-                            preprocess_func: PreprocessFunc) -> Optional[HfDataset]:
+def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]], preprocess_func: PreprocessFunc,
+                            streaming: bool) -> Optional[HfDataset]:
     if isinstance(dataset_path_list, str):
         dataset_path_list = [dataset_path_list]
     if dataset_path_list is None or len(dataset_path_list) == 0:
@@ -2604,8 +2635,12 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
             dataset = HfDataset.from_json(dataset_path)
         else:
             raise ValueError('The custom dataset only supports CSV, JSONL or JSON format.')
+        dataset = preprocess_func(dataset)
+        if streaming:
+            dataset = dataset.to_iterable_dataset()
         dataset_list.append(preprocess_func(dataset))
-    return concatenate_datasets(dataset_list)
+
+    return concatenate_datasets(dataset_list) if not streaming else interleave_datasets(dataset_list)
 
 
 def get_local_dataset(_1: str,
@@ -2617,7 +2652,8 @@ def get_local_dataset(_1: str,
                       dataset_test_ratio: float = 0.,
                       remove_useless_columns: bool = True,
                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    dataset = load_dataset_from_local(split, preprocess_func)
+    streaming = kwargs.get('streaming', False)
+    dataset = load_dataset_from_local(split, preprocess_func, streaming)
     return _post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio, remove_useless_columns)
 
 
