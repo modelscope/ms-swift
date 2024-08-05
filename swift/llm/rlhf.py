@@ -209,6 +209,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     trainer_kwargs['is_vision'] = args.is_vision
     model.config.model_type += '_'  # add suffix to avoid checks in hfDPOTrainer
 
+    trainer_kwargs['streaming'] = streaming
+
     trainer = trainer_cls(
         model=model,
         train_dataset=train_dataset,

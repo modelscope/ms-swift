@@ -113,7 +113,7 @@ class RowPreprocessMixin:
 
 class SwiftPreprocessor:
 
-    def __call__(self, dataset: HfDataset) -> HfDataset:
+    def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
         if 'history' in dataset.features:
             old_history = dataset['history']
             has_history = False
@@ -274,10 +274,11 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
             else:
                 return self.empty_row
 
-    def __call__(self, dataset: HfDataset) -> HfDataset:
-        dataset = dataset.map(
-            self.preprocess,
-            load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response') is not None)
+    def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+        kwargs = {}
+        if not isinstance(dataset, HfIterableDataset):
+            kwargs['load_from_cache_file'] = dataset_enable_cache
+        dataset = dataset.map(self.preprocess, **kwargs).filter(lambda row: row.get('response') is not None)
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -332,9 +333,11 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 return self.empty_row
         return row
 
-    def __call__(self, dataset: HfDataset):
-        dataset = dataset.map(
-            self.preprocess, load_from_cache_file=dataset_enable_cache).filter(lambda d: d.get('response'))
+    def __call__(self, dataset: DATASET_TYPE):
+        kwargs = {}
+        if not isinstance(dataset, HfIterableDataset):
+            kwargs['load_from_cache_file'] = dataset_enable_cache
+        dataset = dataset.map(self.preprocess, **kwargs).filter(lambda d: d.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset

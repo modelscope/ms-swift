@@ -389,7 +389,7 @@ class ArgumentsBase:
                     train_idxs = random_state.permutation(train_dataset_sample)
                     train_dataset = train_dataset.select(train_idxs)
             else:
-                # train_dataset = train_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
+                train_dataset = train_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
                 train_dataset = train_dataset.take(train_dataset_sample)
 
             if val_dataset_sample is None:
@@ -400,7 +400,7 @@ class ArgumentsBase:
                 val_idxs = random_state.permutation(val_dataset_sample)
                 val_dataset = val_dataset.select(val_idxs)
             elif streaming:
-                # val_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
+                val_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
                 val_dataset = val_dataset.take(val_dataset_sample)
 
         if (train_dataset is None or not hasattr(self, 'train_dataset_mix_ratio') or self.train_dataset_mix_ratio <= 0
@@ -551,36 +551,6 @@ class ArgumentsBase:
         # compat
         if self.val_dataset is None:
             self.val_dataset = []
-
-    def _handle_streaming_args(self: Union['SftArguments', 'InferArguments']) -> None:
-        if not self.streaming:
-            return
-        if hasattr(self, 'packing') and self.packing:
-            self.packing = False
-            logger.warning('Packing is not supported for streaming dataset, set to False')
-
-        if hasattr(self, 'test_oom_error') and self.test_oom_error:
-            self.test_oom_error = False
-            logger.warning('test_oom_error is not supported for streaming dataset, set to False')
-
-        if hasattr(self, 'lazy_tokenize') and self.lazy_tokenize:
-            self.lazy_tokenize = False
-            logger.info('lazy_tokenize set to False in streaming dataset')
-
-        if hasattr(self, 'train_dataset_mix_ratio') and self.train_dataset_mix_ratio > 0:
-            logger.warning('train_dataset_mix_ratio is not supported for streaming dataset, set to 0')
-            self.train_dataset_mix_ratio = 0
-
-        if self.dataset_test_ratio > 0:
-            logger.warning('Since the length of streaming data cannot be estimated,'
-                           'set dataset_test_ratio to 0. You can manually set val_dataset_sample.')
-            self.dataset_test_ratio = 0
-
-        if self.train_dataset_sample > 0 or self.val_dataset_sample:
-            logger.warning('The final data size in streaming data may be smaller than train_dataset_sample')
-
-        if self.max_steps == -1:
-            raise ValueError('Please specify `max_steps` in streaming mode.')
 
 
 @dataclass
@@ -1068,10 +1038,9 @@ class SftArguments(ArgumentsBase):
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        self._handle_streaming_args()
         if self.dataloader_num_workers is None:
-            if self.streaming:
-                self.dataloader_num_workers = 0
-            elif 'dataloader_num_workers' in template_info:
+            if 'dataloader_num_workers' in template_info:
                 self.dataloader_num_workers = template_info['dataloader_num_workers']
             elif platform.system() == 'Windows':
                 self.dataloader_num_workers = 0
@@ -1223,6 +1192,40 @@ class SftArguments(ArgumentsBase):
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = False
             logger.info(f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}')
+
+    def _handle_streaming_args(self) -> None:
+        if not self.streaming:
+            return
+        if self.packing:
+            self.packing = False
+            logger.warning('Packing is not supported for streaming dataset, set to False')
+
+        if self.test_oom_error:
+            self.test_oom_error = False
+            logger.warning('test_oom_error is not supported for streaming dataset, set to False')
+
+        if self.lazy_tokenize:
+            self.lazy_tokenize = False
+            logger.info('lazy_tokenize set to False in streaming dataset')
+
+        if self.train_dataset_mix_ratio > 0:
+            logger.warning('train_dataset_mix_ratio is not supported for streaming dataset, set to 0')
+            self.train_dataset_mix_ratio = 0
+
+        if self.dataset_test_ratio > 0:
+            logger.warning('Since the length of streaming data cannot be estimated,'
+                           'set dataset_test_ratio to 0. You can manually set val_dataset_sample.')
+            self.dataset_test_ratio = 0
+
+        if self.train_dataset_sample > 0 or self.val_dataset_sample:
+            logger.warning('The final data size in streaming data may be smaller than train_dataset_sample')
+
+        if self.max_steps == -1:
+            raise ValueError('Please specify `max_steps` in streaming mode.')
+
+        if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
+            logger.info('dataloader_num_workers is not supported in streaming mode, set to 0')
+            self.dataloader_num_workers = 0
 
 
 @dataclass
