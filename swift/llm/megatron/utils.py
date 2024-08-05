@@ -15,7 +15,8 @@ logger = get_logger()
 
 def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
-        megatron_path = git_clone_github('https://github.com/NVIDIA/Megatron-LM')
+        megatron_path = git_clone_github(
+            'https://github.com/NVIDIA/Megatron-LM', commit_hash='6dbe4cf699880038b1e5cd90b23ee71053c7f2ee')
         os.environ['MEGATRON_LM_PATH'] = megatron_path
     else:
         megatron_path = os.environ['MEGATRON_LM_PATH']
@@ -24,16 +25,11 @@ def init_megatron_env() -> None:
     sys.path.append(megatron_path)
 
     if 'PAI_MEGATRON_PATCH_PATH' not in os.environ:
-        megatron_patch_path = git_clone_github('https://github.com/alibaba/Pai-Megatron-Patch')
+        megatron_patch_path = git_clone_github(
+            'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='6fd5d050b240fd959f0ba69f1e9cd9a053e5a81d')
         os.environ['PAI_MEGATRON_PATCH_PATH'] = megatron_patch_path
     sys.path.append(os.environ['PAI_MEGATRON_PATCH_PATH'])
-
-
-def get_model_seires(model_type: str) -> str:
-    if model_type.startswith('qwen2'):
-        return 'qwen2'
-    else:
-        raise ValueError(f'model_type: {model_type} not supported')
+    sys.path.append(os.path.join(megatron_patch_path, 'toolkits/model_checkpoints_convertor'))
 
 
 def patch_megatron(tokenizer):

@@ -1432,6 +1432,8 @@ class DeployArguments(InferArguments):
     ssl_certfile: Optional[str] = None
 
     owned_by: str = 'swift'
+    verbose: bool = True  # Whether to log request_info
+    log_interval: int = 0  # Interval for printing global statistics
 
     def __post_init__(self):
         super().__post_init__()

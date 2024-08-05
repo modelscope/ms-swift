@@ -17,7 +17,7 @@ pip install -e '.[llm]'
 
 # Install Megatron-related dependencies (You do not need to install megatron-ml or other dependency libraries)
 pip install pybind11
-# transformer_engine
+# transformer_engine (If the installation is unsuccessful, please try: release_v1.7)
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable
 # apex
 git clone https://github.com/NVIDIA/apex
@@ -36,6 +36,10 @@ Here we present a quick-start example of training with Megatron. Through this ex
 # Default output path: --megatron_output_dir {model_type}-tp{tp}-pp{pp}
 CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen2-7b-instruct \
     --to_megatron true --tp 2 --dtype bf16
+
+# If using qwen2-72b-instruct, the conversion command is as follows:
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift export --model_type qwen2-72b-instruct \
+    --to_megatron true --tp 8 --dtype bf16
 ```
 
 2. Fine-tuning using Megatron format weights, the command script is as follows:
@@ -63,6 +67,10 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 # fine-tuned model
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir output/qwen2-7b-instruct-tp2-pp1/vx-xxx --to_hf true
+
+# If using qwen2-72b-instruct, the conversion command is as follows:
+CUDA_VISIBLE_DEVICES=0,1,2,3 swift export \
+    --ckpt_dir qwen2-72b-instruct-tp8-pp1 --to_hf true
 ```
 
 4. Perform inference testing on the obtained weights and accelerate using vLLM:
