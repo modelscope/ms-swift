@@ -389,7 +389,7 @@ class ArgumentsBase:
                     train_idxs = random_state.permutation(train_dataset_sample)
                     train_dataset = train_dataset.select(train_idxs)
             else:
-                train_dataset = train_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
+                # train_dataset = train_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
                 train_dataset = train_dataset.take(train_dataset_sample)
 
             if val_dataset_sample is None:
@@ -400,33 +400,30 @@ class ArgumentsBase:
                 val_idxs = random_state.permutation(val_dataset_sample)
                 val_dataset = val_dataset.select(val_idxs)
             elif streaming:
-                val_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
+                # val_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
                 val_dataset = val_dataset.take(val_dataset_sample)
 
         if (train_dataset is None or not hasattr(self, 'train_dataset_mix_ratio') or self.train_dataset_mix_ratio <= 0
                 or len(self.train_dataset_mix_ds) == 0):
             return train_dataset, val_dataset
 
-        if streaming:
-            logger.warning('`train_dataset_mix_ds` is not supported in streaming mode.')
+        mix_dataset_sample = int(len(train_dataset) * self.train_dataset_mix_ratio)
+        logger.info(f'train_dataset_mix_ds: {self.train_dataset_mix_ds}')
+        logger.info(f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}')
+        mixed_dataset = get_dataset(
+            self.train_dataset_mix_ds,
+            0.0,
+            random_state,
+            check_dataset_strategy=self.check_dataset_strategy,
+            streaming=streaming)[0]
+        if len(mixed_dataset) < mix_dataset_sample:
+            logger.warn(f'The length of dataset used for mixin: {self.train_dataset_mix_ds} are '
+                        'lesser than the ratio required by the `train_dataset_mix_ratio` '
+                        f'argument: {self.train_dataset_mix_ratio}. '
+                        f'the actual ratio is: {len(mixed_dataset) / len(train_dataset):.6}.')
         else:
-            mix_dataset_sample = int(len(train_dataset) * self.train_dataset_mix_ratio)
-            logger.info(f'train_dataset_mix_ds: {self.train_dataset_mix_ds}')
-            logger.info(f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}')
-            mixed_dataset = get_dataset(
-                self.train_dataset_mix_ds,
-                0.0,
-                random_state,
-                check_dataset_strategy=self.check_dataset_strategy,
-                streaming=streaming)[0]
-            if len(mixed_dataset) < mix_dataset_sample:
-                logger.warn(f'The length of dataset used for mixin: {self.train_dataset_mix_ds} are '
-                            'lesser than the ratio required by the `train_dataset_mix_ratio` '
-                            f'argument: {self.train_dataset_mix_ratio}. '
-                            f'the actual ratio is: {len(mixed_dataset) / len(train_dataset):.6}.')
-            else:
-                mixed_dataset = sample_dataset(mixed_dataset, mix_dataset_sample, random_state)
-            train_dataset = concatenate_datasets([train_dataset, mixed_dataset])
+            mixed_dataset = sample_dataset(mixed_dataset, mix_dataset_sample, random_state)
+        train_dataset = concatenate_datasets([train_dataset, mixed_dataset])
         return train_dataset, val_dataset
 
     def prepare_template(self: Union['SftArguments', 'InferArguments']):
@@ -570,6 +567,10 @@ class ArgumentsBase:
             self.lazy_tokenize = False
             logger.info('lazy_tokenize set to False in streaming dataset')
 
+        if hasattr(self, 'train_dataset_mix_ratio') and self.train_dataset_mix_ratio > 0:
+            logger.warning('train_dataset_mix_ratio is not supported for streaming dataset, set to 0')
+            self.train_dataset_mix_ratio = 0
+
         if self.dataset_test_ratio > 0:
             logger.warning('Since the length of streaming data cannot be estimated,'
                            'set dataset_test_ratio to 0. You can manually set val_dataset_sample.')
@@ -577,6 +578,9 @@ class ArgumentsBase:
 
         if self.train_dataset_sample > 0 or self.val_dataset_sample:
             logger.warning('The final data size in streaming data may be smaller than train_dataset_sample')
+
+        if self.max_steps == -1:
+            raise ValueError('Please specify `max_steps` in streaming mode.')
 
 
 @dataclass
@@ -1065,7 +1069,9 @@ class SftArguments(ArgumentsBase):
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         if self.dataloader_num_workers is None:
-            if 'dataloader_num_workers' in template_info:
+            if self.streaming:
+                self.dataloader_num_workers = 0
+            elif 'dataloader_num_workers' in template_info:
                 self.dataloader_num_workers = template_info['dataloader_num_workers']
             elif platform.system() == 'Windows':
                 self.dataloader_num_workers = 0

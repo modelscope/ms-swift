@@ -24,6 +24,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
+    streaming = args.streaming
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
     else:
@@ -183,12 +184,14 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
 
     template: Template = get_template(
         args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
-    if not template.support_multi_round and 'history' in train_dataset[0]:
-        logger.info(
-            'The current template does not support multi-turn dialogue. The chatml template is used by default. \
-You can also use the --model_type parameter to specify the  template.')
-        template: Template = get_template(
-            'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
+    if not template.support_multi_round:
+        first_data = train_dataset[0] if not streaming else next(iter(train_dataset))
+        if 'history' in first_data:
+            logger.info(
+                'The current template does not support multi-turn dialogue. The chatml template is used by default. \
+    You can also use the --model_type parameter to specify the  template.')
+            template: Template = get_template(
+                'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
 

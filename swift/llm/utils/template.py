@@ -439,13 +439,16 @@ class Template:
         self._preprocess_media(example)
         return example
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def encode(self, example: Dict[str, Any], streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
         _encode = self._encode
         if self._is_lmdeploy:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
-        return _encode(example)
+        res = _encode(example)
+        if streaming:
+            res = res[0]
+        return res
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []

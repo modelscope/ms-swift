@@ -292,6 +292,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         args.truncation_strategy,
         model=model,
         **template_kwargs)
+    if streaming:
+        template.encode = partial(template.encode, streaming=streaming)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
@@ -326,7 +328,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
                                  '(1) The dataset contains None for input or labels;\n'
                                  "(2) The 'max_length' setting is too short causing data truncation.")
-        td0, tkwargs0 = train_dataset.data[0] if not streaming else next(iter(train_dataset.data))
+        td0, tkwargs0 = train_dataset.data[0] if not streaming else next(iter(train_dataset)), {}
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset) if not streaming else None
         if val_dataset is not None:
@@ -400,7 +402,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
-    train_time = get_time_info(trainer.state.log_history, len(train_dataset))
+    if not streaming:
+        train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master() and not use_torchacc():
         if 'tensorboard' in args.training_args.report_to:
@@ -412,7 +415,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             trainer.push_to_hub()
     run_info = {
         'memory': trainer.perf['memory'],
-        'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
@@ -421,6 +423,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         'model_info': model_info,
         'dataset_info': dataset_info,
     }
+    if not streaming:
+        run_info.update({'train_time': train_time})
     for key in ['gen_time', 'gen_len']:
         if trainer.perf[key] != 0:
             run_info[key] = trainer.perf[key]

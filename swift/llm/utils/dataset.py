@@ -422,8 +422,8 @@ def _post_preprocess(
         if dataset_test_ratio == 1:
             train_dataset, val_dataset = None, train_dataset
         if dataset_sample > 0:
-            train_dataset = train_dataset.shuffle(
-                seed=get_seed(random_state), buffer_size=16384)  # TODO: set buffer_size
+            # train_dataset = train_dataset.shuffle(
+            #     seed=get_seed(random_state), buffer_size=16384)  # TODO: set buffer_size
             train_dataset = train_dataset.take(dataset_sample)
 
     res = []

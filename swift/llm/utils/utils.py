@@ -5,6 +5,7 @@ import importlib.util
 import os
 import shutil
 import time
+from contextlib import nullcontext
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -81,7 +82,9 @@ if not use_hf:
 
     @wraps(_old_msdataset_load)
     def _msdataset_ddp_load(*args, **kwargs):
-        with safe_ddp_context():
+        streaming = kwargs.get('streaming', False)
+        context = nullcontext() if streaming else safe_ddp_context()
+        with context:
             dataset = _old_msdataset_load(*args, **kwargs)
         return dataset
 
