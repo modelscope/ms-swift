@@ -506,7 +506,7 @@ def inference_vllm(llm_engine: LLMEngine,
             i += max_batch_size
         runtime = time.perf_counter() - runtime
         generation_info['runtime'] = runtime
-        generation_info['samples/s'] = len(outputs) / runtime
+        generation_info['samples/s'] = generation_info['num_samples'] / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         return resp_list
 
@@ -559,7 +559,7 @@ def inference_vllm(llm_engine: LLMEngine,
             print(tokenizer.decode(output.outputs[0].token_ids, False))
     runtime = time.perf_counter() - runtime
     generation_info['runtime'] = runtime
-    generation_info['samples/s'] = len(outputs) / runtime
+    generation_info['samples/s'] = generation_info['num_samples'] / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
 

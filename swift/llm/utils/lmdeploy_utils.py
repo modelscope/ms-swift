@@ -339,7 +339,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
             i += max_batch_size
         runtime = time.perf_counter() - runtime
         generation_info['runtime'] = runtime
-        generation_info['samples/s'] = len(outputs) / runtime
+        generation_info['samples/s'] = generation_info['num_samples'] / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         return resp_list
 
@@ -397,7 +397,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     prog_bar.close()
     runtime = time.perf_counter() - runtime
     generation_info['runtime'] = runtime
-    generation_info['samples/s'] = len(generators) / runtime
+    generation_info['samples/s'] = generation_info['num_samples'] / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
 
