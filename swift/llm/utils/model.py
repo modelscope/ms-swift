@@ -333,6 +333,7 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
+    gemma2_2b = 'gemma2-2b'
     gemma2_9b = 'gemma2-9b'
     gemma2_27b = 'gemma2-27b'
     gemma2_2b_instruct = 'gemma2-2b-instruct'
@@ -1700,6 +1701,15 @@ def get_model_tokenizer_glm4v(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.gemma2_2b,
+    'LLM-Research/gemma-2-2b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-2b')
 @register_model(
     ModelType.gemma2_9b,
     'LLM-Research/gemma-2-9b',
