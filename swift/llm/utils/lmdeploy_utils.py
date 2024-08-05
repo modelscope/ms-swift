@@ -325,7 +325,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
         kwargs['_inner_call'] = True
         while i < len(request_list):
             resp_list += inference_lmdeploy(
-                llm_engine,
+                lmdeploy_engine,
                 template,
                 request_list[i:i + max_batch_size],
                 generation_config=generation_config,
