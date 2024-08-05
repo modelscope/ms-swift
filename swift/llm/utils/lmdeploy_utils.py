@@ -310,6 +310,8 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                        **kwargs) -> List[Dict[str, Any]]:
     if len(request_list) == 0:
         return []
+    runtime = time.perf_counter()
+
     is_multimodal = getattr(lmdeploy_engine, 'is_multimodal', False)
     if is_multimodal and max_batch_size is None:
         max_batch_size = 512
@@ -343,7 +345,6 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         return resp_list
 
-    runtime = time.perf_counter()
     if generation_config is None:
         generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
     assert isinstance(generation_config, LmdeployGenerationConfig)
