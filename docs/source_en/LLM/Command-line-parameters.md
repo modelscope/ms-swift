@@ -63,7 +63,7 @@
 - `--bnb_4bit_quant_type`: Quantization method for 4bit quantization, default is `'nf4'`. Options: 'nf4', 'fp4'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization for 4bit quantization, default is `True`. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_storage`: Default vlaue `None`.This sets the storage type to pack the quanitzed 4-bit prarams. Has no effect when quantization_bit is 0.
-- `--target_modules`: Specify lora modules, default is `['DEFAULT']`. If target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `target_modules` in `MODEL_MAPPING` based on `model_type` (default specifies qkv). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
+- `--target_modules`: Specify lora modules, default is `['DEFAULT']`. If target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `target_modules` in `MODEL_MAPPING` based on `model_type` (The LLM is defaulted to qkv, while the MLLM defaults to all lines in the llm and projector.). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
 - `--target_regex`: The lora target regex in `Optional[str]`. default is `None`. If this argument is specified, the `target_modules` will have no effect. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
@@ -250,7 +250,7 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 PT parameters inherit from the SFT parameters with some modifications to the default values:
 
 - `--sft_type`: Default value is `'full'`.
-- `--lora_target_modules`: Default value is `'ALL'`.
+- `--target_modules`: Default value is `'ALL'`.
 - `--lazy_tokenize`: Default value is `True`.
 - `--eval_steps`: Default value is `500`.
 

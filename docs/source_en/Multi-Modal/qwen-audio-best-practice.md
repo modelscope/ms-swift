@@ -98,7 +98,6 @@ Multimodal large model fine-tuning usually uses **custom datasets** for fine-tun
 
 LoRA fine-tuning:
 
-(By default, only the qkv of the LLM part is lora fine-tuned. If you want to fine-tune all linear including the audio model part, you can specify `--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A10, 3090, V100...
 # 22GB GPU memory
