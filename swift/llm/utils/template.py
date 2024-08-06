@@ -2536,17 +2536,53 @@ register_template(
     dataloader_pin_memory=False)
 
 
+def _encode_video(video_path):
+    from .vision_utils import _read_video
+    mp4_stream = _read_video(video_path)
+    MAX_NUM_FRAMES = 64
+
+    from PIL import Image
+    from decord import VideoReader, cpu  # pip install decord
+
+    def uniform_sample(_l, _n):
+        gap = len(_l) / _n
+        idxs = [int(i * gap + gap / 2) for i in range(_n)]
+        return [_l[i] for i in idxs]
+
+    vr = VideoReader(mp4_stream, ctx=cpu(0))
+    sample_fps = round(vr.get_avg_fps() / 1)  # FPS
+    frame_idx = [i for i in range(0, len(vr), sample_fps)]
+
+    if len(frame_idx) > MAX_NUM_FRAMES:
+        frame_idx = uniform_sample(frame_idx, MAX_NUM_FRAMES)
+    frames = vr.get_batch(frame_idx).asnumpy()
+    frames = [Image.fromarray(v.astype('uint8')) for v in frames]
+    return frames
+
+
 class MiniCPMV2_6Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        assert media_type == 'image'
+        assert media_type in {'image', 'video'}
         return [[-1]]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        from .vision_utils import _read_batch
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        images = example['images']
+        images = example.get('images')
+        videos_path = example.get('videos')
+        is_plain_text = not images and not videos_path
+        images = [images]
+        use_image_id = True
+        max_slice_nums = None
+
+        if videos_path:
+            images = _read_batch(videos_path, _encode_video)
+            use_image_id = False
+            max_slice_nums = 1  # or 2
+
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -1)
@@ -2554,15 +2590,15 @@ class MiniCPMV2_6Template(Template):
 
         from .utils import to_device
         image_processor = self.tokenizer.processor.image_processor
-        images = [images]
-        image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+        image_inputs = image_processor(images, return_tensors='pt', max_slice_nums=max_slice_nums).to(self.model.dtype)
         pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
         tgt_sizes = image_inputs['tgt_sizes']
 
         res_input_ids = []
         res_labels = []
         for i in range(len(idx_list) - 1):
-            placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][i], image_idx=i)
+            placeholder = image_processor.get_slice_image_placeholder(
+                image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + placeholder_id
@@ -2573,18 +2609,21 @@ class MiniCPMV2_6Template(Template):
         if labels is not None:
             res_labels += labels[idx_list[-1] + 1:]
             labels = res_labels
-        input_tensor_ids = torch.tensor(input_ids)
-        unk_token = self.tokenizer.encode('<unk>', add_special_tokens=False)[0]
-        indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
+        if not is_plain_text:
+            input_tensor_ids = torch.tensor(input_ids)
+            unk_token = self.tokenizer.encode('<unk>', add_special_tokens=False)[0]
+            indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
 
-        ranges = []
-        start = indices[0]
-        for i in range(1, len(indices)):
-            if indices[i] != indices[i - 1] + 1:
-                ranges.append([start, indices[i - 1] + 1])
-                start = indices[i]
-        ranges.append([start, indices[-1] + 1])
-        image_bound = [torch.tensor(ranges)]
+            ranges = []
+            start = indices[0]
+            for i in range(1, len(indices)):
+                if indices[i] != indices[i - 1] + 1:
+                    ranges.append([start, indices[i - 1] + 1])
+                    start = indices[i]
+            ranges.append([start, indices[-1] + 1])
+            image_bound = [torch.tensor(ranges)]
+        else:
+            image_bound = []
 
         data = {
             'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),

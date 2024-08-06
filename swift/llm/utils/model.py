@@ -5712,7 +5712,7 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
     LoRATM.minicpm_v,
     TemplateType.minicpm_v_v2_6,
     support_flash_attn=True,
-    requires=['timm', 'transformers>=4.36'],
+    requires=['timm', 'transformers>=4.36', 'decord'],
     placeholder_tokens=['<unk>'],
     function_kwargs={'version': 'v2.6'},
     tags=['multi-modal', 'vision'],
@@ -6293,7 +6293,12 @@ def get_model_tokenizer(model_type: str,
 
 
 def get_additional_saved_files(model_type: str) -> List[str]:
-    files_mapping = {'qwen-vl': ['SimSun.ttf'], 'qwen-audio': ['mel_filters.npz'], 'yi-vl': ['vit']}
+    files_mapping = {
+        'qwen-vl': ['SimSun.ttf'],
+        'qwen-audio': ['mel_filters.npz'],
+        'yi-vl': ['vit'],
+        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py.']
+    }
     for key, files_list in files_mapping.items():
         if key in model_type:
             return files_list
