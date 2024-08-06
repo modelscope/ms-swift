@@ -978,7 +978,7 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
         max_model_len = None
 
     if max_model_len and hasattr(config, 'rope_scaling') and config.rope_scaling.get('factor'):
-        max_model_len = int(max_model_len * config.rope_scaling.get('factor'))
+        max_model_len = max(int(max_model_len * config.rope_scaling.get('factor')), max_model_len)
     return max_model_len
 
 
