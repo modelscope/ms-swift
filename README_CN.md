@@ -56,7 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
-- 2024.08.05: 支持internlm2.5的1.8b和20b系列. 使用`swift infer --model_type internlm2_5-1_8b-chat`进行体验.
+- 2024.08.06: 支持internlm2.5的1.8b和20b系列. 使用`swift infer --model_type internlm2_5-1_8b-chat`进行体验.
 - 🔥2024.08.02: 支持Fourier Ft训练. 使用方式为`--sft_type fourierft`, 参数可以参考[这里](https://swift.readthedocs.io/zh-cn/latest/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html).
 - 🔥2024.07.29: 支持使用lmdeploy对LLM和VLM模型进行推理加速. 文档可以查看[这里](docs/source/Multi-Modal/LmDeploy推理加速文档.md).
 - 🔥2024.07.24: 人类偏好对齐算法支持视觉多模态大模型, 包括DPO/ORPO/SimPO/CPO, 训练参考[文档](docs/source/Multi-Modal/人类偏好对齐训练文档.md). 支持数据集RLAIF-V.
