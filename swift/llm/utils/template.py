@@ -1675,6 +1675,8 @@ class Internvl2Template(InternvlTemplate):
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
             inputs['image_flags'] = torch.ones(sum(num_patches))
         inputs.pop('loss_scale', None)
+        if inputs['pixel_values'].shape[0] == 1:
+            print()
         return inputs, {}
 
 
