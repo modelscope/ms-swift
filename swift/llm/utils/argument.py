@@ -507,7 +507,7 @@ class ArgumentsBase:
         imported_keys = [
             'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
-            'custom_register_path', 'custom_dataset_info', 'tp', 'pp', 'max_length'
+            'custom_register_path', 'custom_dataset_info', 'tp', 'pp'
         ]
         if not is_sft:
             imported_keys += ['sft_type', 'rope_scaling', 'system']
@@ -895,6 +895,10 @@ class SftArguments(ArgumentsBase):
             self.load_from_ckpt_dir(True)
             if self.sft_type == 'full' or self.train_backend == 'megatron':
                 self.model_id_or_path = self.resume_from_checkpoint
+
+        if self.rope_scaling:
+            logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
+
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         self.set_model_type()
@@ -1300,6 +1304,10 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+
+        if self.rope_scaling:
+            logger.info(f'rope_scaling is set to {self.rope_scaling}, '
+                        f'please remember to set max_length, which is supposed to be the same as training')
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         self._handle_dataset_sample()
