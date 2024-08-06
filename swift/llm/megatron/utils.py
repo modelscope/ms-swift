@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+import shutil
 import sys
 from functools import partial, wraps
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import torch
 import torch.distributed as dist
@@ -29,7 +30,16 @@ def init_megatron_env() -> None:
             'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='6fd5d050b240fd959f0ba69f1e9cd9a053e5a81d')
         os.environ['PAI_MEGATRON_PATCH_PATH'] = megatron_patch_path
     sys.path.append(os.environ['PAI_MEGATRON_PATCH_PATH'])
-    sys.path.append(os.path.join(megatron_patch_path, 'toolkits/model_checkpoints_convertor'))
+
+    # rename qwen1.5->qwen1_5 files
+    qwen1_5_folders = ['toolkits/model_checkpoints_convertor/qwen']
+    for folder in qwen1_5_folders:
+        dir_path = os.path.join(megatron_patch_path, folder)
+        for fname in os.listdir(dir_path):
+            old_path = os.path.join(dir_path, fname)
+            new_path = os.path.join(dir_path, fname.replace('qwen1.', 'qwen1_'))
+            if old_path != new_path:
+                shutil.move(old_path, new_path)
 
 
 def patch_megatron(tokenizer):
@@ -53,14 +63,18 @@ def patch_megatron(tokenizer):
 
     initialize._initialize_distributed = _initialize_distributed
 
-    _old_load_checkpoint = training.load_checkpoint
+    _old_load_state_dict = torch.nn.Module.load_state_dict
 
-    @wraps(_old_load_checkpoint)
-    def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', strict=False):
-        # default: strict=False
-        return _old_load_checkpoint(model, optimizer, opt_param_scheduler, load_arg=load_arg, strict=strict)
+    @wraps(_old_load_state_dict)
+    def _load_state_dict(self, state_dict: Mapping[str, Any], strict: bool = True, *args, **kwargs):
+        if strict:
+            keys = self.state_dict().keys() ^ state_dict.keys()
+            new_keys = [k for k in keys if not k.endswith('_extra_state')]
+            if keys and not new_keys:
+                strict = False
+        return _old_load_state_dict(self, state_dict, strict, *args, **kwargs)
 
-    training.load_checkpoint = load_checkpoint
+    torch.nn.Module.load_state_dict = _load_state_dict
 
     _old_training_log = training.training_log
 

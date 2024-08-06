@@ -86,7 +86,6 @@ class MegatronMixin:
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     seed: int = 42
-    transformer_impl: str = 'transformer_engine'
     sequence_parallel: bool = False
 
     apply_query_key_layer_scaling: bool = False  # fp16
