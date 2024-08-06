@@ -982,6 +982,29 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     return max_model_len
 
 
+def set_rope_scaling(config: PretrainedConfig, rope_scaling: Dict[str, Any]):
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(config, k, None)
+        if llm_config is not None:
+            config = llm_config
+            break
+
+    if hasattr(config, 'rope_scaling'):
+        rope_scaling['factor'] = max(config.rope_scaling.get('factor', -1), rope_scaling['factor'])
+        rope_scaling = {**config.rope_scaling, **rope_scaling}
+    config.rope_scaling = rope_scaling
+
+
+def get_rope_scaling(config: PretrainedConfig):
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(config, k, None)
+        if llm_config is not None:
+            config = llm_config
+            break
+
+    return getattr(config, 'rope_scaling')
+
+
 if is_ddp_plus_mp():
     from accelerate.utils.modeling import (get_balanced_memory, infer_auto_device_map)
 
