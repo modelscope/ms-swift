@@ -7,12 +7,12 @@ model_type = 'qwen1half-7b-chat'
 
 def convert2megatron():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    export_main(ExportArguments(model_type=model_type, to_megatron=True, tp=2, bf16=True))
+    export_main(ExportArguments(model_type=model_type, to_megatron=True, tp=2, dtype='bf16'))
 
 
 def convert2hf():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    export_main(ExportArguments(ckpt_dir=f'{model_type}-tp2-pp1', to_hf=True, tp=2, bf16=True))
+    export_main(ExportArguments(ckpt_dir=f'{model_type}-tp2-pp1', to_hf=True, tp=2, dtype='bf16'))
 
 
 def sft():
