@@ -1,2 +1,1 @@
-llmuses>=0.4.0
-ms-opencompass
+evalscope[all]>=0.5.2

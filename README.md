@@ -56,6 +56,7 @@ You can contact us and communicate with us by adding our group:
 
 ## 🎉 News
 - 2024.08.06: Supports internlm2.5 series of 1.8b and 20b. Experience it using `swift infer --model_type internlm2_5-1_8b-chat`.
+- 🔥2024.08.05: Support evaluation for multi-modal models! Same command with [new datasets](https://swift.readthedocs.io/en/latest/LLM/LLM-eval.html#introduction).
 - 🔥2024.08.02: Support Fourier Ft. Use `--sft_type fourierft` to begin, Check parameter documentation [here](https://swift.readthedocs.io/en/latest/LLM/Command-line-parameters.html).
 - 🔥2024.07.29: Support the use of lmdeploy for inference acceleration of LLM and VLM models. Documentation can be found [here](docs/source_en/Multi-Modal/LmDeploy-inference-acceleration.md).
 - 🔥2024.07.24: Support DPO/ORPO/SimPO/CPO alignment algorithm for vision MLLM, training scripts can be find in [Document](docs/source_en/Multi-Modal/human-preference-alignment-training-documentation.md). support RLAIF-V dataset.

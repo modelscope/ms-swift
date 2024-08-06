@@ -369,10 +369,7 @@ export parameters inherit from infer parameters, with the following added parame
 
 The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by [evalscope](https://github.com/modelscope/eval-scope).)
 
-- `--eval_dataset`: The official evaluation dataset, default is `None`, means all datasets. if `custom_eval_config` is specified, this arg will be ignored.
-  ```text
-  Currently supported datasets include: 'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
-  ```
+- `--eval_dataset`: The official evaluation dataset, default is `None`, means all datasets. if `custom_eval_config` is specified, this arg will be ignored. [Check all supported eval datasets](./LLM-eval.md#introduction).
 - `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset. **This parameter is currently deprecated.**
 - `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation. You can pass integer(number of samples from each eval dataset) or str(`[10:20]`, slice).
 - `--name`: Used to differentiate the result storage path for evaluating the same configuration. Like: `{eval_output_dir}/{name}`, default will be `eval_outputs/defaults`, in which a timestamp named folder will hold each eval result.
