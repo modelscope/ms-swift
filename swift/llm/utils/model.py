@@ -6297,7 +6297,7 @@ def get_additional_saved_files(model_type: str) -> List[str]:
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
         'yi-vl': ['vit'],
-        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py.']
+        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py']
     }
     for key, files_list in files_mapping.items():
         if key in model_type:
