@@ -23,9 +23,16 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.sft_beta = sft_beta
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
-        self.keys = []
+        self.keys = []  # keys appears in tokenize_row
+        self.column_names = next(iter(kwargs.get('train_dataset'))).keys()
         self.need_filter: bool = False
+
         super().__init__(*args, **kwargs)
+        # remove origin columns to resolve conflit in streaming mode
+        self.train_dataset = self.train_dataset.remove_columns(self.column_names)
+        if self.eval_dataset is not None:
+            self.eval_dataset = self.eval_dataset.remove_columns(self.column_names)
+
         if self.need_filter:
             self.train_dataset = self.train_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
             if self.eval_dataset is not None:
