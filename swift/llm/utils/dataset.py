@@ -532,7 +532,7 @@ def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
     response_key = 'caption'
 
     dataset._info.features._column_requires_decoding['image'] = False
-    query_format = f'Picture 1:<img>{{image_path}}</img>\n{prompt}'
+    query_format = f'<img>{{image_path}}</img>{prompt}'
     query = []
     response = []
     for d in tqdm(dataset):

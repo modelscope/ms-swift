@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.08.06: Support for minicpm-v-v2_6-chat is available. You can use `swift infer --model_type minicpm-v-v2_6-chat` for inference experience. Best practices can be found [here](https://github.com/modelscope/swift/issues/1613).
 - 2024.08.06: Supports internlm2.5 series of 1.8b and 20b. Experience it using `swift infer --model_type internlm2_5-1_8b-chat`.
 - 🔥2024.08.05: Support evaluation for multi-modal models! Same command with [new datasets](https://swift.readthedocs.io/en/latest/LLM/LLM-eval.html#introduction).
 - 🔥2024.08.02: Support Fourier Ft. Use `--sft_type fourierft` to begin, Check parameter documentation [here](https://swift.readthedocs.io/en/latest/LLM/Command-line-parameters.html).
@@ -612,7 +613,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | YI-VL                                                   | [01AI's YI series vision models](https://github.com/01-ai)                             | Chinese<br>English | 6B-34B                                | chat model               |
 | XComposer2<br>XComposer2.5                              | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                    | chat model               |
 | DeepSeek-VL                                             | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
-| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5               | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)                     | Chinese<br>English | 3B-9B                                 | chat model               |
+| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2.5<br>MiniCPM-V-2.6               | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)                     | Chinese<br>English | 3B-9B                                 | chat model               |
 | CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)                   | Chinese<br>English | 9B-19B                                | chat model               |
 | Llava1.5<br>Llava1.6                                    | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
