@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
+import torchvision
 from packaging import version
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
@@ -362,23 +363,6 @@ class Template:
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
 
-        # Format objects(groundings/refs) to json
-        if example.get('objects') and isinstance(example['objects'], str):
-            # reload grounding from str
-            example['objects'] = json.loads(example['objects'])
-            objects = []
-            for object in example['objects']:
-                # Compatible with list format
-                if isinstance(object, list):
-                    object = {
-                        'caption': object[0],
-                        'bbox': object[1],
-                        'bbox_type': None,
-                        'image': 0,
-                    }
-                objects.append(object)
-            example['objects'] = objects
-
         # Load image into PIL format
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
@@ -437,6 +421,24 @@ class Template:
             example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
 
         self._preprocess_media(example)
+
+        # Format objects(groundings/refs) to json
+        if example.get('objects') and isinstance(example['objects'], str):
+            # reload grounding from str
+            example['objects'] = json.loads(example['objects'])
+            objects = []
+            for object in example['objects']:
+                # Compatible with list format
+                if isinstance(object, list):
+                    object = {
+                        'caption': object[0],
+                        'bbox': object[1],
+                        'bbox_type': None,
+                        'image': 0,
+                    }
+                objects.append(object)
+            example['objects'] = objects
+
         return example
 
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1011,9 +1013,8 @@ def register_template(template_type: str, template: Template, *, exist_ok: bool 
 
 register_template(
     TemplateType.default,
-    Template([], ['### Human:\n{{QUERY}}\n\n### Assistant:\n'], ['\n\n'], [['eos_token_id']],
-             DEFAULT_SYSTEM, ['{{SYSTEM}}\n\n'],
-             auto_add_bos=True))
+    Template([], ['### Human:\n{{QUERY}}\n\n### Assistant:\n'], ['\n\n'], [['eos_token_id']], DEFAULT_SYSTEM,
+             ['{{SYSTEM}}\n\n']))
 
 
 # You can set the query as '' to serve as a template for pre-training.
@@ -1414,11 +1415,18 @@ class InternLMXComposer2Template(Template):
         super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER_SYSTEM, system_prefix)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        def resize_image(image, target_height, target_width):
+            # 使用 torchvision.transforms 来调整图像大小
+            resize_transform = torchvision.transforms.Resize((target_height, target_width))
+            return resize_transform(image)
+        
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
+
         dtype = self.model.dtype
         images = example.get('images', [])
+
         if self.is_v2_5:
             hd_num = 24
             Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
@@ -1428,13 +1436,22 @@ class InternLMXComposer2Template(Template):
                 image = Image_transform(image, hd_num=hd_num)
                 image = self.model.vis_processor(image)
                 image = image.to(dtype)
+                H, W = image.shape[1], image.shape[2]
+                target_height = (H // 336) * 336
+                target_width = (W // 336) * 336
+                image = resize_image(image, target_height, target_width)
                 image = self.model.img2emb(image[None])[0]
                 assert image.shape[0] == 1
                 images[i] = image[0]
         else:
             for i, image in enumerate(images):
                 image = self.model.vis_processor(image)
+                H, W = image.shape[1], image.shape[2]
+                target_height = (H // 336) * 336
+                target_width = (W // 336) * 336
+                image = resize_image(image, target_height, target_width)
                 images[i] = image.to(dtype)
+
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -1445,11 +1462,13 @@ class InternLMXComposer2Template(Template):
             if not self.is_v2_5:
                 images = torch.stack(images, dim=0)
                 images = self.model.encode_img(images)
+
         input_ids.append(2)  # add dummy </s>
         if labels is not None:
             labels.append(2)
         else:
             labels = []
+
         res_inputs_embeds = []
         res_labels = []
         wrap_im_mask = []
@@ -1459,6 +1478,7 @@ class InternLMXComposer2Template(Template):
         if not hasattr(internlm2_model, 'tok_embeddings'):
             internlm2_model = internlm2_model.model
         tok_embeddings = internlm2_model.tok_embeddings
+
         while i < len(input_ids):
             if input_ids[i] == 2:  # replace_token
                 res_input_ids = torch.tensor([1] + input_ids[pre_i:i], device=device)
@@ -1480,10 +1500,13 @@ class InternLMXComposer2Template(Template):
                 pre_i = i
                 continue
             i += 1
+
         if len(labels) == 0:
             res_labels = None
+
         res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
         wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool)[None]
+
         return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1636,8 +1659,7 @@ class Internvl2Template(InternvlTemplate):
         videos_path = example.get('videos', [])
         if pixel_values_images:
             pixel_values = pixel_values_images
-            assert len(pixel_values) == len(
-                idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
+            assert len(pixel_values) == len(idx_list)
             added_tokens_len = 0
             patches = 0
             for idx, pv in zip(idx_list, pixel_values):
@@ -1655,11 +1677,10 @@ class Internvl2Template(InternvlTemplate):
             inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
             inputs['image_flags'] = torch.ones(patches)
         elif videos_path:
-            assert len(videos_path) == 1, f'videos_path: {videos_path}'
+            assert len(videos_path) == 1
             from .vision_utils import load_video
             pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
-            assert len(num_patches) == len(
-                idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+            assert len(num_patches) == len(idx_list)
             added_tokens_len = 0
             for idx, num_patch in zip(idx_list, num_patches):
                 img_tokens: List[int] = self.tokenizer.encode(
@@ -2131,7 +2152,7 @@ class Phi3VisionTemplate(Template):
         if len(images) > 0:
             processor = self.tokenizer.processor
             inputs.update(processor.image_processor(images, return_tensors='pt'))
-            assert len(idx_list) == len(images), f'len(idx_list): {len(idx_list)}, len(images): {len(images)}'
+            assert len(idx_list) == len(images)
             res_input_ids = []
             res_labels = []
             num_img_tokens = inputs.pop('num_img_tokens').tolist()
