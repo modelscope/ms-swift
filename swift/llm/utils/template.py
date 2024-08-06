@@ -1416,7 +1416,7 @@ class InternLMXComposer2Template(Template):
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         def resize_image(image, target_height, target_width):
-            # 使用 torchvision.transforms 来调整图像大小
+            # resize image to target_height and target_width
             resize_transform = torchvision.transforms.Resize((target_height, target_width))
             return resize_transform(image)
         
@@ -1436,10 +1436,6 @@ class InternLMXComposer2Template(Template):
                 image = Image_transform(image, hd_num=hd_num)
                 image = self.model.vis_processor(image)
                 image = image.to(dtype)
-                H, W = image.shape[1], image.shape[2]
-                target_height = (H // 336) * 336
-                target_width = (W // 336) * 336
-                image = resize_image(image, target_height, target_width)
                 image = self.model.img2emb(image[None])[0]
                 assert image.shape[0] == 1
                 images[i] = image[0]
