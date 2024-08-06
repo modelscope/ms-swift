@@ -1,4 +1,4 @@
-# Megatron Training Documentation (Beta)
+# Megatron Training Documentation
 
 ## Table of Contents
 - [Environment Preparation](#Environment-Preparation)
