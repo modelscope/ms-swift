@@ -14,7 +14,7 @@ from .template import History
 PreprocessFunc = Callable[[HfDataset], HfDataset]
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
-DATASET_TYPE = Optional[Union[HfDataset, HfIterableDataset]]
+DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 def _reduce_columns(cls: type) -> type:
@@ -178,7 +178,7 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
         kwargs = {}
         if not isinstance(dataset, HfIterableDataset):
             kwargs['load_from_cache_file'] = dataset_enable_cache
-        dataset = dataset.map(self.preprocess, **kwargs).filter(lambda row: row.get('response') is not None)
+        dataset = dataset.map(self.preprocess, **kwargs).filter(lambda row: row.get('response'))
         if self.media_type and isinstance(self.media_key, str) and self.media_key != self.media_name:
             dataset = dataset.rename_columns({self.media_key: self.media_name})
         return dataset
@@ -333,7 +333,7 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 return self.empty_row
         return row
 
-    def __call__(self, dataset: DATASET_TYPE):
+    def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
         kwargs = {}
         if not isinstance(dataset, HfIterableDataset):
             kwargs['load_from_cache_file'] = dataset_enable_cache

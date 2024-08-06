@@ -312,7 +312,7 @@ def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -
 def load_ms_dataset(dataset_id: str,
                     subset_split_list: Optional[List[SubsetSplit]],
                     use_hf: bool = False,
-                    streaming: bool = False) -> DATASET_TYPE:
+                    streaming: bool = False) -> Optional[DATASET_TYPE]:
     if not use_hf:
         from modelscope import MsDataset
 
@@ -362,7 +362,7 @@ def load_ms_dataset(dataset_id: str,
     if not streaming:
         return concatenate_datasets(dataset_list)
     else:
-        return interleave_datasets(dataset_list, stopping_strategy='all_exhausted')  # TODO: set arg stopping_strategy?
+        return interleave_datasets(dataset_list)
 
 
 def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Optional[RandomState] = None) -> HfDataset:
@@ -420,8 +420,6 @@ def _post_preprocess(
         if dataset_test_ratio == 1:
             train_dataset, val_dataset = None, train_dataset
         if dataset_sample > 0:
-            train_dataset = train_dataset.shuffle(
-                seed=get_seed(random_state), buffer_size=16384)  # TODO: set buffer_size
             train_dataset = train_dataset.take(dataset_sample)
 
     res = []
@@ -2205,11 +2203,11 @@ def preprocess_mind2web(dataset):
             'content': 'string, which choices to choose'
         }]
     }]
-    history = []
-    images = []
     if isinstance(dataset, HfIterableDataset):
 
         def generate_example(dataset):
+            history = []
+            images = []
             for row in dataset:
                 target_action_index = row['target_action_index']
                 row = preprocess_row(row)
@@ -2236,6 +2234,8 @@ def preprocess_mind2web(dataset):
 
         return HfIterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
 
+    history = []
+    images = []
     for row in tqdm(dataset):
         target_action_index = row['target_action_index']
         row = preprocess_row(row)
@@ -2277,7 +2277,6 @@ def _preprocess_msagent_multirole_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE
     只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
     history_prompt = '\n\n【chat history】'
     conv_prompt = '\n {name}:{content}'
-    system, query, response = [], [], []
 
     def process_conversation(conv):
         query, response = '', conv[-1]['value']

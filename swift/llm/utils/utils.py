@@ -5,7 +5,6 @@ import importlib.util
 import os
 import shutil
 import time
-from contextlib import nullcontext
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
@@ -39,7 +38,7 @@ from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, safe_ddp_
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
 
-DATASET_TYPE = Optional[Union[HfDataset, HfIterableDataset]]
+DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
@@ -82,9 +81,7 @@ if not use_hf:
 
     @wraps(_old_msdataset_load)
     def _msdataset_ddp_load(*args, **kwargs):
-        streaming = kwargs.get('streaming', False)
-        context = nullcontext() if streaming else safe_ddp_context()
-        with context:
+        with safe_ddp_context():
             dataset = _old_msdataset_load(*args, **kwargs)
         return dataset
 

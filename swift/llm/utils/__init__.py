@@ -3,7 +3,7 @@ from .argument import (AppUIArguments, DeployArguments, EvalArguments, ExportArg
                        RLHFArguments, RomeArguments, SftArguments, WebuiArguments, is_adapter, swift_to_peft_format)
 from .client_utils import (compat_openai, convert_to_base64, decode_base64, get_model_list_client,
                            get_model_list_client_async, inference_client, inference_client_async)
-from .dataset import (DATASET_MAPPING, DATASET_TYPE, DatasetName, HfDataset, get_dataset, get_dataset_from_repo,
+from .dataset import (DATASET_MAPPING, DatasetName, HfDataset, get_dataset, get_dataset_from_repo,
                       load_dataset_from_local, load_ms_dataset, register_dataset, register_dataset_info,
                       register_local_dataset, sample_dataset)
 from .media import MediaCache, MediaTag

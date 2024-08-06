@@ -13,7 +13,8 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets, interleave_datasets
+from datasets import IterableDataset as HfIterableDataset
+from datasets import concatenate_datasets
 from packaging import version
 from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
@@ -25,7 +26,7 @@ from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .client_utils import get_model_list_client
-from .dataset import (DATASET_MAPPING, DATASET_TYPE, _dataset_name_exists, get_dataset, parse_dataset_name,
+from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
 from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
@@ -34,6 +35,7 @@ from .template import TEMPLATE_MAPPING
 from .utils import is_lmdeploy_available, is_quant_model, is_vllm_available
 
 logger = get_logger()
+DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 def is_adapter(sft_type: str) -> bool:
@@ -374,10 +376,11 @@ class ArgumentsBase:
                                      'Representing the model name and model author in Chinese and English.')
                 setattr(self, k, v)
 
-    def _handle_dataset_compat(self: Union['SftArguments', 'InferArguments'], train_dataset: DATASET_TYPE,
-                               val_dataset: DATASET_TYPE) -> Tuple[DATASET_TYPE, DATASET_TYPE]:
+    def _handle_dataset_compat(
+            self: Union['SftArguments', 'InferArguments'], train_dataset: Optional[DATASET_TYPE],
+            val_dataset: Optional[DATASET_TYPE]) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
         # compatibility. (Deprecated)
-        streaming = self.streaming
+        streaming = getattr(self, 'streaming', False)
         random_state = np.random.RandomState(self.dataset_seed)
         val_dataset_sample = self.val_dataset_sample
 
@@ -389,19 +392,20 @@ class ArgumentsBase:
                     train_idxs = random_state.permutation(train_dataset_sample)
                     train_dataset = train_dataset.select(train_idxs)
             else:
-                train_dataset = train_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
-                train_dataset = train_dataset.take(train_dataset_sample)
+                train_dataset = train_dataset.shuffle(
+                    seed=self.dataset_seed, buffer_size=self.streaming_buffer_size).take(train_dataset_sample)
 
             if val_dataset_sample is None:
                 val_dataset_sample = max(int(train_dataset_sample * self.dataset_test_ratio), 1)
+
         if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
             if not streaming and val_dataset.shape[0] > val_dataset_sample:
                 logger.info(f'val_dataset_sample: {val_dataset_sample}')
                 val_idxs = random_state.permutation(val_dataset_sample)
                 val_dataset = val_dataset.select(val_idxs)
             elif streaming:
-                val_dataset.shuffle(seed=self.dataset_seed, buffer_size=self.streaming_buffer_size)
-                val_dataset = val_dataset.take(val_dataset_sample)
+                val_dataset = val_dataset.shuffle(
+                    seed=self.dataset_seed, buffer_size=self.streaming_buffer_size).take(val_dataset_sample)
 
         if (train_dataset is None or not hasattr(self, 'train_dataset_mix_ratio') or self.train_dataset_mix_ratio <= 0
                 or len(self.train_dataset_mix_ds) == 0):
@@ -604,7 +608,6 @@ class SftArguments(ArgumentsBase):
     # streaming dataset
     streaming: bool = False
     streaming_buffer_size: int = 16384
-    stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'all_exhausted'  # do we need?
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
@@ -1035,10 +1038,10 @@ class SftArguments(ArgumentsBase):
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
         template_info = TEMPLATE_MAPPING[self.template_type]
+        self._handle_streaming_args()
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        self._handle_streaming_args()
         if self.dataloader_num_workers is None:
             if 'dataloader_num_workers' in template_info:
                 self.dataloader_num_workers = template_info['dataloader_num_workers']
@@ -1087,7 +1090,6 @@ class SftArguments(ArgumentsBase):
             self.logging_dir = f'{self.output_dir}/runs'
             if self.train_backend == 'transformers':
                 self.training_args.logging_dir = self.logging_dir
-        self._handle_streaming_args()
 
     def _init_training_args(self) -> None:
         additional_saved_files = []
@@ -1196,6 +1198,9 @@ class SftArguments(ArgumentsBase):
     def _handle_streaming_args(self) -> None:
         if not self.streaming:
             return
+        if self.max_steps == -1:
+            raise ValueError('Please specify `max_steps` in streaming mode.')
+
         if self.packing:
             self.packing = False
             logger.warning('Packing is not supported for streaming dataset, set to False')
@@ -1213,18 +1218,15 @@ class SftArguments(ArgumentsBase):
             self.train_dataset_mix_ratio = 0
 
         if self.dataset_test_ratio > 0:
-            logger.warning('Since the length of streaming data cannot be estimated,'
-                           'set dataset_test_ratio to 0. You can manually set val_dataset_sample.')
+            logger.info('Set dataset_test_ratio to 0 in streaming mode.'
+                        'You can manually set val_dataset and val_dataset_sample.')
             self.dataset_test_ratio = 0
 
-        if self.train_dataset_sample > 0 or self.val_dataset_sample:
+        if self.train_dataset_sample > 0:
             logger.warning('The final data size in streaming data may be smaller than train_dataset_sample')
 
-        if self.max_steps == -1:
-            raise ValueError('Please specify `max_steps` in streaming mode.')
-
         if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
-            logger.info('dataloader_num_workers is not supported in streaming mode, set to 0')
+            logger.info('Set dataloader_num_workers to 0 in streaming mode')
             self.dataloader_num_workers = 0
 
 

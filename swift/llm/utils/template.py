@@ -445,10 +445,7 @@ class Template:
         if self._is_lmdeploy:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
-        res = _encode(example)
-        if streaming:
-            res = res[0]
-        return res
+        return _encode(example) if not streaming else _encode(example)[0]
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -1675,8 +1672,6 @@ class Internvl2Template(InternvlTemplate):
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
             inputs['image_flags'] = torch.ones(sum(num_patches))
         inputs.pop('loss_scale', None)
-        if inputs['pixel_values'].shape[0] == 1:
-            print()
         return inputs, {}
 
 
