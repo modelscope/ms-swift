@@ -55,7 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
-- 2024.08.06: Support for minicpm-v-v2_6-chat is available. Use `swift infer --model_type minicpm-v-v2_6-chat` for inference experiences, `swift sft --model_type minicpm-v-v2_6-chat --dataset coco-en-mini#20000` for image training, and `swift sft --model_type minicpm-v-v2_6-chat --dataset video-chatgpt` for video training.
+- 2024.08.06: Support for minicpm-v-v2_6-chat is available. You can use `swift infer --model_type minicpm-v-v2_6-chat` for inference experience. Best practices can be found [here](https://github.com/modelscope/swift/issues/1613).
 - 2024.08.06: Supports internlm2.5 series of 1.8b and 20b. Experience it using `swift infer --model_type internlm2_5-1_8b-chat`.
 - 🔥2024.08.05: Support evaluation for multi-modal models! Same command with [new datasets](https://swift.readthedocs.io/en/latest/LLM/LLM-eval.html#introduction).
 - 🔥2024.08.02: Support Fourier Ft. Use `--sft_type fourierft` to begin, Check parameter documentation [here](https://swift.readthedocs.io/en/latest/LLM/Command-line-parameters.html).
