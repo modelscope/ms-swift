@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.08.06: 支持internlm2.5的1.8b和20b系列. 使用`swift infer --model_type internlm2_5-1_8b-chat`进行体验.
 - 🔥2024.08.05: 支持多模态数据集的评测！命令行完全一致，新增了许多[多模态数据集](https://swift.readthedocs.io/zh-cn/latest/LLM/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html#id2).
 - 🔥2024.08.02: 支持Fourier Ft训练. 使用方式为`--sft_type fourierft`, 参数可以参考[这里](https://swift.readthedocs.io/zh-cn/latest/LLM/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html).
 - 🔥2024.07.29: 支持使用lmdeploy对LLM和VLM模型进行推理加速. 文档可以查看[这里](docs/source/Multi-Modal/LmDeploy推理加速文档.md).
@@ -76,6 +77,8 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 2024.07.02: 支持使用vllm对多模态大模型: llava系列, phi3-vision模型进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.
 - 2024.07.02: 支持`llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct`等llava-hf模型. 最佳实践可以查看[这里](docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.06.29: 支持[eval-scope](https://github.com/modelscope/eval-scope)&[open-compass](https://github.com/open-compass/opencompass)评测! 我们支持了包含`BoolQ, ocnli, humaneval, math, ceval, mmlu, gsk8k, ARC_e`等50+标准数据集在内的评测流程, 请查看我们的[评测文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM评测文档.md)来使用。下个迭代我们会支持多模态评测和Agent评测，记得持续关注我们: )
+<details><summary>More</summary>
+
 - 🔥2024.06.28: 支持**Florence**系列模型: 可以查看[Florence最佳实践](docs/source/Multi-Modal/florence最佳实践.md).
 - 🔥2024.06.28: 支持**Gemma2**系列模型: gemma2-9b, gemma2-9b-instruct, gemma2-27b, gemma2-27b-instruct.
 - 🔥2024.06.18: 支持**DeepSeek-Coder-v2**系列模型! 使用model_type`deepseek-coder-v2-instruct`和`deepseek-coder-v2-lite-instruct`来开启训练和推理.
@@ -86,8 +89,6 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 🔥2024.06.01: 支持**SimPO**训练，使用`swift simpo`来开始训练，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/SimPO算法最佳实践.md)
 - 🔥2024.06.01: 支持多模态大模型部署, 可以查看[多模态部署文档](docs/source/Multi-Modal/MLLM部署文档.md).
 - 2024.05.31: 支持Mini-Internvl多模态模型, 使用model_type `mini-internvl-chat-2b-v1_5`和`mini-internvl-chat-4b-v1_5`来训练.
-<details><summary>更多</summary>
-
 - 2024.05.24: 支持Phi3多模态模型, 使用model_type `phi3-vision-128k-instruct`来训练.
 - 2024.05.22: 支持DeepSeek-V2-lite系列模型, model_type为 `deepseek-v2-lite`和`deekseek-v2-lite-chat`
 - 2024.05.22: 支持TeleChat-12b-v2模型和量化版本, model_type为 `telechat-12b-v2`和`telechat-12b-v2-gptq-int4`

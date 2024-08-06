@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.08.06: Supports internlm2.5 series of 1.8b and 20b. Experience it using `swift infer --model_type internlm2_5-1_8b-chat`.
 - 🔥2024.08.05: Support evaluation for multi-modal models! Same command with [new datasets](https://swift.readthedocs.io/en/latest/LLM/LLM-eval.html#introduction).
 - 🔥2024.08.02: Support Fourier Ft. Use `--sft_type fourierft` to begin, Check parameter documentation [here](https://swift.readthedocs.io/en/latest/LLM/Command-line-parameters.html).
 - 🔥2024.07.29: Support the use of lmdeploy for inference acceleration of LLM and VLM models. Documentation can be found [here](docs/source_en/Multi-Modal/LmDeploy-inference-acceleration.md).
@@ -75,6 +76,8 @@ You can contact us and communicate with us by adding our group:
 - 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.07.02: Support for `llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct` and other llava-hf models. For best practices, refer to [here](docs/source_en/Multi-Modal/llava-best-practice.md).
 - 🔥2024.06.29: Support [eval-scope](https://github.com/modelscope/eval-scope)&[open-compass](https://github.com/open-compass/opencompass) for evaluation! Now we have supported over 50 eval datasets like `BoolQ, ocnli, humaneval, math, ceval, mmlu, gsk8k, ARC_e`, please check our [Eval Doc](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/LLM-eval.md) to begin! Next sprint we will support Multi-modal and Agent evaluation, remember to follow us : )
+<details><summary>More</summary>
+
 - 🔥2024.06.28: Support for **Florence** series model! See [document](docs/source_en/Multi-Modal/florence-best-pratice.md)
 - 🔥2024.06.28: Support for Gemma2 series models: gemma2-9b, gemma2-9b-instruct, gemma2-27b, gemma2-27b-instruct.
 - 🔥2024.06.18: Supports **DeepSeek-Coder-v2** series model! Use model_type `deepseek-coder-v2-instruct` and `deepseek-coder-v2-lite-instruct` to begin.
@@ -85,8 +88,6 @@ You can contact us and communicate with us by adding our group:
 - 🔥2024.06.01: Supports **SimPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/SimPO.md) to start training!
 - 🔥2024.06.01: Support for deploying large multimodal models, please refer to the [Multimodal Deployment Documentation](docs/source_en/Multi-Modal/mutlimodal-deployment.md) for more information.
 - 2024.05.31: Supports Mini-Internvl model, Use model_type `mini-internvl-chat-2b-v1_5` and `mini-internvl-chat-4b-v1_5`to train.
-<details><summary>More</summary>
-
 - 2024.05.24: Supports Phi3-vision model, Use model_type `phi3-vision-128k-instruct` to train.
 - 2024.05.22: Supports DeepSeek-V2-Lite series models, model_type are `deepseek-v2-lite` and `deepseek-v2-lite-chat`
 - 2024.05.22: Supports TeleChat-12B-v2 model with quantized version, model_type are `telechat-12b-v2` and `telechat-12b-v2-gptq-int4`
