@@ -91,6 +91,7 @@ class TemplateType:
     minicpm = 'minicpm'
     minicpm_v = 'minicpm-v'
     minicpm_v_v2_5 = 'minicpm-v-v2_5'
+    minicpm_v_v2_6 = 'minicpm-v-v2_6'
     gemma = 'gemma'
     paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
@@ -2466,7 +2467,6 @@ class MiniCPMVTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images = example['images']
-        image = images[0]
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -1)
@@ -2483,7 +2483,7 @@ class MiniCPMVTemplate(Template):
                 pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
                 tgt_sizes = image_inputs['tgt_sizes']
             else:
-                images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+                images, placeholder = self.model.get_slice_image_placeholder(images[0], self.tokenizer)
                 pixel_values = [[self.model.transform(img).to(device=self.model.device) for img in images]]
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
@@ -2506,7 +2506,7 @@ class MiniCPMVTemplate(Template):
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-            pixel_values = [[self.model.transform(image).to(device=self.model.device)]]
+            pixel_values = [[self.model.transform(images[0]).to(device=self.model.device)]]
         data = {
             'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
             'image_bound': image_bound,
@@ -2532,6 +2532,84 @@ register_template(
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+
+class MiniCPMV2_6Template(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type == 'image'
+        return [[-1]]
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example['images']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, -1)
+        idx_list.insert(0, -1)
+
+        from .utils import to_device
+        image_processor = self.tokenizer.processor.image_processor
+        images = [images]
+        image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+        pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
+        tgt_sizes = image_inputs['tgt_sizes']
+
+        res_input_ids = []
+        res_labels = []
+        for i in range(len(idx_list) - 1):
+            placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][i], image_idx=i)
+            placeholder += '\n'
+            placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
+            res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + placeholder_id
+            if labels is not None:
+                res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * len(placeholder_id)
+        res_input_ids += input_ids[idx_list[-1] + 1:]
+        input_ids = res_input_ids
+        if labels is not None:
+            res_labels += labels[idx_list[-1] + 1:]
+            labels = res_labels
+        input_tensor_ids = torch.tensor(input_ids)
+        unk_token = self.tokenizer.encode('<unk>', add_special_tokens=False)[0]
+        indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
+
+        ranges = []
+        start = indices[0]
+        for i in range(1, len(indices)):
+            if indices[i] != indices[i - 1] + 1:
+                ranges.append([start, indices[i - 1] + 1])
+                start = indices[i]
+        ranges.append([start, indices[-1] + 1])
+        image_bound = [torch.tensor(ranges)]
+
+        data = {
+            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
+            'image_bound': image_bound,
+            'pixel_values': pixel_values,
+            'tgt_sizes': tgt_sizes
+        }
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        inputs_embeds = inputs_embeds.detach()
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        inputs['inputs_embeds'] = inputs_embeds[0]
+        return inputs, {}
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+
+register_template(
+    TemplateType.minicpm_v_v2_6,
+    MiniCPMV2_6Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
+                        ['<|im_end|>'], DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']),
+    use_model=True,
+    lazy_tokenize=True,
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 

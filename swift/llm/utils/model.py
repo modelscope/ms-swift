@@ -359,6 +359,7 @@ class ModelType:
     minicpm_v_3b_chat = 'minicpm-v-3b-chat'
     minicpm_v_v2_chat = 'minicpm-v-v2-chat'
     minicpm_v_v2_5_chat = 'minicpm-v-v2_5-chat'
+    minicpm_v_v2_6_chat = 'minicpm-v-v2_6-chat'
     # openbuddy
     openbuddy_llama_65b_chat = 'openbuddy-llama-65b-chat'
     openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
@@ -5706,6 +5707,17 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
 
 
 @register_model(
+    ModelType.minicpm_v_v2_6_chat,
+    'OpenBMB/MiniCPM-V-2_6',
+    LoRATM.minicpm_v,
+    TemplateType.minicpm_v_v2_6,
+    support_flash_attn=True,
+    requires=['timm', 'transformers>=4.36'],
+    placeholder_tokens=['<unk>'],
+    function_kwargs={'version': 'v2.6'},
+    tags=['multi-modal', 'vision'],
+    hf_model_id='openbmb/MiniCPM-V-2_6')
+@register_model(
     ModelType.minicpm_v_v2_5_chat,
     'OpenBMB/MiniCPM-Llama3-V-2_5',
     LoRATM.minicpm_v,
@@ -5715,13 +5727,17 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
     placeholder_tokens=['<unk>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='openbmb/MiniCPM-Llama3-V-2_5')
-def get_model_tokenizer_minicpm_v_2_5(model_dir: str,
+def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
                                       torch_dtype: Dtype,
                                       model_kwargs: Dict[str, Any],
                                       load_model: bool = True,
                                       **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    version = kwargs.get('version', 'v2.5')
+    if version == 'v2.6':
+        model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
+        model_cls._no_split_modules = []
     model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if load_model:
