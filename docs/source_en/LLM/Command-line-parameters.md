@@ -144,6 +144,7 @@
 ### Long Context
 
 - `--rope_scaling`: Default `None`, Support `linear` and `dynamic` to scale positional embeddings. Use when `max_length` exceeds `max_position_embeddings`.
+- `--rescale_image`: Whether to rescale input images, the value should be the pixel value, for example 480000(width * height), every image larger than this value will be resized to this value by its original ratio. Note: not every model can get advantages from this parameter.
 
 ### FSDP Parameters
 
@@ -322,7 +323,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--lora_modules`: Default`[]`, the input format is `'{lora_name}={lora_path}'`, e.g. `--lora_modules lora_name1=lora_path1 lora_name2=lora_path2`. `ckpt_dir` will be added with `f'default-lora={args.ckpt_dir}'` by default.
 - `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
 - `--custom_dataset_info`: Default is `None`. Pass in the path to an external `dataset_info.json`, a JSON string, or a dictionary. Used for expanding datasets.
-- `--rope_scaling`: Default `None`, Support `linear` and `dynamic` to scale positional embeddings. Use when `max_length` exceeds `max_position_embeddings`.
+- `--rope_scaling`: Default `None`, Support `linear` and `dynamic` to scale positional embeddings. Use when `max_length` exceeds `max_position_embeddings`. Specify `--max_length` when using this parameter.
 
 
 ### vLLM Parameters
