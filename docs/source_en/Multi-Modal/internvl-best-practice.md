@@ -348,7 +348,7 @@ The `objects` field contains a JSON string with four fields:
 
 This format will be converted to a format recognizable by InternVL2, specifically:
 ```json
-{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>"}
+{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>", "images": ["image_path1"]}
 ```
 You can also directly input the above format, but please ensure that the coordinates use thousandth-scale coordinates.
 
