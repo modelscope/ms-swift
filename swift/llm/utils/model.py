@@ -29,7 +29,7 @@ from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from swift.utils.module_mapping import get_regex_for_mm_default_lora
 from .template import TemplateType
-from .utils import get_max_model_len, is_unsloth_available
+from .utils import get_max_model_len, get_rope_scaling, is_unsloth_available, set_rope_scaling
 
 logger = get_logger()
 
@@ -980,11 +980,12 @@ def get_model_tokenizer_from_repo(model_dir: str,
     model = None
 
     rope_scaling = kwargs.pop('rope_scaling', None)
-    max_position_embeddings = getattr(model_config, 'max_position_embeddings', None)
+    max_position_embeddings = get_max_model_len(model_config, ignore_rope_scaling=True)
     if rope_scaling and max_position_embeddings:
         max_length = kwargs.get('max_length') or max_position_embeddings
         rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
-        setattr(model_config, 'rope_scaling', {'type': rope_scaling, 'factor': rope_scaling_factor})
+        set_rope_scaling(model_config, {'type': rope_scaling, 'factor': rope_scaling_factor})
+        logger.info(f'rope_scaling is set to type: {get_rope_scaling(model_config)}')
     if load_model:
         if kwargs.get('use_unsloth', False):
             assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
