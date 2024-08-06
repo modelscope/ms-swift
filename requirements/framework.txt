@@ -4,13 +4,11 @@ aiohttp
 attrdict
 binpacking
 dacite
-datasets<2.19
 einops
-huggingface_hub<0.24
 importlib_metadata
 jieba
 matplotlib
-modelscope>=1.14
+modelscope[datasets]>=1.17
 nltk
 numpy<2.0
 oss2

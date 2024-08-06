@@ -262,7 +262,6 @@ LoRA fine-tuning:
 
 **note**
 - If your GPU does not support flash attention, use the argument --use_flash_attn false.
-- By default, only the qkv of the LLM part is fine-tuned using LoRA. If you want to fine-tune all linear layers including the vision model part, you can specify `--lora_target_modules ALL`.
 
 ```shell
 # Experimental environment: A100
