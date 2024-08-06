@@ -296,7 +296,6 @@ road:
 LoRA微调:
 
 **注意**
-- 默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`.
 - 如果你的GPU不支持flash attention, 使用参数`--use_flash_attn false`
 
 ```shell
@@ -383,7 +382,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     d. image: bbox对应的图片是第几张, 索引从0开始
 上述格式会被转换为InternVL2可识别的格式，具体来说：
 ```jsonl
-{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>"}
+{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>", "images": ["image_path1"]}
 ```
 也可以直接传入上述格式，但是注意坐标请使用千分位坐标。
 

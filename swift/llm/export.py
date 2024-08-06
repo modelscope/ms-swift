@@ -298,7 +298,7 @@ def llm_export(args: ExportArguments) -> None:
             megatron_args = MegatronArguments(**res)
             extra_args = megatron_args.parse_to_megatron()
             patch_megatron(tokenizer)
-            convert_hf_to_megatron(model, extra_args, args.check_model_forward, args.torch_dtype)
+            convert_hf_to_megatron(model, extra_args, args.torch_dtype)
             fpath = os.path.join(args.megatron_output_dir, 'export_args.json')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)

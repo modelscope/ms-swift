@@ -1488,7 +1488,7 @@ class DeployArguments(InferArguments):
 
     owned_by: str = 'swift'
     verbose: bool = True  # Whether to log request_info
-    log_interval: int = 0  # Interval for printing global statistics
+    log_interval: int = 10  # Interval for printing global statistics
 
     def __post_init__(self):
         super().__post_init__()
@@ -1577,7 +1577,6 @@ class ExportArguments(InferArguments):
     hf_output_dir: Optional[str] = None
     tp: int = 1
     pp: int = 1
-    check_model_forward: bool = False
 
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token
@@ -1637,7 +1636,7 @@ class ExportArguments(InferArguments):
 @dataclass
 class PtArguments(SftArguments):
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
-    lora_target_modules: List[str] = field(default_factory=lambda: ['ALL'])
+    target_modules: List[str] = field(default_factory=lambda: ['ALL'])
     lazy_tokenize: Optional[bool] = True
     eval_steps: int = 500
 

@@ -275,9 +275,13 @@ class ModelType:
     internlm2_20b_sft_chat = 'internlm2-20b-sft-chat'
     internlm2_20b_chat = 'internlm2-20b-chat'
     # internlm2.5
+    internlm2_5_1_8b = 'internlm2_5-1_8b'
+    internlm2_5_1_8b_chat = 'internlm2_5-1_8b-chat'
     internlm2_5_7b = 'internlm2_5-7b'
     internlm2_5_7b_chat = 'internlm2_5-7b-chat'
     internlm2_5_7b_chat_1m = 'internlm2_5-7b-chat-1m'
+    internlm2_5_20b = 'internlm2_5-20b'
+    internlm2_5_20b_chat = 'internlm2_5-20b-chat'
     # internlm2-math
     internlm2_math_7b = 'internlm2-math-7b'
     internlm2_math_7b_chat = 'internlm2-math-7b-chat'
@@ -333,6 +337,7 @@ class ModelType:
     gemma_7b = 'gemma-7b'
     gemma_2b_instruct = 'gemma-2b-instruct'
     gemma_7b_instruct = 'gemma-7b-instruct'
+    gemma2_2b = 'gemma2-2b'
     gemma2_9b = 'gemma2-9b'
     gemma2_27b = 'gemma2-27b'
     gemma2_2b_instruct = 'gemma2-2b-instruct'
@@ -1701,6 +1706,15 @@ def get_model_tokenizer_glm4v(model_dir: str,
 
 
 @register_model(
+    ModelType.gemma2_2b,
+    'LLM-Research/gemma-2-2b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='google/gemma-2-2b')
+@register_model(
     ModelType.gemma2_9b,
     'LLM-Research/gemma-2-9b',
     LoRATM.llama,
@@ -1981,6 +1995,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-0.5B')
 @register_model(
@@ -1991,6 +2006,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-1.8B')
 @register_model(
@@ -2001,6 +2017,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-4B')
 @register_model(
@@ -2011,6 +2028,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-7B')
 @register_model(
@@ -2021,6 +2039,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-14B')
 @register_model(
@@ -2041,6 +2060,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-72B')
 @register_model(
@@ -3274,6 +3294,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat')
 @register_model(
@@ -3284,6 +3305,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat')
 @register_model(
@@ -3294,6 +3316,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-4B-Chat')
 @register_model(
@@ -3304,6 +3327,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-7B-Chat')
 @register_model(
@@ -3314,6 +3338,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-14B-Chat')
 @register_model(
@@ -3334,6 +3359,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
+    support_megatron=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/Qwen1.5-72B-Chat')
 @register_model(
@@ -3548,6 +3574,27 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
 
 
 @register_model(
+    ModelType.internlm2_5_1_8b,
+    'Shanghai_AI_Laboratory/internlm2_5-1_8b',
+    LoRATM.internlm2,
+    TemplateType.default_generation,
+    requires=['transformers>=4.38'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='internlm/internlm2_5-1_8b')
+@register_model(
+    ModelType.internlm2_5_1_8b_chat,
+    'Shanghai_AI_Laboratory/internlm2_5-1_8b-chat',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    requires=['transformers>=4.38'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='internlm/internlm2_5-1_8b-chat')
+@register_model(
     ModelType.internlm2_5_7b,
     'Shanghai_AI_Laboratory/internlm2_5-7b',
     LoRATM.internlm2,
@@ -3579,6 +3626,27 @@ def get_model_tokenizer_qwen2_intx(model_dir: str,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='internlm/internlm2_5-7b-chat-1m')
+@register_model(
+    ModelType.internlm2_5_20b,
+    'Shanghai_AI_Laboratory/internlm2_5-20b',
+    LoRATM.internlm2,
+    TemplateType.default_generation,
+    requires=['transformers>=4.38'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='internlm/internlm2_5-20b')
+@register_model(
+    ModelType.internlm2_5_20b_chat,
+    'Shanghai_AI_Laboratory/internlm2_5-20b-chat',
+    LoRATM.internlm2,
+    TemplateType.internlm2,
+    eos_token='<|im_end|>',
+    requires=['transformers>=4.38'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='internlm/internlm2_5-20b-chat')
 @register_model(
     ModelType.internlm2_1_8b,
     'Shanghai_AI_Laboratory/internlm2-1_8b',

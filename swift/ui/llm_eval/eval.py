@@ -114,15 +114,33 @@ class Eval(BaseUI):
     @classmethod
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         try:
-            from llmuses.backend.opencompass import OpenCompassBackendManager
-            eval_dataset_list = OpenCompassBackendManager.list_datasets()
+            from evalscope.backend.opencompass import OpenCompassBackendManager
+            from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
+            eval_dataset_list = (
+                OpenCompassBackendManager.list_datasets() + VLMEvalKitBackendManager.list_supported_datasets())
         except ImportError:
             eval_dataset_list = [
                 'AX_b', 'winogrande', 'mmlu', 'afqmc', 'COPA', 'commonsenseqa', 'CMRC', 'lcsts', 'nq', 'ocnli_fc',
                 'math', 'mbpp', 'DRCD', 'TheoremQA', 'CB', 'ReCoRD', 'lambada', 'tnews', 'flores', 'humaneval', 'AX_g',
                 'ceval', 'bbh', 'BoolQ', 'MultiRC', 'piqa', 'csl', 'ARC_c', 'agieval', 'cmnli', 'strategyqa', 'gsm8k',
                 'summedits', 'eprstmt', 'WiC', 'cluewsc', 'Xsum', 'ocnli', 'triviaqa', 'hellaswag', 'race', 'bustm',
-                'RTE', 'C3', 'GaokaoBench', 'storycloze', 'ARC_e', 'siqa', 'obqa', 'WSC', 'chid'
+                'RTE', 'C3', 'GaokaoBench', 'storycloze', 'ARC_e', 'siqa', 'obqa', 'WSC', 'chid', 'COCO_VAL', 'MME',
+                'HallusionBench', 'POPE', 'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN',
+                'MMBench', 'MMBench_CN', 'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11',
+                'MMBench_TEST_CN_V11', 'MMBench_V11', 'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2',
+                'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST', 'MMT-Bench_ALL_MI', 'MMT-Bench_ALL',
+                'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL', 'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar',
+                'RealWorldQA', 'MLLMGuard_DS', 'BLINK', 'OCRVQA_TEST', 'OCRVQA_TESTCORE', 'TextVQA_VAL', 'DocVQA_VAL',
+                'DocVQA_TEST', 'InfoVQA_VAL', 'InfoVQA_TEST', 'ChartQA_TEST', 'MathVision', 'MathVision_MINI',
+                'MMMU_DEV_VAL', 'MMMU_TEST', 'OCRBench', 'MathVista_MINI', 'LLaVABench', 'MMVet', 'MTVQA_TEST',
+                'MMLongBench_DOC', 'VCR_EN_EASY_500', 'VCR_EN_EASY_100', 'VCR_EN_EASY_ALL', 'VCR_EN_HARD_500',
+                'VCR_EN_HARD_100', 'VCR_EN_HARD_ALL', 'VCR_ZH_EASY_500', 'VCR_ZH_EASY_100', 'VCR_ZH_EASY_ALL',
+                'VCR_ZH_HARD_500', 'VCR_ZH_HARD_100', 'VCR_ZH_HARD_ALL', 'MMDU', 'MMBench-Video', 'Video-MME',
+                'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench', 'MMBench_CN',
+                'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11', 'MMBench_V11',
+                'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST',
+                'MMT-Bench_ALL_MI', 'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL',
+                'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS', 'BLINK'
             ]
 
         with gr.Row():
