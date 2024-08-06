@@ -387,7 +387,6 @@ def _post_preprocess(
     remove_useless_columns: bool = True,
     streaming: bool = False,
 ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
-    # process train/val dataset and remove useless columns
     assert train_dataset is not None
     if not streaming:
         if dataset_sample == -1:
@@ -742,7 +741,7 @@ def _preprocess_vision_dataset2(dataset: DATASET_TYPE) -> DATASET_TYPE:
         response = d[response_key]
         return {'query': query * len(response), 'response': response, 'images': images}
 
-    return dataset.map(_process, remove_columns=dataset.column_names)
+    return dataset.map(_process)
 
 
 register_dataset(
