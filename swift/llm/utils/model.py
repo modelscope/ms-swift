@@ -985,7 +985,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
         max_length = kwargs.get('max_length') or max_position_embeddings
         rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
         setattr(model_config, 'rope_scaling', {'type': rope_scaling, 'factor': rope_scaling_factor})
-
     if load_model:
         if kwargs.get('use_unsloth', False):
             assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
