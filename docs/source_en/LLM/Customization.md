@@ -58,7 +58,7 @@ system,query,response
 ```jsonl
 {"system": "00000", "query": "11111", "response": "22222"}
 {"query": "aaaaa", "response": "bbbbb"}
-{"query": "AAAAA", "response": "BBBBB"}
+{"system": "00001", "query": "AAAAA", "response": "BBBBB"}
 ```
 
 Multi-Round Dialogue
@@ -66,13 +66,13 @@ Multi-Round Dialogue
 ```jsonl
 {"system": "00000", "query": "55555", "response": "66666"}
 {"query": "eeeee", "response": "fffff", "history": []}
-{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}
+{"system": "00001", "query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}
 ```
 
 ```json
 [{"system": "00000", "query": "55555", "response": "66666"},
 {"query": "eeeee", "response": "fffff", "history": []},
-{"query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}]
+{"system": "00001", "query": "EEEEE", "response": "FFFFF", "history": [["query1", "response1"], ["query2", "response2"]]}]
 ```
 
 **Format 2:**
@@ -96,7 +96,7 @@ Multi-Round Dialogue
 ```jsonl
 {"system": "00000", "conversation": [{"human": "11111", "assistant": "22222"}]}
 {"conversation": [{"human": "aaaaa", "assistant": "bbbbb"}]}
-{"conversation": [{"human": "AAAAA", "assistant": "BBBBB"}, {"human": "CCCCC", "assistant": "DDDDD"}, {"human": "EEEEE", "assistant": "FFFFF"}]}
+{"system": "00001", "conversation": [{"human": "AAAAA", "assistant": "BBBBB"}, {"human": "CCCCC", "assistant": "DDDDD"}, {"human": "EEEEE", "assistant": "FFFFF"}]}
 ```
 
 **Format 5:**
