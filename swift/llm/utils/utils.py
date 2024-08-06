@@ -950,7 +950,7 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
     return time_info
 
 
-def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
+def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Optional[int]:
     INF = int(1e9)
     max_model_len = INF
     for k in ['language_config', 'llm_config', 'text_config']:
@@ -977,7 +977,8 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
     if max_model_len == INF:
         max_model_len = None
 
-    if max_model_len and hasattr(config, 'rope_scaling') and config.rope_scaling.get('factor'):
+    if (not ignore_rope_scaling and max_model_len and hasattr(config, 'rope_scaling')
+            and config.rope_scaling.get('factor')):
         max_model_len = max(int(max_model_len * config.rope_scaling.get('factor')), max_model_len)
     return max_model_len
 

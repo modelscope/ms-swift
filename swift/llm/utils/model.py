@@ -980,7 +980,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     model = None
 
     rope_scaling = kwargs.pop('rope_scaling', None)
-    max_position_embeddings = get_max_model_len(model_config)
+    max_position_embeddings = get_max_model_len(model_config, ignore_rope_scaling=True)
     if rope_scaling and max_position_embeddings:
         max_length = kwargs.get('max_length') or max_position_embeddings
         rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
