@@ -4356,7 +4356,7 @@ def __prepare_inputs_embeds(
 
     # [b, T, D]
     input_ids[input_ids < 0] = 0  # ignore the image embeddings
-    inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
+    inputs_embeds = self.language_model.get_input_embeddings()(input_ids).to(input_ids.device)
 
     # replace with the image embeddings (FIX)
     inputs_embeds.data[images_seq_mask] = images_embeds[images_emb_mask]
