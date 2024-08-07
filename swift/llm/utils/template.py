@@ -1744,7 +1744,10 @@ class FlorenceTemplate(Template):
         # from processing_florence2.py
         # replace the task tokens with the task prompts if task token is in the text
         prompts = []
+
         for _text in text:
+            if '<image>' in _text:
+                _text = _text.replace('<image>', '')
             # 1. fixed task prompts without additional inputs
             for task_token, task_prompt in self.task_prompts_without_inputs.items():
                 if task_token in _text:
