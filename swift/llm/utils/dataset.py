@@ -385,9 +385,10 @@ def _post_preprocess(
     preprocess_func: Optional[PreprocessFunc] = None,
     dataset_test_ratio: float = 0.,
     remove_useless_columns: bool = True,
-    streaming: bool = False,
+    **kwargs,
 ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     assert train_dataset is not None
+    streaming = kwargs.get('streaming', False)
     if not streaming:
         if dataset_sample == -1:
             dataset_sample = len(train_dataset)
@@ -418,8 +419,13 @@ def _post_preprocess(
         val_dataset = None
         if dataset_test_ratio == 1:
             train_dataset, val_dataset = None, train_dataset
-        if dataset_sample > 0:
-            train_dataset = train_dataset.take(dataset_sample)
+        else:
+            streaming_val_size = kwargs.get('streaming_val_size', 0)
+            streaming_buffer_size = kwargs.get('streaming_buffer_size', 16384)
+            if streaming_val_size > 0:
+                train_dataset = train_dataset.shuffle(seed=get_seed(random_state), buffer_size=streaming_buffer_size)
+                val_dataset = dataset.take(int(streaming_val_size))
+                train_dataset = dataset.skip(int(streaming_val_size))
 
     res = []
     for dataset in [train_dataset, val_dataset]:
@@ -441,7 +447,8 @@ def get_dataset_from_repo(dataset_id: str,
                           dataset_test_ratio: float = 0.,
                           remove_useless_columns: bool = True,
                           use_hf: bool = False,
-                          streaming: bool = False) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+                          **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    streaming = kwargs.get('streaming', False)
     if subsets is None:
         subsets = []
     assert len(split) > 0
@@ -457,7 +464,7 @@ def get_dataset_from_repo(dataset_id: str,
         preprocess_func,
         dataset_test_ratio,
         remove_useless_columns,
-        streaming=streaming)
+        streaming=streaming**kwargs)
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
@@ -611,7 +618,9 @@ def get_mantis_dataset(dataset_id: str,
                        random_state: Optional[RandomState] = None,
                        dataset_test_ratio: float = 0.,
                        remove_useless_columns: bool = True,
-                       use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+                       use_hf: bool = False,
+                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    streaming = kwargs.get('streaming', False)
     if subsets is None:
         subsets = []
     assert len(split) > 0
@@ -621,13 +630,13 @@ def get_mantis_dataset(dataset_id: str,
         subset_split_list = list(itertools.product(subsets, split))
     all_datasets = []
     for subset in subset_split_list:
-        dataset = load_ms_dataset(dataset_id, [subset], use_hf)
+        dataset = load_ms_dataset(dataset_id, [subset], use_hf, streaming=streaming)
         dataset = preprocess_mantis_image(dataset, subset=subset[0])
         all_datasets.append(dataset)
         break
-    dataset = concatenate_datasets(all_datasets)
+    dataset = concatenate_datasets(all_datasets) if streaming else interleave_datasets(all_datasets)
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
-                            remove_useless_columns)
+                            remove_useless_columns, **kwargs)
 
 
 register_dataset(
@@ -2629,8 +2638,9 @@ def get_dataset(
         # for self-cognition
         model_name: Union[Tuple[str, str], List[str], None] = None,
         model_author: Union[Tuple[str, str], List[str], None] = None,
-        streaming: bool = False) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+        **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """Returns train_dataset and val_dataset"""
+    streaming = kwargs.get('streaming', False)
     if isinstance(dataset_name_list, str):
         dataset_name_list = [dataset_name_list]
     train_dataset_list: List[DATASET_TYPE] = []
@@ -2677,7 +2687,7 @@ def get_dataset(
             dataset_test_ratio=dataset_test_ratio,
             remove_useless_columns=remove_useless_columns,
             use_hf=use_hf,
-            streaming=streaming)
+            **kwargs)
 
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
@@ -2749,7 +2759,15 @@ def get_local_dataset(_1: str,
                       **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     streaming = kwargs.get('streaming', False)
     dataset = load_dataset_from_local(split, preprocess_func, streaming)
-    return _post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio, remove_useless_columns)
+    return _post_preprocess(
+        dataset,
+        dataset_sample,
+        random_state,
+        None,
+        dataset_test_ratio,
+        remove_useless_columns,
+        streaming=streaming,
+        **kwargs)
 
 
 def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:

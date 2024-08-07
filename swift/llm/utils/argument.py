@@ -385,19 +385,11 @@ class ArgumentsBase:
         val_dataset_sample = self.val_dataset_sample
 
         if train_dataset is not None and self.train_dataset_sample >= 0:
-            if not streaming:
-                train_dataset_sample = min(self.train_dataset_sample, train_dataset.shape[0])
-                if train_dataset.shape[0] > train_dataset_sample:
-                    logger.info(f'train_dataset_sample: {train_dataset_sample}')
-                    train_idxs = random_state.permutation(train_dataset_sample)
-                    train_dataset = train_dataset.select(train_idxs)
-            else:
-                train_dataset = train_dataset.shuffle(
-                    seed=self.dataset_seed, buffer_size=self.streaming_buffer_size).take(train_dataset_sample)
-
-            if val_dataset_sample is None:
-                val_dataset_sample = max(int(train_dataset_sample * self.dataset_test_ratio), 1)
-
+            train_dataset_sample = min(self.train_dataset_sample, train_dataset.shape[0])
+            if train_dataset.shape[0] > train_dataset_sample:
+                logger.info(f'train_dataset_sample: {train_dataset_sample}')
+                train_idxs = random_state.permutation(train_dataset_sample)
+                train_dataset = train_dataset.select(train_idxs)
         if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
             if not streaming and val_dataset.shape[0] > val_dataset_sample:
                 logger.info(f'val_dataset_sample: {val_dataset_sample}')
@@ -607,6 +599,7 @@ class SftArguments(ArgumentsBase):
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
     # streaming dataset
     streaming: bool = False
+    streaming_val_size: int = 0
     streaming_buffer_size: int = 16384
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
@@ -1219,11 +1212,13 @@ class SftArguments(ArgumentsBase):
 
         if self.dataset_test_ratio > 0:
             logger.info('Set dataset_test_ratio to 0 in streaming mode.'
-                        'You can manually set val_dataset and val_dataset_sample.')
+                        'You can manually set val_dataset and val_dataset_sample.'
+                        'or set streaming_val_size instead to split from train dataset')
             self.dataset_test_ratio = 0
 
         if self.train_dataset_sample > 0:
-            logger.warning('The final data size in streaming data may be smaller than train_dataset_sample')
+            logger.warning('train_dataset_sample is not supported for streaming dataset, set to -1')
+            self.train_dataset_sample = -1
 
         if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
             logger.info('Set dataloader_num_workers to 0 in streaming mode')
