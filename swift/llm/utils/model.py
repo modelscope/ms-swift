@@ -4057,14 +4057,9 @@ def get_model_tokenizer_internvl(model_dir: str,
     if isinstance(quantization_config, BitsAndBytesConfig):
         use_bnb = True
 
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     model, tokenizer = get_model_tokenizer_from_repo(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        automodel_class=AutoModel,
-        **kwargs)
+        model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, **kwargs)
 
     if use_bnb and kwargs.get('is_training'):
         # patch: bnb backward shape mismatch bug
