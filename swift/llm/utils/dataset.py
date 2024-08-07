@@ -47,6 +47,12 @@ datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
+standard_keys = {
+                'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
+                'objects', 'videos', 'audios', 'tools', 'label'
+        }
+
+
 def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
     k_list = []
     if isinstance(dataset, HfIterableDataset) and dataset.features is None:
@@ -55,10 +61,7 @@ def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
         features = dataset.features.keys()
 
     for k in features:
-        if k in {
-                'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
-                'objects', 'videos', 'audios', 'tools', 'label'
-        }:
+        if k in standard_keys:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -1522,7 +1525,7 @@ def _preprocess_llava_pretrain(dataset: DATASET_TYPE):
 
 register_dataset(
     DatasetName.llava_pretrain,
-    'AI-ModelScope/LLaVA-Pretrain', ['blip_laion_cc_sbu_558k'],
+    'AI-ModelScope/LLaVA-Pretrain', ['default'],
     _preprocess_llava_pretrain,
     get_dataset_from_repo,
     split=['train'],
@@ -2708,7 +2711,9 @@ def get_dataset(
 
     if not streaming:
         train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
-        val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
+        if val_dataset:
+            val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
+    
     return train_dataset, val_dataset
 
 

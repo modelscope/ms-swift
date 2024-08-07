@@ -18,6 +18,9 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, upper_bound, use_torchacc
+from swift.utils import get_logger
+
+logger = get_logger()
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -785,6 +788,7 @@ class Template:
 
         if self.max_length is not None:
             if truncation_strategy == 'delete' and len(input_ids) > self.max_length:
+                logger.info(f'Current length of row({len(input_ids)}) is larger than the max_length({self.max_length}), deleted.')
                 return {}, {}
             input_ids = input_ids[-self.max_length:]
             if labels is not None:

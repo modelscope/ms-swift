@@ -317,7 +317,7 @@ def dataset_map(dataset: DATASET_TYPE,
                 num_proc: int = 1,
                 streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
     if streaming:
-        return dataset.map(map_func)  # num_proc is not supported for IterableDataset
+        return LLMIterableDataset(dataset.map(map_func))  # num_proc is not supported for IterableDataset
 
     single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
@@ -957,6 +957,34 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
     except Exception:
         pass
     return time_info
+
+
+class LLMIterableDataset(HfIterableDataset):
+
+    def __init__(self, dataset: HfIterableDataset, max_retries=10):
+        self.dataset = dataset
+        self.max_retries = max_retries
+        from .dataset import standard_keys
+        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        while True:
+            retries = 0
+            while retries < self.max_retries:
+                try:
+                    value = next(iterator)
+                    if value:
+                        yield value
+                        break
+                    else:
+                        raise ValueError
+                except StopIteration:
+                    return
+                except Exception as e:
+                    retries += 1
+                    if retries >= self.max_retries:
+                        raise e
 
 
 def get_max_model_len(config: PretrainedConfig) -> Optional[int]:

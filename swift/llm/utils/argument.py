@@ -1038,10 +1038,10 @@ class SftArguments(ArgumentsBase):
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
         template_info = TEMPLATE_MAPPING[self.template_type]
-        self._handle_streaming_args()
         if self.lazy_tokenize is None:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        self._handle_streaming_args()
         if self.dataloader_num_workers is None:
             if 'dataloader_num_workers' in template_info:
                 self.dataloader_num_workers = template_info['dataloader_num_workers']
