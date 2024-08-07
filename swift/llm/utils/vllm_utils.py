@@ -45,6 +45,7 @@ def get_vllm_engine(
         revision: Optional[str] = None,
         gpu_memory_utilization: float = 0.9,
         tensor_parallel_size: int = 1,
+        max_num_seqs: int = 256,
         max_model_len: Optional[int] = None,
         disable_custom_all_reduce: bool = True,  # Default values different from vllm
         enforce_eager: bool = False,
@@ -96,6 +97,7 @@ def get_vllm_engine(
         dtype=dtype,
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
+        max_num_seqs=max_num_seqs, 
         max_model_len=max_model_len,
         disable_log_stats=disable_log_stats,
         disable_custom_all_reduce=disable_custom_all_reduce,
@@ -542,6 +544,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         args.torch_dtype,
         gpu_memory_utilization=args.gpu_memory_utilization,
         tensor_parallel_size=args.tensor_parallel_size,
+        max_num_seqs=args.max_num_seqs,
         max_model_len=args.max_model_len,
         disable_custom_all_reduce=args.disable_custom_all_reduce,
         enforce_eager=args.enforce_eager,

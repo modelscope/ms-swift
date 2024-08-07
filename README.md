@@ -511,7 +511,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 Original model:
 ```shell
-# We recommend using vLLM for acceleration (arc evaluated in half a minute)
 CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
     --eval_dataset ARC_e --infer_backend vllm
 ```

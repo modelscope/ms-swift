@@ -168,8 +168,7 @@ class Template:
     special_tokens = ['<image>', '<video>', '<audio_label>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
-    image_placeholder = '<image>'
-    vllm_image_placeholder = '<image>'
+    image_placeholder = ['<image>']
     load_medias = True
 
     def __init__(self,
@@ -574,7 +573,7 @@ class Template:
             if self._is_lmdeploy:
                 return [[-100]]
             else:
-                return [self.image_placeholder]
+                return self.image_placeholder
         if media_type == 'video':
             return ['<video>']
         if media_type == 'audio':
@@ -1384,7 +1383,7 @@ class InternLMXComposer2Template(Template):
         'It is designed to be helpful, honest, and harmless.\n'
         '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
         'by the user such as English and 中文.')
-    image_placeholder = '</s>'
+    image_placeholder = ['</s>']
 
     def __init__(self, version):
         prefix = ['<s>']
@@ -1662,7 +1661,7 @@ class InternvlPhi3Template(InternvlTemplate):
 
     def __init__(self):
         Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
         self.padding_side = 'left'
@@ -2014,6 +2013,12 @@ class LLava1_6YiTemplate(Llava1_6Template):
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        if self._is_vllm:
+            return [[64000], '\n']
+        else:
+            return super().replace_tag(media_type, index, example)
+
 
 register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
 
@@ -2088,11 +2093,17 @@ register_template(
 
 class Phi3VisionTemplate(Template):
 
-    image_placeholder = '<|image|>'
+    image_placeholder = [[32044], '\n']  # <|image|>\n
 
     def __init__(self):
         Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        if self._is_vllm:
+            return [f'<|image_{index + 1}|>\n']  # <|image_1|>\n
+        else:
+            return super().replace_tag(media_type, index, example)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images = example.get('images', [])
@@ -2176,7 +2187,7 @@ class DeepseekVLTemplate(Template):
                           'You are able to understand the visual content that the user provides, '
                           'and assist the user with a variety of tasks using natural language.')
 
-    image_placeholder = '<image_placeholder>'
+    image_placeholder = ['<image_placeholder>']
 
     def __init__(self):
         super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
