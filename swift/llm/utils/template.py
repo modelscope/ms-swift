@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 import json
 import numpy as np
 import torch
-import torchvision.transformers
+import torchvision.transforms
 import torch.nn.functional as F
 import transformers
 from packaging import version
@@ -1417,7 +1417,7 @@ class InternLMXComposer2Template(Template):
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         def resize_image(image, target_height, target_width):
-            # resize image to target_height and target_width
+            # resize image to target_height and target_width while using internlm-xcomposer2-4KHD
             resize_transform = torchvision.transforms.Resize((target_height, target_width))
             return resize_transform(image)
             
