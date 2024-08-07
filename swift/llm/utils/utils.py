@@ -977,7 +977,7 @@ def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Op
     if max_model_len == INF:
         max_model_len = None
 
-    if (not ignore_rope_scaling and max_model_len and hasattr(config, 'rope_scaling')
+    if (not ignore_rope_scaling and max_model_len and getattr(config, 'rope_scaling', None)
             and config.rope_scaling.get('factor')):
         max_model_len = max(int(max_model_len * config.rope_scaling.get('factor')), max_model_len)
     return max_model_len
@@ -990,7 +990,7 @@ def set_rope_scaling(config: PretrainedConfig, rope_scaling: Dict[str, Any]):
             config = llm_config
             break
 
-    if hasattr(config, 'rope_scaling'):
+    if getattr(config, 'rope_scaling', None):
         rope_scaling['factor'] = max(config.rope_scaling.get('factor', -1), rope_scaling['factor'])
         rope_scaling = {**config.rope_scaling, **rope_scaling}
     config.rope_scaling = rope_scaling
