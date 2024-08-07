@@ -1361,15 +1361,8 @@ def _clone_hook(module, input, output):
     'LLM-Research/Phi-3-vision-128k-instruct',
     LoRATM.phi3v,
     TemplateType.phi3_vl,
-    # https://github.com/vllm-project/vllm/blob/main/examples/phi3v_example.py
     support_flash_attn=True,
     support_vllm=True,
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 32044,
-        'image_input_shape': '1,3,1008,1344',
-        'image_feature_size': 1921,
-    },
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='microsoft/Phi-3-vision-128k-instruct')
@@ -5797,12 +5790,6 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 32000,
-        'image_input_shape': '1,3,336,336',
-        'image_feature_size': 576,
-    },
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-13b-hf')
@@ -5815,13 +5802,6 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    # https://github.com/vllm-project/vllm/blob/main/examples/llava_example.py
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 32000,
-        'image_input_shape': '1,3,336,336',
-        'image_feature_size': 576,
-    },
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-7b-hf')
@@ -5839,12 +5819,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 32000,
-        'image_input_shape': '1,3,336,336',
-        'image_feature_size': 1176,
-    },
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
@@ -5856,12 +5830,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 32000,
-        'image_input_shape': '1,3,336,336',
-        'image_feature_size': 1176,
-    },
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
@@ -5873,13 +5841,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    # https://github.com/vllm-project/vllm/blob/main/examples/llava_next_example.py
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 32000,
-        'image_input_shape': '1,3,672,672',
-        'image_feature_size': 2928,
-    },
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
@@ -5897,12 +5858,6 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    vllm_config={
-        'image_input_type': 'pixel_values',
-        'image_token_id': 64003,
-        'image_input_shape': '1,3,336,336',
-        'image_feature_size': 1176,
-    },
     eos_token='<|im_end|>',
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],

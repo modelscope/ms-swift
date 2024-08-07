@@ -275,13 +275,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         generate_kwargs['lora_request'] = lora_request
 
     import vllm
-    from .utils.vllm_utils import _prepare_request_inputs
-
+    input_ids = inputs['input_ids']
     if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-        request_inputs = _prepare_request_inputs(inputs)
-        result_generator = llm_engine.generate(request_inputs, generation_config, request_id, **generate_kwargs)
+        result_generator = llm_engine.generate({'prompt_token_ids': input_ids}, generation_config, request_id,
+                                               **generate_kwargs)
     else:
-        input_ids = inputs['input_ids']
         result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
 
     async def _generate_full():
