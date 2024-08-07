@@ -1475,7 +1475,7 @@ class InternLMXComposer2Template(Template):
             i += 1
         if len(labels) == 0:
             res_labels = None
-        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
+        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0).detach()
         wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool)[None]
         return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
 
