@@ -1035,7 +1035,6 @@ class SftArguments(ArgumentsBase):
         if self.lazy_tokenize is None and not self.streaming:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        self._handle_streaming_args()
         if self.dataloader_num_workers is None:
             if 'dataloader_num_workers' in template_info:
                 self.dataloader_num_workers = template_info['dataloader_num_workers']
