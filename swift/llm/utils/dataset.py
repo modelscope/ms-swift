@@ -464,7 +464,8 @@ def get_dataset_from_repo(dataset_id: str,
         preprocess_func,
         dataset_test_ratio,
         remove_useless_columns,
-        streaming=streaming**kwargs)
+        streaming=streaming,
+        **kwargs)
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
