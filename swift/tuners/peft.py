@@ -3,6 +3,7 @@
 import os.path
 from dataclasses import asdict, dataclass, field
 from functools import partial, reduce
+from types import MethodType
 from typing import Dict, Optional
 
 import json
@@ -275,6 +276,14 @@ def adalora_mask_to_budget(self, model, budget):
     return rank_pattern
 
 
+def keep_device_forward(self, *args, **kwargs):
+    x = args[0]
+    if self.weight.device != x.device:
+        return self.forward_origin(x.to(self.weight.device), *args[1:], **kwargs)
+    else:
+        return self.forward_origin(*args, **kwargs)
+
+
 def hot_patch_peft_module():
     from peft.tuners.lora import LoraLayer
 
@@ -301,6 +310,10 @@ def hot_patch_peft_module():
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
                     _convert_dtype(module, self.active_adapter, active_config.lora_dtype)
+                    for lora in list(module.lora_A.values()) + list(module.lora_B.values()):
+                        if not hasattr(lora, 'forward_origin'):
+                            lora.forward_origin = lora.forward
+                            lora.forward = MethodType(keep_device_forward, lora)
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = init
