@@ -1293,6 +1293,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
     tags=['multi-modal', 'vision'],
@@ -1303,6 +1304,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
     tags=['multi-modal', 'vision'],
@@ -1313,6 +1315,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
     tags=['multi-modal', 'vision'],
@@ -1323,6 +1326,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
     tags=['multi-modal', 'vision'],
@@ -1333,6 +1337,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
     LoRATM.paligemma,
     TemplateType.paligemma,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.41'],
     placeholder_tokens=['<image>'],
     tags=['multi-modal', 'vision'],
@@ -1347,8 +1352,6 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor
-    if model is not None:
-        model.max_position_embeddings = model.language_model.config.max_position_embeddings
     return model, tokenizer
 
 
@@ -3909,99 +3912,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     return model, tokenizer
 
 
-def fix_internvl_inplace_bug(model) -> None:
-    embedding = model.language_model.get_input_embeddings()
-    if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-        old_forward = embedding.forward
-
-        @wraps(old_forward)
-        def _new_forward(*args, **kwargs):
-            device = args[0].device
-            return old_forward(*args, **kwargs).requires_grad_(True).clone().to(device)
-
-        embedding.__old_forward = old_forward
-        embedding.forward = _new_forward
-
-
-def _patch_internvl_forward(forward_func):
-    from transformers.modeling_outputs import CausalLMOutputWithPast
-    from torch.nn import CrossEntropyLoss
-
-    def wrapper(
-        self,
-        pixel_values: torch.FloatTensor = None,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        image_flags: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
-        if pixel_values is None:
-            inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
-            outputs = self.language_model(
-                inputs_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
-            logits = outputs.logits
-            loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_logits = shift_logits.view(-1, self.language_model.config.vocab_size)
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                loss = loss_fct(shift_logits, shift_labels)
-            if return_dict:
-                output = (logits, ) + outputs[1:]
-                return (loss, ) + output if loss is not None else output
-            return CausalLMOutputWithPast(
-                loss=loss,
-                logits=logits,
-                past_key_values=outputs.past_key_values,
-                hidden_states=outputs.hidden_states,
-                attentions=outputs.attentions,
-            )
-        else:
-            return forward_func(
-                pixel_values,
-                input_ids,
-                attention_mask,
-                position_ids,
-                image_flags,
-                past_key_values,
-                labels,
-                use_cache,
-                output_attentions,
-                output_hidden_states,
-                return_dict,
-            )
-
-    return wrapper
-
-
-def patch_internvl_forward(model) -> None:
-    if not hasattr(model, '__old_forward'):  # Avoid double patching
-        forward = model.forward
-        model.__old_forward = forward
-        model.forward = MethodType(_patch_internvl_forward(model.forward), model)
-
-
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -4051,6 +3961,7 @@ def patch_internvl_forward(model) -> None:
     LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -4062,6 +3973,7 @@ def patch_internvl_forward(model) -> None:
     LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -4073,6 +3985,7 @@ def patch_internvl_forward(model) -> None:
     LoRATM.internvl,
     TemplateType.internvl2_phi3,
     requires=['transformers>=4.35,<4.42', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -4084,6 +3997,7 @@ def patch_internvl_forward(model) -> None:
     LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -4095,6 +4009,7 @@ def patch_internvl_forward(model) -> None:
     LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -4106,6 +4021,7 @@ def patch_internvl_forward(model) -> None:
     LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -4117,6 +4033,7 @@ def patch_internvl_forward(model) -> None:
     LoRATM.internvl,
     TemplateType.internvl2,
     requires=['transformers>=4.35', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
@@ -4155,64 +4072,8 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        model.config.max_position_embeddings = model.language_model.config.max_position_embeddings
-        _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
-        fix_internvl_inplace_bug(model)
-        patch_internvl_forward(model)
-
-        if not hasattr(model, '__old_generate'):
-            generate = model.generate
-            model.__old_generate = generate
-
-            @wraps(generate)
-            def _new_generate(*args, **kwargs):
-                kwargs.pop('image_flags', None)
-                return generate(*args, **kwargs)
-
-            model.generate = _new_generate
-
-        if not hasattr(model, '_old_extract_feature'):
-            extract_feature = model.extract_feature
-            model._old_extract_feature = extract_feature
-
-            @wraps(extract_feature)
-            def _new_extract_feature(pixel_values):
-                return extract_feature(pixel_values).to(pixel_values.device).to(pixel_values.dtype)
-
-            model.extract_feature = _new_extract_feature
-
-        if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
-            old_forward = model.language_model.forward
-            model.language_model.__old_forward = old_forward
-
-            @wraps(old_forward)
-            def _new_forward(*args, **kwargs):
-                input_ids: Optional[Tensor] = kwargs.get('input_ids', None)
-                input_embeds: Optional[Tensor] = kwargs.get('inputs_embeds', None)
-                device = input_ids.device if input_ids is not None else input_embeds.device
-                output = old_forward(*args, **kwargs)
-                output['logits'] = output['logits'].to(device)
-                return output
-
-            model.language_model.forward = _new_forward
-
-        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
-        img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
-        model.img_context_token_id = img_context_token_id
-        if not hasattr(model.config, 'hidden_size'):
-            model.config.hidden_size = model.config.llm_config.hidden_size
-    # fix single GPU bug
-    if not hasattr(dist, '_old_get_rank'):
-        get_rank = dist.get_rank
-
-        @wraps(get_rank)
-        def new_get_rank(group=None):
-            if not dist.is_initialized() or dist.get_world_size() == 1:
-                return -1
-            return get_rank(group)
-
-        dist.get_rank = new_get_rank
-        dist._old_get_rank = get_rank
+        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
     return model, tokenizer
 
 
@@ -5707,6 +5568,7 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
     LoRATM.minicpm_v,
     TemplateType.minicpm_v_v2_6,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['timm', 'transformers>=4.36', 'decord'],
     placeholder_tokens=['<unk>'],
     function_kwargs={'version': 'v2.6'},
@@ -5718,6 +5580,7 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
     LoRATM.minicpm_v,
     TemplateType.minicpm_v_v2_5,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['timm', 'transformers>=4.36'],
     placeholder_tokens=['<unk>'],
     tags=['multi-modal', 'vision'],

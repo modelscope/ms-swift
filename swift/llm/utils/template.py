@@ -1610,6 +1610,8 @@ class Internvl2Template(InternvlTemplate):
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
+        tokenizer = self.tokenizer
+        model = self.model
         from .vision_utils import transform_image
         pixel_values_images = [transform_image(image) for image in example.get('images', [])]
         videos_path = example.get('videos', [])
@@ -1618,40 +1620,40 @@ class Internvl2Template(InternvlTemplate):
             assert len(pixel_values) == len(
                 idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
             added_tokens_len = 0
-            patches = 0
-            for idx, pv in zip(idx_list, pixel_values):
-                patches += pv.shape[0]
-                img_tokens: List[int] = self.tokenizer.encode(
-                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n',
-                    add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-                if labels is not None:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
-                added_tokens_len += len(img_tokens) - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
-            inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(patches)
+            num_patches = [pv.shape[0] for pv in pixel_values]
+            pixel_values = torch.cat(pixel_values)
         elif videos_path:
             assert len(videos_path) == 1, f'videos_path: {videos_path}'
             from .vision_utils import load_video
             pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
-            assert len(num_patches) == len(
-                idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
-            added_tokens_len = 0
-            for idx, num_patch in zip(idx_list, num_patches):
-                img_tokens: List[int] = self.tokenizer.encode(
-                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-                if labels is not None:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
-                added_tokens_len += len(img_tokens) - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(sum(num_patches))
+
+        assert len(num_patches) == len(
+            idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+        for idx, num_patch in zip(idx_list, num_patches):
+            img_tokens: List[int] = tokenizer.encode(
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
+            input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+            if labels is not None:
+                labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                             + 1:]
+            added_tokens_len += len(img_tokens) - 1
+
+        embedding = model.get_input_embeddings()
+        device = embedding.weight.device
+        dtype = model.dtype
+        pixel_values = pixel_values.to(dtype=dtype, device=device)
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+
+        input_ids = torch.tensor(input_ids, device=device)
+        if pixel_values_images or videos_path:
+            vit_embeds = model.extract_feature(pixel_values)
+            inputs_embeds = embedding(input_ids)
+            selected = (input_ids == tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
+            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
+        else:
+            inputs_embeds = embedding(input_ids)
+        inputs['inputs_embeds'] = inputs_embeds
         inputs.pop('loss_scale', None)
         return inputs, {}
 
@@ -2052,7 +2054,7 @@ register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_m
 class PaliGemmaTemplate(Template):
 
     def __init__(self):
-        Template.__init__(self, ['<bos>'], ['{{QUERY}}\n'], None, ['<eos>'])
+        super().__init__([], ['{{QUERY}}\n'], None, ['<eos>'])
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -2060,7 +2062,12 @@ class PaliGemmaTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return ['<image>' * self.tokenizer.processor.image_seq_length]
+        if self._is_vllm:
+            self.prompt = ['{{QUERY}}']
+            return []
+        else:
+            self.prompt = ['{{QUERY}}\n']
+            return ['<image>' * self.tokenizer.processor.image_seq_length + '<bos>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -2409,11 +2416,15 @@ class MiniCPMVTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
-        return [[-1]]
+        if self._is_vllm:
+            return ['(<image>./</image>)\n']
+        else:
+            return [[-1]]
 
     def check_example(self, example):
         images = example.get('images', [])
-        assert len(images) == 1
+        if not self._is_vllm:
+            assert len(images) == 1
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -2546,7 +2557,10 @@ class MiniCPMV2_6Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type in {'image', 'video'}
-        return [[-1]]
+        if self._is_vllm:
+            return ['(<image>./</image>)\n']
+        else:
+            return [[-1]]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from .vision_utils import _read_batch

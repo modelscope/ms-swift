@@ -97,7 +97,7 @@ def get_vllm_engine(
         dtype=dtype,
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
-        max_num_seqs=max_num_seqs, 
+        max_num_seqs=max_num_seqs,
         max_model_len=max_model_len,
         disable_log_stats=disable_log_stats,
         disable_custom_all_reduce=disable_custom_all_reduce,
