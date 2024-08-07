@@ -59,6 +59,7 @@ class TemplateType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
+    internlm_xcomposer2_4khd = 'internlm-xcomposer2-4khd'
     internlm_xcomposer2_5 = 'internlm-xcomposer2_5'
     internvl = 'internvl'
     internvl2 = 'internvl2'
@@ -1403,16 +1404,16 @@ class InternLMXComposer2Template(Template):
         'It is designed to be helpful, honest, and harmless.\n'
         '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
         'by the user such as English and 中文.')
-    is_v2_5 = False
     image_placeholder = '</s>'
 
-    def __init__(self):
+    def __init__(self, version):
         prefix = ['<s>']
         prompt = ['[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n']
         chat_sep = ['[UNUSED_TOKEN_145]\n']
         suffix = ['[UNUSED_TOKEN_145]']
         system_prefix = ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n']
         super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER_SYSTEM, system_prefix)
+        self.version = version
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1420,22 +1421,22 @@ class InternLMXComposer2Template(Template):
             return inputs, {}
         dtype = self.model.dtype
         images = example.get('images', [])
-        if self.is_v2_5:
+
+        if self.version == 'v2.5':
             hd_num = 24
             Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
             if len(images) > 1:
                 hd_num = 6
-            for i, image in enumerate(images):
-                image = Image_transform(image, hd_num=hd_num)
-                image = self.model.vis_processor(image)
-                image = image.to(dtype)
-                image = self.model.img2emb(image[None])[0]
-                assert image.shape[0] == 1
-                images[i] = image[0]
-        else:
-            for i, image in enumerate(images):
-                image = self.model.vis_processor(image)
-                images[i] = image.to(dtype)
+            images = [Image_transform(image, hd_num=hd_num) for image in images]
+        elif self.version == 'v2-4khd':
+            hd_num = 55
+            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.tokenizer.model_dir)
+            images = [HD_transform(image, hd_num=hd_num) for image in images]
+        images = [self.model.vis_processor(image).to(dtype) for image in images]
+        if len(images) > 0:
+            images = torch.stack(images, dim=0)
+            images = self.model.img2emb(images)[0]
+
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -1443,9 +1444,6 @@ class InternLMXComposer2Template(Template):
             input_ids = input_ids[1:]
             if labels is not None:
                 labels = labels[1:]
-            if not self.is_v2_5:
-                images = torch.stack(images, dim=0)
-                images = self.model.encode_img(images)
         input_ids.append(2)  # add dummy </s>
         if labels is not None:
             labels.append(2)
@@ -1466,16 +1464,10 @@ class InternLMXComposer2Template(Template):
                 res_inputs_embeds.append(tok_embeddings(res_input_ids))
                 wrap_im_mask += [0] * len(res_input_ids)
                 res_labels += [-100] + labels[pre_i:i]
-                if self.is_v2_5:
-                    if len(images) > 0 and idx < len(images):
-                        res_inputs_embeds.append(images[idx])
-                        wrap_im_mask += [1] * images[idx].shape[0]
-                        res_labels += [-100] * images[idx].shape[0]
-                else:
-                    if len(images) > 0 and idx < images.shape[0]:
-                        res_inputs_embeds.append(images[idx])
-                        wrap_im_mask += [1] * images.shape[1]
-                        res_labels += [-100] * images.shape[1]
+                if len(images) > 0 and idx < images.shape[0]:
+                    res_inputs_embeds.append(images[idx].to(device))
+                    wrap_im_mask += [1] * images.shape[1]
+                    res_labels += [-100] * images.shape[1]
                 idx += 1
                 i += 1
                 pre_i = i
@@ -1483,7 +1475,7 @@ class InternLMXComposer2Template(Template):
             i += 1
         if len(labels) == 0:
             res_labels = None
-        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
+        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0).detach()
         wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool)[None]
         return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
 
@@ -1501,7 +1493,7 @@ class InternLMXComposer2Template(Template):
 
 register_template(
     TemplateType.internlm_xcomposer2,
-    InternLMXComposer2Template(),
+    InternLMXComposer2Template(version='v2'),
     use_model=True,
     lazy_tokenize=True,
     dataloader_num_workers=0,
@@ -1518,12 +1510,19 @@ class InternLMXComposer2_5Template(InternLMXComposer2Template):
         'by the user such as English and 中文.\n'
         '- InternLM-XComposer (浦语·灵笔) is capable of comprehending and articulating responses effectively '
         'based on the provided image.')
-    is_v2_5 = True
 
 
 register_template(
     TemplateType.internlm_xcomposer2_5,
-    InternLMXComposer2_5Template(),
+    InternLMXComposer2_5Template(version='v2.5'),
+    use_model=True,
+    lazy_tokenize=True,
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.internlm_xcomposer2_4khd,
+    InternLMXComposer2_5Template(version='v2-4khd'),
     use_model=True,
     lazy_tokenize=True,
     dataloader_num_workers=0,

@@ -289,6 +289,7 @@ class ModelType:
     internlm2_math_20b_chat = 'internlm2-math-20b-chat'
     # internlm-xcomposer2
     internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
+    internlm_xcomposer2_4khd_7b_chat = 'internlm-xcomposer2-4khd-7b-chat'
     internlm_xcomposer2_5_7b_chat = 'internlm-xcomposer2_5-7b-chat'
     # internvl
     internvl_chat_v1_5 = 'internvl-chat-v1_5'
@@ -4231,7 +4232,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     support_flash_attn=True,
     support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
-    function_kwargs={'is_v2_5': True},
+    function_kwargs={'version': 'v2.5'},
     hf_model_id='internlm/internlm-xcomposer2d5-7b')
 @register_model(
     ModelType.internlm_xcomposer2_7b_chat,
@@ -4242,12 +4243,33 @@ def get_model_tokenizer_internvl(model_dir: str,
     eos_token='[UNUSED_TOKEN_145]',
     tags=['multi-modal', 'vision'],
     hf_model_id='internlm/internlm-xcomposer2-7b')
+@register_model(
+    ModelType.internlm_xcomposer2_4khd_7b_chat,
+    'Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b',
+    LoRATM.internlm_xcomposer,
+    TemplateType.internlm_xcomposer2_4khd,
+    support_lmdeploy=True,
+    eos_token='[UNUSED_TOKEN_145]',
+    function_kwargs={'version': 'v2-4khd'},
+    tags=['multi-modal', 'vision'],
+    hf_model_id='internlm/internlm-xcomposer2-4khd-7b')
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             torch_dtype: Dtype,
                                             model_kwargs: Dict[str, Any],
                                             load_model: bool = True,
                                             **kwargs):
-    is_v2_5 = kwargs.pop('is_v2_5', False)
+    version = kwargs.pop('version', 'v2')
+    if version == 'v2-4khd':
+        from transformers import CLIPVisionModel
+
+        def load_model(self):
+            self.vision_tower_name = snapshot_download('AI-ModelScope/clip-vit-large-patch14-336')
+            self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name)
+            self.vision_tower.requires_grad_(False)
+            self.is_loaded = True
+
+        CLIPVisionTower = get_class_from_dynamic_module('build_mlp.CLIPVisionTower', model_dir)
+        CLIPVisionTower.load_model = load_model
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config._flash_attn_2_enabled = use_flash_attn
@@ -4264,9 +4286,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
             # fix AttributeError: no attribute 'attention_dropout'
             model.model.layers[0].attention.__class__.attention_dropout = 0.
 
-        model_cls = model.__class__
-
-        if is_v2_5:
+        if version == 'v2.5':
 
             def _output_device_map_hook(module, input, output):
                 output = (output[0].to(input[1].device), output[1])
@@ -4277,24 +4297,6 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 
             model.vit.register_forward_hook(_output_device_map_hook)
             model.vision_proj.register_forward_hook(_output_device_map_hook2)
-        else:
-            if not hasattr(model_cls, '__old_encode_img'):  # avoid double patching
-                model_cls.__old_encode_img = model_cls.encode_img
-
-                def _new_encode_img(self, image):
-                    if image is None:
-                        return None
-                    if isinstance(image, str):
-                        from PIL import Image
-                        image = Image.open(image).convert('RGB')
-                        image = self.vis_processor(image).unsqueeze(0).to(self.device)
-                    else:
-                        assert isinstance(image, torch.Tensor)
-
-                    img_embeds, atts_img, img_target = self.img2emb(image)
-                    return img_embeds.to(device=self.device)  # FIX device_map
-
-                model_cls.encode_img = _new_encode_img
 
     return model, tokenizer
 
@@ -4354,7 +4356,7 @@ def __prepare_inputs_embeds(
 
     # [b, T, D]
     input_ids[input_ids < 0] = 0  # ignore the image embeddings
-    inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
+    inputs_embeds = self.language_model.get_input_embeddings()(input_ids).to(input_ids.device)
 
     # replace with the image embeddings (FIX)
     inputs_embeds.data[images_seq_mask] = images_embeds[images_emb_mask]
