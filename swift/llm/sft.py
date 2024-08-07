@@ -37,7 +37,9 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
         model_author=args.model_author,
-        streaming=args.streaming)
+        streaming=args.streaming,
+        streaming_val_size=args.streaming_val_size,
+        streaming_buffer_size=args.streaming_buffer_size)
     if len(args.val_dataset) > 0:
         # Loading val dataset
         _, val_dataset = get_dataset(
@@ -47,7 +49,9 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
             check_dataset_strategy=args.check_dataset_strategy,
             model_name=args.model_name,
             model_author=args.model_author,
-            streaming=args.streaming)
+            streaming=args.streaming,
+            streaming_val_size=args.streaming_val_size,
+            streaming_buffer_size=args.streaming_buffer_size)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
     logger.info(f'train_dataset: {train_dataset}')
