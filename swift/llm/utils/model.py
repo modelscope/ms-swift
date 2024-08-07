@@ -4286,8 +4286,6 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
             # fix AttributeError: no attribute 'attention_dropout'
             model.model.layers[0].attention.__class__.attention_dropout = 0.
 
-        model_cls = model.__class__
-
         if version == 'v2.5':
 
             def _output_device_map_hook(module, input, output):

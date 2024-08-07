@@ -1499,6 +1499,7 @@ register_template(
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 
+
 class InternLMXComposer2_5Template(InternLMXComposer2Template):
     INTERNLM_XCOMPOSER_SYSTEM = (
         'You are an AI assistant whose name is InternLM-XComposer (浦语·灵笔).\n'
@@ -1526,6 +1527,7 @@ register_template(
     lazy_tokenize=True,
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
+
 
 class InternvlTemplate(Template):
     system = 'You are an AI assistant whose name is InternLM (书生·浦语).'
