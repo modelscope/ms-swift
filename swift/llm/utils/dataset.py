@@ -457,15 +457,8 @@ def get_dataset_from_repo(dataset_id: str,
     else:
         subset_split_list = list(itertools.product(subsets, split))
     dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf, streaming=streaming)
-    return _post_preprocess(
-        dataset,
-        dataset_sample,
-        random_state,
-        preprocess_func,
-        dataset_test_ratio,
-        remove_useless_columns,
-        streaming=streaming,
-        **kwargs)
+    return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
+                            remove_useless_columns, **kwargs)
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
@@ -2760,15 +2753,8 @@ def get_local_dataset(_1: str,
                       **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     streaming = kwargs.get('streaming', False)
     dataset = load_dataset_from_local(split, preprocess_func, streaming)
-    return _post_preprocess(
-        dataset,
-        dataset_sample,
-        random_state,
-        None,
-        dataset_test_ratio,
-        remove_useless_columns,
-        streaming=streaming,
-        **kwargs)
+    return _post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio, remove_useless_columns,
+                            **kwargs)
 
 
 def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:
