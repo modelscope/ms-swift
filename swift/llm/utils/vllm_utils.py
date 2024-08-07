@@ -233,7 +233,12 @@ def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_
                       generation_config: VllmGenerationConfig, **kwargs) -> None:
     input_ids = inputs['input_ids']
     if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-        llm_engine.add_request(request_id, {'prompt_token_ids': input_ids}, generation_config, **kwargs)
+        llm_inputs = {'prompt_token_ids': input_ids}
+        images = inputs.get('images') or []
+        if images:
+            assert len(images) == 1, 'Currently, only one image is supported.'
+            llm_inputs['multi_modal_data'] = {'image': images[0]}
+        llm_engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
     else:
         llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
 

@@ -169,6 +169,7 @@ class Template:
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = '<image>'
+    vllm_image_placeholder = '<image>'
     load_medias = True
 
     def __init__(self,
@@ -363,7 +364,7 @@ class Template:
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
         if images:
-            if example.get('objects') or self.load_medias or self._is_lmdeploy:
+            if example.get('objects') or self.load_medias or self._is_lmdeploy or self._is_vllm:
                 images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
@@ -422,7 +423,7 @@ class Template:
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
         _encode = self._encode
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
         return _encode(example)
@@ -471,7 +472,7 @@ class Template:
             auto_add_bos=self.auto_add_bos,
             example=example,
             is_multi_modal=is_multi_modal)
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             inputs['images'] = example.get('images')
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
@@ -1024,10 +1025,11 @@ class QwenVLTemplate(QwenTemplate):
     load_medias = False
 
     def check_example(self, example):
-        if not self._is_lmdeploy:
-            images = example.get('images') or []
-            from .utils import fetch_one
-            assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
+        if self._is_lmdeploy:
+            return
+        images = example.get('images') or []
+        from .utils import fetch_one
+        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
