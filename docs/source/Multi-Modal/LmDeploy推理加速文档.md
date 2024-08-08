@@ -26,6 +26,8 @@ pip install lmdeploy
 
 ### 使用python
 
+[OpenGVLab/InternVL2-2B](https://modelscope.cn/models/OpenGVLab/InternVL2-2B/summary)
+
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
