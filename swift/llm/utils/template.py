@@ -168,7 +168,7 @@ class Template:
     special_tokens = ['<image>', '<video>', '<audio_label>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
-    image_placeholder = '<image>'
+    image_placeholder = ['<image>']
     load_medias = True
 
     def __init__(self,
@@ -320,28 +320,6 @@ class Template:
         example['query'] = query
         example['history'] = history
 
-    def _prepare_vllm_images(self, images: List['PIL.Image.Image']) -> List['PIL.Image.Image']:
-        # Resize the image to fit the proper size.
-        from PIL import Image
-        target_h, target_w = [int(x) for x in self.model.vllm_config['image_input_shape'].split(',')[-2:]]
-        new_images = []
-        for image in images:
-            # resize
-            ori_w, ori_h = image.size
-            scale = min(target_h / ori_h, target_w / ori_w)
-            if scale != 1:
-                image = image.resize((int(round(scale * ori_w)), int(round(scale * ori_h))), resample=Image.BICUBIC)
-            # pad
-            w, h = image.size
-            if target_w != w or target_h != h:
-                bg_color = tuple(int(v * 255) for v in self.tokenizer.processor.image_processor.image_mean)
-                new_image = Image.new(image.mode, (target_w, target_h), bg_color)
-                new_image.paste(image, ((target_w - w) // 2, (target_h - h) // 2))
-                image = new_image
-            new_images.append(image)
-
-        return new_images
-
     def _preprocess_media(self, example):
         from .media import MediaTag
         # Format media_keys to list
@@ -385,7 +363,7 @@ class Template:
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
         if images:
-            if example.get('objects') or self.load_medias or self._is_lmdeploy:
+            if example.get('objects') or self.load_medias or self._is_lmdeploy or self._is_vllm:
                 images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
@@ -444,7 +422,7 @@ class Template:
     def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
         _encode = self._encode
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
         return _encode(example)
@@ -493,7 +471,7 @@ class Template:
             auto_add_bos=self.auto_add_bos,
             example=example,
             is_multi_modal=is_multi_modal)
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             inputs['images'] = example.get('images')
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
@@ -595,7 +573,7 @@ class Template:
             if self._is_lmdeploy:
                 return [[-100]]
             else:
-                return [self.image_placeholder]
+                return self.image_placeholder
         if media_type == 'video':
             return ['<video>']
         if media_type == 'audio':
@@ -1046,10 +1024,11 @@ class QwenVLTemplate(QwenTemplate):
     load_medias = False
 
     def check_example(self, example):
-        if not self._is_lmdeploy:
-            images = example.get('images') or []
-            from .utils import fetch_one
-            assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
+        if self._is_lmdeploy:
+            return
+        images = example.get('images') or []
+        from .utils import fetch_one
+        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -1404,7 +1383,7 @@ class InternLMXComposer2Template(Template):
         'It is designed to be helpful, honest, and harmless.\n'
         '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
         'by the user such as English and 中文.')
-    image_placeholder = '</s>'
+    image_placeholder = ['</s>']
 
     def __init__(self, version):
         prefix = ['<s>']
@@ -1541,7 +1520,7 @@ class InternvlTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return [[-100]]
+        return [[-100], '\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1558,7 +1537,7 @@ class InternvlTemplate(Template):
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
             img_tokens: List[int] = self.tokenizer.encode(
-                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n', add_special_tokens=False)
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>', add_special_tokens=False)
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
@@ -1586,23 +1565,23 @@ class InternvlTemplate(Template):
 
 class Internvl2Template(InternvlTemplate):
     video_segments = 8
+    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
-        self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
         Template.__init__(
             self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
             self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
             auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
+        image_context = ['<image>\n'] if self._is_vllm else [[-100], '\n']
         if media_type == 'image':
-            return [[-100]]
+            return image_context
         elif media_type == 'video':
             context_list = []
             for i in range(self.video_segments):
                 context_list.append(f'Frame{i + 1}: ')
-                context_list.append([-100])
-                context_list.append('\n')
+                context_list += image_context
             return context_list
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
@@ -1682,14 +1661,13 @@ class InternvlPhi3Template(InternvlTemplate):
 
     def __init__(self):
         Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
         self.padding_side = 'left'
 
 
 class Internvl2Phi3Template(Internvl2Template):
-    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
         Template.__init__(
@@ -1875,19 +1853,13 @@ class LlavaHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
-        if self._is_vllm:
-            image_feature_size = self.model.vllm_config['image_feature_size']
-            return ['<image>' * image_feature_size + '\n']
-        else:
-            return ['<image>\n']
+        return ['<image>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images', [])
-        if self._is_vllm:
-            images = self._prepare_vllm_images(images)
         if images:
             image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
@@ -2040,6 +2012,12 @@ class LLava1_6YiTemplate(Llava1_6Template):
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        if self._is_vllm:
+            return [[64000], '\n']
+        else:
+            return super().replace_tag(media_type, index, example)
+
 
 register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
 
@@ -2073,7 +2051,7 @@ register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_m
 class PaliGemmaTemplate(Template):
 
     def __init__(self):
-        Template.__init__(self, ['<bos>'], ['{{QUERY}}\n'], None, ['<eos>'])
+        super().__init__([], ['{{QUERY}}\n'], None, ['<eos>'])
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -2081,7 +2059,12 @@ class PaliGemmaTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return ['<image>' * self.tokenizer.processor.image_seq_length]
+        if self._is_vllm:
+            self.prompt = ['{{QUERY}}']
+            return []
+        else:
+            self.prompt = ['{{QUERY}}\n']
+            return ['<image>' * self.tokenizer.processor.image_seq_length + '<bos>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -2114,11 +2097,17 @@ register_template(
 
 class Phi3VisionTemplate(Template):
 
-    image_placeholder = '<|image|>'
+    image_placeholder = [[32044], '\n']  # <|image|>\n
 
     def __init__(self):
         Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        if self._is_vllm:
+            return [f'<|image_{index + 1}|>\n']  # <|image_1|>\n
+        else:
+            return super().replace_tag(media_type, index, example)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images = example.get('images', [])
@@ -2129,8 +2118,6 @@ class Phi3VisionTemplate(Template):
         labels = inputs['labels']
         idx_list = _findall(input_ids, 32044)  # '<|image|>'
 
-        if self._is_vllm:
-            images = self._prepare_vllm_images(images)
         if len(images) > 0:
             processor = self.tokenizer.processor
             inputs.update(processor.image_processor(images, return_tensors='pt'))
@@ -2140,10 +2127,7 @@ class Phi3VisionTemplate(Template):
             num_img_tokens = inputs.pop('num_img_tokens').tolist()
             idx_list.insert(0, -1)
             for i in range(len(idx_list) - 1):
-                if self._is_vllm:
-                    image_token_id = self.model.vllm_config['image_token_id']
-                else:
-                    image_token_id = -1
+                image_token_id = -1
                 res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [image_token_id] * num_img_tokens[i] + [1]
                 if labels is not None:
                     res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
@@ -2207,7 +2191,7 @@ class DeepseekVLTemplate(Template):
                           'You are able to understand the visual content that the user provides, '
                           'and assist the user with a variety of tasks using natural language.')
 
-    image_placeholder = '<image_placeholder>'
+    image_placeholder = ['<image_placeholder>']
 
     def __init__(self):
         super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
@@ -2429,11 +2413,15 @@ class MiniCPMVTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
-        return [[-1]]
+        if self._is_vllm:
+            return ['(<image>./</image>)\n']
+        else:
+            return [[-1]]
 
     def check_example(self, example):
         images = example.get('images', [])
-        assert len(images) == 1
+        if not self._is_vllm:
+            assert len(images) == 1
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -2566,7 +2554,10 @@ class MiniCPMV2_6Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type in {'image', 'video'}
-        return [[-1]]
+        if self._is_vllm:
+            return ['(<image>./</image>)\n']
+        else:
+            return [[-1]]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from .vision_utils import _read_batch

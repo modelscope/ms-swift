@@ -17,8 +17,7 @@ cd swift
 pip install -e '.[llm]'
 
 # vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
-# vllm在0.5.1版本对多模态有巨大修改, 且只支持1张图片, 这里不进行立即更新, 等vllm稳定后再更新.
-pip install "vllm==0.5.0.*"
+pip install "vllm>=0.5.1"
 pip install openai -U
 ```
 

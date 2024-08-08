@@ -17,8 +17,7 @@ cd swift
 pip install -e '.[llm]'
 
 # vllm version corresponds to cuda version, please select version according to `https://docs.vllm.ai/en/latest/getting_started/installation.html`
-# In version 0.5.1, there have been major changes to multimodal support in VLLM, and it now only supports one image. We will not update immediately and will wait until VLLM is stable before updating.
-pip install "vllm==0.5.0.*"
+pip install "vllm>=0.5.1"
 pip install openai -U
 ```
 
