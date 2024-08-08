@@ -835,14 +835,6 @@ class Template:
         return torch.stack(padded_sequences)
 
     def _pre_forward_hook(self, module, args, kwargs):
-        if args and any([isinstance(arg, torch.Tensor) for arg in args]):
-            logger.warning_once(f'forward args containing torch.Tensor, '
-                                f'please make sure this model does not need to expand bs dim in streaming mode.')
-
-        for key in self.keys_expanded:
-            if key in kwargs:
-                kwargs[key] = kwargs[key][0].squeeze()
-
         self.pre_forward(kwargs)
         return args, kwargs
 
@@ -951,7 +943,7 @@ class Template:
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
             
-        self._expand_dim(res)
+        # self._expand_dim(res)
         return res
 
     @staticmethod
