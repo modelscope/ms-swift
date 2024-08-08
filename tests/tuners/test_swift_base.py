@@ -73,6 +73,7 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(torch.allclose(outputs_lora.logits, outputs_reactivate.logits))
 
     def test_swift_adapter_forward(self):
+        
         model = Model.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
         preprocessor = Preprocessor.from_pretrained('damo/nlp_structbert_sentence-similarity_chinese-base')
         inputs = preprocessor('how are you')
