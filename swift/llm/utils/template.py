@@ -171,6 +171,8 @@ class Template:
     grounding_type = 'norm_1000'
     image_placeholder = '<image>'
     load_medias = True
+    keys_expanded = ['pixel_values', 'image_sizes', 'pixel_value_videos', 'image_flags',
+                     'image_bound', 'images', 'cross_images']
 
     def __init__(self,
                  prefix: Prompt,
@@ -244,7 +246,7 @@ class Template:
                        default_system: Optional[str] = None,
                        max_length: Optional[int] = None,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                       model=None,
+                       model: torch.nn.Module = None,
                        **kwargs) -> None:
         assert self._is_init is False, 'The template has been initialized.'
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
@@ -277,6 +279,9 @@ class Template:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
+
+        if self.model:
+            self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
 
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
@@ -829,6 +834,30 @@ class Template:
 
         return torch.stack(padded_sequences)
 
+    def _pre_forward_hook(self, module, args, kwargs):
+        if args and any([isinstance(arg, torch.Tensor) for arg in args]):
+            logger.warning_once(f'forward args containing torch.Tensor, '
+                                f'please make sure this model does not need to expand bs dim in streaming mode.')
+
+        for key in self.keys_expanded:
+            if key in kwargs:
+                kwargs[key] = kwargs[key][0].squeeze()
+
+        self.pre_forward(kwargs)
+        return args, kwargs
+
+    def pre_forward(self, kwargs):
+        pass
+
+    def _expand_dim(self, example):
+        bs = example.get('input_ids', example.get('input_embeddings')).shape[0]
+        keys = example.keys()
+        for key in keys:
+            value = example[key]
+            if isinstance(value, torch.Tensor) and key in self.keys_expanded:
+                value = value.unsqueeze(0).repeat(bs, 0)
+                example[key] = value
+
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -921,6 +950,8 @@ class Template:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
+            
+        self._expand_dim(res)
         return res
 
     @staticmethod
@@ -2518,12 +2549,18 @@ class MiniCPMVTemplate(Template):
         }
         if tgt_sizes is not None:  # v2.5
             data['tgt_sizes'] = tgt_sizes
-        inputs_embeds, _ = self.model.get_vllm_embedding(data)
-        inputs_embeds = inputs_embeds.detach()
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
-        inputs['inputs_embeds'] = inputs_embeds[0]
         return inputs, {}
+
+    def pre_forward(self, kwargs):
+        data = {
+            'input_ids': kwargs['input_ids'][None],
+            'image_bound': kwargs['image_bound'],
+            'pixel_values': kwargs['pixel_values']
+        }
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        kwargs['inputs_embeds'] = inputs_embeds[0]
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
