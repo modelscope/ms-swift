@@ -340,7 +340,8 @@ class Template:
 
         # audio, video
         if self.is_multimodal in {True, None}:
-            for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'], [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
+            for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'],
+                                       [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
                 example['query'], example['history'], medias_path = replace_img_tag(
                     example.get('query'),
                     example.get('history') or [], tag, pattern)
@@ -1384,7 +1385,10 @@ register_template(
              ['<|im_end|>'], INTERNLM_SYSTEM, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
-def replace_img_tag(query: str, history: History, replace_token: str, pattern = r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
+def replace_img_tag(query: str,
+                    history: History,
+                    replace_token: str,
+                    pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
     images_path = []
     new_history = []
     for i, h in enumerate(history):

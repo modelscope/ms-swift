@@ -41,7 +41,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-vl-chat
 --------------------------------------------------
 <<< clear
 <<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>根据图片中的内容写首诗
-月光如水洒河中，孤舟一灯独自空。  
+月光如水洒河中，孤舟一灯独自空。
 两岸青山倒影美，星河灿烂天空宏。
 --------------------------------------------------
 <<< clear
