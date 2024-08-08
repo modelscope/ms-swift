@@ -165,7 +165,7 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
-    special_tokens = ['<image>', '<video>', '<audio_label>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = ['<image>']
@@ -283,7 +283,7 @@ class Template:
     def add_default_tags(self, example: Dict[str, Any]) -> None:
         history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio_label>')]:
+        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
@@ -335,9 +335,17 @@ class Template:
                 example.get('query'),
                 example.get('history') or [], '<image>')
         if images_path:
-            images = example.get('images', [])
-            images = images + images_path
-            example['images'] = images
+            example['images'] = example.get('images', []) + images_path
+
+        # audio, video
+        if self.is_multimodal in {True, None}:
+            for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'],
+                                       [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
+                example['query'], example['history'], medias_path = replace_img_tag(
+                    example.get('query'),
+                    example.get('history') or [], tag, pattern)
+                if medias_path:
+                    example[k] = example.get(k, []) + medias_path
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
@@ -577,7 +585,7 @@ class Template:
         if media_type == 'video':
             return ['<video>']
         if media_type == 'audio':
-            return ['<audio_label>']
+            return ['<audio>']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -653,7 +661,7 @@ class Template:
             elif context == '<video>':
                 c_list = replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
-            elif context == '<audio_label>':
+            elif context == '<audio>':
                 c_list = replace_tag('audio', example.get('audio_index', 0), example)
                 example['audio_index'] = example.get('audio_index', 0) + 1
             elif context == '<ref-object>':
@@ -1036,7 +1044,7 @@ class QwenVLTemplate(QwenTemplate):
         images = example.get('images') or []
         image = images[index]
         assert isinstance(image, str)
-        return [f'<img>{image}</img>']
+        return [f'Picture {index + 1}:<img>{image}</img>\n']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
@@ -1060,6 +1068,14 @@ register_template(
 
 
 class _QwenAudioTemplateMixin:
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type == 'audio'
+        audios = example.get('audios') or []
+        audio = audios[index]
+        assert isinstance(audio, str)
+        return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, tokenizer_kwargs = super()._encode(example)
@@ -1357,9 +1373,11 @@ register_template(
              ['<|im_end|>'], INTERNLM_SYSTEM, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
-def replace_img_tag(query: str, history: History, replace_token: str) -> Tuple[str, History, List[str]]:
+def replace_img_tag(query: str,
+                    history: History,
+                    replace_token: str,
+                    pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
     images_path = []
-    pattern = r'<img>(.+?)</img>'
     new_history = []
     for i, h in enumerate(history):
         if h[0] is None:

@@ -507,8 +507,8 @@ class ModelType:
 class LoRATM(NamedTuple):
     # default lora target modules for multi-modals
     qwen_audio = f'{get_regex_for_mm_default_lora("qwen_audio")}'
-    glm4v = f'{get_regex_for_mm_default_lora("glm4v")}'
     qwen_vl = f'{get_regex_for_mm_default_lora("qwen_vl")}'
+    glm4v = f'{get_regex_for_mm_default_lora("glm4v")}'
     llava_next_video = f'{get_regex_for_mm_default_lora("llava_next_video")}'
     llava_next = f'{get_regex_for_mm_default_lora("llava_next")}'
     llava_llama = f'{get_regex_for_mm_default_lora("llava_llama")}'

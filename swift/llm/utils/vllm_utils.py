@@ -337,7 +337,7 @@ def inference_stream_vllm(
         **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
-        The keys that can be included are: 'query', 'history', 'system'.
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
     generation_config: Priority: generation_config > model.generation_config.
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
@@ -432,7 +432,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    **kwargs) -> List[Dict[str, Any]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
-        The keys that can be included are: 'query', 'history', 'system'.
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
     generation_config: Priority: generation_config > model.generation_config.
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
