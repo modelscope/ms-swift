@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.07.07: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.08.06: Support for minicpm-v-v2_6-chat is available. You can use `swift infer --model_type minicpm-v-v2_6-chat` for inference experience. Best practices can be found [here](https://github.com/modelscope/swift/issues/1613).
 - 2024.08.06: Supports internlm2.5 series of 1.8b and 20b. Experience it using `swift infer --model_type internlm2_5-1_8b-chat`.
 - 🔥2024.08.05: Support evaluation for multi-modal models! Same command with [new datasets](https://swift.readthedocs.io/en/latest/LLM/LLM-eval.html#introduction).
@@ -74,7 +75,6 @@ You can contact us and communicate with us by adding our group:
 - 🔥2024.07.06: Support InternVL2 series: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
 - 2024.07.06: Support codegeex4-9b-chat.
 - 2024.07.04: Support internlm2_5-7b series: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
-- 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.07.02: Support for `llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct` and other llava-hf models. For best practices, refer to [here](docs/source_en/Multi-Modal/llava-best-practice.md).
 - 🔥2024.06.29: Support [eval-scope](https://github.com/modelscope/eval-scope)&[open-compass](https://github.com/open-compass/opencompass) for evaluation! Now we have supported over 50 eval datasets like `BoolQ, ocnli, humaneval, math, ceval, mmlu, gsk8k, ARC_e`, please check our [Eval Doc](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/LLM-eval.md) to begin! Next sprint we will support Multi-modal and Agent evaluation, remember to follow us : )
 <details><summary>More</summary>
@@ -511,7 +511,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 Original model:
 ```shell
-# We recommend using vLLM for acceleration (arc evaluated in half a minute)
 CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
     --eval_dataset ARC_e --infer_backend vllm
 ```

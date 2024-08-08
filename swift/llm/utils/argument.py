@@ -1261,6 +1261,7 @@ class InferArguments(ArgumentsBase):
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
+    max_num_seqs: int = 256
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
     enforce_eager: bool = False
