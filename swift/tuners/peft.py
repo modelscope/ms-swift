@@ -77,7 +77,7 @@ class LoraConfig(peft.LoraConfig):
         return self
 
 
-def _create_and_replace_hook(self, *args, **kwargs):
+def _get_target(*args, **kwargs):
     target = None
     if 'target' in kwargs:
         target = kwargs['target']
@@ -86,9 +86,19 @@ def _create_and_replace_hook(self, *args, **kwargs):
             if isinstance(arg, torch.nn.Module):
                 target = arg
                 break
+    return target
 
+
+def _create_and_replace_hook(self, *args, **kwargs):
+    target = _get_target(*args, **kwargs)
     if target and target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
         return
+
+    return self._create_and_replace_origin(*args, **kwargs)
+
+
+def _create_and_replace_hook2(self, *args, **kwargs):
+    target = _get_target(*args, **kwargs)
 
     all_supported_names = ('linear', )
     all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D)
@@ -100,7 +110,7 @@ def _create_and_replace_hook(self, *args, **kwargs):
          for name in all_supported_names]) and not any([isinstance(target, type) for type in all_supported_types])):
         return
 
-    return self._create_and_replace_origin(*args, **kwargs)
+    return _create_and_replace_hook(self, *args, **kwargs)
 
 
 def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
@@ -291,14 +301,14 @@ def hot_patch_peft_module():
     LoraModel._create_and_replace_origin = LoraModel._create_and_replace
     LoraModel._create_and_replace = _create_and_replace_hook
     VeraModel._create_and_replace_origin = VeraModel._create_and_replace
-    VeraModel._create_and_replace = _create_and_replace_hook
+    VeraModel._create_and_replace = _create_and_replace_hook2
     BOFTModel._create_and_replace_origin = BOFTModel._create_and_replace
-    BOFTModel._create_and_replace = _create_and_replace_hook
+    BOFTModel._create_and_replace = _create_and_replace_hook2
     IA3Model._create_and_replace_origin = IA3Model._create_and_replace
-    IA3Model._create_and_replace = _create_and_replace_hook
+    IA3Model._create_and_replace = _create_and_replace_hook2
     if FourierFTModel is not None:
         FourierFTModel._create_and_replace_origin = FourierFTModel._create_and_replace
-        FourierFTModel._create_and_replace = _create_and_replace_hook
+        FourierFTModel._create_and_replace = _create_and_replace_hook2
 
     # Support type conversion
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name):

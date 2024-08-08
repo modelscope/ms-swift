@@ -514,7 +514,7 @@ class LoRATM(NamedTuple):
     llava_llama = f'{get_regex_for_mm_default_lora("llava_llama")}'
     llava = f'{get_regex_for_mm_default_lora("llava")}'
     yi_vl = f'{get_regex_for_mm_default_lora("yi_vl")}'
-    internlm_xcomposer = f'{get_regex_for_mm_default_lora("internlm_xcomposer")}'
+    internlm_xcomposer = ['attention.wqkv', 'attention.wo', 'feed_forward.w1', 'feed_forward.w2', 'feed_forward.w3']
     internvl = f'{get_regex_for_mm_default_lora("internvl")}'
     deepseek_vl = f'{get_regex_for_mm_default_lora("deepseek_vl")}'
     paligemma = f'{get_regex_for_mm_default_lora("paligemma")}'

@@ -830,6 +830,10 @@ class SftArguments(ArgumentsBase):
             target_modules.remove('DEFAULT')
             default_lora_tm = get_default_lora_target_modules(self.model_type)
             if isinstance(default_lora_tm, str):
+                # Make sure the regex can find all linear in the module.
+                from swift.tuners.peft import _create_and_replace_hook2
+                from peft import LoraModel
+                LoraModel._create_and_replace = _create_and_replace_hook2
                 return default_lora_tm
             target_modules += default_lora_tm
         if 'EMBEDDING' in target_modules:
