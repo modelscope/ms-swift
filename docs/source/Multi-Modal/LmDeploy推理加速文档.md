@@ -93,6 +93,63 @@ history: [['<image>描述图片', '这是一幅以卡通风格绘制的四只绵
 """
 ```
 
+[Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b](https://modelscope.cn/models/Shanghai_AI_Laboratory/internlm-xcomposer2d5-7b)
+
+```python
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    ModelType, get_lmdeploy_engine, get_default_template_type,
+    get_template, inference_lmdeploy, inference_stream_lmdeploy
+)
+
+# ModelType.qwen_vl_chat, ModelType.deepseek_vl_1_3b_chat
+model_type = ModelType.internlm_xcomposer2_5_7b_chat
+lmdeploy_engine = get_lmdeploy_engine(model_type)
+template_type = get_default_template_type(model_type)
+template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
+# 与`transformers.GenerationConfig`类似的接口
+lmdeploy_engine.generation_config.max_new_tokens = 256
+generation_info = {}
+
+request_list = [{'query': '<image>描述图片', 'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']},
+               ]
+resp_list = inference_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
+for request, resp in zip(request_list, resp_list):
+    print(f"query: {request['query']}")
+    print(f"response: {resp['response']}")
+print(generation_info)
+
+# stream
+history0 = resp_list[0]['history']
+request_list = [{'query': '有几只羊', 'history': history0, 'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']}]
+gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
+query = request_list[0]['query']
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+for resp_list in gen:
+    resp = resp_list[0]
+    response = resp['response']
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
+
+history = resp_list[0]['history']
+print(f'history: {history}')
+print(generation_info)
+"""
+query: <image>描述图片
+response: 在图片中，有四只卡通风格的羊站在一片翠绿的草地中间。这些羊以简洁而不失真挚的形象出现，它们的躯干由白色和棕色的形状组成，而四肢则是纯粹的黑色。头部设计简洁，白色与棕色的搭配与整体协调一致。图中有四只羊，最突出的是一只最大的羊，它似乎处于图片中央，可能是画面的焦点。另外三只羊环绕在它的周围，形成一种对称感。这些羊们没有穿上任何衣物，它们在阳光下显得格外耀眼。天空是明亮的蓝色，背景中的山峰柔和地与天空相接，形成了一种宁静的田园景象。
+{'num_prompt_tokens': 2206, 'num_generated_tokens': 132, 'num_samples': 1, 'runtime': 2.793646134901792, 'samples/s': 0.3579551423878365, 'tokens/s': 47.25007879519442}
+query: 有几只羊
+response: 图片中一共有四只羊。
+history: [['<image>描述图片', '在图片中，有四只卡通风格的羊站在一片翠绿的草地中间。这些羊以简洁而不失真挚的形象出现，它们的躯干由白色和棕色的形状组成，而四肢则是纯粹的黑色。头部设计简洁，白色与棕色的搭配与整体协调一致。图中有四只羊，最突出的是一只最大的羊，它似乎处于图片中央，可能是画面的焦点。另外三只羊环绕在它的周围，形成一种对称感。这些羊们没有穿上任何衣物，它们在阳光下显得格外耀眼。天空是明亮的蓝色，背景中的山峰柔和地与天空相接，形成了一种宁静的田园景象。'], ['有几只羊', '图片中一共有四只羊。']]
+{'num_prompt_tokens': 2352, 'num_generated_tokens': 6, 'num_samples': 1, 'runtime': 0.635085433954373, 'samples/s': 1.5745913014781, 'tokens/s': 9.447547808868599}
+"""
+```
+
 **TP:**
 
 ```python
