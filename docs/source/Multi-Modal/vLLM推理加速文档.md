@@ -34,6 +34,7 @@ from swift.llm import (
     get_template, inference_vllm
 )
 
+# 'minicpm-v-v2_5-chat', 'minicpm-v-v2_6-chat', 'internvl2-1b', 'internvl2-4b', 'phi3-vision-128k-instruct'
 model_type = ModelType.llava1_6_mistral_7b_instruct
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)

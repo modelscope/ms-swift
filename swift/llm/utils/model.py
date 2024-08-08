@@ -1677,7 +1677,6 @@ def get_model_tokenizer_glm4(model_dir: str,
     TemplateType.glm4v,
     eos_token='<|endoftext|>',
     requires=['transformers>=4.42'],
-    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='THUDM/glm-4v-9b')
 def get_model_tokenizer_glm4v(model_dir: str,
@@ -5833,7 +5832,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     TemplateType.llava_vicuna,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-7b-hf')
@@ -5844,7 +5842,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     TemplateType.llava_vicuna,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-vicuna-13b-hf')
@@ -5855,7 +5852,6 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     TemplateType.llava_mistral,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
@@ -5872,7 +5868,6 @@ def get_model_tokenizer_llava_next(*args, **kwargs):
     TemplateType.llava_yi,
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     eos_token='<|im_end|>',
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
