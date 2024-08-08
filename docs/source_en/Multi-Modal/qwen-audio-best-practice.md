@@ -23,22 +23,17 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-audio-chat
 Output: (supports passing local path or URL)
 ```python
 """
-<<< multi-line
-[INFO:swift] End multi-line input with `#`.
-[INFO:swift] Input `single-line` to switch to single-line input mode.
-<<<[M] Who are you?#
-I am a large language model from DAMO Academy, my name is Tongyee Qianwen.
+<<< Who are you?
+I am a large language model created by DAMO Academy. I am called QianWen.
 --------------------------------------------------
-<<<[M] Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/music.wav</audio>
-What kind of music is this?#
-This is electronic, experimental pop style music.
+<<< <audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/music.wav</audio>What kind of music is this?
+This is experimental music.
 --------------------------------------------------
-<<<[M] Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
-What did this speech say?#
-This speech said in Chinese: "The weather is really nice today".
+<<< <audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>What did this speech say?
+The speech says in Chinese: "今天天气真好呀".
 --------------------------------------------------
-<<<[M] Is this speech male or female?#
-Based on the timbre, this speech is male.
+<<< Is this speech male or female?
+This is a man speaking.
 """
 ```
 
@@ -65,8 +60,7 @@ model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
 
-query = """Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
-What did this speech say"""
+query = '<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>What did this speech say'
 response, history = inference(model, template, query)
 print(f'query: {query}')
 print(f'response: {response}')
@@ -83,13 +77,11 @@ for response, history in gen:
 print()
 print(f'history: {history}')
 """
-query: Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
-What did this speech say
-response: This speech said in Chinese: "The weather is really nice today".
+query: <audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>What did this speech say
+response: The speech said: "今天天气真好呀".
 query: Is this speech male or female
-response: Based on the timbre, this speech is male.
-history: [['Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>\nWhat did this speech say',
-'This speech said in Chinese: "The weather is really nice today".'], ['Is this speech male or female', 'Based on the timbre, this speech is male.']]
+response: The gender of this speech is male.
+history: [['<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>What did this speech say', 'The speech said: "今天天气真好呀".'], ['Is this speech male or female', 'The gender of this speech is male.']]
 """
 ```
 
@@ -134,13 +126,13 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 ```json
 [
     {"conversations": [
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\n11111"},
+        {"from": "user", "value": "<audio>audio_path</audio>11111"},
         {"from": "assistant", "value": "22222"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nAudio 2:<audio>audio_path2</audio>\nAudio 3: <audio>audio_path3</audio>\naaaaa"},
+        {"from": "user", "value": "<audio>audio_path</audio><audio>audio_path2</audio><audio>audio_path3</audio>aaaaa"},
         {"from": "assistant", "value": "bbbbb"},
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nccccc"},
+        {"from": "user", "value": "<audio>audio_path</audio>ccccc"},
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [
