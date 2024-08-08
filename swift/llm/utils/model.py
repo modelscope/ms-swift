@@ -3912,6 +3912,20 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     return model, tokenizer
 
 
+def fix_internvl_inplace_bug(model) -> None:
+    embedding = model.language_model.get_input_embeddings()
+    if not hasattr(embedding, '__old_forward'):  # Avoid double patching
+        old_forward = embedding.forward
+
+        @wraps(old_forward)
+        def _new_forward(*args, **kwargs):
+            device = args[0].device
+            return old_forward(*args, **kwargs).requires_grad_(True).clone().to(device)
+
+        embedding.__old_forward = old_forward
+        embedding.forward = _new_forward
+
+
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -3964,6 +3978,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-1B')
@@ -3976,6 +3991,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-2B')
@@ -3988,6 +4004,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-4B')
@@ -4000,6 +4017,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-8B')
@@ -4011,6 +4029,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     requires=['transformers>=4.35', 'timm'],
     ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
+    support_vllm=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
@@ -4023,6 +4042,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     requires=['transformers>=4.35', 'timm'],
     ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
+    support_vllm=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
@@ -4035,6 +4055,7 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     requires=['transformers>=4.35', 'timm'],
     ignore_file_pattern=[r'.+\.zip$'],
     support_flash_attn=True,
+    support_vllm=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
@@ -4046,7 +4067,6 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.vision_config.use_flash_attn = use_flash_attn
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
     model_quant_config = getattr(model_config, 'quantization_config', None)
 
@@ -4069,6 +4089,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     if model is not None:
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
+        fix_internvl_inplace_bug(model)
     return model, tokenizer
 
 

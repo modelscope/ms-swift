@@ -1520,7 +1520,7 @@ class InternvlTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return [[-100]]
+        return [[-100], '\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1537,7 +1537,7 @@ class InternvlTemplate(Template):
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
             img_tokens: List[int] = self.tokenizer.encode(
-                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n', add_special_tokens=False)
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>', add_special_tokens=False)
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
@@ -1556,23 +1556,23 @@ class InternvlTemplate(Template):
 
 class Internvl2Template(InternvlTemplate):
     video_segments = 8
+    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
-        self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
         Template.__init__(
             self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
             self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
             auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
+        image_context = ['<image>\n'] if self._is_vllm else [[-100], '\n']
         if media_type == 'image':
-            return [[-100]]
+            return image_context
         elif media_type == 'video':
             context_list = []
             for i in range(self.video_segments):
                 context_list.append(f'Frame{i + 1}: ')
-                context_list.append([-100])
-                context_list.append('\n')
+                context_list += image_context
             return context_list
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
@@ -1604,7 +1604,7 @@ class Internvl2Template(InternvlTemplate):
         tokenizer = self.tokenizer
         model = self.model
         from .vision_utils import transform_image
-        pixel_values_images = [transform_image(image) for image in example.get('images', [])]
+        pixel_values_images = [transform_image(image, 12) for image in example.get('images', [])]
         videos_path = example.get('videos', [])
         if pixel_values_images:
             pixel_values = pixel_values_images
@@ -1624,7 +1624,7 @@ class Internvl2Template(InternvlTemplate):
         added_tokens_len = 0
         for idx, num_patch in zip(idx_list, num_patches):
             img_tokens: List[int] = tokenizer.encode(
-                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>', add_special_tokens=False)
             input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
             if labels is not None:
                 labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
@@ -1661,7 +1661,6 @@ class InternvlPhi3Template(InternvlTemplate):
 
 
 class Internvl2Phi3Template(Internvl2Template):
-    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
         Template.__init__(
