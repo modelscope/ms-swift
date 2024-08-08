@@ -133,6 +133,13 @@ class ModelType:
     qwen2_57b_a14b_instruct = 'qwen2-57b-a14b-instruct'
     qwen2_57b_a14b_instruct_int4 = 'qwen2-57b-a14b-instruct-int4'
 
+    qwen2_math_1_5b = 'qwen2-math-1_5b'
+    qwen2_math_1_5b_instruct = 'qwen2-math-1_5b-instruct'
+    qwen2_math_7b = 'qwen2-math-7b'
+    qwen2_math_7b_instruct = 'qwen2-math-7b-instruct'
+    qwen2_math_72b = 'qwen2-math-72b'
+    qwen2_math_72b_instruct = 'qwen2-math-72b-instruct'
+
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -2977,6 +2984,72 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.qwen2_math_1_5b_instruct,
+    'qwen/Qwen2-Math-1.5B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    support_megatron=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-Math-1.5B-Instruct')
+@register_model(
+    ModelType.qwen2_math_1_5b,
+    'qwen/Qwen2-Math-1.5B',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    support_megatron=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-Math-1.5B')
+@register_model(
+    ModelType.qwen2_math_7b_instruct,
+    'qwen/Qwen2-Math-7B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    support_megatron=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-Math-7B-Instruct')
+@register_model(
+    ModelType.qwen2_math_7b,
+    'qwen/Qwen2-Math-7B',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    support_megatron=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-Math-7B')
+@register_model(
+    ModelType.qwen2_math_72b_instruct,
+    'qwen/Qwen2-Math-72B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    support_megatron=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-Math-72B-Instruct')
+@register_model(
+    ModelType.qwen2_math_72b,
+    'qwen/Qwen2-Math-72B',
+    LoRATM.llama,
+    TemplateType.qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    support_megatron=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2-Math-72B')
 @register_model(
     ModelType.qwen2_57b_a14b_instruct_int4,
     'qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4',

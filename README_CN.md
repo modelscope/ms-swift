@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.08.08: 支持qwen2-math系列模型, 1.5B, 7B, 72B. 使用`swift infer --model_type qwen2-math-1_5b-instruct`进行体验.
 - 🔥2024.08.07: 支持使用vllm对多模态大模型: llava系列, internvl2系列, phi3-vision, minicpm-v2.5进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.
 - 2024.08.06: 支持minicpm-v-v2_6-chat, 使用`swift infer --model_type minicpm-v-v2_6-chat`进行推理体验, 最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1613).
 - 2024.08.06: 支持internlm2.5的1.8b和20b系列. 使用`swift infer --model_type internlm2_5-1_8b-chat`进行体验.
