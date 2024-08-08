@@ -1548,9 +1548,10 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         from .vision_utils import transform_image
-        pixel_values = [transform_image(image) for image in example.get('images', [])]
-        if pixel_values:
-            pixel_values = torch.cat(pixel_values, dim=0)
+        images = example.get('images', [])
+        if images:
+            pixel_values_images = [transform_image(image) for image in images]
+            pixel_values = torch.cat(pixel_values_images, dim=0)
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
@@ -1629,10 +1630,10 @@ class Internvl2Template(InternvlTemplate):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         from .vision_utils import transform_image
-        pixel_values_images = [transform_image(image) for image in example.get('images', [])]
+        images = example.get('images', [])
         videos_path = example.get('videos', [])
-        if pixel_values_images:
-            pixel_values = pixel_values_images
+        if images:
+            pixel_values = [transform_image(image) for image in images]
             assert len(pixel_values) == len(
                 idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
             added_tokens_len = 0
