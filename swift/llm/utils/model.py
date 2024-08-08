@@ -2984,7 +2984,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     return model, tokenizer
 
 
-
 @register_model(
     ModelType.qwen2_math_1_5b_instruct,
     'qwen/Qwen2-Math-1.5B-Instruct',
