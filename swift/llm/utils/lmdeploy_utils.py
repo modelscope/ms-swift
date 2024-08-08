@@ -217,6 +217,10 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
                               generation_info: Optional[Dict[str, Any]] = None,
                               use_tqdm: bool = False,
                               **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    """
+    request_list: e.g. [{'query': 'hello!'}].
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
+    """
     if len(request_list) == 0:
         return
     start_runtime = time.perf_counter()
@@ -308,6 +312,10 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                        prompt_prefix: str = '[PROMPT]',
                        output_prefix: str = '[OUTPUT]',
                        **kwargs) -> List[Dict[str, Any]]:
+    """
+    request_list: e.g. [{'query': 'hello!'}].
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
+    """
     if len(request_list) == 0:
         return []
     runtime = time.perf_counter()
