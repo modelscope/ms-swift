@@ -66,7 +66,6 @@ LLAMA_KEYS = ModelKeys(
     output='lm_head',
 )
 
-
 INTERNLM2_KEYS = ModelKeys(
     module_list='model.layers',
     mlp='model.layers.{}.feed_forward',
