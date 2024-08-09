@@ -751,7 +751,7 @@ def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
     prompt = '语音转文本'
     audio_key = 'Audio:FILE'
     response_key = 'Text:LABEL'
-    query_format = f'Audio 1:<audio>{{audio_path}}</audio>\n{prompt}'
+    query_format = f'<audio>{{audio_path}}</audio>{prompt}'
     query = []
     response = []
     for d in tqdm(dataset):
