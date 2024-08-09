@@ -3499,7 +3499,7 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
-    from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor, AutoConfig
+    from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
