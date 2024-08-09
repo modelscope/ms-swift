@@ -3421,16 +3421,17 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B')
 def get_model_tokenizer_qwen2_audio(model_dir: str,
-                                   torch_dtype: Dtype,
-                                   model_kwargs: Dict[str, Any],
-                                   load_model: bool = True,
-                                   **kwargs):
+                                    torch_dtype: Dtype,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
     from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor, AutoConfig
     processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
+
 
 @register_model(
     ModelType.qwen1half_0_5b_chat_int4,

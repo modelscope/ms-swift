@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
 from copy import deepcopy
+from functools import partial
 from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import numpy as np
-from functools import partial
 import torch
 import torch.nn.functional as F
 import transformers
@@ -1122,15 +1122,14 @@ register_template(
 
 
 def _read_audio(sampling_rate):
-    librosa.load(
-                BytesIO(urlopen(ele['audio_url']).read()), 
-                sr=processor.feature_extractor.sampling_rate)[0])
+    librosa.load(BytesIO(urlopen(ele['audio_url']).read()), sr=processor.feature_extractor.sampling_rate)[0]
+
 
 class Qwen2AudioTemplate(Template):
+
     def __init__(self):
         super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
-                         ['<|im_end|>'],
-                         DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+                         ['<|im_end|>'], DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -1143,12 +1142,12 @@ class Qwen2AudioTemplate(Template):
             return inputs, {}
         processor = self.tokenizer.processor
         sampling_rate = processor.feature_extractor.sampling_rate
-        from .vision_utils import  _read_batch
+        from .vision_utils import _read_batch
         audios = _read_batch(example.get('audios') or [], load_func=partial(_read_audio))
         return inputs, {}
 
-register_template(
-    TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True, is_generation=True)
+
+register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True, is_generation=True)
 
 register_template(
     TemplateType.yi,
