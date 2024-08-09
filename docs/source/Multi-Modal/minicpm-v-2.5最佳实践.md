@@ -1,6 +1,8 @@
 
 # MiniCPM-V-2.5 最佳实践
 
+MiniCPM-V-2.6 最佳实践: [https://github.com/modelscope/ms-swift/issues/1613](https://github.com/modelscope/ms-swift/issues/1613)
+
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
