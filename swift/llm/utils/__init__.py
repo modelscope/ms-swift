@@ -5,7 +5,7 @@ from .client_utils import (compat_openai, convert_to_base64, decode_base64, get_
                            get_model_list_client_async, inference_client, inference_client_async)
 from .dataset import (DATASET_MAPPING, DatasetName, HfDataset, get_dataset, get_dataset_from_repo,
                       load_dataset_from_local, load_ms_dataset, register_dataset, register_dataset_info,
-                      register_local_dataset, sample_dataset)
+                      register_local_dataset, sample_dataset, standard_keys)
 from .media import MediaCache, MediaTag
 from .model import (MODEL_MAPPING, GetModelTokenizerFunction, LoRATM, ModelType, get_additional_saved_files,
                     get_default_lora_target_modules, get_default_template_type, get_model_tokenizer,
