@@ -510,6 +510,7 @@ class LoRATM(NamedTuple):
     # default lora target modules for multi-modals
     qwen_audio = f'{get_regex_for_mm_default_lora("qwen_audio")}'
     qwen_vl = f'{get_regex_for_mm_default_lora("qwen_vl")}'
+    qwen2_audio = f'{get_regex_for_mm_default_lora("qwen2_audio")}'
     glm4v = f'{get_regex_for_mm_default_lora("glm4v")}'
     llava_next_video = f'{get_regex_for_mm_default_lora("llava_next_video")}'
     llava_next = f'{get_regex_for_mm_default_lora("llava_next")}'
@@ -3407,7 +3408,8 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio,
     support_flash_attn=True,
-    requires=['transformers>=4.44.0.dev0'],
+    requires=['transformers>=4.45.0.dev0', 'librosa'],
+    tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B-Instruct')
 @register_model(
     ModelType.qwen2_audio,
@@ -3415,18 +3417,19 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio,
     support_flash_attn=True,
-    requires=['transformers>=4.44'],
+    requires=['transformers>=4.45.0.dev0', 'librosa'],
+    tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B')
 def get_model_tokenizer_qwen2_audio(model_dir: str,
                                    torch_dtype: Dtype,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
-    from transformers import AutoProcessor
-
+    from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor, AutoConfig
     processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
-    processor.tokenizer = tokenizer
+    tokenizer.processor = processor
     return model, tokenizer
 
 @register_model(
