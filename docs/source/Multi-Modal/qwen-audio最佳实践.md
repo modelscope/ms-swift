@@ -1,5 +1,7 @@
 # Qwen-Audio 最佳实践
 
+Qwen2-Audio的最佳实践可以查看: [https://github.com/modelscope/ms-swift/issues/1653](https://github.com/modelscope/ms-swift/issues/1653)
+
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)

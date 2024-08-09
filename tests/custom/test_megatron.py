@@ -13,7 +13,7 @@ def convert2megatron():
 
 def convert2hf():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    export_main(ExportArguments(ckpt_dir=f'{model_type}-tp{tp}-pp1', to_hf=True, tp=tp, dtype='bf16'))
+    export_main(ExportArguments(ckpt_dir=f'{model_type}-tp{tp}-pp1', to_hf=True, dtype='bf16'))
 
 
 def sft():
