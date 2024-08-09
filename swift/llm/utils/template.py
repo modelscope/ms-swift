@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
 from copy import deepcopy
+from functools import partial
 from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
@@ -37,6 +38,8 @@ class TemplateType:
     qwen = 'qwen'
     qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
+    qwen2_audio = 'qwen2-audio'
+    qwen2_audio_generation = 'qwen2-audio-generation'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
@@ -165,7 +168,7 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
-    special_tokens = ['<image>', '<video>', '<audio_label>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
     image_placeholder = ['<image>']
@@ -283,7 +286,7 @@ class Template:
     def add_default_tags(self, example: Dict[str, Any]) -> None:
         history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio_label>')]:
+        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
@@ -335,9 +338,17 @@ class Template:
                 example.get('query'),
                 example.get('history') or [], '<image>')
         if images_path:
-            images = example.get('images', [])
-            images = images + images_path
-            example['images'] = images
+            example['images'] = example.get('images', []) + images_path
+
+        # audio, video
+        if self.is_multimodal in {True, None}:
+            for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'],
+                                       [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
+                example['query'], example['history'], medias_path = replace_img_tag(
+                    example.get('query'),
+                    example.get('history') or [], tag, pattern)
+                if medias_path:
+                    example[k] = example.get(k, []) + medias_path
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
@@ -577,7 +588,7 @@ class Template:
         if media_type == 'video':
             return ['<video>']
         if media_type == 'audio':
-            return ['<audio_label>']
+            return ['<audio>']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -653,7 +664,7 @@ class Template:
             elif context == '<video>':
                 c_list = replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
-            elif context == '<audio_label>':
+            elif context == '<audio>':
                 c_list = replace_tag('audio', example.get('audio_index', 0), example)
                 example['audio_index'] = example.get('audio_index', 0) + 1
             elif context == '<ref-object>':
@@ -1036,7 +1047,7 @@ class QwenVLTemplate(QwenTemplate):
         images = example.get('images') or []
         image = images[index]
         assert isinstance(image, str)
-        return [f'<img>{image}</img>']
+        return [f'Picture {index + 1}:<img>{image}</img>\n']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
@@ -1060,6 +1071,14 @@ register_template(
 
 
 class _QwenAudioTemplateMixin:
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type == 'audio'
+        audios = example.get('audios') or []
+        audio = audios[index]
+        assert isinstance(audio, str)
+        return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, tokenizer_kwargs = super()._encode(example)
@@ -1101,6 +1120,62 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
 register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
 register_template(
     TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+
+
+def _read_audio(audio_path, sampling_rate):
+    import librosa
+    from .vision_utils import _load_file
+    audio = _load_file(audio_path)
+    return librosa.load(audio, sr=sampling_rate)[0]
+
+
+class _Qwen2AudioTemplateMixin:
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        processor = self.tokenizer.processor
+        sampling_rate = processor.feature_extractor.sampling_rate
+        from .vision_utils import _read_batch
+        audios = _read_batch(example.get('audios') or [], load_func=partial(_read_audio, sampling_rate=sampling_rate))
+        if audios:
+            audio_inputs = processor.feature_extractor(
+                audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
+            audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
+            inputs.update(audio_inputs)
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        if input_features:
+            res['input_features'] = torch.concat(input_features)
+            feature_attention_mask = [b['feature_attention_mask'] for b in batch]
+            res['feature_attention_mask'] = torch.concat(feature_attention_mask)
+        return res
+
+
+class Qwen2AudioTemplate(_Qwen2AudioTemplateMixin, QwenTemplate):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type == 'audio'
+        return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
+
+
+class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTemplate):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type == 'audio'
+        return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
+
+
+register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
+
+register_template(
+    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
 register_template(
     TemplateType.yi,
@@ -1357,9 +1432,11 @@ register_template(
              ['<|im_end|>'], INTERNLM_SYSTEM, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
-def replace_img_tag(query: str, history: History, replace_token: str) -> Tuple[str, History, List[str]]:
+def replace_img_tag(query: str,
+                    history: History,
+                    replace_token: str,
+                    pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
     images_path = []
-    pattern = r'<img>(.+?)</img>'
     new_history = []
     for i, h in enumerate(history):
         if h[0] is None:
@@ -1530,9 +1607,10 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         from .vision_utils import transform_image
-        pixel_values = [transform_image(image) for image in example.get('images', [])]
-        if pixel_values:
-            pixel_values = torch.cat(pixel_values, dim=0)
+        images = example.get('images', [])
+        if images:
+            pixel_values_images = [transform_image(image) for image in images]
+            pixel_values = torch.cat(pixel_values_images, dim=0)
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
@@ -1611,10 +1689,10 @@ class Internvl2Template(InternvlTemplate):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         from .vision_utils import transform_image
-        pixel_values_images = [transform_image(image) for image in example.get('images', [])]
+        images = example.get('images', [])
         videos_path = example.get('videos', [])
-        if pixel_values_images:
-            pixel_values = pixel_values_images
+        if images:
+            pixel_values = [transform_image(image) for image in images]
             assert len(pixel_values) == len(
                 idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
             added_tokens_len = 0
@@ -2331,9 +2409,9 @@ register_template(
 
 def _load_video_cogvlm2(video_path: str) -> np.ndarray:
     from decord import cpu, VideoReader, bridge
-    from .vision_utils import _read_video
+    from .vision_utils import _load_file
     bridge.set_bridge('torch')
-    mp4_stream = _read_video(video_path)
+    mp4_stream = _load_file(video_path)
     clip_end_sec = 60
     clip_start_sec = 0
     num_frames = 24
@@ -2527,8 +2605,8 @@ register_template(
 
 
 def _encode_video(video_path):
-    from .vision_utils import _read_video
-    mp4_stream = _read_video(video_path)
+    from .vision_utils import _load_file
+    mp4_stream = _load_file(video_path)
     MAX_NUM_FRAMES = 64
 
     from PIL import Image
