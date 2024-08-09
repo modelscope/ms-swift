@@ -147,8 +147,8 @@ class ModelType:
     # qwen-audio
     qwen_audio = 'qwen-audio'
     qwen_audio_chat = 'qwen-audio-chat'
-    qwen2_audio = 'qwen2-audio'
-    qwen2_audio_instruct = 'qwen2-audio-instruct'
+    qwen2_audio_7b = 'qwen2-audio-7b'
+    qwen2_audio_7b_instruct = 'qwen2-audio-7b-instruct'
     # chatglm
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
@@ -3476,7 +3476,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
 
 
 @register_model(
-    ModelType.qwen2_audio_instruct,
+    ModelType.qwen2_audio_7b_instruct,
     'qwen/Qwen2-Audio-7B-Instruct',
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio,
@@ -3485,7 +3485,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B-Instruct')
 @register_model(
-    ModelType.qwen2_audio,
+    ModelType.qwen2_audio_7b,
     'qwen/Qwen2-Audio-7B',
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio_generation,
