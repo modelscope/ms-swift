@@ -281,7 +281,7 @@ class Template:
 
         if self.model:
             self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
-
+ 
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
 
@@ -334,12 +334,13 @@ class Template:
                 example[media_key] = [example[media_key]]
 
         # Parse <img></img> format images and merged into images key
-        images_path = None
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
                 example.get('query'),
                 example.get('history') or [], '<image>')
-        if images_path:
+
+            if example.get('images') and images_path:
+                raise ValueError(f'Do not mix use the <img></img> tag and <image> tag.')
             example['images'] = example.get('images', []) + images_path
 
         # audio, video
@@ -349,8 +350,8 @@ class Template:
                 example['query'], example['history'], medias_path = replace_img_tag(
                     example.get('query'),
                     example.get('history') or [], tag, pattern)
-                if medias_path:
-                    example[k] = example.get(k, []) + medias_path
+
+                example[k] = example.get(k, []) + medias_path
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
@@ -2255,8 +2256,8 @@ class DeepseekVLTemplate(Template):
             new_labels = None
         new_input_ids = torch.tensor(new_input_ids)
         num_image_tokens = torch.tensor([processor.num_image_tokens] * len(idx_list))
-        images_outputs = processor.image_processor(images, return_tensors='pt')
         from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+        images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
             input_ids=new_input_ids,

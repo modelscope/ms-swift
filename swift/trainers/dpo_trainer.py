@@ -23,7 +23,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
         self.keys = []  # keys appears in tokenize_row
-        self.column_names = next(iter(kwargs.get('train_dataset'))).keys()
+        self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
         self.need_filter: bool = False
 
         super().__init__(*args, **kwargs)

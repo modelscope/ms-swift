@@ -332,7 +332,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
                                  '(1) The dataset contains None for input or labels;\n'
                                  "(2) The 'max_length' setting is too short causing data truncation.")
-        td0, tkwargs0 = train_dataset.data[0] if not streaming else next(iter(train_dataset)), {}
+        td0, tkwargs0 = train_dataset.data[0] if not streaming else (next(iter(train_dataset)), {})
         print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset) if not streaming else None
         if val_dataset is not None:
