@@ -1159,6 +1159,7 @@ class SftArguments(ArgumentsBase):
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
             seed=self.seed,
+            accelerator_config={'dispatch_batches': False},
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
