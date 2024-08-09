@@ -101,7 +101,6 @@ creating new layer sha256:ddc2a243c4ec10db8aed5fbbc5ac82a4f8425cdc4bd3f0c355373a
 creating new layer sha256:fc776bf39fa270fa5e2ef7c6782068acd858826e544fce2df19a7a8f74f3f9df
 writing manifest
 success
-root@dsw-83959-99dd48f76-v79h6:/mnt/workspace#
 ```
 
 之后就可以用命令的名字来推理：
