@@ -630,7 +630,7 @@ def get_mantis_dataset(dataset_id: str,
         dataset = preprocess_mantis_image(dataset, subset=subset[0])
         all_datasets.append(dataset)
         break
-    dataset = concatenate_datasets(all_datasets) if streaming else interleave_datasets(all_datasets)
+    dataset = concatenate_datasets(all_datasets) if not streaming else interleave_datasets(all_datasets)
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns, **kwargs)
 
@@ -2714,14 +2714,14 @@ def get_dataset(
 
     if not streaming:
         train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
-        if val_dataset:
-            val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
+        val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
 
     return train_dataset, val_dataset
 
 
-def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]], preprocess_func: PreprocessFunc,
-                            streaming: bool) -> Optional[DATASET_TYPE]:
+def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
+                            preprocess_func: PreprocessFunc,
+                            streaming: bool = False) -> Optional[DATASET_TYPE]:
     if isinstance(dataset_path_list, str):
         dataset_path_list = [dataset_path_list]
     if dataset_path_list is None or len(dataset_path_list) == 0:
