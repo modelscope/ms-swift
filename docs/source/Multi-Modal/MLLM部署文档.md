@@ -6,7 +6,6 @@
 - [qwen-vl-chat](#qwen-vl-chat)
 - [yi-vl-6b-chat](#yi-vl-6b-chat)
 - [minicpm-v-v2_5-chat](#minicpm-v-v2_5-chat)
-- [qwen-vl](#qwen-vl)
 
 ## 环境准备
 ```shell
@@ -43,7 +42,7 @@ curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
 "model": "qwen-vl-chat",
-"messages": [{"role": "user", "content": "Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>\n图中是什么花，有几只？"}],
+"messages": [{"role": "user", "content": "<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>图中是什么花，有几只？"}],
 "max_tokens": 256,
 "temperature": 0
 }'
@@ -61,16 +60,13 @@ print(f'model_type: {model_type}')
 # import base64
 # with open('rose.jpg', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# 图中是什么花，有几只？"""
+# query = f'<img>{img_base64}</img>图中是什么花，有几只？'
 
 # use local_path
-# query = """Picture 1:<img>rose.jpg</img>
-# 图中是什么花，有几只？"""
+# query = '<img>rose.jpg</img>图中是什么花，有几只？'
 
 # use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-图中是什么花，有几只？"""
+query = '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>图中是什么花，有几只？'
 
 request_config = XRequestConfig(seed=42)
 resp = inference_client(model_type, query, request_config=request_config)
@@ -90,8 +86,7 @@ print()
 
 """
 model_type: qwen-vl-chat
-query: Picture 1:<img>rose.jpg</img>
-图中是什么花，有几只？
+query: <img>rose.jpg</img>图中是什么花，有几只？
 response: 图中是三朵红玫瑰花。
 query: 框出图中的花
 response: <ref>花</ref><box>(34,449),(368,981)</box><box>(342,456),(670,917)</box><box>(585,508),(859,977)</box>
@@ -112,18 +107,15 @@ print(f'model_type: {model_type}')
 # import base64
 # with open('rose.jpg', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# 图中是什么花，有几只？"""
+# query = f'<img>{img_base64}</img>图中是什么花，有几只？'
 
 # use local_path
 # from swift.llm import convert_to_base64
-# query = """Picture 1:<img>rose.jpg</img>
-# 图中是什么花，有几只？"""
+# query = '<img>rose.jpg</img>图中是什么花，有几只？'
 # query = convert_to_base64(prompt=query)['prompt']
 
 # use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-图中是什么花，有几只？"""
+query = '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>图中是什么花，有几只？'
 
 messages = [{
     'role': 'user',
@@ -155,8 +147,7 @@ print()
 
 """Out[0]
 model_type: qwen-vl-chat
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-图中是什么花，有几只？
+query: <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>图中是什么花，有几只？
 response: 图中是三朵红玫瑰花。
 query: 框出图中的花
 response: <ref>花</ref><box>(34,449),(368,981)</box><box>(342,456),(670,917)</box><box>(585,508),(859,977)</box>
@@ -191,9 +182,8 @@ query = '图中是什么花，有几只？'
 messages = [{
     'role': 'user',
     'content': [
-        {'type': 'text', 'text': 'Picture 1:'},
         {'type': 'image_url', 'image_url': {'url': image_url}},
-        {'type': 'text', 'text': f'\n{query}'},
+        {'type': 'text', 'text': query},
     ]
 }]
 resp = client.chat.completions.create(
@@ -221,17 +211,7 @@ for chunk in stream_resp:
 print()
 """Out[0]
 model_type: qwen-vl-chat
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-图中是什么花，有几只？
-response: 图中是三朵红玫瑰花。
-query: 框出图中的花
-response: <ref>花</ref><box>(34,449),(368,981)</box><box>(342,456),(670,917)</box><box>(585,508),(859,977)</box>
-"""
-
-"""Out[0]
-model_type: qwen-vl-chat
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-图中是什么花，有几只？
+query: <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>图中是什么花，有几只？
 response: 图中是三朵红玫瑰花。
 query: 框出图中的花
 response: <ref>花</ref><box>(34,449),(368,981)</box><box>(342,456),(670,917)</box><box>(585,508),(859,977)</box>
@@ -649,140 +629,5 @@ query: 描述这张图片
 response: 这张图片展示了一只年轻的猫咪的特写，可能是一只小猫，具有明显的特征。它的毛皮主要是白色的，带有灰色和黑色的条纹，尤其是在脸部周围。小猫的眼睛很大，呈蓝色，给人一种好奇和迷人的表情。耳朵尖尖，竖立着，显示出警觉。背景模糊不清，突出了小猫的特征。整体的色调柔和，猫咪的毛皮与背景的柔和色调形成对比。
 query: 这张图是如何产生的？
 response: 这张图片看起来是用数字绘画技术创作的。艺术家使用数字绘图工具来模仿毛皮的纹理和颜色，眼睛的反射，以及整体的柔和感。这种技术使艺术家能够精确地控制细节和色彩，创造出逼真的猫咪形象。
-"""
-```
-
-## qwen-vl
-
-**服务端:**
-```bash
-# 使用原始模型
-CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-vl
-
-# 使用微调后的LoRA
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl/vx-xxx/checkpoint-xxx
-
-# 使用微调后Merge LoRA的模型
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl/vx-xxx/checkpoint-xxx-merged
-```
-
-**客户端:**
-
-测试:
-```bash
-curl http://localhost:8000/v1/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "qwen-vl",
-"prompt": "Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>\n这是一朵",
-"max_tokens": 32,
-"temperature": 0
-}'
-```
-
-使用swift:
-```python
-from swift.llm import get_model_list_client, XRequestConfig, inference_client
-
-model_list = get_model_list_client()
-model_type = model_list.data[0].id
-print(f'model_type: {model_type}')
-
-# use base64
-# import base64
-# with open('rose.jpg', 'rb') as f:
-#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# 这是一朵"""
-
-# use local_path
-# query = """Picture 1:<img>rose.jpg</img>
-# 这是一朵"""
-
-# use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-这是一朵"""
-
-request_config = XRequestConfig(seed=42, max_tokens=32)
-resp = inference_client(model_type, query, request_config=request_config)
-response = resp.choices[0].text
-print(f'query: {query}')
-print(f'response: {response}')
-
-request_config = XRequestConfig(stream=True, seed=42, max_tokens=32)
-stream_resp = inference_client(model_type, query, request_config=request_config)
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].text, end='', flush=True)
-print()
-
-"""
-model_type: qwen-vl
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-这是一朵
-response: 玫瑰花的图片,希望你喜欢
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-这是一朵
-response: 玫瑰花的图片,希望你喜欢
-"""
-```
-
-使用openai:
-```python
-from openai import OpenAI
-client = OpenAI(
-    api_key='EMPTY',
-    base_url='http://localhost:8000/v1',
-)
-model_type = client.models.list().data[0].id
-print(f'model_type: {model_type}')
-
-# use base64
-# import base64
-# with open('rose.jpg', 'rb') as f:
-#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# 这是一朵"""
-
-# use local_path
-# from swift.llm import convert_to_base64
-# query = """Picture 1:<img>rose.jpg</img>
-# 这是一朵"""
-# query = convert_to_base64(prompt=query)['prompt']
-
-# use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-这是一朵"""
-
-resp = client.completions.create(
-    model=model_type,
-    prompt=query,
-    seed=42)
-response = resp.choices[0].text
-print(f'query: {query}')
-print(f'response: {response}')
-
-# 流式
-stream_resp = client.completions.create(
-    model=model_type,
-    prompt=query,
-    stream=True,
-    seed=42)
-
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].text, end='', flush=True)
-print()
-
-"""Out[0]
-model_type: qwen-vl
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-这是一朵
-response: 玫瑰花的图片,希望你喜欢
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-这是一朵
-response: 玫瑰花的图片,希望你喜欢
 """
 ```

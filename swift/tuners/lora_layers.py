@@ -614,7 +614,10 @@ class LoraModel(_LoraModel):
         peft_config = self._prepare_adapter_config(peft_config, model_config)
 
         from peft.tuners.tuners_utils import _maybe_include_all_linear_layers
-        from peft.utils.constants import DUMMY_TARGET_MODULES
+        try:
+            from peft.utils.constants import DUMMY_TARGET_MODULES
+        except ImportError:  # compat with peft==0.11.*
+            DUMMY_TARGET_MODULES = 'dummy-target-modules'
         if getattr(peft_config, 'target_modules', None) == DUMMY_TARGET_MODULES:
             # dummy adapter, we allow not matching any module
             key_list = []
@@ -722,10 +725,12 @@ class LoraModel(_LoraModel):
             'init_lora_weights': lora_config.init_lora_weights,
             'use_rslora': lora_config.use_rslora,
             'use_dora': lora_config.use_dora,
-            'ephemeral_gpu_offload': lora_config.runtime_config.ephemeral_gpu_offload,
             'loaded_in_8bit': getattr(self.model, 'is_loaded_in_8bit', False),
             'loaded_in_4bit': getattr(self.model, 'is_loaded_in_4bit', False),
         }
+        # compat with peft==0.11.*
+        if hasattr(lora_config, 'runtime_config'):
+            kwargs['ephemeral_gpu_offload'] = lora_config.runtime_config.ephemeral_gpu_offload
 
         quant_methods = ['gptq', 'aqlm', 'awq']
         for quant_method in quant_methods:

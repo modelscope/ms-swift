@@ -23,30 +23,21 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-vl-chat
 Output: (supports passing in local paths or URLs)
 ```python
 """
-<<< multi-line
-[INFO:swift] End multi-line input with `#`.
-[INFO:swift] Input `single-line` to switch to single-line input mode.
-<<<[M] Who are you?#
-I am Tongyi Qianwen, an AI assistant developed by Alibaba Cloud. I am designed to answer various questions, provide information and converse with users. Is there anything I can help you with?
+<<< Who are you?
+I am a large language model created by Alibaba Cloud. I am called QianWen.
 --------------------------------------------------
-<<<[M] Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>
-Picture 2:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>
-What are the differences between these two pictures#
-The two pictures are similar in that they are both illustrations about animals, but the animals are different.
-The first picture shows sheep, while the second picture shows a kitten.
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img>What are the differences between these two pictures
+The picture on the left is a cartoon image of a white sheep with brown spots,而the picture on the right is a digital painting of a white cat with gray stripes on its head, a small pink nose, and big blue eyes. The former is a photograph of a real animal, while the latter is a work of art created solely for decorative purposes. The latter also has a more delicate and cute style.
 --------------------------------------------------
-<<<[M] Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>
-How many sheep are in the picture#
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>How many sheep are in the picture
 There are four sheep in the picture.
 --------------------------------------------------
-<<<[M] Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png</img>
-What is the calculation result#
-1452 + 45304 = 46756
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/math.png</img>What is the calculation result
+The calculation result is 45304.
 --------------------------------------------------
-<<<[M] Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>
-Write a poem based on the content in the picture#
-Starlight sparkling on the lake surface, a lone boat's shadow still as if asleep.
-The man holds up a lantern to illuminate the valley, with a kitten accompanying by his side.
+<<< clear
+<<< <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/poem.png</img>Write a poem based on the content in the picture
+A lone boat on the river, gliding with ease Through the misty waters, a peaceful scene A man sits within, with a lantern to guide him, Through the dark of night, with a gentle glide.
 """
 ```
 
@@ -91,8 +82,7 @@ model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
 
-query = """Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>
-How far is it to each city?"""
+query = """<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it to each city?"""
 response, history = inference(model, template, query)
 print(f'query: {query}')
 print(f'response: {response}')
@@ -109,12 +99,11 @@ for response, history in gen:
 print()
 print(f'history: {history}')
 """
-query: Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>
-How far is it to each city?
-response: Malu边 is 14 km away from Malu; Yangjiang边 is 62 km away from Malu; Guangzhou边 is 293 km away from Malu.
+query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it to each city?
+response: The sign shows the distance to four cities: mata is 14 km, yangjiang is 62 km, yangzhou is 293 km, and guangzhou is 293 km.
 query: Which city is the farthest away?
-response: The farthest city is Guangzhou, 293 km away from Malu.
-history: [['Picture 1:<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>\nHow far is it to each city?', 'Malu边 is 14 km away from Malu; Yangjiang边 is 62 km away from Malu; Guangzhou边 is 293 km away from Malu.'], ['Which city is the farthest away?', 'The farthest city is Guangzhou, 293 km away from Malu.']]
+response: The farthest away is guangzhou, which is 293 km according to the sign.
+history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>How far is it to each city?', 'The sign shows the distance to four cities: mata is 14 km, yangjiang is 62 km, yangzhou is 293 km, and guangzhou is 293 km.'], ['Which city is the farthest away?', 'The farthest away is guangzhou, which is 293 km according to the sign.']]
 """
 ```
 
@@ -130,7 +119,6 @@ Multimodal large model fine-tuning usually uses **custom datasets**. Here is a d
 
 LoRA fine-tuning:
 
-(By default, only the qkv part of the LLM is lora fine-tuned. If you want to fine-tune all linear modules including the vision model, you can specify `--lora_target_modules ALL`)
 ```shell
 # Experimental environment: 3090
 # 23GB GPU memory
@@ -182,13 +170,13 @@ You can also directly provide the above format, but please use thousandths for t
 ```json
 [
     {"conversations": [
-        {"from": "user", "value": "Picture 1:<img>img_path</img>\n11111"},
+        {"from": "user", "value": "<img>img_path</img>11111"},
         {"from": "assistant", "value": "22222"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "Picture 1:<img>img_path</img>\nPicture 2:<img>img_path2</img>\nPicture 3:<img>img_path3</img>\naaaaa"},
+        {"from": "user", "value": "<img>img_path</img><img>img_path2</img><img>img_path3</img>aaaaa"},
         {"from": "assistant", "value": "bbbbb"},
-        {"from": "user", "value": "Picture 1:<img>img_path</img>\nccccc"},
+        {"from": "user", "value": "<img>img_path</img>ccccc"},
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [

@@ -1,6 +1,8 @@
 # MiniCPM-V Best Practice
 Using minicpm-v-3b-chat as an example, if you want to use the updated version of the MiniCPM-V multimodal model (v2), you can switch `--model_type minicpm-v-3b-chat` to `--model_type minicpm-v-v2-chat`.
 
+MiniCPM-V-2.6 Best Practice: [https://github.com/modelscope/ms-swift/issues/1613](https://github.com/modelscope/ms-swift/issues/1613)
+
 ## Table of Contents
 - [Environment Setup](#environment-setup)
 - [Inference](#inference)
@@ -127,7 +129,6 @@ road:
 ## Fine-tuning
 Fine-tuning multimodal large models usually uses **custom datasets**. Here is a demo that can be run directly:
 
-(By default, only the qkv part of LLM is fine-tuned using LoRA. If you want to fine-tune all linear parts including the vision model, you can specify `--lora_target_modules ALL`. Full parameter fine-tuning is also supported.)
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 10GB GPU memory

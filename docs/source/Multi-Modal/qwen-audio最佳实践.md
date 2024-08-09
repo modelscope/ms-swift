@@ -1,5 +1,7 @@
 # Qwen-Audio 最佳实践
 
+Qwen2-Audio的最佳实践可以查看: [https://github.com/modelscope/ms-swift/issues/1653](https://github.com/modelscope/ms-swift/issues/1653)
+
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
@@ -24,21 +26,16 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type qwen-audio-chat
 输出: (支持传入本地路径或URL)
 ```python
 """
-<<< multi-line
-[INFO:swift] End multi-line input with `#`.
-[INFO:swift] Input `single-line` to switch to single-line input mode.
-<<<[M] 你是谁？#
+<<< 你是谁？
 我是来自达摩院的大规模语言模型，我叫通义千问。
 --------------------------------------------------
-<<<[M] Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/music.wav</audio>
-这是首什么样的音乐#
-这是电子、实验流行风格的音乐。
+<<< <audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/music.wav</audio>这是首什么样的音乐
+这是一首风格是Pop的音乐。
 --------------------------------------------------
-<<<[M] Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
-这段语音说了什么#
+<<< <audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>这段语音说了什么
 这段语音中说了中文："今天天气真好呀"。
 --------------------------------------------------
-<<<[M] 这段语音是男生还是女生#
+<<< 这段语音是男生还是女生
 根据音色判断，这段语音是男性。
 """
 ```
@@ -66,8 +63,7 @@ model.generation_config.max_new_tokens = 256
 template = get_template(template_type, tokenizer)
 seed_everything(42)
 
-query = """Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
-这段语音说了什么"""
+query = '<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>这段语音说了什么'
 response, history = inference(model, template, query)
 print(f'query: {query}')
 print(f'response: {response}')
@@ -84,12 +80,11 @@ for response, history in gen:
 print()
 print(f'history: {history}')
 """
-query: Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>
-这段语音说了什么
+query: <audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>这段语音说了什么
 response: 这段语音说了中文："今天天气真好呀"。
 query: 这段语音是男生还是女生
 response: 根据音色判断，这段语音是男性。
-history: [['Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>\n这段语音说了什么', '这段语音说了中文："今天天气真好呀"。'], ['这段语音是男生还是女生', '根据音色判断，这段语音是男性。']]
+history: [['<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav</audio>这段语音说了什么', '这段语音说了中文："今天天气真好呀"。'], ['这段语音是男生还是女生', '根据音色判断，这段语音是男性。']]
 """
 ```
 
@@ -99,7 +94,6 @@ history: [['Audio 1:<audio>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/i
 
 LoRA微调:
 
-(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含audio模型部分都进行微调, 可以指定`--lora_target_modules ALL`)
 ```shell
 # Experimental environment: A10, 3090, V100...
 # 22GB GPU memory
@@ -136,13 +130,13 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 ```json
 [
     {"conversations": [
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\n11111"},
+        {"from": "user", "value": "<audio>audio_path</audio>11111"},
         {"from": "assistant", "value": "22222"}
     ]},
     {"conversations": [
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nAudio 2:<audio>audio_path2</audio>\nAudio 3:<audio>audio_path3</audio>\naaaaa"},
+        {"from": "user", "value": "<audio>audio_path</audio><audio>audio_path2</audio><audio>audio_path3</audio>aaaaa"},
         {"from": "assistant", "value": "bbbbb"},
-        {"from": "user", "value": "Audio 1:<audio>audio_path</audio>\nccccc"},
+        {"from": "user", "value": "<audio>audio_path</audio>ccccc"},
         {"from": "assistant", "value": "ddddd"}
     ]},
     {"conversations": [

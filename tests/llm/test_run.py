@@ -47,7 +47,6 @@ class TestRun(unittest.TestCase):
         output = sft_main(
             SftArguments(
                 model_type=ModelType.qwen1half_1_8b,
-                model_id_or_path='../models/Qwen1.5-1.8B',
                 template_type='qwen',
                 sft_type='full',
                 dataset=f'{DatasetName.jd_sentiment_zh}#200',
@@ -472,6 +471,7 @@ class TestTrainer(unittest.TestCase):
                 gradient_accumulation_steps=1,
                 logging_steps=5,
                 eval_steps=10,
+                save_safetensors=False,
                 save_only_model=save_only_model)
         trainer_args._n_gpu = 1
         trainer = BertTrainer(model, trainer_args, data_collator, train_dataset, val_dataset, tokenizer)

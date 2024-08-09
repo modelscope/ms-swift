@@ -1,6 +1,8 @@
 
 # MiniCPM-V-2.5 最佳实践
 
+MiniCPM-V-2.6 最佳实践: [https://github.com/modelscope/ms-swift/issues/1613](https://github.com/modelscope/ms-swift/issues/1613)
+
 ## 目录
 - [环境准备](#环境准备)
 - [推理](#推理)
@@ -158,7 +160,6 @@ road:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
-(默认只对LLM部分的qkv进行lora微调. 如果你想对所有linear含vision模型部分都进行微调, 可以指定`--lora_target_modules ALL`. 支持全参数微调.)
 ```shell
 # Experimental environment: 3090
 # 20GB GPU memory
