@@ -211,6 +211,7 @@ def opencompass_runner(args: EvalArguments, dataset: List[str], model_type: str,
                     'openai_api_base': url,
                     'is_chat': is_chat,
                     'key': args.eval_token,
+                    'temperature': args.temperature
                 },
             ],
             **limit_config,
@@ -228,11 +229,7 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
         eval_limit = int(eval_limit)
     limit_config = {'limit': eval_limit} if eval_limit else {}
     if args.eval_batch_size or args.eval_use_cache:
-<<<<<<< HEAD
         logger.warn('VLMEval does not support `eval_batch_size` or `eval_use_cache`')
-=======
-        logger.warn('VLMEval does not support `batch_size` or `eval_use_cache`')
->>>>>>> 808dd72e101b0b9aee70c8ad7840fc441c40b6d7
     task_cfg = dict(
         eval_backend='VLMEvalKit',
         eval_config={
@@ -244,12 +241,10 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
                     'api_base': url,
                     'key': args.eval_token,
                     'type': model_type,
+                    'temperature': args.temperature
                 },
             ],
-<<<<<<< HEAD
-            'nproc': 4,
-=======
->>>>>>> 808dd72e101b0b9aee70c8ad7840fc441c40b6d7
+            'nproc': 8,
             **limit_config,
         },
     )
@@ -322,8 +317,19 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
                 TaskConfig.registry(_ds['name'], _ds['pattern'], _ds['dataset'], subset_list=_ds.get('subset_list'))
     eval_model = EvalModel(args, model_name)
 
+    generation_config = {
+        'do_sample': args.do_sample,
+        'repetition_penalty': args.repetition_penalty,
+        'max_length': args.max_length,
+        'max_new_tokens': args.max_new_tokens,
+        'temperature': args.temperature,
+        'top_k': args.top_k,
+        'top_p': args.top_p, 
+    }
+    
     task_configs = TaskConfig.load(custom_model=eval_model, tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
+        task_config.generation_config = generation_config
         task_config.dataset_dir = DEFAULT_ROOT_CACHE_DIR
         task_config.use_cache = args.eval_use_cache
         if args.eval_limit is not None:
