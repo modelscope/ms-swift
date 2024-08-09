@@ -1172,7 +1172,7 @@ class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTe
         return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
 
-register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True, is_generation=True)
+register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
 
 register_template(
     TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
