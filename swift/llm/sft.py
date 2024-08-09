@@ -274,8 +274,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             fsdp_flatten_parameters=False)
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
-    training_args.train_dataset_sample = train_dataset.shape[
-        0] if train_dataset is not None and not streaming else 0  # torchacc
+    if use_torchacc():
+        training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
     template_kwargs = {}
     template_kwargs['use_loss_scale'] = args.use_loss_scale
     if args.loss_scale_config_path is not None:
