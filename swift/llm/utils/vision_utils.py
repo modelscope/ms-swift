@@ -148,7 +148,7 @@ def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
     return frame_indices
 
 
-def _read_video(video_path: str) -> BytesIO:
+def _load_file(video_path: str) -> BytesIO:
     video_path = video_path.strip()
     if video_path.startswith('http'):
         content = requests.get(video_path).content
@@ -162,7 +162,7 @@ def _read_video(video_path: str) -> BytesIO:
 def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
     from decord import VideoReader, cpu
     from PIL import Image
-    vr = VideoReader(_read_video(video_path), ctx=cpu(0), num_threads=1)
+    vr = VideoReader(_load_file(video_path), ctx=cpu(0), num_threads=1)
     max_frame = len(vr) - 1
     fps = float(vr.get_avg_fps())
 

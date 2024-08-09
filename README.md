@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.08.09: Support for inference and fine-tuning of the qwen2-audio model. Best practice can be found [here](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.08: Supports the qwen2-math series models: 1.5B, 7B, 72B. Use `swift infer --model_type qwen2-math-1_5b-instruct` for an experience.
 - 🔥2024.08.07: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.08.06: Support for minicpm-v-v2_6-chat is available. You can use `swift infer --model_type minicpm-v-v2_6-chat` for inference experience. Best practices can be found [here](https://github.com/modelscope/swift/issues/1613).
@@ -609,7 +610,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Model Type                                              | Model Introduction                                                                     | Language           | Model Size                            | Model Type               |
 |---------------------------------------------------------|----------------------------------------------------------------------------------------|--------------------|---------------------------------------|--------------------------|
 | Qwen-VL                                                 | [Tongyi Qwen vision model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B<br>including quantized versions    | base model<br>chat model |
-| Qwen-Audio                                              | [Tongyi Qwen speech model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B                                    | base model<br>chat model |
+| Qwen-Audio<br>Qwen2-Audio                           | [Tongyi Qwen speech model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B                                    | base model<br>chat model |
 | YI-VL                                                   | [01AI's YI series vision models](https://github.com/01-ai)                             | Chinese<br>English | 6B-34B                                | chat model               |
 | XComposer2<br>XComposer2.5                              | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                    | chat model               |
 | DeepSeek-VL                                             | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |

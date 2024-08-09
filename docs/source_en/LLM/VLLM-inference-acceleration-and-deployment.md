@@ -1,6 +1,8 @@
 # VLLM Inference Acceleration and Deployment
 The models supported by vllm can be found in [Supported Models](Supported-models-datasets.md#Models).
 
+You can check the best practices for inference acceleration and deployment of Llama 3.1 405b [here](https://github.com/modelscope/ms-swift/issues/1484).
+
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
 - [Inference Acceleration](#inference-acceleration)
