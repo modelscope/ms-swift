@@ -46,11 +46,10 @@ datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerpri
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
-
 standard_keys = {
-                'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
-                'objects', 'videos', 'audios', 'tools', 'label'
-        }
+    'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
+    'videos', 'audios', 'tools', 'label'
+}
 
 
 def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
@@ -2717,7 +2716,7 @@ def get_dataset(
         train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
         if val_dataset:
             val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
-    
+
     return train_dataset, val_dataset
 
 

@@ -17,8 +17,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
-from swift.utils import get_dist_setting, upper_bound, use_torchacc
-from swift.utils import get_logger
+from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
 
 logger = get_logger()
 
@@ -171,8 +170,6 @@ class Template:
     grounding_type = 'norm_1000'
     image_placeholder = '<image>'
     load_medias = True
-    keys_expanded = ['pixel_values', 'image_sizes', 'pixel_value_videos', 'image_flags',
-                     'image_bound', 'images', 'cross_images']
 
     def __init__(self,
                  prefix: Prompt,
@@ -793,7 +790,8 @@ class Template:
 
         if self.max_length is not None:
             if truncation_strategy == 'delete' and len(input_ids) > self.max_length:
-                logger.info(f'Current length of row({len(input_ids)}) is larger than the max_length({self.max_length}), deleted.')
+                logger.warn(f'Current length of row({len(input_ids)}) is larger'
+                            f' than the max_length({self.max_length}), deleted.')
                 return {}, {}
             input_ids = input_ids[-self.max_length:]
             if labels is not None:
@@ -835,20 +833,11 @@ class Template:
         return torch.stack(padded_sequences)
 
     def _pre_forward_hook(self, module, args, kwargs):
-        self.pre_forward(kwargs)
+        self.pre_forward(args, kwargs)
         return args, kwargs
 
-    def pre_forward(self, kwargs):
+    def pre_forward(self, args, kwargs):
         pass
-
-    def _expand_dim(self, example):
-        bs = example.get('input_ids', example.get('input_embeddings')).shape[0]
-        keys = example.keys()
-        for key in keys:
-            value = example[key]
-            if isinstance(value, torch.Tensor) and key in self.keys_expanded:
-                value = value.unsqueeze(0).repeat(bs, 0)
-                example[key] = value
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -942,7 +931,7 @@ class Template:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
-            
+
         # self._expand_dim(res)
         return res
 
