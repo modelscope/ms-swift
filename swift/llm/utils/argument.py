@@ -390,6 +390,8 @@ class ArgumentsBase:
                 logger.info(f'train_dataset_sample: {train_dataset_sample}')
                 train_idxs = random_state.permutation(train_dataset_sample)
                 train_dataset = train_dataset.select(train_idxs)
+            if val_dataset_sample is None:
+                val_dataset_sample = max(int(train_dataset_sample * self.dataset_test_ratio), 1)
         if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
             if not streaming and val_dataset.shape[0] > val_dataset_sample:
                 logger.info(f'val_dataset_sample: {val_dataset_sample}')
