@@ -1101,6 +1101,9 @@ class SftArguments(ArgumentsBase):
         else:
             kwargs['evaluation_strategy'] = self.evaluation_strategy
 
+        if 'accelerator_config' in parameters:
+            kwargs['accelerator_config'] = {'dispatch_batches': False}
+
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
             logging_dir=self.logging_dir,
@@ -1159,7 +1162,6 @@ class SftArguments(ArgumentsBase):
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
             seed=self.seed,
-            accelerator_config={'dispatch_batches': False},
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
