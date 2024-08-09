@@ -808,7 +808,7 @@ def _preprocess_aishell1_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
     audio_key = 'Audio:FILE'
     response_key = 'Text:LABEL'
     query_format = f'<audio>{{audio_path}}</audio>{prompt}'
-    query = []
+
     def _process(d):
         return {'query': query_format.format(audio_path=d[audio_key]), 'response': d[response_key].replace(' ', '')}
 
