@@ -1,38 +1,38 @@
-# OLLaMA导出文档
+# OLLaMA Export Documentation
 
-SWIFT已经支持了OLLaMA Modelfile的导出能力，该能力合并到了`swift export`命令中。
+SWIFT now supports exporting OLLaMA Model files, integrated into the `swift export` command.
 
-## 目录
+## Contents
 
-- [环境准备](#环境准备)
-- [导出](#导出)
-- [需要注意的问题](#需要注意的问题)
+- [Environment Setup](#environment-setup)
+- [Export](#export)
+- [Points to Note](#points-to-note)
 
-## 环境准备
+## Environment Setup
 
 ```shell
-# 设置pip全局镜像 (加速下载)
+# Set pip global mirror (to speed up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-# 安装ms-swift
+# Install ms-swift
 git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e '.[llm]'
 ```
 
-OLLaMA导出不需要其他模块支持，因为SWIFT仅会导出ModelFile，后续的运行用户可以自行处理。
+No additional modules are needed for OLLaMA export, as SWIFT only exports the ModelFile. Users can handle subsequent operations.
 
-## 导出
+## Export
 
-OLLaMA导出命令行如下：
+The OLLaMA export command line is as follows:
 
 ```shell
 # model_type
 swift export --model_type llama3-8b-instruct --to_ollama true --ollama_output_dir llama3-8b-instruct-ollama
-# ckpt_dir，注意lora训练需要增加--merge_lora true
+# ckpt_dir, note that for lora training, add --merge_lora true
 swift export --ckpt_dir /mnt/workspace/yzhao/tastelikefeet/swift/output/qwen-7b-chat/v141-20240331-110833/checkpoint-10942 --to_ollama true --ollama_output_dir qwen-7b-chat-ollama --merge_lora true
 ```
 
-执行后会打印如下log：
+After execution, the following log will be printed:
 ```shell
 [INFO:swift] Exporting to ollama:
 [INFO:swift] If you have a gguf file, try to pass the file by :--gguf_file /xxx/xxx.gguf, else SWIFT will use the original(merged) model dir
@@ -48,7 +48,7 @@ swift export --ckpt_dir /mnt/workspace/yzhao/tastelikefeet/swift/output/qwen-7b-
 [INFO:swift] End time of running main: 2024-08-09 17:17:48.768722
 ```
 
-提示可以运行，此时打开ModelFile查看：
+You can now run the ModelFile:
 
 ```text
 FROM /mnt/workspace/.cache/modelscope/hub/LLM-Research/Meta-Llama-3-8B-Instruct
@@ -66,29 +66,30 @@ PARAMETER top_p 0.7
 PARAMETER repeat_penalty 1.0
 ```
 
-用户可以改动生成的文件，用于后续推理。
+Users can modify the generated file for subsequent inference.
 
-### OLLaMA使用
+### Using OLLaMA
 
-使用上面的文件，需要安装OLLaMA：
+To use the above file, install OLLaMA:
+
 ```shell
 # https://github.com/ollama/ollama
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-启动OLLaMA:
+Start OLLaMA:
 
 ```shell
 ollama serve
 ```
 
-在另一个terminal运行：
+In another terminal, run:
 
 ```shell
 ollama create my-custom-model -f /mnt/workspace/yzhao/tastelikefeet/swift/llama3-8b-instruct-ollama/Modelfile
 ```
 
-执行后会打印如下log：
+The following log will be printed after execution:
 
 ```text
 transferring model data 
@@ -104,7 +105,7 @@ success
 root@dsw-83959-99dd48f76-v79h6:/mnt/workspace#
 ```
 
-之后就可以用命令的名字来推理：
+You can then use the command name for inference:
 
 ```shell
 ollama run my-custom-model
@@ -112,7 +113,7 @@ ollama run my-custom-model
 
 ```shell
 >>> who are you?
-I'm LLaMA, I'm a large language model trained by a team of researcher at Meta AI. My primary function is to understand and respond to human 
+I'm LLaMA, a large language model trained by a team of researchers at Meta AI. My primary function is to understand and respond to human 
 input in a helpful and informative way. I'm a type of AI designed to simulate conversation, answer questions, and even generate text based 
 on a given prompt or topic.
 
@@ -123,36 +124,33 @@ I'm constantly learning and improving my responses based on the interactions I h
 any mistakes or don't quite understand what you're asking. I'm here to help and provide assistance, so feel free to ask me anything!
 ```
 
-## 需要注意的问题
+## Points to Note
 
-1. 部分模型在
+1. Some models may report an error during:
 
 ```shell
 ollama create my-custom-model -f /mnt/workspace/yzhao/tastelikefeet/swift/qwen-7b-chat-ollama/Modelfile
 ```
 
-的时候会报错:
+Error message:
 
 ```shell
 Error: Models based on 'QWenLMHeadModel' are not yet supported
 ```
 
-这是因为ollama的转换并不支持所有类型的模型，此时可以自行进行gguf导出并修改Modelfile的FROM字段：
+This is because the conversion in OLLaMA does not support all types of models. You can perform gguf export yourself and modify the FROM field in the Modelfile:
 
 ```shell
-# 详细转换步骤可以参考：https://github.com/ggerganov/llama.cpp/blob/master/examples/quantize/README.md
+# Detailed conversion steps can be found at: https://github.com/ggerganov/llama.cpp/blob/master/examples/quantize/README.md
 git clone https://github.com/ggerganov/llama.cpp.git
 cd llama.cpp
-# 模型目录可以在`swift export`命令的日志中找到，类似：
+# The model directory can be found in the `swift export` command log, similar to:
 # Using model_dir: /mnt/workspace/yzhao/tastelikefeet/swift/output/qwen-7b-chat/v141-20240331-110833/checkpoint-10942-merged
 python convert_hf_to_gguf.py /mnt/workspace/yzhao/tastelikefeet/swift/output/qwen-7b-chat/v141-20240331-110833/checkpoint-10942-merged
 ```
 
-之后重新执行：
+Then re-execute:
 
 ```shell
 ollama create my-custom-model -f /mnt/workspace/yzhao/tastelikefeet/swift/qwen-7b-chat-ollama/Modelfile
 ```
-
-
-
