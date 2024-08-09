@@ -105,12 +105,18 @@ def build_tokenized_answer(answer, template: Template):
     )
 
 
-def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
+def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
     logger.info('sort by max length...')
-    dataset_chosen_len = [len(d['chosen_input_ids']) for d in dataset]
-    dataset_rejected_len = [len(d['rejected_input_ids']) for d in dataset]
-    idx = heapq.nlargest(
-        num_dataset, range(len(dataset_chosen_len)), key=lambda i: max(dataset_chosen_len[i], dataset_rejected_len[i]))
+    if not is_encoder_decoder:
+        dataset_chosen_len = [len(d['chosen_input_ids']) for d in dataset]
+        dataset_rejected_len = [len(d['rejected_input_ids']) for d in dataset]
+        idx = heapq.nlargest(
+            num_dataset,
+            range(len(dataset_chosen_len)),
+            key=lambda i: max(dataset_chosen_len[i], dataset_rejected_len[i]))
+    else:
+        dataset_len = [len(d['prompt_input_ids']) for d in dataset]
+        idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
     return dataset.select(idx)
 
 

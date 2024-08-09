@@ -15,12 +15,15 @@ from .mixin import PushToMsHubMixin, SwiftMixin
 logger = get_logger()
 
 
-def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
+def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
     logger.info('sort by max length...')
     dataset_prompt_len = [len(d['prompt_input_ids']) for d in dataset]
-    dataset_answer_len = [len(d['answer_input_ids']) for d in dataset]
-    idx = heapq.nlargest(
-        num_dataset, range(len(dataset_prompt_len)), key=lambda i: (dataset_prompt_len[i] + dataset_answer_len[i]))
+    if not is_encoder_decoder:
+        dataset_answer_len = [len(d['answer_input_ids']) for d in dataset]
+        idx = heapq.nlargest(
+            num_dataset, range(len(dataset_prompt_len)), key=lambda i: (dataset_prompt_len[i] + dataset_answer_len[i]))
+    else:
+        idx = heapq.nlargest(num_dataset, range(len(dataset_prompt_len)), key=lambda i: dataset_prompt_len[i])
     return dataset.select(idx)
 
 
