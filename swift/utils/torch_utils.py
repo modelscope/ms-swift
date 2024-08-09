@@ -179,7 +179,7 @@ def activate_model_parameters(model: Module, additional_trainable_parameters: Li
     for n, p in model.named_parameters():
         for additional_tp in additional_trainable_parameters:
             if n.startswith(additional_tp):
-                p.requires_grad = True
+                p.requires_grad = True 
                 has_activate = True
     if not has_activate:
         logger.warning('len(additional_trainable_parameters) > 0 but no parameters are activated. '

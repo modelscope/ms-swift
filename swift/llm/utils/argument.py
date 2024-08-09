@@ -549,8 +549,8 @@ class SftArguments(ArgumentsBase):
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
                       'fourierft'] = 'lora'
-    freeze_parameters: float = 0.  # 0 ~ 1
-    additional_trainable_parameters: List[str] = field(default_factory=list)
+    freeze_parameters: float = 0.  # 0 ~ 1  仅在sft_type==full时有效 从头开始freeze百分之多少的参数 1则全部freeze 0则全量微调 
+    additional_trainable_parameters: List[str] = field(default_factory=list)    # 在freeze_parameters基础上 强制让某些层作为可训练
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     template_type: str = field(
         default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})

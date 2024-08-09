@@ -49,6 +49,7 @@ class TemplateType:
     llava_vicuna = 'llava-vicuna'
     llava_yi = 'llava-yi'
     llava_llama_instruct = 'llava-llama-instruct'
+    llava_next_llama3 = 'llava-next-llama3'
     llava_qwen_instruct = 'llava-qwen-instruct'
     llama_llava_next = 'llama-llava-next'
     llava_next_video = 'llava-next-video'
@@ -1890,6 +1891,21 @@ class LlavaHfTemplate(Template):
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
+
+
+class Llava1_6Llama3Template(LlavaHfTemplate):
+    # default_system = 'You are a helpful language and vision assistant. ' \
+    #                  'You are able to understand the visual content that the user provides, ' \
+    #                  'and assist the user with a variety of tasks using natural language.'
+
+    def __init__(self):
+        super().__init__(['<|begin_of_text|>'], [
+            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+            '<|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
+
+register_template(TemplateType.llava_next_llama3, Llava1_6Llama3Template(), use_model=True, lazy_tokenize=True)
 
 
 class LlavaVideoTemplate(Template):

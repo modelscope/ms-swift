@@ -214,6 +214,7 @@ class ModelType:
     llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
     llava1_6_vicuna_7b_instruct = 'llava1_6-vicuna-7b-instruct'
     llava1_6_vicuna_13b_instruct = 'llava1_6-vicuna-13b-instruct'
+    llava1_6_llama3_1_8b_instruct_my = 'llava1_6-llama3_1-8b-instruct-my'
     llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
@@ -999,6 +1000,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
         else:
             logger.info(f'model_kwargs: {model_kwargs}')
             with context:
+                # del model_kwargs['device_map']
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
         model.is_gptq = is_gptq
@@ -5807,6 +5809,22 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
+@register_model(
+    ModelType.llava1_6_llama3_1_8b_instruct_my,
+    '/mnt/workspace/.cache/modelscope/hub/swift/llava-v1___6-llama-3.1-my',
+    LoRATM.llava,
+    TemplateType.llava_next_llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    vllm_config={
+        'image_input_type': 'pixel_values',
+        'image_token_id': 32000,
+        'image_input_shape': '1,3,672,672',
+        'image_feature_size': 2928,
+    },
+    requires=['transformers>=4.41'],
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_llava_next(*args, **kwargs):
     from transformers import LlavaNextForConditionalGeneration
     kwargs['automodel_class'] = LlavaNextForConditionalGeneration

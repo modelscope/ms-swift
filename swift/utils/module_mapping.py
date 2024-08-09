@@ -350,5 +350,9 @@ def get_regex_for_mm_default_lora(model_type: str):
     _regex = f'^({llm}'
     if projector:
         _regex += f'|{projector}'
+    # 上面的意思是 LoRA只训练llm和projector部分 它们具体对应的模型中的keys在上面XXXX_KEYS中定义
+    # vision_tower部分默认是不训练的 因为即便用LoRA这部分训练也很耗显存 
+    
+    # 下面的意思是 要去掉下面这些层（比如LoRA是不训练embedding层的）
     _regex += ')(?!.*(lm_head|output|emb|wte|shared)).*'
     return _regex
