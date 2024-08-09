@@ -215,8 +215,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
         acc: Optional[Tensor] = None
-
-        if self.state.global_step % self.sft_args.acc_steps == 0:
+        sft_args = getattr(self, 'sft_args', None)
+        acc_steps = 1 if sft_args is None else sft_args.acc_steps
+        if self.state.global_step % acc_steps == 0:
             if preds.shape != labels.shape:
                 pass
             elif acc_strategy == 'sentence':

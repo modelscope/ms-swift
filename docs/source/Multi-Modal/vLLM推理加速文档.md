@@ -17,8 +17,7 @@ cd swift
 pip install -e '.[llm]'
 
 # vllm与cuda版本有对应关系，请按照`https://docs.vllm.ai/en/latest/getting_started/installation.html`选择版本
-# vllm在0.5.1版本对多模态有巨大修改, 且只支持1张图片, 这里不进行立即更新, 等vllm稳定后再更新.
-pip install "vllm==0.5.0.*"
+pip install "vllm>=0.5.1"
 pip install openai -U
 ```
 
@@ -35,6 +34,7 @@ from swift.llm import (
     get_template, inference_vllm
 )
 
+# 'minicpm-v-v2_5-chat', 'minicpm-v-v2_6-chat', 'internvl2-1b', 'internvl2-4b', 'phi3-vision-128k-instruct'
 model_type = ModelType.llava1_6_mistral_7b_instruct
 llm_engine = get_vllm_engine(model_type)
 template_type = get_default_template_type(model_type)

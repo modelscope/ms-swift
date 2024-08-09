@@ -895,6 +895,10 @@ class SftArguments(ArgumentsBase):
             self.load_from_ckpt_dir(True)
             if self.sft_type == 'full' or self.train_backend == 'megatron':
                 self.model_id_or_path = self.resume_from_checkpoint
+
+        if self.rope_scaling:
+            logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
+
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         self.set_model_type()
@@ -1257,6 +1261,7 @@ class InferArguments(ArgumentsBase):
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
+    max_num_seqs: int = 256
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
     enforce_eager: bool = False
@@ -1300,6 +1305,10 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+
+        if self.rope_scaling:
+            logger.info(f'rope_scaling is set to {self.rope_scaling}, '
+                        f'please remember to set max_length, which is supposed to be the same as training')
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         self._handle_dataset_sample()
@@ -1522,7 +1531,6 @@ class ExportArguments(InferArguments):
     hf_output_dir: Optional[str] = None
     tp: int = 1
     pp: int = 1
-    check_model_forward: bool = False
 
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token

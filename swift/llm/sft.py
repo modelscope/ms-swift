@@ -78,10 +78,10 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
 
     res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
     res.update(MegatronArguments.from_sft_args(args, train_dataset, val_dataset))
-    model_provider, _ = get_megatron_model_convert(args.model_type)
     megatron_args = MegatronArguments(**res)
     extra_args = megatron_args.parse_to_megatron()
 
+    model_provider, _ = get_megatron_model_convert(args.model_type)
     train_valid_test_datasets_provider = partial(
         _train_valid_test_datasets_provider, train_dataset=train_dataset, val_dataset=val_dataset, template=template)
     train_valid_test_datasets_provider.is_distributed = True

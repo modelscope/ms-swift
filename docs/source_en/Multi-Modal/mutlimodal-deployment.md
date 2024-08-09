@@ -6,7 +6,6 @@ For inference acceleration and deployment of MLLM, you can refer to the [LmDeplo
 - [qwen-vl-chat](#qwen-vl-chat)
 - [yi-vl-6b-chat](#yi-vl-6b-chat)
 - [minicpm-v-v2_5-chat](#minicpm-v-v2_5-chat)
-- [qwen-vl](#qwen-vl)
 
 ## Environment Setup
 ```shell
@@ -43,7 +42,7 @@ curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
 "model": "qwen-vl-chat",
-"messages": [{"role": "user", "content": "Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>\nWhat kind of flower is in the picture and how many are there?"}],
+"messages": [{"role": "user", "content": "<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>What kind of flower is in the picture and how many are there?"}],
 "max_tokens": 256,
 "temperature": 0
 }'
@@ -61,16 +60,13 @@ print(f'model_type: {model_type}')
 # import base64
 # with open('rose.jpg', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# What kind of flower is in the picture and how many are there?"""
+# query = f'<img>{img_base64}</img>What kind of flower is in the picture and how many are there?'
 
 # use local_path
-# query = """Picture 1:<img>rose.jpg</img>
-# What kind of flower is in the picture and how many are there?"""
+# query = '<img>rose.jpg</img>What kind of flower is in the picture and how many are there?'
 
 # use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-What kind of flower is in the picture and how many are there?"""
+query = '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>What kind of flower is in the picture and how many are there?'
 
 request_config = XRequestConfig(seed=42)
 resp = inference_client(model_type, query, request_config=request_config)
@@ -90,8 +86,7 @@ print()
 
 """
 model_type: qwen-vl-chat
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-What kind of flower is in the picture and how many are there?
+query: <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>What kind of flower is in the picture and how many are there?
 response: There are three roses in the picture.
 query: Box out the flowers in the picture.
 response: <ref> flowers</ref><box>(33,448),(360,979)</box>
@@ -112,18 +107,15 @@ print(f'model_type: {model_type}')
 # import base64
 # with open('rose.jpg', 'rb') as f:
 #     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# What kind of flower is in the picture and how many are there?"""
+# query = f'<img>{img_base64}</img>What kind of flower is in the picture and how many are there?'
 
 # use local_path
 # from swift.llm import convert_to_base64
-# query = """Picture 1:<img>rose.jpg</img>
-# What kind of flower is in the picture and how many are there?"""
+# query = '<img>rose.jpg</img>What kind of flower is in the picture and how many are there?'
 # query = convert_to_base64(prompt=query)['prompt']
 
 # use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-What kind of flower is in the picture and how many are there?"""
+query = '<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>What kind of flower is in the picture and how many are there?'
 
 messages = [{
     'role': 'user',
@@ -155,8 +147,7 @@ print()
 
 """Out[0]
 model_type: qwen-vl-chat
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-What kind of flower is in the picture and how many are there?
+query: <img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>What kind of flower is in the picture and how many are there?
 response: There are three roses in the picture.
 query: Box out the flowers in the picture.
 response: <ref> flowers</ref><box>(33,448),(360,979)</box>
@@ -442,140 +433,5 @@ query: Describe this image.
 response: The image is a digital painting of a kitten, which is the main subject. The kitten's fur is rendered with a mix of gray, black, and white, giving it a realistic appearance. Its eyes are wide open, and the expression is one of curiosity or alertness. The background is blurred, which brings the focus entirely on the kitten. The painting style is detailed and lifelike, capturing the essence of a young feline's innocent and playful nature. The image does not convey any specific context or background story beyond the depiction of the kitten itself.
 query: How was this picture generated?
 response: This picture was generated using digital art techniques. The artist likely used a software program to create the image, manipulating pixels and colors to achieve the detailed and lifelike representation of the kitten. Digital art allows for a high degree of control over the final product, enabling artists to fine-tune details and create realistic textures and shading.
-"""
-```
-
-## qwen-vl
-
-**Server side:**
-```bash
-# Using the original model
-CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen-vl
-
-# Using the fine-tuned LoRA
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl/vx-xxx/checkpoint-xxx
-
-# Using the fine-tuned Merge LoRA model
-CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir output/qwen-vl/vx-xxx/checkpoint-xxx-merged
-```
-
-**Client side:**
-
-Test:
-```bash
-curl http://localhost:8000/v1/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "qwen-vl",
-"prompt": "Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>\nThis is a",
-"max_tokens": 32,
-"temperature": 0
-}'
-```
-
-Using swift:
-```python
-from swift.llm import get_model_list_client, XRequestConfig, inference_client
-
-model_list = get_model_list_client()
-model_type = model_list.data[0].id
-print(f'model_type: {model_type}')
-
-# use base64
-# import base64
-# with open('rose.jpg', 'rb') as f:
-#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# This is a"""
-
-# use local_path
-# query = """Picture 1:<img>rose.jpg</img>
-# This is a"""
-
-# use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-This is a"""
-
-request_config = XRequestConfig(seed=42, max_tokens=32)
-resp = inference_client(model_type, query, request_config=request_config)
-response = resp.choices[0].text
-print(f'query: {query}')
-print(f'response: {response}')
-
-request_config = XRequestConfig(stream=True, seed=42, max_tokens=32)
-stream_resp = inference_client(model_type, query, request_config=request_config)
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].text, end='', flush=True)
-print()
-
-"""
-model_type: qwen-vl
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-This is a
-response:  picture of a bouquet of roses.
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-This is a
-response: picture of a bouquet of roses.
-"""
-```
-
-Using openai:
-```python
-from openai import OpenAI
-client = OpenAI(
-    api_key='EMPTY',
-    base_url='http://localhost:8000/v1',
-)
-model_type = client.models.list().data[0].id
-print(f'model_type: {model_type}')
-
-# use base64
-# import base64
-# with open('rose.jpg', 'rb') as f:
-#     img_base64 = base64.b64encode(f.read()).decode('utf-8')
-# query = f"""Picture 1:<img>{img_base64}</img>
-# This is a"""
-
-# use local_path
-# from swift.llm import convert_to_base64
-# query = """Picture 1:<img>rose.jpg</img>
-# This is a"""
-# query = convert_to_base64(prompt=query)['prompt']
-
-# use url
-query = """Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-This is a"""
-
-resp = client.completions.create(
-    model=model_type,
-    prompt=query,
-    seed=42)
-response = resp.choices[0].text
-print(f'query: {query}')
-print(f'response: {response}')
-
-# Streaming
-stream_resp = client.completions.create(
-    model=model_type,
-    prompt=query,
-    stream=True,
-    seed=42)
-
-print(f'query: {query}')
-print('response: ', end='')
-for chunk in stream_resp:
-    print(chunk.choices[0].text, end='', flush=True)
-print()
-
-"""Out[0]
-model_type: qwen-vl
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-This is a
-response:  picture of a bouquet of roses.
-query: Picture 1:<img>https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/rose.jpg</img>
-This is a
-response: picture of a bouquet of roses.
 """
 ```

@@ -136,16 +136,17 @@ class EvalModel(CustomModel):
 
 
 def run_custom_model(args: EvalArguments):
-    from swift.llm.deploy import llm_deploy
+    from swift.llm import deploy_main
     port = args.port
     args = args.__dict__
     attrs = dir(DeployArguments)
     for key in list(args.keys()):
         if key not in attrs:
             args.pop(key)
+    args['verbose'] = False
     deploy_args = DeployArguments(**args)
     deploy_args.port = port
-    llm_deploy(deploy_args)
+    deploy_main(deploy_args)
 
 
 class EvalDatasetContext:
@@ -227,7 +228,11 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
         eval_limit = int(eval_limit)
     limit_config = {'limit': eval_limit} if eval_limit else {}
     if args.eval_batch_size or args.eval_use_cache:
+<<<<<<< HEAD
         logger.warn('VLMEval does not support `eval_batch_size` or `eval_use_cache`')
+=======
+        logger.warn('VLMEval does not support `batch_size` or `eval_use_cache`')
+>>>>>>> 808dd72e101b0b9aee70c8ad7840fc441c40b6d7
     task_cfg = dict(
         eval_backend='VLMEvalKit',
         eval_config={
@@ -241,7 +246,10 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
                     'type': model_type,
                 },
             ],
+<<<<<<< HEAD
             'nproc': 4,
+=======
+>>>>>>> 808dd72e101b0b9aee70c8ad7840fc441c40b6d7
             **limit_config,
         },
     )

@@ -11,7 +11,6 @@ from .model import get_megatron_model_convert
 def convert_hf_to_megatron(
     hf_model,
     extra_args: Dict[str, Any],
-    check_model_forward: bool = False,
     save_torch_dtype: Optional[torch.dtype] = None,
 ) -> None:
     from megatron.training.initialize import initialize_megatron
@@ -24,10 +23,6 @@ def convert_hf_to_megatron(
     convert_module.convert_checkpoint_from_transformers_to_megatron(hf_model, mg_model, args)
     if save_torch_dtype is not None:
         mg_model.to(save_torch_dtype)
-    if check_model_forward and hasattr(convert_module, 'check_hf_mg_forward'):
-        if save_torch_dtype is not None:
-            hf_model.to(save_torch_dtype)
-        convert_module.check_hf_mg_forward(hf_model, mg_model, args)
     convert_module.save_mgmodel(mg_model, args)
 
 
