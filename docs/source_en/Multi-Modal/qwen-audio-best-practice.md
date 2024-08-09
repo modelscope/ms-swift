@@ -1,5 +1,7 @@
 # Qwen-Audio Best Practice
 
+Best practice for Qwen2-Audio can be found at: [https://github.com/modelscope/ms-swift/issues/1653](https://github.com/modelscope/ms-swift/issues/1653).
+
 ## Table of Contents
 - [Environment Setup](#environment-setup)
 - [Inference](#inference)

@@ -147,6 +147,8 @@ class ModelType:
     # qwen-audio
     qwen_audio = 'qwen-audio'
     qwen_audio_chat = 'qwen-audio-chat'
+    qwen2_audio_7b = 'qwen2-audio-7b'
+    qwen2_audio_7b_instruct = 'qwen2-audio-7b-instruct'
     # chatglm
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
@@ -515,6 +517,7 @@ class LoRATM(NamedTuple):
     # default lora target modules for multi-modals
     qwen_audio = f'{get_regex_for_mm_default_lora("qwen_audio")}'
     qwen_vl = f'{get_regex_for_mm_default_lora("qwen_vl")}'
+    qwen2_audio = f'{get_regex_for_mm_default_lora("qwen2_audio")}'
     glm4v = f'{get_regex_for_mm_default_lora("glm4v")}'
     llava_next_video = f'{get_regex_for_mm_default_lora("llava_next_video")}'
     llava_next = f'{get_regex_for_mm_default_lora("llava_next")}'
@@ -3470,6 +3473,38 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
                                    **kwargs):
     kwargs['eos_token'] = '<|im_end|>'
     return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+
+
+@register_model(
+    ModelType.qwen2_audio_7b_instruct,
+    'qwen/Qwen2-Audio-7B-Instruct',
+    LoRATM.qwen2_audio,
+    TemplateType.qwen2_audio,
+    support_flash_attn=True,
+    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    tags=['multi-modal', 'audio'],
+    hf_model_id='Qwen/Qwen2-Audio-7B-Instruct')
+@register_model(
+    ModelType.qwen2_audio_7b,
+    'qwen/Qwen2-Audio-7B',
+    LoRATM.qwen2_audio,
+    TemplateType.qwen2_audio_generation,
+    support_flash_attn=True,
+    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    eos_token='<|endoftext|>',
+    tags=['multi-modal', 'audio'],
+    hf_model_id='Qwen/Qwen2-Audio-7B')
+def get_model_tokenizer_qwen2_audio(model_dir: str,
+                                    torch_dtype: Dtype,
+                                    model_kwargs: Dict[str, Any],
+                                    load_model: bool = True,
+                                    **kwargs):
+    from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
 
 
 @register_model(

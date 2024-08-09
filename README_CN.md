@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.08.09: 支持qwen2-audio模型的推理与微调. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.08: 支持qwen2-math系列模型, 1.5B, 7B, 72B. 使用`swift infer --model_type qwen2-math-1_5b-instruct`进行体验.
 - 🔥2024.08.07: 支持使用vllm对多模态大模型: llava系列, internvl2系列, phi3-vision, minicpm-v2.5进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.
 - 2024.08.06: 支持minicpm-v-v2_6-chat, 使用`swift infer --model_type minicpm-v-v2_6-chat`进行推理体验, 最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1613).
@@ -603,7 +604,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | 模型类型                                                    | 模型介绍                                                                       | 语言       | 模型大小             | 模型类型             |
 |---------------------------------------------------------|----------------------------------------------------------------------------|----------|------------------|------------------|
 | Qwen-VL                                                 | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B<br>包含量化版本     | base模型<br>chat模型 |
-| Qwen-Audio                                              | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B               | base模型<br>chat模型 |
+| Qwen-Audio<br>Qwen2-Audio                       | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B               | base模型<br>chat模型 |
 | YI-VL                                                   | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B           | chat模型           |
 | XComposer2<br>XComposer2.5                              | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)            | 中文<br>英文 | 7B               | chat模型           |
 | DeepSeek-VL                                             | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
