@@ -109,7 +109,7 @@ def add_version_to_work_dir(work_dir: str) -> str:
     version = _get_version(work_dir)
     time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
     sub_folder = f'v{version}-{time}'
-    if dist.is_initialized() and (is_dist() or is_dist_ta()):
+    if (dist.is_initialized() and is_dist()) or is_dist_ta():
         sub_folder = broadcast_string(sub_folder)
 
     work_dir = os.path.join(work_dir, sub_folder)
