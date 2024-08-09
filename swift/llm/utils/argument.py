@@ -1087,8 +1087,9 @@ class SftArguments(ArgumentsBase):
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
-        if 'include_num_input_tokens_seen' in parameters:
-            kwargs['include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
+        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen']:
+            if k in parameters:
+                kwargs[k] = getattr(self, k)
         if 'eval_strategy' in parameters:
             kwargs['eval_strategy'] = self.evaluation_strategy
         else:
@@ -1106,7 +1107,6 @@ class SftArguments(ArgumentsBase):
             num_train_epochs=self.num_train_epochs,
             max_steps=self.max_steps,
             lr_scheduler_type=self.lr_scheduler_type,
-            lr_scheduler_kwargs=self.lr_scheduler_kwargs,
             warmup_ratio=self.warmup_ratio,
             warmup_steps=self.warmup_steps,
             logging_steps=self.logging_steps,
