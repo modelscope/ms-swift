@@ -1,5 +1,4 @@
 # Byte-compiled / optimized / DLL files
-eval_outputs
 tmp
 *.ttf
 __pycache__/

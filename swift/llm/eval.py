@@ -201,10 +201,14 @@ def opencompass_runner(args: EvalArguments, dataset: List[str], model_type: str,
     task_cfg = dict(
         eval_backend='OpenCompass',
         eval_config={
-            'datasets': dataset,
-            'reuse': 'latest' if args.eval_use_cache else None,
-            'batch_size': args.eval_batch_size,
-            'work_dir': args.eval_output_dir,
+            'datasets':
+            dataset,
+            'reuse':
+            'latest' if args.eval_use_cache else None,
+            'batch_size':
+            args.eval_batch_size,
+            'work_dir':
+            args.eval_output_dir,
             'models': [
                 {
                     'path': model_type,
@@ -233,8 +237,10 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
     task_cfg = dict(
         eval_backend='VLMEvalKit',
         eval_config={
-            'data': dataset,
-            'work_dir': args.eval_output_dir,
+            'data':
+            dataset,
+            'work_dir':
+            args.eval_output_dir,
             'model': [
                 {
                     'name': 'CustomAPIModel',
@@ -323,9 +329,9 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
         'max_new_tokens': args.max_new_tokens,
         'temperature': args.temperature,
         'top_k': args.top_k,
-        'top_p': args.top_p, 
+        'top_p': args.top_p,
     }
-    
+
     task_configs = TaskConfig.load(custom_model=eval_model, tasks=args.eval_dataset + custom_names)
     for task_config in task_configs:
         task_config.generation_config = generation_config
