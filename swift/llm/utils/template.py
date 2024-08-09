@@ -281,7 +281,7 @@ class Template:
 
         if self.model:
             self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
- 
+
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
 
@@ -340,7 +340,7 @@ class Template:
                 example.get('history') or [], '<image>')
 
             if example.get('images') and images_path:
-                raise ValueError(f'Do not mix use the <img></img> tag and <image> tag.')
+                raise ValueError('Do not mix use the <img></img> tag and <image> tag.')
             example['images'] = example.get('images', []) + images_path
 
         # audio, video
