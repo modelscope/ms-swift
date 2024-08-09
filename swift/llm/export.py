@@ -105,7 +105,7 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
             partitioned_inputs = torch.split(x, self.n_parallel_calib_samples)
             for idx, x_partial in enumerate(partitioned_inputs):
                 tmp_module_kwargs = {**module_kwargs}
-                if 'attention_mask' in tmp_module_kwargs:
+                if tmp_module_kwargs.get('attention_mask'):
                     tmp_module_kwargs['attention_mask'] = tmp_module_kwargs['attention_mask'][idx:idx + self.
                                                                                               n_parallel_calib_samples]
                 partial_output = module(x_partial, **tmp_module_kwargs)

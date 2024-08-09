@@ -61,6 +61,7 @@ class TemplateType:
     internlm = 'internlm'
     internlm2 = 'internlm2'
     internlm_xcomposer2 = 'internlm-xcomposer2'
+    internlm_xcomposer2_4khd = 'internlm-xcomposer2-4khd'
     internlm_xcomposer2_5 = 'internlm-xcomposer2_5'
     internvl = 'internvl'
     internvl2 = 'internvl2'
@@ -93,6 +94,7 @@ class TemplateType:
     minicpm = 'minicpm'
     minicpm_v = 'minicpm-v'
     minicpm_v_v2_5 = 'minicpm-v-v2_5'
+    minicpm_v_v2_6 = 'minicpm-v-v2_6'
     gemma = 'gemma'
     paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
@@ -165,10 +167,10 @@ class Template:
              system_prefix          system                   prefix prompt   query              prompt           response chat_sep                                                      suffix
     """
 
-    special_tokens = ['<image>', '<video>', '<audio_label>', '<bbox>', '<ref-object>']
+    special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
     special_keys = ['images', 'videos', 'audios', 'objects']
     grounding_type = 'norm_1000'
-    image_placeholder = '<image>'
+    image_placeholder = ['<image>']
     load_medias = True
 
     def __init__(self,
@@ -286,7 +288,7 @@ class Template:
     def add_default_tags(self, example: Dict[str, Any]) -> None:
         history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
-        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio_label>')]:
+        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
@@ -323,28 +325,6 @@ class Template:
         example['query'] = query
         example['history'] = history
 
-    def _prepare_vllm_images(self, images: List['PIL.Image.Image']) -> List['PIL.Image.Image']:
-        # Resize the image to fit the proper size.
-        from PIL import Image
-        target_h, target_w = [int(x) for x in self.model.vllm_config['image_input_shape'].split(',')[-2:]]
-        new_images = []
-        for image in images:
-            # resize
-            ori_w, ori_h = image.size
-            scale = min(target_h / ori_h, target_w / ori_w)
-            if scale != 1:
-                image = image.resize((int(round(scale * ori_w)), int(round(scale * ori_h))), resample=Image.BICUBIC)
-            # pad
-            w, h = image.size
-            if target_w != w or target_h != h:
-                bg_color = tuple(int(v * 255) for v in self.tokenizer.processor.image_processor.image_mean)
-                new_image = Image.new(image.mode, (target_w, target_h), bg_color)
-                new_image.paste(image, ((target_w - w) // 2, (target_h - h) // 2))
-                image = new_image
-            new_images.append(image)
-
-        return new_images
-
     def _preprocess_media(self, example):
         from .media import MediaTag
         # Format media_keys to list
@@ -360,9 +340,17 @@ class Template:
                 example.get('query'),
                 example.get('history') or [], '<image>')
         if images_path:
-            images = example.get('images', [])
-            images = images + images_path
-            example['images'] = images
+            example['images'] = example.get('images', []) + images_path
+
+        # audio, video
+        if self.is_multimodal in {True, None}:
+            for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'],
+                                       [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
+                example['query'], example['history'], medias_path = replace_img_tag(
+                    example.get('query'),
+                    example.get('history') or [], tag, pattern)
+                if medias_path:
+                    example[k] = example.get(k, []) + medias_path
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
@@ -388,7 +376,7 @@ class Template:
         from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
         if images:
-            if example.get('objects') or self.load_medias or self._is_lmdeploy:
+            if example.get('objects') or self.load_medias or self._is_lmdeploy or self._is_vllm:
                 images = _read_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
@@ -447,7 +435,7 @@ class Template:
     def encode(self, example: Dict[str, Any], streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
         _encode = self._encode
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
         return _encode(example) if not streaming else _encode(example)[0]
@@ -496,7 +484,7 @@ class Template:
             auto_add_bos=self.auto_add_bos,
             example=example,
             is_multi_modal=is_multi_modal)
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             inputs['images'] = example.get('images')
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
@@ -598,11 +586,11 @@ class Template:
             if self._is_lmdeploy:
                 return [[-100]]
             else:
-                return [self.image_placeholder]
+                return self.image_placeholder
         if media_type == 'video':
             return ['<video>']
         if media_type == 'audio':
-            return ['<audio_label>']
+            return ['<audio>']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -678,7 +666,7 @@ class Template:
             elif context == '<video>':
                 c_list = replace_tag('video', example.get('video_index', 0), example)
                 example['video_index'] = example.get('video_index', 0) + 1
-            elif context == '<audio_label>':
+            elif context == '<audio>':
                 c_list = replace_tag('audio', example.get('audio_index', 0), example)
                 example['audio_index'] = example.get('audio_index', 0) + 1
             elif context == '<ref-object>':
@@ -1059,10 +1047,11 @@ class QwenVLTemplate(QwenTemplate):
     load_medias = False
 
     def check_example(self, example):
-        if not self._is_lmdeploy:
-            images = example.get('images') or []
-            from .utils import fetch_one
-            assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
+        if self._is_lmdeploy:
+            return
+        images = example.get('images') or []
+        from .utils import fetch_one
+        assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -1070,7 +1059,7 @@ class QwenVLTemplate(QwenTemplate):
         images = example.get('images') or []
         image = images[index]
         assert isinstance(image, str)
-        return [f'<img>{image}</img>']
+        return [f'Picture {index + 1}:<img>{image}</img>\n']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
@@ -1094,6 +1083,14 @@ register_template(
 
 
 class _QwenAudioTemplateMixin:
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type == 'audio'
+        audios = example.get('audios') or []
+        audio = audios[index]
+        assert isinstance(audio, str)
+        return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, tokenizer_kwargs = super()._encode(example)
@@ -1391,9 +1388,11 @@ register_template(
              ['<|im_end|>'], INTERNLM_SYSTEM, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
-def replace_img_tag(query: str, history: History, replace_token: str) -> Tuple[str, History, List[str]]:
+def replace_img_tag(query: str,
+                    history: History,
+                    replace_token: str,
+                    pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
     images_path = []
-    pattern = r'<img>(.+?)</img>'
     new_history = []
     for i, h in enumerate(history):
         if h[0] is None:
@@ -1417,16 +1416,16 @@ class InternLMXComposer2Template(Template):
         'It is designed to be helpful, honest, and harmless.\n'
         '- InternLM-XComposer (浦语·灵笔) can understand and communicate fluently in the language chosen '
         'by the user such as English and 中文.')
-    is_v2_5 = False
-    image_placeholder = '</s>'
+    image_placeholder = ['</s>']
 
-    def __init__(self):
+    def __init__(self, version):
         prefix = ['<s>']
         prompt = ['[UNUSED_TOKEN_146]user\n{{QUERY}}[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\n']
         chat_sep = ['[UNUSED_TOKEN_145]\n']
         suffix = ['[UNUSED_TOKEN_145]']
         system_prefix = ['<s>[UNUSED_TOKEN_146]system\n{{SYSTEM}}[UNUSED_TOKEN_145]\n']
         super().__init__(prefix, prompt, chat_sep, suffix, self.INTERNLM_XCOMPOSER_SYSTEM, system_prefix)
+        self.version = version
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1434,22 +1433,22 @@ class InternLMXComposer2Template(Template):
             return inputs, {}
         dtype = self.model.dtype
         images = example.get('images', [])
-        if self.is_v2_5:
+
+        if self.version == 'v2.5':
             hd_num = 24
             Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
             if len(images) > 1:
                 hd_num = 6
-            for i, image in enumerate(images):
-                image = Image_transform(image, hd_num=hd_num)
-                image = self.model.vis_processor(image)
-                image = image.to(dtype)
-                image = self.model.img2emb(image[None])[0]
-                assert image.shape[0] == 1
-                images[i] = image[0]
-        else:
-            for i, image in enumerate(images):
-                image = self.model.vis_processor(image)
-                images[i] = image.to(dtype)
+            images = [Image_transform(image, hd_num=hd_num) for image in images]
+        elif self.version == 'v2-4khd':
+            hd_num = 55
+            HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.tokenizer.model_dir)
+            images = [HD_transform(image, hd_num=hd_num) for image in images]
+        images = [self.model.vis_processor(image).to(dtype) for image in images]
+        if len(images) > 0:
+            images = torch.stack(images, dim=0)
+            images = self.model.img2emb(images)[0]
+
         inputs.pop('loss_scale', None)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
@@ -1457,9 +1456,6 @@ class InternLMXComposer2Template(Template):
             input_ids = input_ids[1:]
             if labels is not None:
                 labels = labels[1:]
-            if not self.is_v2_5:
-                images = torch.stack(images, dim=0)
-                images = self.model.encode_img(images)
         input_ids.append(2)  # add dummy </s>
         if labels is not None:
             labels.append(2)
@@ -1480,16 +1476,10 @@ class InternLMXComposer2Template(Template):
                 res_inputs_embeds.append(tok_embeddings(res_input_ids))
                 wrap_im_mask += [0] * len(res_input_ids)
                 res_labels += [-100] + labels[pre_i:i]
-                if self.is_v2_5:
-                    if len(images) > 0 and idx < len(images):
-                        res_inputs_embeds.append(images[idx])
-                        wrap_im_mask += [1] * images[idx].shape[0]
-                        res_labels += [-100] * images[idx].shape[0]
-                else:
-                    if len(images) > 0 and idx < images.shape[0]:
-                        res_inputs_embeds.append(images[idx])
-                        wrap_im_mask += [1] * images.shape[1]
-                        res_labels += [-100] * images.shape[1]
+                if len(images) > 0 and idx < images.shape[0]:
+                    res_inputs_embeds.append(images[idx].to(device))
+                    wrap_im_mask += [1] * images.shape[1]
+                    res_labels += [-100] * images.shape[1]
                 idx += 1
                 i += 1
                 pre_i = i
@@ -1497,7 +1487,7 @@ class InternLMXComposer2Template(Template):
             i += 1
         if len(labels) == 0:
             res_labels = None
-        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
+        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0).detach()
         wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool)[None]
         return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
 
@@ -1515,7 +1505,7 @@ class InternLMXComposer2Template(Template):
 
 register_template(
     TemplateType.internlm_xcomposer2,
-    InternLMXComposer2Template(),
+    InternLMXComposer2Template(version='v2'),
     use_model=True,
     lazy_tokenize=True,
     dataloader_num_workers=0,
@@ -1532,12 +1522,19 @@ class InternLMXComposer2_5Template(InternLMXComposer2Template):
         'by the user such as English and 中文.\n'
         '- InternLM-XComposer (浦语·灵笔) is capable of comprehending and articulating responses effectively '
         'based on the provided image.')
-    is_v2_5 = True
 
 
 register_template(
     TemplateType.internlm_xcomposer2_5,
-    InternLMXComposer2_5Template(),
+    InternLMXComposer2_5Template(version='v2.5'),
+    use_model=True,
+    lazy_tokenize=True,
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+register_template(
+    TemplateType.internlm_xcomposer2_4khd,
+    InternLMXComposer2_5Template(version='v2-4khd'),
     use_model=True,
     lazy_tokenize=True,
     dataloader_num_workers=0,
@@ -1556,7 +1553,7 @@ class InternvlTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return [[-100]]
+        return [[-100], '\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1566,14 +1563,15 @@ class InternvlTemplate(Template):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         from .vision_utils import transform_image
-        pixel_values = [transform_image(image) for image in example.get('images', [])]
-        if pixel_values:
-            pixel_values = torch.cat(pixel_values, dim=0)
+        images = example.get('images', [])
+        if images:
+            pixel_values_images = [transform_image(image) for image in images]
+            pixel_values = torch.cat(pixel_values_images, dim=0)
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
             img_tokens: List[int] = self.tokenizer.encode(
-                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>\n', add_special_tokens=False)
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>', add_special_tokens=False)
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
@@ -1601,23 +1599,23 @@ class InternvlTemplate(Template):
 
 class Internvl2Template(InternvlTemplate):
     video_segments = 8
+    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
-        self.system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
         Template.__init__(
             self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
             self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
             auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
+        image_context = ['<image>\n'] if self._is_vllm else [[-100], '\n']
         if media_type == 'image':
-            return [[-100]]
+            return image_context
         elif media_type == 'video':
             context_list = []
             for i in range(self.video_segments):
                 context_list.append(f'Frame{i + 1}: ')
-                context_list.append([-100])
-                context_list.append('\n')
+                context_list += image_context
             return context_list
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
@@ -1647,10 +1645,10 @@ class Internvl2Template(InternvlTemplate):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         from .vision_utils import transform_image
-        pixel_values_images = [transform_image(image) for image in example.get('images', [])]
+        images = example.get('images', [])
         videos_path = example.get('videos', [])
-        if pixel_values_images:
-            pixel_values = pixel_values_images
+        if images:
+            pixel_values = [transform_image(image) for image in images]
             assert len(pixel_values) == len(
                 idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
             added_tokens_len = 0
@@ -1697,14 +1695,13 @@ class InternvlPhi3Template(InternvlTemplate):
 
     def __init__(self):
         Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
             self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
         self.padding_side = 'left'
 
 
 class Internvl2Phi3Template(Internvl2Template):
-    system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def __init__(self):
         Template.__init__(
@@ -1758,7 +1755,10 @@ class FlorenceTemplate(Template):
         # from processing_florence2.py
         # replace the task tokens with the task prompts if task token is in the text
         prompts = []
+
         for _text in text:
+            if '<image>' in _text:
+                _text = _text.replace('<image>', '')
             # 1. fixed task prompts without additional inputs
             for task_token, task_prompt in self.task_prompts_without_inputs.items():
                 if task_token in _text:
@@ -1887,19 +1887,13 @@ class LlavaHfTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
-        if self._is_vllm:
-            image_feature_size = self.model.vllm_config['image_feature_size']
-            return ['<image>' * image_feature_size + '\n']
-        else:
-            return ['<image>\n']
+        return ['<image>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images', [])
-        if self._is_vllm:
-            images = self._prepare_vllm_images(images)
         if images:
             image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
@@ -2052,6 +2046,12 @@ class LLava1_6YiTemplate(Llava1_6Template):
                          ['<|im_end|>'],
                          system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        if self._is_vllm:
+            return [[64000], '\n']
+        else:
+            return super().replace_tag(media_type, index, example)
+
 
 register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
 
@@ -2085,7 +2085,7 @@ register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_m
 class PaliGemmaTemplate(Template):
 
     def __init__(self):
-        Template.__init__(self, ['<bos>'], ['{{QUERY}}\n'], None, ['<eos>'])
+        super().__init__([], ['{{QUERY}}\n'], None, ['<eos>'])
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -2093,7 +2093,12 @@ class PaliGemmaTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return ['<image>' * self.tokenizer.processor.image_seq_length]
+        if self._is_vllm:
+            self.prompt = ['{{QUERY}}']
+            return []
+        else:
+            self.prompt = ['{{QUERY}}\n']
+            return ['<image>' * self.tokenizer.processor.image_seq_length + '<bos>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -2126,11 +2131,17 @@ register_template(
 
 class Phi3VisionTemplate(Template):
 
-    image_placeholder = '<|image|>'
+    image_placeholder = [[32044], '\n']  # <|image|>\n
 
     def __init__(self):
         Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
                           None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        if self._is_vllm:
+            return [f'<|image_{index + 1}|>\n']  # <|image_1|>\n
+        else:
+            return super().replace_tag(media_type, index, example)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         images = example.get('images', [])
@@ -2141,8 +2152,6 @@ class Phi3VisionTemplate(Template):
         labels = inputs['labels']
         idx_list = _findall(input_ids, 32044)  # '<|image|>'
 
-        if self._is_vllm:
-            images = self._prepare_vllm_images(images)
         if len(images) > 0:
             processor = self.tokenizer.processor
             inputs.update(processor.image_processor(images, return_tensors='pt'))
@@ -2152,10 +2161,7 @@ class Phi3VisionTemplate(Template):
             num_img_tokens = inputs.pop('num_img_tokens').tolist()
             idx_list.insert(0, -1)
             for i in range(len(idx_list) - 1):
-                if self._is_vllm:
-                    image_token_id = self.model.vllm_config['image_token_id']
-                else:
-                    image_token_id = -1
+                image_token_id = -1
                 res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [image_token_id] * num_img_tokens[i] + [1]
                 if labels is not None:
                     res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
@@ -2219,7 +2225,7 @@ class DeepseekVLTemplate(Template):
                           'You are able to understand the visual content that the user provides, '
                           'and assist the user with a variety of tasks using natural language.')
 
-    image_placeholder = '<image_placeholder>'
+    image_placeholder = ['<image_placeholder>']
 
     def __init__(self):
         super().__init__(['<｜begin▁of▁sentence｜>{{SYSTEM}}\n\n'], ['User: {{QUERY}}\n\nAssistant:'],
@@ -2441,11 +2447,15 @@ class MiniCPMVTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
-        return [[-1]]
+        if self._is_vllm:
+            return ['(<image>./</image>)\n']
+        else:
+            return [[-1]]
 
     def check_example(self, example):
         images = example.get('images', [])
-        assert len(images) == 1
+        if not self._is_vllm:
+            assert len(images) == 1
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -2481,7 +2491,6 @@ class MiniCPMVTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images = example['images']
-        image = images[0]
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -1)
@@ -2498,7 +2507,7 @@ class MiniCPMVTemplate(Template):
                 pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
                 tgt_sizes = image_inputs['tgt_sizes']
             else:
-                images, placeholder = self.model.get_slice_image_placeholder(image, self.tokenizer)
+                images, placeholder = self.model.get_slice_image_placeholder(images[0], self.tokenizer)
                 pixel_values = [[self.model.transform(img).to(device=self.model.device) for img in images]]
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
@@ -2521,7 +2530,7 @@ class MiniCPMVTemplate(Template):
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-            pixel_values = [[self.model.transform(image).to(device=self.model.device)]]
+            pixel_values = [[self.model.transform(images[0]).to(device=self.model.device)]]
         data = {
             'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
             'image_bound': image_bound,
@@ -2547,6 +2556,126 @@ register_template(
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue',
+    dataloader_num_workers=0,
+    dataloader_pin_memory=False)
+
+
+def _encode_video(video_path):
+    from .vision_utils import _read_video
+    mp4_stream = _read_video(video_path)
+    MAX_NUM_FRAMES = 64
+
+    from PIL import Image
+    from decord import VideoReader, cpu  # pip install decord
+
+    def uniform_sample(_l, _n):
+        gap = len(_l) / _n
+        idxs = [int(i * gap + gap / 2) for i in range(_n)]
+        return [_l[i] for i in idxs]
+
+    vr = VideoReader(mp4_stream, ctx=cpu(0))
+    sample_fps = round(vr.get_avg_fps() / 1)  # FPS
+    frame_idx = [i for i in range(0, len(vr), sample_fps)]
+
+    if len(frame_idx) > MAX_NUM_FRAMES:
+        frame_idx = uniform_sample(frame_idx, MAX_NUM_FRAMES)
+    frames = vr.get_batch(frame_idx).asnumpy()
+    frames = [Image.fromarray(v.astype('uint8')) for v in frames]
+    return frames
+
+
+class MiniCPMV2_6Template(Template):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type in {'image', 'video'}
+        if self._is_vllm:
+            return ['(<image>./</image>)\n']
+        else:
+            return [[-1]]
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        from .vision_utils import _read_batch
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example.get('images')
+        videos_path = example.get('videos')
+        is_plain_text = not images and not videos_path
+        images = [images]
+        use_image_id = True
+        max_slice_nums = None
+
+        if videos_path:
+            images = _read_batch(videos_path, _encode_video)
+            use_image_id = False
+            max_slice_nums = 1  # or 2
+
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, -1)
+        idx_list.insert(0, -1)
+
+        from .utils import to_device
+        image_processor = self.tokenizer.processor.image_processor
+        image_inputs = image_processor(images, return_tensors='pt', max_slice_nums=max_slice_nums).to(self.model.dtype)
+        pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
+        tgt_sizes = image_inputs['tgt_sizes']
+
+        res_input_ids = []
+        res_labels = []
+        for i in range(len(idx_list) - 1):
+            placeholder = image_processor.get_slice_image_placeholder(
+                image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
+            placeholder += '\n'
+            placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
+            res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + placeholder_id
+            if labels is not None:
+                res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * len(placeholder_id)
+        res_input_ids += input_ids[idx_list[-1] + 1:]
+        input_ids = res_input_ids
+        if labels is not None:
+            res_labels += labels[idx_list[-1] + 1:]
+            labels = res_labels
+        if not is_plain_text:
+            input_tensor_ids = torch.tensor(input_ids)
+            unk_token = self.tokenizer.encode('<unk>', add_special_tokens=False)[0]
+            indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
+
+            ranges = []
+            start = indices[0]
+            for i in range(1, len(indices)):
+                if indices[i] != indices[i - 1] + 1:
+                    ranges.append([start, indices[i - 1] + 1])
+                    start = indices[i]
+            ranges.append([start, indices[-1] + 1])
+            image_bound = [torch.tensor(ranges)]
+        else:
+            image_bound = []
+
+        data = {
+            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
+            'image_bound': image_bound,
+            'pixel_values': pixel_values,
+            'tgt_sizes': tgt_sizes
+        }
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        inputs_embeds = inputs_embeds.detach()
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        inputs['inputs_embeds'] = inputs_embeds[0]
+        return inputs, {}
+
+    @staticmethod
+    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
+        return generate_ids[0].tolist()
+
+
+register_template(
+    TemplateType.minicpm_v_v2_6,
+    MiniCPMV2_6Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
+                        ['<|im_end|>'], DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']),
+    use_model=True,
+    lazy_tokenize=True,
     dataloader_num_workers=0,
     dataloader_pin_memory=False)
 

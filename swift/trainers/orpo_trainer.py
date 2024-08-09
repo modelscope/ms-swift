@@ -6,10 +6,9 @@ from transformers import PreTrainedModel
 from trl import ORPOTrainer as HFORPOTrainer
 
 from swift.llm.utils.template import Template
-from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer, patch_trl
+from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
 
 logger = get_logger()
 patch_trl()
@@ -43,7 +42,7 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
             else:
                 self.dataset_info = {'train_dataset': train_ds_info}
         if test_oom_error:
-            self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
+            self.train_dataset = sort_by_max_length(self.train_dataset, 20000, self.is_encoder_decoder)
         # performance
         self.perf: Dict[str, Any] = {
             'gen_time': 0.,

@@ -517,8 +517,11 @@ class ArgumentsBase:
         imported_keys = [
             'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
-            'custom_register_path', 'custom_dataset_info', 'tp', 'pp'
+            'custom_register_path', 'custom_dataset_info'
         ]
+        if (isinstance(self, SftArguments) and self.train_backend == 'megatron'
+                or isinstance(self, ExportArguments) and self.to_hf is True):
+            imported_keys += ['tp', 'pp']
         if not is_sft:
             imported_keys += ['sft_type', 'rope_scaling', 'system']
             if getattr(self, 'load_dataset_config', False) and from_sft_args:
@@ -908,6 +911,10 @@ class SftArguments(ArgumentsBase):
             self.load_from_ckpt_dir(True)
             if self.sft_type == 'full' or self.train_backend == 'megatron':
                 self.model_id_or_path = self.resume_from_checkpoint
+
+        if self.rope_scaling:
+            logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
+
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         self.set_model_type()
@@ -1094,8 +1101,9 @@ class SftArguments(ArgumentsBase):
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
-        if 'include_num_input_tokens_seen' in parameters:
-            kwargs['include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
+        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen']:
+            if k in parameters:
+                kwargs[k] = getattr(self, k)
         if 'eval_strategy' in parameters:
             kwargs['eval_strategy'] = self.evaluation_strategy
         else:
@@ -1116,7 +1124,6 @@ class SftArguments(ArgumentsBase):
             num_train_epochs=self.num_train_epochs,
             max_steps=self.max_steps,
             lr_scheduler_type=self.lr_scheduler_type,
-            lr_scheduler_kwargs=self.lr_scheduler_kwargs,
             warmup_ratio=self.warmup_ratio,
             warmup_steps=self.warmup_steps,
             logging_steps=self.logging_steps,
@@ -1310,6 +1317,7 @@ class InferArguments(ArgumentsBase):
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
+    max_num_seqs: int = 256
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
     enforce_eager: bool = False
@@ -1353,6 +1361,10 @@ class InferArguments(ArgumentsBase):
             self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+
+        if self.rope_scaling:
+            logger.info(f'rope_scaling is set to {self.rope_scaling}, '
+                        f'please remember to set max_length, which is supposed to be the same as training')
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         self._handle_dataset_sample()

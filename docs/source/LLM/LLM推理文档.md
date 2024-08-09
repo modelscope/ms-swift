@@ -245,27 +245,28 @@ model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': '
 
 template = get_template(template_type, tokenizer)
 seed_everything(42)
-query = tokenizer.from_list_format([
-    {'image': 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg'},
-    {'text': '这是什么'},
-])
-response, history = inference(model, template, query)
+query = '<image>这是什么'
+images = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg']
+response, history = inference(model, template, query, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 query = '输出击掌的检测框'
-response, history = inference(model, template, query, history)
+response, history = inference(model, template, query, history, images=images)
 print(f'query: {query}')
 print(f'response: {response}')
 print(f'history: {history}')
+
+def _fetch_latest_picture(*args, **kwargs):
+    return images[0]
+tokenizer._fetch_latest_picture = _fetch_latest_picture
 image = tokenizer.draw_bbox_on_latest_picture(response, history)
 image.save('output_chat.jpg')
 """
-query: Picture 1:<img>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg</img>
-这是什么
+query: <image>这是什么
 response: 图中是一名女子在沙滩上和狗玩耍，旁边的狗是一只拉布拉多犬，它们处于沙滩上。
 query: 输出击掌的检测框
 response: <ref>击掌</ref><box>(523,513),(584,605)</box>
-history: [('Picture 1:<img>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg</img>\n这是什么', '图中是一名女子在沙滩上和狗玩耍，旁边的狗是一只拉布拉多犬，它们处于沙滩上。'), ('输出击掌的检测框', '<ref>击掌</ref><box>(523,513),(584,605)</box>')]
+history: [['<image>这是什么', '图中是一名女子在沙滩上和狗玩耍，旁边的狗是一只拉布拉多犬，它们处于沙滩上。'], ['输出击掌的检测框', '<ref>击掌</ref><box>(523,513),(584,605)</box>']]
 """
 ```
 
@@ -288,25 +289,22 @@ model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': '
 template = get_template(template_type, tokenizer)
 
 seed_everything(42)
-query = tokenizer.from_list_format([
-    {'audio': 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Audio/1272-128104-0000.flac'},
-    {'text': 'what does the person say?'},
-])
-response, history = inference(model, template, query)
+query = '<audio>what does the person say?'
+audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Audio/1272-128104-0000.flac']
+response, history = inference(model, template, query, audios=audios)
 print(f'query: {query}')
 print(f'response: {response}')
 query = 'Find the start time and end time of the word "middle classes'
-response, history = inference(model, template, query, history)
+response, history = inference(model, template, query, history, audios=audios)
 print(f'query: {query}')
 print(f'response: {response}')
 print(f'history: {history}')
 """Out[0]
-query: Audio 1:<audio>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Audio/1272-128104-0000.flac</audio>
-what does the person say?
+query: <audio>what does the person say?
 response: The person says: "mister quilter is the apostle of the middle classes and we are glad to welcome his gospel".
 query: Find the start time and end time of the word "middle classes
 response: The word "middle classes" starts at <|2.33|> seconds and ends at <|3.26|> seconds.
-history: [('Audio 1:<audio>https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Audio/1272-128104-0000.flac</audio>\nwhat does the person say?', 'The person says: "mister quilter is the apostle of the middle classes and we are glad to welcome his gospel".'), ('Find the start time and end time of the word "middle classes', 'The word "middle classes" starts at <|2.33|> seconds and ends at <|3.26|> seconds.')]
+history: [['<audio>what does the person say?', 'The person says: "mister quilter is the apostle of the middle classes and we are glad to welcome his gospel".'], ['Find the start time and end time of the word "middle classes', 'The word "middle classes" starts at <|2.33|> seconds and ends at <|3.26|> seconds.']]
 """
 ```
 

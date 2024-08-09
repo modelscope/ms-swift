@@ -262,7 +262,7 @@ class LazyLLMDataset(Dataset):
             data = self.dataset[i]
             try:
                 res = self.template.encode(data)
-            except (OSError, AssertionError) as e:
+            except Exception as e:
                 logger.error('Error occurs in lazy tokenize:', e)
                 continue
             if len(res[0]) > 0:
@@ -987,7 +987,7 @@ class LLMIterableDataset(HfIterableDataset):
                         raise e
 
 
-def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
+def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Optional[int]:
     INF = int(1e9)
     max_model_len = INF
     for k in ['language_config', 'llm_config', 'text_config']:
@@ -1013,7 +1013,34 @@ def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
             max_model_len = min(max_model_len, max_len_key)
     if max_model_len == INF:
         max_model_len = None
+
+    if (not ignore_rope_scaling and max_model_len and getattr(config, 'rope_scaling', None)
+            and config.rope_scaling.get('factor')):
+        max_model_len = max(int(max_model_len * config.rope_scaling.get('factor')), max_model_len)
     return max_model_len
+
+
+def set_rope_scaling(config: PretrainedConfig, rope_scaling: Dict[str, Any]):
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(config, k, None)
+        if llm_config is not None:
+            config = llm_config
+            break
+
+    if getattr(config, 'rope_scaling', None):
+        rope_scaling['factor'] = max(config.rope_scaling.get('factor', -1), rope_scaling['factor'])
+        rope_scaling = {**config.rope_scaling, **rope_scaling}
+    config.rope_scaling = rope_scaling
+
+
+def get_rope_scaling(config: PretrainedConfig):
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(config, k, None)
+        if llm_config is not None:
+            config = llm_config
+            break
+
+    return getattr(config, 'rope_scaling')
 
 
 if is_ddp_plus_mp():
