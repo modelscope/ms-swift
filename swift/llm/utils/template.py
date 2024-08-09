@@ -932,7 +932,6 @@ class Template:
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
 
-        # self._expand_dim(res)
         return res
 
     @staticmethod
@@ -2530,18 +2529,12 @@ class MiniCPMVTemplate(Template):
         }
         if tgt_sizes is not None:  # v2.5
             data['tgt_sizes'] = tgt_sizes
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        inputs_embeds = inputs_embeds.detach()
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
+        inputs['inputs_embeds'] = inputs_embeds[0]
         return inputs, {}
-
-    def pre_forward(self, kwargs):
-        data = {
-            'input_ids': kwargs['input_ids'][None],
-            'image_bound': kwargs['image_bound'],
-            'pixel_values': kwargs['pixel_values']
-        }
-        inputs_embeds, _ = self.model.get_vllm_embedding(data)
-        kwargs['inputs_embeds'] = inputs_embeds[0]
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
