@@ -91,16 +91,16 @@ ollama create my-custom-model -f /mnt/workspace/yzhao/tastelikefeet/swift/llama3
 执行后会打印如下log：
 
 ```text
-transferring model data 
-unpacking model metadata 
-processing tensors 
-converting model 
-creating new layer sha256:37b0404fb276acb2e5b75f848673566ce7048c60280470d96009772594040706 
-creating new layer sha256:2ecd014a372da71016e575822146f05d89dc8864522fdc88461c1e7f1532ba06 
-creating new layer sha256:ddc2a243c4ec10db8aed5fbbc5ac82a4f8425cdc4bd3f0c355373a45bc9b6cb0 
-creating new layer sha256:fc776bf39fa270fa5e2ef7c6782068acd858826e544fce2df19a7a8f74f3f9df 
-writing manifest 
-success 
+transferring model data
+unpacking model metadata
+processing tensors
+converting model
+creating new layer sha256:37b0404fb276acb2e5b75f848673566ce7048c60280470d96009772594040706
+creating new layer sha256:2ecd014a372da71016e575822146f05d89dc8864522fdc88461c1e7f1532ba06
+creating new layer sha256:ddc2a243c4ec10db8aed5fbbc5ac82a4f8425cdc4bd3f0c355373a45bc9b6cb0
+creating new layer sha256:fc776bf39fa270fa5e2ef7c6782068acd858826e544fce2df19a7a8f74f3f9df
+writing manifest
+success
 root@dsw-83959-99dd48f76-v79h6:/mnt/workspace#
 ```
 
@@ -112,14 +112,14 @@ ollama run my-custom-model
 
 ```shell
 >>> who are you?
-I'm LLaMA, I'm a large language model trained by a team of researcher at Meta AI. My primary function is to understand and respond to human 
-input in a helpful and informative way. I'm a type of AI designed to simulate conversation, answer questions, and even generate text based 
+I'm LLaMA, I'm a large language model trained by a team of researcher at Meta AI. My primary function is to understand and respond to human
+input in a helpful and informative way. I'm a type of AI designed to simulate conversation, answer questions, and even generate text based
 on a given prompt or topic.
 
-I'm not a human, but rather a computer program designed to mimic human-like conversation. I don't have personal experiences, emotions, or 
+I'm not a human, but rather a computer program designed to mimic human-like conversation. I don't have personal experiences, emotions, or
 physical presence, but I'm here to provide information, answer your questions, and engage in conversation to the best of my abilities.
 
-I'm constantly learning and improving my responses based on the interactions I have with users like you, so please bear with me if I make 
+I'm constantly learning and improving my responses based on the interactions I have with users like you, so please bear with me if I make
 any mistakes or don't quite understand what you're asking. I'm here to help and provide assistance, so feel free to ask me anything!
 ```
 
@@ -153,6 +153,3 @@ python convert_hf_to_gguf.py /mnt/workspace/yzhao/tastelikefeet/swift/output/qwe
 ```shell
 ollama create my-custom-model -f /mnt/workspace/yzhao/tastelikefeet/swift/qwen-7b-chat-ollama/Modelfile
 ```
-
-
-
