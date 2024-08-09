@@ -244,7 +244,6 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
                     'temperature': args.temperature
                 },
             ],
-            'nproc': 8,
             **limit_config,
         },
     )
