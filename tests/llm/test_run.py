@@ -47,7 +47,6 @@ class TestRun(unittest.TestCase):
         output = sft_main(
             SftArguments(
                 model_type=ModelType.qwen1half_1_8b,
-                model_id_or_path='../models/Qwen1.5-1.8B',
                 template_type='qwen',
                 sft_type='full',
                 dataset=f'{DatasetName.jd_sentiment_zh}#200',
