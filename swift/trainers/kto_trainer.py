@@ -1,17 +1,27 @@
+import heapq
 from typing import Any, Dict, List, Optional
 
 import torch
+from datasets import Dataset as HfDataset
 from transformers import trainer
 from trl import KTOTrainer as HFKTOTrainer
 from trl.trainer import kto_trainer
 
 from swift.llm.utils.template import Context, History, Template
-from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 logger = get_logger()
+
+
+def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
+    logger.info('sort by max length...')
+    dataset_prompt_len = [len(d['prompt_input_ids']) for d in dataset]
+    dataset_answer_len = [len(d['answer_input_ids']) for d in dataset]
+    idx = heapq.nlargest(
+        num_dataset, range(len(dataset_prompt_len)), key=lambda i: (dataset_prompt_len[i] + dataset_answer_len[i]))
+    return dataset.select(idx)
 
 
 def encode_batch(batch: Dict[str, List[Any]], template: Template):

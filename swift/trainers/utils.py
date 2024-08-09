@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 
+import heapq
 import inspect
 from types import FunctionType, MethodType
 from typing import Dict, List, Optional, Union
 
+from datasets import Dataset as HfDataset
 from torch.nn import Module
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
@@ -101,6 +103,15 @@ def build_tokenized_answer(answer, template: Template):
         input_ids=tgt_input_ids,
         attention_mask=[1] * len(tgt_input_ids),
     )
+
+
+def sort_by_max_length(dataset: HfDataset, num_dataset: int) -> HfDataset:
+    logger.info('sort by max length...')
+    dataset_chosen_len = [len(d['chosen_input_ids']) for d in dataset]
+    dataset_rejected_len = [len(d['rejected_input_ids']) for d in dataset]
+    idx = heapq.nlargest(
+        num_dataset, range(len(dataset_chosen_len)), key=lambda i: max(dataset_chosen_len[i], dataset_rejected_len[i]))
+    return dataset.select(idx)
 
 
 def patch_trl():

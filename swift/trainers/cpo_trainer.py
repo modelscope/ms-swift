@@ -6,10 +6,9 @@ from transformers import PreTrainedModel
 from trl import CPOTrainer as HFCPOTrainer
 
 from swift.llm.utils.template import Template
-from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer, patch_trl
+from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
 
 logger = get_logger()
 patch_trl()
