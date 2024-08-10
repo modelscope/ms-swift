@@ -314,7 +314,8 @@ def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -
 def load_ms_dataset(dataset_id: str,
                     subset_split_list: Optional[List[SubsetSplit]],
                     use_hf: bool = False,
-                    streaming: bool = False) -> Optional[DATASET_TYPE]:
+                    streaming: bool = False,
+                    revision='master') -> Optional[DATASET_TYPE]:
     if not use_hf:
         from modelscope import MsDataset
 
@@ -346,6 +347,7 @@ def load_ms_dataset(dataset_id: str,
                     dataset_id,
                     subset_name=subset_name,
                     split=split,
+                    version=revision,
                     download_mode=download_mode,
                     use_streaming=streaming)
             except ValueError as e:
@@ -458,7 +460,8 @@ def get_dataset_from_repo(dataset_id: str,
         subset_split_list = split
     else:
         subset_split_list = list(itertools.product(subsets, split))
-    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf, streaming=streaming)
+    dataset = load_ms_dataset(
+        dataset_id, subset_split_list, use_hf, streaming=streaming, revision=kwargs.get('revision', 'master'))
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns, **kwargs)
 
@@ -1466,6 +1469,7 @@ register_dataset(
     _preprocess_llava_instruct_images,
     get_dataset_from_repo,
     split=['train'],
+    revision='d5db3806e395c60496630a206c336932e85a2d00',
     tags=['chat', 'multi-modal', 'vision'])
 
 
