@@ -166,7 +166,7 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 'Please use the `completions` API.')
         messages = request.messages
         if _args.is_multimodal:
-            compat_openai(messages, template.template_type, request)
+            compat_openai(messages, request)
             messages = decode_base64(messages=messages)['messages']
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)

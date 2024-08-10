@@ -158,7 +158,7 @@ def decode_base64(*,
     return res
 
 
-def compat_openai(messages: Messages, template_type: str, request) -> None:
+def compat_openai(messages: Messages, request) -> None:
     for message in messages:
         content = message['content']
         if isinstance(content, list):
@@ -219,15 +219,10 @@ def _pre_inference_client(model_type: str,
     if url is None:
         url = f'http://{host}:{port}/v1'
     url = url.rstrip('/')
-    for media_key, medias in zip(['images', 'audios', 'videos'], [images, kwargs.get('audios'), kwargs.get('videos')]):
-        medias = medias or []
-        if medias:
-            break
     if is_chat_request:
         messages = history_to_messages(history, query, system, kwargs.get('roles'))
         if is_multimodal:
             messages = convert_to_base64(messages=messages)['messages']
-            medias = convert_to_base64(images=medias)['images']
         data['messages'] = messages
         url = f'{url}/chat/completions'
     else:
@@ -235,10 +230,14 @@ def _pre_inference_client(model_type: str,
             'The chat template for text generation does not support system and history.')
         if is_multimodal:
             query = convert_to_base64(prompt=query)['prompt']
-            medias = convert_to_base64(images=medias)['images']
         data['prompt'] = query
         url = f'{url}/completions'
     data['model'] = model_type
+    for media_key, medias in zip(['images', 'audios', 'videos'], [images, kwargs.get('audios'), kwargs.get('videos')]):
+        medias = medias or []
+        if medias:
+            break
+    medias = convert_to_base64(images=medias)['images']
     if len(medias) > 0:
         data[media_key] = medias
     if tools and len(tools) > 0:
