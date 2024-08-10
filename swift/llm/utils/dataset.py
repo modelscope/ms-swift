@@ -2687,6 +2687,7 @@ def get_dataset(
             dataset_test_ratio=dataset_test_ratio,
             remove_useless_columns=remove_useless_columns,
             use_hf=use_hf,
+            revision=dataset_info.get('revision', 'master'),
             **kwargs)
 
         if dataset_name == 'self-cognition':
