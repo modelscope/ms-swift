@@ -494,7 +494,7 @@ print()
 
 """
 model_type: qwen2-audio-7b-instruct
-query: 这段语音说了什么
+query: <audio>这段语音说了什么
 response: 这段语音说的是:'今天天气真好呀'
 query: 这段语音是男生还是女生
 response: 男声。

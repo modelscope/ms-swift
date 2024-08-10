@@ -213,7 +213,7 @@ print(f'query: {query}')
 print(f'response: {response}')
 
 history = [(query, response)]
-query = 'How many sheep are in the picture?'
+query = '<image>How many sheep are in the picture?'
 images.append('http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png')
 request_config = XRequestConfig(stream=True, seed=42)
 stream_resp = inference_client(model_type, query, history, images=images, request_config=request_config)
@@ -227,7 +227,7 @@ print()
 model_type: yi-vl-6b-chat
 query: <image>Describe this image.
 response: The image captures a moment of tranquility featuring a gray and white kitten. The kitten, with its eyes wide open, is the main subject of the image. Its nose is pink, adding a touch of color to its gray and white fur. The kitten is sitting on a white surface, which contrasts with its gray and white fur. The background is blurred, drawing focus to the kitten. The image does not contain any text. The kitten's position relative to the background suggests it is in the foreground of the image. The image does not contain any other objects or creatures. The kitten appears to be alone in the image. The image does not contain any action, but the kitten's wide-open eyes give it a curious and alert appearance. The image does not contain any aesthetic descriptions. The image is a simple yet captivating portrait of a gray and white kitten.
-query: How many sheep are in the picture?
+query: <image>How many sheep are in the picture?
 response: There are four sheep in the picture.
 """
 ```
@@ -369,7 +369,7 @@ print()
 
 """
 model_type: minicpm-v-v2_5-chat
-query: Describe this image.
+query: <image>Describe this image.
 response: The image is a digital painting of a kitten, which is the main subject. The kitten's fur is rendered with a mix of gray, black, and white, giving it a realistic appearance. Its eyes are wide open, and the expression is one of curiosity or alertness. The background is blurred, which brings the focus entirely on the kitten. The painting style is detailed and lifelike, capturing the essence of a young feline's innocent and playful nature. The image does not convey any specific context or background story beyond the depiction of the kitten itself.
 query: How was this picture generated?
 response: This picture was generated using digital art techniques. The artist likely used a software program to create the image, manipulating pixels and colors to achieve the detailed and lifelike representation of the kitten. Digital art allows for a high degree of control over the final product, enabling artists to create intricate details and textures that might be difficult to achieve with traditional media.
