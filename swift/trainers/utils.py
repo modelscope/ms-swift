@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 
+import heapq
 import inspect
 from types import FunctionType, MethodType
 from typing import Dict, List, Optional, Union
 
+from datasets import Dataset as HfDataset
 from torch.nn import Module
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
@@ -103,18 +105,38 @@ def build_tokenized_answer(answer, template: Template):
     )
 
 
+def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
+    logger.info('sort by max length...')
+    if not is_encoder_decoder:
+        dataset_chosen_len = [len(d['chosen_input_ids']) for d in dataset]
+        dataset_rejected_len = [len(d['rejected_input_ids']) for d in dataset]
+        idx = heapq.nlargest(
+            num_dataset,
+            range(len(dataset_chosen_len)),
+            key=lambda i: max(dataset_chosen_len[i], dataset_rejected_len[i]))
+    else:
+        dataset_len = [len(d['prompt_input_ids']) for d in dataset]
+        idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
+    return dataset.select(idx)
+
+
 def patch_trl():
     from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
     from transformers import trainer
-    import torch
-    from typing import Any, Dict, List
-    from trl.trainer.utils import DPODataCollatorWithPadding, pad
 
     trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
     trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
     trainer.PrinterCallback = PrinterCallbackNew
 
     # fix encoder-decoder error
+    patch_datacollator()
+    patch_itds_map()
+
+
+def patch_datacollator():
+    import torch
+    from typing import Any, Dict, List
+    from trl.trainer.utils import DPODataCollatorWithPadding, pad
     if not hasattr(DPODataCollatorWithPadding, '_old_call'):  # Avoid double patching
         from torch.nn.utils.rnn import pad_sequence
         from functools import wraps
@@ -191,3 +213,25 @@ def patch_trl():
 
         DPODataCollatorWithPadding.__call__ = new_call
         DPODataCollatorWithPadding._old_call = old_call
+
+
+def patch_itds_map():
+    # resolve conflict with `num_proc` in iterable_dataset map func
+    from datasets import IterableDataset
+    from functools import wraps
+
+    def _patch_ids_map(map_func):
+        pass
+
+    if not hasattr(IterableDataset, '_old_map'):  # Avoid double patching
+        old_map = IterableDataset.map
+
+        @wraps(old_map)
+        def new_map(self, *args, **kwargs):
+            kwargs.pop('num_proc', None)
+            kwargs.pop('writer_batch_size', None)
+            return old_map(self, *args, **kwargs)
+
+        IterableDataset.map = new_map
+        IterableDataset._old_map = old_map
+        # model.forward = MethodType(_patch_ids_map(map_func), IterableDataset)

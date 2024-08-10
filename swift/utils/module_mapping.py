@@ -66,20 +66,6 @@ LLAMA_KEYS = ModelKeys(
     output='lm_head',
 )
 
-MISTRAL_KEYS = LLAMA_KEYS
-QWEN2_KEYS = LLAMA_KEYS
-YI_KEYS = LLAMA_KEYS
-GEMMA_KEYS = LLAMA_KEYS
-INTERNLM_KEYS = LLAMA_KEYS
-DEEPSEEK_KEYS = LLAMA_KEYS
-OPENBUDDY_KEYS = LLAMA_KEYS
-XVERSE_KEYS = LLAMA_KEYS
-ORION_KEYS = LLAMA_KEYS
-BLUELM_KEYS = LLAMA_KEYS
-ZIYA_KEYS = LLAMA_KEYS
-SKYWORK_KEYS = LLAMA_KEYS
-MINICPM_KEYS = LLAMA_KEYS
-
 INTERNLM2_KEYS = ModelKeys(
     module_list='model.layers',
     mlp='model.layers.{}.feed_forward',
@@ -201,8 +187,6 @@ LLAVA_KEYS = MultiModelKeys(
     vision_tower='vision_tower',
 )
 
-LLAVA_NEXT_KEYS = LLAVA_KEYS
-
 LLAVA_NEXT_VIDEO_KEYS = MultiModelKeys(
     language_model='language_model',
     projector='multi_modal_projector',
@@ -215,8 +199,6 @@ LLAVA_LLAMA_KEYS = MultiModelKeys(
     projector='model.mm_projector',
     vision_tower='model.vision_tower',
 )
-
-YI_VL_KEYS = LLAVA_LLAMA_KEYS
 
 INTERNLM_XCOMPOSER_KEYS = MultiModelKeys(
     language_model='model',
@@ -234,12 +216,6 @@ DEEPSEEK_VL_KEYS = MultiModelKeys(
     language_model='language_model',
     projector='aligner',
     vision_tower='vision_model',
-)
-
-PALIGEMMA_KEYS = MultiModelKeys(
-    language_model='language_model',
-    projector='multi_modal_projector',
-    vision_tower='vision_tower',
 )
 
 MINICPM_V_KEYS = MultiModelKeys(
@@ -260,8 +236,6 @@ COGVLM_KEYS = MultiModelKeys(
     vision_tower='model.vision',
 )
 
-COGAGENT_KEYS = COGVLM_KEYS
-
 FLORENCE_KEYS = MultiModelKeys(
     language_model='language_model',
     projector='image_projection',
@@ -280,6 +254,12 @@ QWEN_AUDIO_KEYS = MultiModelKeys(
     vision_tower='transformer.audio',
 )
 
+QWEN2_AUDIO_KEYS = MultiModelKeys(
+    language_model='language_model',
+    projector='multi_modal_projector',
+    vision_tower='audio_tower',
+)
+
 GLM4V_KEYS = MultiModelKeys(
     language_model='transformer.encoder',
     projector=None,
@@ -289,50 +269,51 @@ GLM4V_KEYS = MultiModelKeys(
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
     ('qwen_audio', QWEN_AUDIO_KEYS),
-    ('glm4v', GLM4V_KEYS),
     ('qwen_vl', QWEN_VL_KEYS),
+    ('qwen2_audio', QWEN2_AUDIO_KEYS),
+    ('glm4v', GLM4V_KEYS),
     ('llava_next_video', LLAVA_NEXT_VIDEO_KEYS),
-    ('llava_next', LLAVA_NEXT_KEYS),
+    ('llava_next', LLAVA_KEYS),
     ('llava_llama', LLAVA_LLAMA_KEYS),
     ('llava', LLAVA_KEYS),
-    ('yi_vl', YI_VL_KEYS),
+    ('yi_vl', LLAVA_LLAMA_KEYS),
     ('internlm_xcomposer', INTERNLM_XCOMPOSER_KEYS),
     ('internvl', INTERNVL_KEYS),
     ('deepseek_vl', DEEPSEEK_VL_KEYS),
-    ('paligemma', PALIGEMMA_KEYS),
+    ('paligemma', LLAVA_KEYS),
     ('minicpm_v', MINICPM_V_KEYS),
     ('phi3v', PHI3V_KEYS),
     ('cogvlm2', COGVLM_KEYS),
     ('cogvlm', COGVLM_KEYS),
-    ('cogagent', COGAGENT_KEYS),
+    ('cogagent', COGVLM_KEYS),
     ('florence', FLORENCE_KEYS),
     # LLM begins here
     ('llama', LLAMA_KEYS),
-    ('mistral', MISTRAL_KEYS),
-    ('qwen1half', QWEN2_KEYS),
-    ('qwen2', QWEN2_KEYS),
-    ('yi', YI_KEYS),
-    ('gemma', GEMMA_KEYS),
-    ('internlm2', INTERNLM2_KEYS),
-    ('internlm', INTERNLM_KEYS),
-    ('deepseek-v2', DEEPSEEK_V2_KEYS),
-    ('deepseek', DEEPSEEK_KEYS),
-    ('openbuddy', OPENBUDDY_KEYS),
-    ('xverse', XVERSE_KEYS),
-    ('orion', ORION_KEYS),
-    ('bluelm', BLUELM_KEYS),
-    ('ziya', ZIYA_KEYS),
-    ('skywork', SKYWORK_KEYS),
-    ('chatglm', CHATGLM_KEYS),
-    ('glm4', CHATGLM_KEYS),
-    ('baichuan', BAICHUAN_KEYS),
-    ('yuan', YUAN_KEYS),
-    ('codefuse', CODEFUSE_KEYS),
-    ('phi2', PHI2_KEYS),
-    ('qwen', QWEN_KEYS),
-    ('phi3-small', PHI3_SMALL_KEYS),
-    ('phi3', PHI3_KEYS),
-    ('minicpm', MINICPM_KEYS),
+    ('mistral', LLAMA_KEYS),
+    ('qwen1half', LLAMA_KEYS),
+    ('qwen2', LLAMA_KEYS),
+    ('yi', LLAMA_KEYS),
+    ('gemma', LLAMA_KEYS),
+    ('internlm2', LLAMA_KEYS),
+    ('internlm', LLAMA_KEYS),
+    ('deepseek-v2', LLAMA_KEYS),
+    ('deepseek', LLAMA_KEYS),
+    ('openbuddy', LLAMA_KEYS),
+    ('xverse', LLAMA_KEYS),
+    ('orion', LLAMA_KEYS),
+    ('bluelm', LLAMA_KEYS),
+    ('ziya', LLAMA_KEYS),
+    ('skywork', LLAMA_KEYS),
+    ('chatglm', LLAMA_KEYS),
+    ('glm4', LLAMA_KEYS),
+    ('baichuan', LLAMA_KEYS),
+    ('yuan', LLAMA_KEYS),
+    ('codefuse', LLAMA_KEYS),
+    ('phi2', LLAMA_KEYS),
+    ('qwen', LLAMA_KEYS),
+    ('phi3-small', LLAMA_KEYS),
+    ('phi3', LLAMA_KEYS),
+    ('minicpm', LLAMA_KEYS),
 ])
 
 

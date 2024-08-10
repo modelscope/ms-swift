@@ -133,7 +133,6 @@ road:
 ## Fine-tuning
 Fine-tuning of multimodal large models usually uses **custom datasets**. Here's a demo that can be run directly:
 
-(By default, only the qkv part of the LLM is fine-tuned using Lora. `--lora_target_modules ALL` is not supported. Full-parameter fine-tuning is supported.)
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 21GB GPU memory

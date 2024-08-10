@@ -40,7 +40,7 @@ def test_vllm():
     print(generation_info)
 
     # batched
-    n_batched = 100
+    n_batched = 1000
     request_list = [{'query': '晚上睡不着觉怎么办?'} for i in range(n_batched)]
     resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
     assert len(resp_list) == n_batched

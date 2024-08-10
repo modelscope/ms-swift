@@ -45,6 +45,7 @@ def get_vllm_engine(
         revision: Optional[str] = None,
         gpu_memory_utilization: float = 0.9,
         tensor_parallel_size: int = 1,
+        max_num_seqs: int = 256,
         max_model_len: Optional[int] = None,
         disable_custom_all_reduce: bool = True,  # Default values different from vllm
         enforce_eager: bool = False,
@@ -90,24 +91,17 @@ def get_vllm_engine(
     else:
         assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
 
-    vllm_config = MODEL_MAPPING[model_type].get('vllm_config') or {}
-    if len(vllm_config) > 0:
-        require_version('vllm>=0.5')
-        if image_input_shape is not None:
-            vllm_config['image_input_shape'] = image_input_shape
-        if image_feature_size is not None:
-            vllm_config['image_feature_size'] = image_feature_size
     engine_args = engine_args_cls(
         model=model_dir,
         trust_remote_code=True,
         dtype=dtype,
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=tensor_parallel_size,
+        max_num_seqs=max_num_seqs,
         max_model_len=max_model_len,
         disable_log_stats=disable_log_stats,
         disable_custom_all_reduce=disable_custom_all_reduce,
         enforce_eager=enforce_eager,
-        **vllm_config,
         **engine_kwargs)
     try:
         from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
@@ -132,9 +126,7 @@ def get_vllm_engine(
     llm_engine.model_config = model_config
     llm_engine.dtype = model_config.dtype  # compat with pt
     llm_engine.max_model_len = model_config.max_model_len
-    llm_engine.vllm_config = vllm_config
-    if len(vllm_config) > 0:
-        llm_engine.is_multimodal = True
+    llm_engine.is_multimodal = tokenizer.is_multimodal
     # compatible with vllm==0.3.*
     if version.parse(vllm.__version__) >= version.parse('0.3'):
         assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)
@@ -239,44 +231,17 @@ class VllmGenerationConfig(SamplingParams):
             super().__setattr__(key, value)
 
 
-def _patch_vllm_multimodal(image_sizes: torch.Tensor) -> None:
-    from vllm.multimodal import MultiModalPlugin
-
-    if hasattr(MultiModalPlugin, '_old_map_input'):
-        map_input = MultiModalPlugin._old_map_input
-    else:
-        map_input = getattr(MultiModalPlugin, 'map_input', None)
-        if map_input is None:
-            map_input = MultiModalPlugin.process_input
-
-    def new_map_input(*args, **kwargs):
-        res = map_input(*args, **kwargs)
-        res['image_sizes'] = image_sizes
-        return res
-
-    MultiModalPlugin.map_input = new_map_input
-    MultiModalPlugin.process_input = new_map_input
-    MultiModalPlugin._old_map_input = map_input
-
-
-def _prepare_request_inputs(inputs: Dict[str, Any]) -> Dict[str, Any]:
-    input_ids = inputs['input_ids']
-    request_inputs = {'prompt_token_ids': input_ids}
-    if 'pixel_values' in inputs:
-        from vllm.multimodal.image import ImagePixelData
-        request_inputs['multi_modal_data'] = ImagePixelData(inputs['pixel_values'])
-    if 'image_sizes' in inputs:
-        _patch_vllm_multimodal(inputs['image_sizes'])
-    return request_inputs
-
-
 def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_id: str,
                       generation_config: VllmGenerationConfig, **kwargs) -> None:
+    input_ids = inputs['input_ids']
     if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-        request_inputs = _prepare_request_inputs(inputs)
-        llm_engine.add_request(request_id, request_inputs, generation_config, **kwargs)
+        llm_inputs = {'prompt_token_ids': input_ids}
+        images = inputs.get('images') or []
+        if images:
+            assert len(images) == 1, 'Currently, only one image is supported.'
+            llm_inputs['multi_modal_data'] = {'image': images[0]}
+        llm_engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
     else:
-        input_ids = inputs['input_ids']
         llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
 
 
@@ -290,7 +255,8 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
                           use_tqdm: bool = False,
                           **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
     for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
-        generation_info[key] = 0
+        if key not in generation_info:
+            generation_info[key] = 0
 
     template.model = llm_engine
     tokenizer = template.tokenizer
@@ -371,7 +337,7 @@ def inference_stream_vllm(
         **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
-        The keys that can be included are: 'query', 'history', 'system'.
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
     generation_config: Priority: generation_config > model.generation_config.
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
@@ -457,6 +423,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    *,
                    generation_config: Optional[VllmGenerationConfig] = None,
                    generation_info: Optional[Dict[str, Any]] = None,
+                   max_batch_size: Optional[int] = None,
                    lora_request: Optional['LoRARequest'] = None,
                    use_tqdm: bool = False,
                    verbose: bool = False,
@@ -465,7 +432,7 @@ def inference_vllm(llm_engine: LLMEngine,
                    **kwargs) -> List[Dict[str, Any]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
-        The keys that can be included are: 'query', 'history', 'system'.
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
     generation_config: Priority: generation_config > model.generation_config.
     return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
         The keys to be included will be: 'response', 'history'.
@@ -473,16 +440,48 @@ def inference_vllm(llm_engine: LLMEngine,
     if len(request_list) == 0:
         return []
     runtime = time.perf_counter()
+
+    is_multimodal = getattr(llm_engine, 'is_multimodal', False)
+    if is_multimodal and max_batch_size is None:
+        max_batch_size = 512
+
+    _inner_call = kwargs.get('_inner_call', False)
+    if generation_info is None:
+        generation_info = {}
+    elif not _inner_call:
+        generation_info.clear()
+    if max_batch_size is not None and len(request_list) > max_batch_size:
+        i = 0
+        resp_list = []
+        kwargs['_inner_call'] = True
+        while i < len(request_list):
+            resp_list += inference_vllm(
+                llm_engine,
+                template,
+                request_list[i:i + max_batch_size],
+                generation_config=generation_config,
+                generation_info=generation_info,
+                max_batch_size=max_batch_size,
+                lora_request=lora_request,
+                use_tqdm=use_tqdm,
+                verbose=verbose,
+                prompt_prefix=prompt_prefix,
+                output_prefix=output_prefix,
+                **kwargs)
+            i += max_batch_size
+        runtime = time.perf_counter() - runtime
+        generation_info['runtime'] = runtime
+        generation_info['samples/s'] = generation_info['num_samples'] / runtime
+        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
+        return resp_list
+
     if generation_config is None:
         generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
-    if generation_info is None:
-        generation_info = {}
-    else:
-        generation_info.clear()
 
+    old_num_samples = generation_info.get('num_samples', 0)
     resp_list, agent_state = _prepare_vllm_request(
         llm_engine,
         template,
@@ -496,7 +495,7 @@ def inference_vllm(llm_engine: LLMEngine,
     tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
-    prog_bar = tqdm(total=generation_info['num_samples'], dynamic_ncols=True, disable=not use_tqdm)
+    prog_bar = tqdm(total=generation_info['num_samples'] - old_num_samples, dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
@@ -525,7 +524,7 @@ def inference_vllm(llm_engine: LLMEngine,
             print(tokenizer.decode(output.outputs[0].token_ids, False))
     runtime = time.perf_counter() - runtime
     generation_info['runtime'] = runtime
-    generation_info['samples/s'] = len(outputs) / runtime
+    generation_info['samples/s'] = generation_info['num_samples'] / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
 
@@ -545,6 +544,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         args.torch_dtype,
         gpu_memory_utilization=args.gpu_memory_utilization,
         tensor_parallel_size=args.tensor_parallel_size,
+        max_num_seqs=args.max_num_seqs,
         max_model_len=args.max_model_len,
         disable_custom_all_reduce=args.disable_custom_all_reduce,
         enforce_eager=args.enforce_eager,

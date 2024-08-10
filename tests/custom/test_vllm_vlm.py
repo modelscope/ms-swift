@@ -3,7 +3,7 @@ def test_vllm_vlm():
     import vllm
     from packaging import version
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    assert version.parse('0.5.0') <= version.parse(vllm.__version__) < version.parse('0.5.1')
+    assert version.parse(vllm.__version__) >= version.parse('0.5.1')
     from swift.llm import (ModelType, get_vllm_engine, get_default_template_type, get_template, inference_vllm,
                            inference_stream_vllm)
 
@@ -43,7 +43,7 @@ def test_vllm_vlm():
     print(generation_info)
 
     # batched
-    n_batched = 100
+    n_batched = 1000
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
     request_list = [{'query': 'Describe this image.', 'images': images} for i in range(n_batched)]
     resp_list = inference_vllm(llm_engine, template, request_list, generation_info=generation_info, use_tqdm=True)

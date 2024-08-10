@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .rlhf_trainers import RLHFTrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
-                        ShardedDDPOption, TrainerCallback, build_tokenized_answer, concat_template)
+                        ShardedDDPOption, TrainerCallback, build_tokenized_answer, concat_template, sort_by_max_length)
 else:
     _import_structure = {
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],

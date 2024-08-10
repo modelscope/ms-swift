@@ -14,7 +14,7 @@
 <p align="center">
 <img src="https://img.shields.io/badge/python-%E2%89%A53.8-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A51.12%20%7C%20%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.9.5-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.17-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
 <a href="https://github.com/modelscope/swift/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/swift"></a>
 <a href="https://pepy.tech/project/ms-swift"><img src="https://pepy.tech/badge/ms-swift"></a>
@@ -55,6 +55,12 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.08.09: Support for inference and fine-tuning of the qwen2-audio model. Best practice can be found [here](https://github.com/modelscope/ms-swift/issues/1653).
+- 🔥2024.08.08: Supports the qwen2-math series models: 1.5B, 7B, 72B. Use `swift infer --model_type qwen2-math-1_5b-instruct` for an experience.
+- 🔥2024.08.07: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
+- 2024.08.06: Support for minicpm-v-v2_6-chat is available. You can use `swift infer --model_type minicpm-v-v2_6-chat` for inference experience. Best practices can be found [here](https://github.com/modelscope/swift/issues/1613).
+- 2024.08.06: Supports internlm2.5 series of 1.8b and 20b. Experience it using `swift infer --model_type internlm2_5-1_8b-chat`.
+- 🔥2024.08.05: Support evaluation for multi-modal models! Same command with [new datasets](https://swift.readthedocs.io/en/latest/LLM/LLM-eval.html#introduction).
 - 🔥2024.08.02: Support Fourier Ft. Use `--sft_type fourierft` to begin, Check parameter documentation [here](https://swift.readthedocs.io/en/latest/LLM/Command-line-parameters.html).
 - 🔥2024.07.29: Support the use of lmdeploy for inference acceleration of LLM and VLM models. Documentation can be found [here](docs/source_en/Multi-Modal/LmDeploy-inference-acceleration.md).
 - 🔥2024.07.24: Support DPO/ORPO/SimPO/CPO alignment algorithm for vision MLLM, training scripts can be find in [Document](docs/source_en/Multi-Modal/human-preference-alignment-training-documentation.md). support RLAIF-V dataset.
@@ -71,9 +77,10 @@ You can contact us and communicate with us by adding our group:
 - 🔥2024.07.06: Support InternVL2 series: internvl2-2b, internvl2-4b, internvl2-8b, internvl2-26b.
 - 2024.07.06: Support codegeex4-9b-chat.
 - 2024.07.04: Support internlm2_5-7b series: internlm2_5-7b, internlm2_5-7b-chat, internlm2_5-7b-chat-1m.
-- 2024.07.02: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
 - 2024.07.02: Support for `llava1_6-vicuna-7b-instruct`, `llava1_6-vicuna-13b-instruct` and other llava-hf models. For best practices, refer to [here](docs/source_en/Multi-Modal/llava-best-practice.md).
 - 🔥2024.06.29: Support [eval-scope](https://github.com/modelscope/eval-scope)&[open-compass](https://github.com/open-compass/opencompass) for evaluation! Now we have supported over 50 eval datasets like `BoolQ, ocnli, humaneval, math, ceval, mmlu, gsk8k, ARC_e`, please check our [Eval Doc](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/LLM-eval.md) to begin! Next sprint we will support Multi-modal and Agent evaluation, remember to follow us : )
+<details><summary>More</summary>
+
 - 🔥2024.06.28: Support for **Florence** series model! See [document](docs/source_en/Multi-Modal/florence-best-pratice.md)
 - 🔥2024.06.28: Support for Gemma2 series models: gemma2-9b, gemma2-9b-instruct, gemma2-27b, gemma2-27b-instruct.
 - 🔥2024.06.18: Supports **DeepSeek-Coder-v2** series model! Use model_type `deepseek-coder-v2-instruct` and `deepseek-coder-v2-lite-instruct` to begin.
@@ -84,8 +91,6 @@ You can contact us and communicate with us by adding our group:
 - 🔥2024.06.01: Supports **SimPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/SimPO.md) to start training!
 - 🔥2024.06.01: Support for deploying large multimodal models, please refer to the [Multimodal Deployment Documentation](docs/source_en/Multi-Modal/mutlimodal-deployment.md) for more information.
 - 2024.05.31: Supports Mini-Internvl model, Use model_type `mini-internvl-chat-2b-v1_5` and `mini-internvl-chat-4b-v1_5`to train.
-<details><summary>More</summary>
-
 - 2024.05.24: Supports Phi3-vision model, Use model_type `phi3-vision-128k-instruct` to train.
 - 2024.05.22: Supports DeepSeek-V2-Lite series models, model_type are `deepseek-v2-lite` and `deepseek-v2-lite-chat`
 - 2024.05.22: Supports TeleChat-12B-v2 model with quantized version, model_type are `telechat-12b-v2` and `telechat-12b-v2-gptq-int4`
@@ -508,7 +513,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 
 Original model:
 ```shell
-# We recommend using vLLM for acceleration (arc evaluated in half a minute)
 CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
     --eval_dataset ARC_e --infer_backend vllm
 ```
@@ -606,11 +610,11 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Model Type                                              | Model Introduction                                                                     | Language           | Model Size                            | Model Type               |
 |---------------------------------------------------------|----------------------------------------------------------------------------------------|--------------------|---------------------------------------|--------------------------|
 | Qwen-VL                                                 | [Tongyi Qwen vision model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B<br>including quantized versions    | base model<br>chat model |
-| Qwen-Audio                                              | [Tongyi Qwen speech model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B                                    | base model<br>chat model |
+| Qwen-Audio<br>Qwen2-Audio                           | [Tongyi Qwen speech model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B                                    | base model<br>chat model |
 | YI-VL                                                   | [01AI's YI series vision models](https://github.com/01-ai)                             | Chinese<br>English | 6B-34B                                | chat model               |
 | XComposer2<br>XComposer2.5                              | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                    | chat model               |
 | DeepSeek-VL                                             | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
-| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2_5               | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)                     | Chinese<br>English | 3B-9B                                 | chat model               |
+| MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2.5<br>MiniCPM-V-2.6               | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)                     | Chinese<br>English | 3B-9B                                 | chat model               |
 | CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)                   | Chinese<br>English | 9B-19B                                | chat model               |
 | Llava1.5<br>Llava1.6                                    | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
@@ -723,4 +727,4 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/swift&type=Date)](https://star-history.com/#modelscope/swift&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)

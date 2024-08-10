@@ -22,6 +22,7 @@
   - LLAVA model: `https://github.com/haotian-liu/LLaVA.git`
 - `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
 - `--packing`: pack the dataset length to `max-length`, default `False`.
+- `--streaming`: Whether to use iterable dataset, Default `False`.
 - `--freeze_parameters`: When sft_type is set to 'full', freeze the bottommost parameters of the model. Range is 0. ~ 1., default is `0.`. This provides a compromise between lora and full fine-tuning.
 - `--additional_trainable_parameters`: In addition to freeze_parameters, only allowed when sft_type is 'full', default is `[]`. For example, if you want to train embedding layer in addition to 50% of parameters, you can set `--freeze_parameters 0.5 --additional_trainable_parameters transformer.wte`, all parameters starting with `transformer.wte` will be activated. You can also set `--freeze_parameters 1 --additional_trainable_parameters xxx` to customize the trainable layers.
 - `--tuner_backend`: Backend support for lora, qlora, default is `'peft'`. Options include: 'swift', 'peft', 'unsloth'.
@@ -63,7 +64,7 @@
 - `--bnb_4bit_quant_type`: Quantization method for 4bit quantization, default is `'nf4'`. Options: 'nf4', 'fp4'. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_use_double_quant`: Whether to enable double quantization for 4bit quantization, default is `True`. Has no effect when quantization_bit is 0.
 - `--bnb_4bit_quant_storage`: Default vlaue `None`.This sets the storage type to pack the quanitzed 4-bit prarams. Has no effect when quantization_bit is 0.
-- `--target_modules`: Specify lora modules, default is `['DEFAULT']`. If target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `target_modules` in `MODEL_MAPPING` based on `model_type` (default specifies qkv). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
+- `--target_modules`: Specify lora modules, default is `['DEFAULT']`. If target_modules is passed `'DEFAULT'` or `'AUTO'`, look up `target_modules` in `MODEL_MAPPING` based on `model_type` (The LLM is defaulted to qkv, while the MLLM defaults to all lines in the llm and projector.). If passed `'ALL'`, all Linear layers (excluding head) will be specified as lora modules. If passed `'EMBEDDING'`, Embedding layer will be specified as lora module. If memory allows, setting to 'ALL' is recommended. You can also set `['ALL', 'EMBEDDING']` to specify all Linear and embedding layers as lora modules. This parameter only takes effect when `sft_type` is 'lora'. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
 - `--target_regex`: The lora target regex in `Optional[str]`. default is `None`. If this argument is specified, the `target_modules` will have no effect. This argument works when sft_type in lora/vera/boft/ia3/adalora/fourierft.
 - `--lora_rank`: Default is `8`. Only takes effect when `sft_type` is 'lora'.
 - `--lora_alpha`: Default is `32`. Only takes effect when `sft_type` is 'lora'.
@@ -99,7 +100,6 @@
 - `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `None`, i.e. if `sft_type` is 'lora' and not using deepspeed (`deepspeed` is `None`), set to False, otherwise set to True (e.g. using full fine-tuning or deepspeed).
 - `--save_total_limit`: Number of checkpoints to save, default is `2`, i.e. save best and last checkpoint. If set to -1, save all checkpoints.
 - `--logging_steps`: Print training information (e.g. loss, learning_rate, etc.) every this many steps, default is `5`.
-- `--acc_steps`: How often to calculate the accuracy information during training, by default it is calculated every `1` iteration.
 - `--dataloader_num_workers`: Default value is `None`. If running on a Windows machine, set it to `0`; otherwise, set it to `1`.
 - `--push_to_hub`: Whether to sync push trained checkpoint to ModelScope Hub, default is `False`.
 - `--hub_model_id`: Model_id to push to on ModelScope Hub, default is `None`, i.e. set to `f'{model_type}-{sft_type}'`. You can set this to model_id or repo_name. We will infer user_name based on hub_token. If the remote repository to push to does not exist, a new repository will be created, otherwise the previous repository will be reused. This parameter only takes effect when `push_to_hub` is set to True.
@@ -145,6 +145,7 @@
 ### Long Context
 
 - `--rope_scaling`: Default `None`, Support `linear` and `dynamic` to scale positional embeddings. Use when `max_length` exceeds `max_position_embeddings`.
+- `--rescale_image`: Whether to rescale input images, the value should be the pixel value, for example 480000(width * height), every image larger than this value will be resized to this value by its original ratio. Note: not every model can get advantages from this parameter.
 
 ### FSDP Parameters
 
@@ -250,7 +251,7 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 PT parameters inherit from the SFT parameters with some modifications to the default values:
 
 - `--sft_type`: Default value is `'full'`.
-- `--lora_target_modules`: Default value is `'ALL'`.
+- `--target_modules`: Default value is `'ALL'`.
 - `--lazy_tokenize`: Default value is `True`.
 - `--eval_steps`: Default value is `500`.
 
@@ -323,13 +324,14 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--lora_modules`: Default`[]`, the input format is `'{lora_name}={lora_path}'`, e.g. `--lora_modules lora_name1=lora_path1 lora_name2=lora_path2`. `ckpt_dir` will be added with `f'default-lora={args.ckpt_dir}'` by default.
 - `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
 - `--custom_dataset_info`: Default is `None`. Pass in the path to an external `dataset_info.json`, a JSON string, or a dictionary. Used for expanding datasets.
-- `--rope_scaling`: Default `None`, Support `linear` and `dynamic` to scale positional embeddings. Use when `max_length` exceeds `max_position_embeddings`.
+- `--rope_scaling`: Default `None`, Support `linear` and `dynamic` to scale positional embeddings. Use when `max_length` exceeds `max_position_embeddings`. Specify `--max_length` when using this parameter.
 
 
 ### vLLM Parameters
 
 - `--gpu_memory_utilization`: Parameter for initializing vllm engine `EngineArgs`, default is `0.9`. This parameter only takes effect when using vllm. vLLM inference acceleration and deployment can be found in [vLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md).
 - `--tensor_parallel_size`: Parameter for initializing vllm engine `EngineArgs`, default is `1`. This parameter only takes effect when using vllm.
+- `--max_num_seqs`: The parameter for initializing the `EngineArgs` of the vllm engine, with a default value of `256`. This parameter is only effective when using vllm.
 - `--max_model_len`: Override model's max_model__len, default is `None`. This parameter only takes effect when using vllm.
 - `--disable_custom_all_reduce`: Whether to disable the custom all-reduce kernel and fallback to NCCL. The default is `True`, which is different from the default value of vLLM.
 - `--enforce_eager`: vllm uses the PyTorch eager mode or builds the CUDA graph. Default is `False`. Setting to True can save memory, but it may affect efficiency.
@@ -369,10 +371,7 @@ export parameters inherit from infer parameters, with the following added parame
 
 The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by [evalscope](https://github.com/modelscope/eval-scope).)
 
-- `--eval_dataset`: The official evaluation dataset, default is `None`, means all datasets. if `custom_eval_config` is specified, this arg will be ignored.
-  ```text
-  Currently supported datasets include: 'obqa', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada', 'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze', 'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval', 'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench', 'ARC_e', 'COPA', 'ARC_c', 'DRCD'
-  ```
+- `--eval_dataset`: The official evaluation dataset, default is `None`, means all datasets. if `custom_eval_config` is specified, this arg will be ignored. [Check all supported eval datasets](./LLM-eval.md#introduction).
 - `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset. **This parameter is currently deprecated.**
 - `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation. You can pass integer(number of samples from each eval dataset) or str(`[10:20]`, slice).
 - `--name`: Used to differentiate the result storage path for evaluating the same configuration. Like: `{eval_output_dir}/{name}`, default will be `eval_outputs/defaults`, in which a timestamp named folder will hold each eval result.
@@ -406,7 +405,7 @@ deploy parameters inherit from infer parameters, with the following added parame
 - `--ssl_keyfile`: Default is `None`.
 - `--ssl_certfile`: Default is `None`.
 - `--verbose`: Whether to print the request content. Defaults to `True`.
-- `--log_interval`: Interval for printing statistical information, in seconds. Defaults to 0, meaning no statistical information will be printed.
+- `--log_interval`: The interval for printing statistics, in seconds. Default is `10`. If set to `0`, it means statistics will not be printed.
 
 ## web-ui Parameters
 

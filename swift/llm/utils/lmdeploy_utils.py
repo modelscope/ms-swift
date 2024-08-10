@@ -160,7 +160,8 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
                               use_tqdm: bool = False,
                               **kwargs):
     for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
-        generation_info[key] = 0
+        if key not in generation_info:
+            generation_info[key] = 0
 
     if hasattr(lmdeploy_engine, 'vl_encoder'):
         lmdeploy_engine.vl_encoder._loop_task = None
@@ -216,6 +217,10 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
                               generation_info: Optional[Dict[str, Any]] = None,
                               use_tqdm: bool = False,
                               **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    """
+    request_list: e.g. [{'query': 'hello!'}].
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
+    """
     if len(request_list) == 0:
         return
     start_runtime = time.perf_counter()
@@ -301,23 +306,58 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                        *,
                        generation_config: Optional[LmdeployGenerationConfig] = None,
                        generation_info: Optional[Dict[str, Any]] = None,
+                       max_batch_size: Optional[int] = None,
                        use_tqdm: bool = False,
                        verbose: bool = False,
                        prompt_prefix: str = '[PROMPT]',
                        output_prefix: str = '[OUTPUT]',
                        **kwargs) -> List[Dict[str, Any]]:
+    """
+    request_list: e.g. [{'query': 'hello!'}].
+        The keys that can be included are: 'query', 'history', 'system', 'images'.
+    """
     if len(request_list) == 0:
         return []
     runtime = time.perf_counter()
+
+    is_multimodal = getattr(lmdeploy_engine, 'is_multimodal', False)
+    if is_multimodal and max_batch_size is None:
+        max_batch_size = 512
+
+    _inner_call = kwargs.get('_inner_call', False)
+    if generation_info is None:
+        generation_info = {}
+    elif not _inner_call:
+        generation_info.clear()
+    if max_batch_size is not None and len(request_list) > max_batch_size:
+        i = 0
+        resp_list = []
+        kwargs['_inner_call'] = True
+        while i < len(request_list):
+            resp_list += inference_lmdeploy(
+                lmdeploy_engine,
+                template,
+                request_list[i:i + max_batch_size],
+                generation_config=generation_config,
+                generation_info=generation_info,
+                max_batch_size=max_batch_size,
+                use_tqdm=use_tqdm,
+                verbose=verbose,
+                prompt_prefix=prompt_prefix,
+                output_prefix=output_prefix,
+                **kwargs)
+            i += max_batch_size
+        runtime = time.perf_counter() - runtime
+        generation_info['runtime'] = runtime
+        generation_info['samples/s'] = generation_info['num_samples'] / runtime
+        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
+        return resp_list
+
     if generation_config is None:
         generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
     assert isinstance(generation_config, LmdeployGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
-    if generation_info is None:
-        generation_info = {}
-    else:
-        generation_info.clear()
 
     resp_list, generators = _prepare_lmdeploy_request(
         lmdeploy_engine,
@@ -366,7 +406,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
     prog_bar.close()
     runtime = time.perf_counter() - runtime
     generation_info['runtime'] = runtime
-    generation_info['samples/s'] = len(generators) / runtime
+    generation_info['samples/s'] = generation_info['num_samples'] / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     return resp_list
 

@@ -12,7 +12,8 @@ import json
 import numpy as np
 import pandas as pd
 from datasets import Dataset as HfDataset
-from datasets import concatenate_datasets
+from datasets import IterableDataset as HfIterableDataset
+from datasets import concatenate_datasets, interleave_datasets
 from datasets import load_dataset as load_hf_dataset
 from numpy.random import RandomState
 from pandas import DataFrame
@@ -29,6 +30,8 @@ from .utils import download_dataset
 
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
+DATASET_TYPE = Union[HfDataset, HfIterableDataset]
+
 
 def _update_fingerprint_mac(*args, **kwargs):
     mac = _find_local_mac().replace(':', '')
@@ -43,14 +46,21 @@ datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerpri
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
+standard_keys = {
+    'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
+    'videos', 'audios', 'tools', 'label'
+}
 
-def _remove_useless_columns(dataset: HfDataset) -> HfDataset:
+
+def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
     k_list = []
-    for k in dataset.features.keys():
-        if k in {
-                'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images',
-                'objects', 'videos', 'audios', 'tools', 'label'
-        }:
+    if isinstance(dataset, HfIterableDataset) and dataset.features is None:
+        features = next(iter(dataset)).keys()
+    else:
+        features = dataset.features.keys()
+
+    for k in features:
+        if k in standard_keys:
             k_list.append(k)
     dataset = dataset.select_columns(k_list)
     return dataset
@@ -303,7 +313,8 @@ def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -
 
 def load_ms_dataset(dataset_id: str,
                     subset_split_list: Optional[List[SubsetSplit]],
-                    use_hf: bool = False) -> Optional[HfDataset]:
+                    use_hf: bool = False,
+                    streaming: bool = False) -> Optional[DATASET_TYPE]:
     if not use_hf:
         from modelscope import MsDataset
 
@@ -317,7 +328,7 @@ def load_ms_dataset(dataset_id: str,
         subset_name, split = subset_split
         if use_hf:
             try:
-                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split)
+                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split, streaming=streaming)
             except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
@@ -331,17 +342,29 @@ def load_ms_dataset(dataset_id: str,
                 force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
             try:
-                dataset = MsDataset.load(dataset_id, subset_name=subset_name, split=split, download_mode=download_mode)
+                dataset = MsDataset.load(
+                    dataset_id,
+                    subset_name=subset_name,
+                    split=split,
+                    download_mode=download_mode,
+                    use_streaming=streaming)
             except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
                 continue
             except Exception:
                 raise
+            if streaming and hasattr(dataset, '_hf_ds'):
+                dataset = dataset._hf_ds
+                if not isinstance(dataset, HfIterableDataset):
+                    dataset = dataset.to_iterable_dataset()
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
-    return concatenate_datasets(dataset_list)
+    if not streaming:
+        return concatenate_datasets(dataset_list)
+    else:
+        return interleave_datasets(dataset_list)
 
 
 def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Optional[RandomState] = None) -> HfDataset:
@@ -358,43 +381,59 @@ def sample_dataset(dataset: HfDataset, dataset_sample: int, random_state: Option
 
 
 def _post_preprocess(
-    train_dataset: HfDataset,
+    train_dataset: DATASET_TYPE,
     dataset_sample: int,
     random_state: Optional[RandomState] = None,
     preprocess_func: Optional[PreprocessFunc] = None,
     dataset_test_ratio: float = 0.,
     remove_useless_columns: bool = True,
-) -> Tuple[HfDataset, Optional[HfDataset]]:
+    **kwargs,
+) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     assert train_dataset is not None
-    if dataset_sample == -1:
-        dataset_sample = len(train_dataset)
-    assert 0 <= dataset_test_ratio <= 1
-    if dataset_test_ratio == 1:
-        train_dataset, val_dataset = None, train_dataset
-        val_sample = dataset_sample
-        assert val_sample <= len(val_dataset), f'dataset_sample: {dataset_sample}, len(val_dataset): {len(val_dataset)}'
-        val_dataset = sample_dataset(val_dataset, val_sample, random_state)
-    else:
-        if dataset_test_ratio == 0:
-            train_sample = dataset_sample
-            val_dataset = None
+    streaming = kwargs.get('streaming', False)
+    if not streaming:
+        if dataset_sample == -1:
+            dataset_sample = len(train_dataset)
+        assert 0 <= dataset_test_ratio <= 1
+        if dataset_test_ratio == 1:
+            train_dataset, val_dataset = None, train_dataset
+            val_sample = dataset_sample
+            assert val_sample <= len(
+                val_dataset), f'dataset_sample: {dataset_sample}, len(val_dataset): {len(val_dataset)}'
+            val_dataset = sample_dataset(val_dataset, val_sample, random_state)
         else:
-            # Avoid having a high train_sample causing a high val_sample.
-            _train_len = min(len(train_dataset), dataset_sample)
-            val_sample = max(int(_train_len * dataset_test_ratio), 1)
-            train_sample = dataset_sample - val_sample
-            assert isinstance(val_sample, int)
-            train_dataset, val_dataset = train_dataset.train_test_split(
-                test_size=val_sample, seed=get_seed(random_state), load_from_cache_file=dataset_enable_cache).values()
+            if dataset_test_ratio == 0:
+                train_sample = dataset_sample
+                val_dataset = None
+            else:
+                # Avoid having a high train_sample causing a high val_sample.
+                _train_len = min(len(train_dataset), dataset_sample)
+                val_sample = max(int(_train_len * dataset_test_ratio), 1)
+                train_sample = dataset_sample - val_sample
+                assert isinstance(val_sample, int)
+                train_dataset, val_dataset = train_dataset.train_test_split(
+                    test_size=val_sample, seed=get_seed(random_state),
+                    load_from_cache_file=dataset_enable_cache).values()
 
-        assert train_sample > 0
-        train_dataset = sample_dataset(train_dataset, train_sample, random_state)
+            assert train_sample > 0
+            train_dataset = sample_dataset(train_dataset, train_sample, random_state)
+    else:
+        val_dataset = None
+        if dataset_test_ratio == 1:
+            train_dataset, val_dataset = None, train_dataset
+        else:
+            streaming_val_size = kwargs.get('streaming_val_size', 0)
+            streaming_buffer_size = kwargs.get('streaming_buffer_size', 16384)
+            if streaming_val_size > 0:
+                train_dataset = train_dataset.shuffle(seed=get_seed(random_state), buffer_size=streaming_buffer_size)
+                val_dataset = dataset.take(int(streaming_val_size))
+                train_dataset = dataset.skip(int(streaming_val_size))
 
     res = []
     for dataset in [train_dataset, val_dataset]:
         if dataset is not None and preprocess_func is not None:
             dataset = preprocess_func(dataset)
-        if dataset is not None and len(dataset) > 0 and remove_useless_columns:
+        if dataset is not None and (streaming or len(dataset) > 0) and remove_useless_columns:
             dataset = _remove_useless_columns(dataset)
         res.append(dataset)
     return tuple(res)
@@ -409,7 +448,9 @@ def get_dataset_from_repo(dataset_id: str,
                           random_state: Optional[RandomState] = None,
                           dataset_test_ratio: float = 0.,
                           remove_useless_columns: bool = True,
-                          use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+                          use_hf: bool = False,
+                          **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    streaming = kwargs.get('streaming', False)
     if subsets is None:
         subsets = []
     assert len(split) > 0
@@ -417,9 +458,9 @@ def get_dataset_from_repo(dataset_id: str,
         subset_split_list = split
     else:
         subset_split_list = list(itertools.product(subsets, split))
-    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf)
+    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf, streaming=streaming)
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
-                            remove_useless_columns)
+                            remove_useless_columns, **kwargs)
 
 
 def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
@@ -438,7 +479,7 @@ register_dataset(
     hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh')
 
 
-def preprocess_sharegpt_4o_images(dataset):
+def preprocess_sharegpt_4o_images(dataset: DATASET_TYPE):
     url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
     local_dir = MediaCache.download(url, 'sharegpt_4o_images')
     prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
@@ -452,8 +493,10 @@ def preprocess_sharegpt_4o_images(dataset):
             return {'image': [], 'conversations': []}
         return {'image': [image]}
 
-    dataset = dataset.map(
-        preprocess_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['conversations'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    dataset = dataset.map(preprocess_row, **kwargs).filter(lambda row: row['conversations'])
     return ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')(
             dataset)
@@ -469,7 +512,7 @@ register_dataset(
     hf_dataset_id='OpenGVLab/ShareGPT-4o')
 
 
-def preprocess_sa1b_paired_caption(dataset: HfDataset):
+def preprocess_sa1b_paired_caption(dataset: DATASET_TYPE):
 
     prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
 
@@ -481,8 +524,10 @@ def preprocess_sa1b_paired_caption(dataset: HfDataset):
             'response': response,
         }
 
-    return dataset.map(
-        preprocess_row, load_from_cache_file=dataset_enable_cache).rename_column('opensource_url', 'images')
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs).rename_column('opensource_url', 'images')
 
 
 register_dataset(
@@ -496,7 +541,7 @@ register_dataset(
     tags=['zh', 'multi-modal', 'vqa'])
 
 
-def preprocess_sa1b_dense_caption(dataset: HfDataset):
+def preprocess_sa1b_dense_caption(dataset: DATASET_TYPE):
 
     prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
 
@@ -509,10 +554,10 @@ def preprocess_sa1b_dense_caption(dataset: HfDataset):
             'response': response,
         }
 
-    return dataset.map(
-        preprocess_row,
-        load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response')).rename_column(
-            'url', 'images')
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs).filter(lambda row: row.get('response')).rename_column('url', 'images')
 
 
 register_dataset(
@@ -526,22 +571,21 @@ register_dataset(
     tags=['zh', 'multi-modal', 'vqa'])
 
 
-def _preprocess_vision_dataset(dataset: HfDataset) -> HfDataset:
+def _preprocess_vision_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    from datasets import Image
     prompt = 'please describe the image.'
     image_key = 'image'
     response_key = 'caption'
+    dataset = dataset.cast_column('image', Image(decode=False))
+    query_format = f'<img>{{image_path}}</img>{prompt}'
 
-    dataset._info.features._column_requires_decoding['image'] = False
-    query_format = f'Picture 1:<img>{{image_path}}</img>\n{prompt}'
-    query = []
-    response = []
-    for d in tqdm(dataset):
-        query.append(query_format.format(image_path=d[image_key]['path']))
+    def _process(d):
         if '&&' in d[response_key]:
             d[response_key] = d[response_key].split('&&')[0]
-        response.append(d[response_key])
-    dataset = HfDataset.from_dict({'query': query, 'response': response})
-    return dataset
+
+        return {'query': query_format.format(image_path=d[image_key]['path']), 'response': d[response_key]}
+
+    return dataset.map(_process)
 
 
 def preprocess_mantis_image(dataset, subset):
@@ -555,7 +599,10 @@ def preprocess_mantis_image(dataset, subset):
         else:
             return {'images': []}
 
-    return dataset.map(preprocess_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['images'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs).filter(lambda row: row['images'])
 
 
 def get_mantis_dataset(dataset_id: str,
@@ -567,7 +614,9 @@ def get_mantis_dataset(dataset_id: str,
                        random_state: Optional[RandomState] = None,
                        dataset_test_ratio: float = 0.,
                        remove_useless_columns: bool = True,
-                       use_hf: bool = False) -> Tuple[HfDataset, Optional[HfDataset]]:
+                       use_hf: bool = False,
+                       **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
+    streaming = kwargs.get('streaming', False)
     if subsets is None:
         subsets = []
     assert len(split) > 0
@@ -577,13 +626,13 @@ def get_mantis_dataset(dataset_id: str,
         subset_split_list = list(itertools.product(subsets, split))
     all_datasets = []
     for subset in subset_split_list:
-        dataset = load_ms_dataset(dataset_id, [subset], use_hf)
+        dataset = load_ms_dataset(dataset_id, [subset], use_hf, streaming=streaming)
         dataset = preprocess_mantis_image(dataset, subset=subset[0])
         all_datasets.append(dataset)
         break
-    dataset = concatenate_datasets(all_datasets)
+    dataset = concatenate_datasets(all_datasets) if not streaming else interleave_datasets(all_datasets)
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
-                            remove_useless_columns)
+                            remove_useless_columns, **kwargs)
 
 
 register_dataset(
@@ -608,7 +657,7 @@ register_dataset(
     hf_dataset_id='TIGER-Lab/Mantis-Instruct')
 
 
-def preprocess_llava_data(dataset: HfDataset) -> HfDataset:
+def preprocess_llava_data(dataset: DATASET_TYPE) -> DATASET_TYPE:
 
     all_folders = {}
     for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
@@ -640,7 +689,10 @@ def preprocess_llava_data(dataset: HfDataset) -> HfDataset:
             example['images'] = []
         return example
 
-    dataset = dataset.map(preprocess_image, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['images'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda row: row['images'])
     return ConversationsPreprocessor(
         user_role='user',
         assistant_role='assistant',
@@ -680,20 +732,21 @@ register_dataset(
     is_main=False)
 
 
-def _preprocess_vision_dataset2(dataset: HfDataset) -> HfDataset:
+def _preprocess_vision_dataset2(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    from datasets import Image
     query = 'please describe the image.'
     image_key = 'image'
     response_key = 'caption'
+    dataset = dataset.cast_column('image', Image(decode=False))
 
-    dataset._info.features._column_requires_decoding['image'] = False
-    response = []
-    images = []
-    for d in tqdm(dataset):
-        images.append([d[image_key]['path']])
+    def _process(d):
+        images = [d[image_key]['path']]
         if '&&' in d[response_key]:
             d[response_key] = d[response_key].split('&&')[0]
-        response.append(d[response_key])
-    return HfDataset.from_dict({'query': [query] * len(response), 'response': response, 'images': images})
+        response = d[response_key]
+        return {'query': query * len(response), 'response': response, 'images': images}
+
+    return dataset.map(_process)
 
 
 register_dataset(
@@ -715,7 +768,7 @@ register_dataset(
     is_main=False)
 
 
-def _preprocess_pixelprose(dataset: HfDataset):
+def _preprocess_pixelprose(dataset: DATASET_TYPE):
 
     caption_prompt = [
         'Give the description of this image.', 'Describe this picture', 'What is the proper title of this image?'
@@ -731,7 +784,10 @@ def _preprocess_pixelprose(dataset: HfDataset):
             'query': np.random.choice(caption_prompt),
         }
 
-    return dataset.map(preprocess, load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs)
 
 
 register_dataset(
@@ -747,18 +803,16 @@ register_dataset(
     is_main=False)
 
 
-def _preprocess_aishell1_dataset(dataset: HfDataset) -> HfDataset:
+def _preprocess_aishell1_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
     prompt = '语音转文本'
     audio_key = 'Audio:FILE'
     response_key = 'Text:LABEL'
-    query_format = f'Audio 1:<audio>{{audio_path}}</audio>\n{prompt}'
-    query = []
-    response = []
-    for d in tqdm(dataset):
-        query.append(query_format.format(audio_path=d[audio_key]))
-        response.append(d[response_key].replace(' ', ''))
-    dataset = HfDataset.from_dict({'query': query, 'response': response})
-    return dataset
+    query_format = f'<audio>{{audio_path}}</audio>{prompt}'
+
+    def _process(d):
+        return {'query': query_format.format(audio_path=d[audio_key]), 'response': d[response_key].replace(' ', '')}
+
+    return dataset.map(_process)
 
 
 register_dataset(
@@ -781,26 +835,23 @@ register_dataset(
     is_main=False)
 
 
-def _preprocess_video_chatgpt(dataset: HfDataset) -> HfDataset:
+def _preprocess_video_chatgpt(dataset: DATASET_TYPE) -> DATASET_TYPE:
     url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
     local_dir = MediaCache.download(url, 'video_chatgpt')
     local_dir = os.path.join(local_dir, 'Test_Videos')
     # only `.mp4`
     mp4_set = [file[:-4] for file in os.listdir(local_dir) if file.endswith('mp4')]
-    query = []
-    response = []
-    videos = []
-    for d in dataset:
+
+    def _process(d):
         if d['video_name'] not in mp4_set:
-            continue
-        video_path = os.path.join(local_dir, f"{d['video_name']}.mp4")
-        assert os.path.exists(video_path)
-        question = d['question'] or d['question_1'] or d['question_2']
-        assert question is not None
-        query.append(question)
-        response.append(d['answer'])
-        videos.append([video_path])
-    return HfDataset.from_dict({'query': query, 'response': response, 'videos': videos})
+            return {'query': None, 'response': None, 'videos': None}
+        return {
+            'query': d['question'] or d['question_1'] or d['question_2'],
+            'response': d['answer'],
+            'videos': [os.path.join(local_dir, f"{d['video_name']}.mp4")]
+        }
+
+    return dataset.map(_process).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(
@@ -847,7 +898,7 @@ def _repair_ms_bench(conversations: str) -> Optional[List[Dict[str, str]]]:
     return conversations
 
 
-def long_alpaca_preprocessor(dataset: HfDataset):
+def long_alpaca_preprocessor(dataset: DATASET_TYPE):
 
     def map_row(row):
         response = row['response']
@@ -857,7 +908,10 @@ def long_alpaca_preprocessor(dataset: HfDataset):
         return response
 
     dataset = AlpacaPreprocessor()(dataset)
-    return dataset.map(map_row, load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(map_row, **kwargs)
 
 
 register_dataset(
@@ -870,7 +924,7 @@ register_dataset(
     hf_dataset_id='Yukang/LongAlpaca-12k')
 
 
-def _preprocess_ruozhiba(dataset: HfDataset):
+def _preprocess_ruozhiba(dataset: DATASET_TYPE):
 
     def map_row(row):
         title = row['title'] if row.get('title', None) is not None else row['content']
@@ -884,7 +938,10 @@ def _preprocess_ruozhiba(dataset: HfDataset):
             title = match.group(1)
         return {'response': title}
 
-    return dataset.map(map_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['response'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(map_row, **kwargs).filter(lambda row: row['response'])
 
 
 register_dataset(
@@ -943,20 +1000,15 @@ _firefly_kind_list = [
 ]
 
 
-def _preprocess_firefly(dataset: HfDataset, kind_list: List[str]) -> HfDataset:
+def _preprocess_firefly(dataset: DATASET_TYPE, kind_list: List[str]) -> DATASET_TYPE:
     kind_set = set(kind_list)
-    query: List[str] = []
-    response: List[str] = []
-    for d in tqdm(dataset):
-        if d['kind'] not in kind_set:
-            continue
-        query.append(d['input'])
-        response.append(d['target'])
 
-    return HfDataset.from_dict({
-        'query': query,
-        'response': response,
-    })
+    def _process(d):
+        if d['kind'] not in kind_set:
+            return {'query': None, 'response': None}
+        return {'query': d['input'], 'response': d['target']}
+
+    return dataset.map(_process).filter(lambda row: row['query'])
 
 
 @register_dataset(
@@ -999,19 +1051,17 @@ register_dataset(
     tags=['text-generation', 'classification', '🔥'])
 
 
-def _preprocess_dureader_robust(dataset: HfDataset) -> HfDataset:
+def _preprocess_dureader_robust(dataset: DATASET_TYPE) -> DATASET_TYPE:
     prompt = """Task: Question Generation
 Context: {context}
 Answer: {answer}
 Question:"""
-    query = []
-    response = []
-    for d in dataset:
+
+    def _process(d):
         answer, context = d['text1'].split('[SEP]')
-        q = prompt.format(context=context, answer=answer)
-        query.append(q)
-        response.append(d['text2'])
-    return HfDataset.from_dict({'query': query, 'response': response})
+        return {'query': prompt.format(context=context, answer=answer), 'response': d['text2']}
+
+    return dataset.map(_process)
 
 
 register_dataset(
@@ -1024,7 +1074,7 @@ register_dataset(
     tags=['text-generation', '🔥'])
 
 
-def process_hh_rlhf(dataset):
+def process_hh_rlhf(dataset: DATASET_TYPE):
 
     def reorganize_row(row):
         import re
@@ -1065,8 +1115,10 @@ def process_hh_rlhf(dataset):
             'history': history,
         }
 
-    return dataset.map(
-        reorganize_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['query'] is not None)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(reorganize_row, **kwargs).filter(lambda row: row['query'] is not None)
 
 
 register_dataset(
@@ -1078,7 +1130,7 @@ register_dataset(
     tags=['rlhf', 'dpo', 'pairwise'])
 
 
-def process_hh_rlhf_cn(dataset):
+def process_hh_rlhf_cn(dataset: DATASET_TYPE):
 
     def reorganize_row(row):
         history = []
@@ -1130,8 +1182,10 @@ def process_hh_rlhf_cn(dataset):
         except:  # noqa
             return False
 
-    return dataset.filter(row_can_be_parsed).map(
-        reorganize_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['query'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.filter(row_can_be_parsed).map(reorganize_row, **kwargs).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -1144,22 +1198,13 @@ register_dataset(
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
 
 
-def _preprocess_m3it(dataset: HfDataset) -> HfDataset:
-
-    system = []
-    query = []
-    response = []
-    images = []
-    for d in tqdm(dataset):
-        system.append(d['instruction'])
-        query.append(d['inputs'])
-        images.append(d['image_base64_str'])
-        response.append(d['outputs'])
-    dataset = HfDataset.from_dict({'system': system, 'query': query, 'response': response, 'images': images})
+def _preprocess_m3it(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    column_mapping = {'instruction': 'system', 'inputs': 'query', 'image_base64_str': 'images', 'outputs': 'response'}
+    dataset = dataset.rename_columns(column_mapping)
     return dataset
 
 
-def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
+def _preprocess_sharegpt4v(dataset: DATASET_TYPE) -> DATASET_TYPE:
     split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
     IMAGE_DATASET_REQUIREMENTS = {
         'ShareGPT4V': ['coco', 'sam', 'llava', 'wikiart', 'share_textvqa', 'web-celebrity', 'web-landmark'],
@@ -1200,9 +1245,10 @@ def _preprocess_sharegpt4v(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset = dataset.map(
-        preprocess_image,
-        load_from_cache_file=dataset_enable_cache).filter(lambda example: example['images'] is not None)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -1236,7 +1282,7 @@ register_dataset(
     tags=['chat', 'multi-modal', 'vision'])
 
 
-def preprocess_text_caps(dataset):
+def preprocess_text_caps(dataset: DATASET_TYPE):
 
     def preprocess(row):
         try:
@@ -1246,12 +1292,13 @@ def preprocess_text_caps(dataset):
         except Exception:
             return {'response': '', 'image': None}
 
-    return dataset.map(
-        preprocess, load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response')).rename_columns(
-            {'image': 'images'})
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs).filter(lambda row: row.get('response')).rename_columns({'image': 'images'})
 
 
-def preprocess_refcoco_unofficial_caption(dataset):
+def preprocess_refcoco_unofficial_caption(dataset: DATASET_TYPE):
 
     cache_dir = MediaCache.download(
         'https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/'
@@ -1279,7 +1326,10 @@ def preprocess_refcoco_unofficial_caption(dataset):
             res['response'] = ''
         return res
 
-    return dataset.map(preprocess, load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response'))
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs).filter(lambda row: row.get('response'))
 
 
 register_dataset(
@@ -1301,7 +1351,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'caption'])
 
 
-def preprocess_refcoco_unofficial_grounding(dataset):
+def preprocess_refcoco_unofficial_grounding(dataset: DATASET_TYPE):
 
     cache_dir = MediaCache.download(
         'https://www.modelscope.cn/api/v1/datasets/we_dont_produce_water/'
@@ -1329,7 +1379,10 @@ def preprocess_refcoco_unofficial_grounding(dataset):
             res['response'] = ''
         return res
 
-    return dataset.map(preprocess, load_from_cache_file=dataset_enable_cache).filter(lambda row: row.get('response'))
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs).filter(lambda row: row.get('response'))
 
 
 register_dataset(
@@ -1371,7 +1424,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'ocr-vqa', 'quality'])
 
 
-def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
+def _preprocess_llava_instruct_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     all_folders = {}
     for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
         all_folders[media_type] = MediaCache.download(media_type)
@@ -1397,9 +1450,10 @@ def _preprocess_llava_instruct_images(dataset: HfDataset) -> HfDataset:
             example['images'] = None
         return example
 
-    dataset = dataset.map(
-        preprocess_image,
-        load_from_cache_file=dataset_enable_cache).filter(lambda example: example['images'] is not None)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -1447,7 +1501,7 @@ register_dataset(
     tags=['chat', 'em'])
 
 
-def _preprocess_llava_pretrain(dataset):
+def _preprocess_llava_pretrain(dataset: DATASET_TYPE):
     media_dir = MediaCache.download(
         'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip',  # noqa
         'llava_pretrain')
@@ -1462,7 +1516,10 @@ def _preprocess_llava_pretrain(dataset):
         else:
             return {'image': ''}
 
-    dataset = dataset.map(preprocess, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['image'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    dataset = dataset.map(preprocess, **kwargs).filter(lambda row: row['image'])
     return ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')(
             dataset)
@@ -1470,7 +1527,7 @@ def _preprocess_llava_pretrain(dataset):
 
 register_dataset(
     DatasetName.llava_pretrain,
-    'AI-ModelScope/LLaVA-Pretrain', ['blip_laion_cc_sbu_558k'],
+    'AI-ModelScope/LLaVA-Pretrain', ['default'],
     _preprocess_llava_pretrain,
     get_dataset_from_repo,
     split=['train'],
@@ -1479,7 +1536,7 @@ register_dataset(
     tags=['vqa', 'multi-modal', 'quality'])
 
 
-def process_shareai_dpo(dataset):
+def process_shareai_dpo(dataset: DATASET_TYPE):
 
     def reorganize_row(row):
         return {
@@ -1488,10 +1545,13 @@ def process_shareai_dpo(dataset):
             'rejected_response': row['answer_en'],
         }
 
-    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(reorganize_row, **kwargs)
 
 
-def process_ultrafeedback_kto(dataset: HfDataset):
+def process_ultrafeedback_kto(dataset: DATASET_TYPE):
 
     new_column_names = {'prompt': 'query', 'completion': 'response'}
 
@@ -1507,7 +1567,7 @@ register_dataset(
     tags=['rlhf', 'kto'])
 
 
-def process_zhihu_kol(dataset: HfDataset):
+def process_zhihu_kol(dataset: DATASET_TYPE):
 
     def reorganize_row(row):
         return {
@@ -1515,7 +1575,10 @@ def process_zhihu_kol(dataset: HfDataset):
             'response': row['RESPONSE'],
         }
 
-    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(reorganize_row, **kwargs)
 
 
 register_dataset(
@@ -1536,7 +1599,7 @@ register_dataset(
     tags=['zhihu', 'qa'])
 
 
-def preprocess_guanaco(dataset):
+def preprocess_guanaco(dataset: DATASET_TYPE):
     from swift.utils.utils import split_str_parts_by
 
     def preprocess_row(row):
@@ -1566,8 +1629,10 @@ def preprocess_guanaco(dataset):
             'response': output,
         }
 
-    return dataset.map(
-        preprocess_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['query'] and row['response'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs).filter(lambda row: row['query'] and row['response'])
 
 
 register_dataset(
@@ -1579,7 +1644,7 @@ register_dataset(
     tags=['chat', 'zh'])
 
 
-def preprocess_dolly_15k(dataset):
+def preprocess_dolly_15k(dataset: DATASET_TYPE):
 
     def preprocess_row(row):
         instruction = row['instruction']
@@ -1596,7 +1661,10 @@ def preprocess_dolly_15k(dataset):
             'response': response,
         }
 
-    return dataset.map(preprocess_row, load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs)
 
 
 register_dataset(
@@ -1628,7 +1696,7 @@ register_dataset(
     tags=['medical', 'en', 'vqa'])
 
 
-def preprocess_okvqa(dataset):
+def preprocess_okvqa(dataset: DATASET_TYPE):
 
     def preprocess(row):
         query = row['question']
@@ -1638,7 +1706,10 @@ def preprocess_okvqa(dataset):
             'query': query,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=dataset_enable_cache).rename_column('image', 'images')
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs).rename_column('image', 'images')
 
 
 register_dataset(
@@ -1651,7 +1722,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
-def preprocess_a_okvqa(dataset):
+def preprocess_a_okvqa(dataset: DATASET_TYPE):
 
     def preprocess(row):
         query = row['question']
@@ -1661,7 +1732,10 @@ def preprocess_a_okvqa(dataset):
             'query': query,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=dataset_enable_cache).rename_column('image', 'images')
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs).rename_column('image', 'images')
 
 
 register_dataset(
@@ -1674,7 +1748,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
-def preprocess_ocr_vqa(dataset):
+def preprocess_ocr_vqa(dataset: DATASET_TYPE):
 
     def preprocess(row):
         idx = np.random.choice(range(len(row['questions'])))
@@ -1685,7 +1759,10 @@ def preprocess_ocr_vqa(dataset):
             'query': query,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=dataset_enable_cache).rename_column('image', 'images')
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs).rename_column('image', 'images')
 
 
 register_dataset(
@@ -1698,7 +1775,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'ocr-vqa'])
 
 
-def preprocess_science_qa(dataset):
+def preprocess_science_qa(dataset: DATASET_TYPE):
 
     def preprocess_row(row):
         query = row['question']
@@ -1706,9 +1783,10 @@ def preprocess_science_qa(dataset):
         solution = row['solution']
         return {'query': query, 'response': f'{solution}\nSo the final answer is:{response}'}
 
-    return dataset.map(
-        preprocess_row,
-        load_from_cache_file=dataset_enable_cache).filter(lambda row: row['image']).rename_columns({'image': 'images'})
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs).filter(lambda row: row['image']).rename_columns({'image': 'images'})
 
 
 register_dataset(
@@ -1721,7 +1799,7 @@ register_dataset(
     tags=['multi-modal', 'science', 'vqa', 'quality'])
 
 
-def preprocess_grit(dataset):
+def preprocess_grit(dataset: DATASET_TYPE):
 
     def has_overlap(start_ends):
         for i in range(1, len(start_ends)):
@@ -1762,7 +1840,10 @@ def preprocess_grit(dataset):
 
         return {'images': images, 'response': response, 'objects': json.dumps(objects or [], ensure_ascii=False)}
 
-    return dataset.map(preprocess_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['objects'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs).filter(lambda row: row['objects'])
 
 
 register_dataset(
@@ -1776,7 +1857,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'caption-grounding', 'quality'])
 
 
-def preprocess_gqa(dataset):
+def preprocess_gqa(dataset: DATASET_TYPE):
     local_cache = MediaCache.download('gqa')
 
     def preprocess_row(row):
@@ -1789,7 +1870,10 @@ def preprocess_gqa(dataset):
         else:
             return {'query': '', 'response': '', 'images': ''}
 
-    return dataset.map(preprocess_row, load_from_cache_file=dataset_enable_cache).filter(lambda row: row['query'])
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess_row, **kwargs).filter(lambda row: row['query'])
 
 
 register_dataset(
@@ -1802,7 +1886,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
-def preprocess_llava_mix_sft(dataset):
+def preprocess_llava_mix_sft(dataset: DATASET_TYPE):
 
     def preprocess_row(row):
         messages = row['messages']
@@ -1821,18 +1905,19 @@ def preprocess_llava_mix_sft(dataset):
 
         return {'messages': rounds}
 
-    dataset = dataset.map(
-        preprocess_row, load_from_cache_file=dataset_enable_cache).map(
-            ConversationsPreprocessor(
-                user_role='user',
-                assistant_role='assistant',
-                conversations_key='messages',
-                from_key='role',
-                value_key='content',
-                media_key='images',
-                media_type='image',
-            ).preprocess,
-            load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    dataset = dataset.map(preprocess_row, **kwargs).map(
+        ConversationsPreprocessor(
+            user_role='user',
+            assistant_role='assistant',
+            conversations_key='messages',
+            from_key='role',
+            value_key='content',
+            media_key='images',
+            media_type='image',
+        ).preprocess, **kwargs)
     return dataset
 
 
@@ -1846,7 +1931,7 @@ register_dataset(
     tags=['multi-modal', 'en', 'vqa', 'quality'])
 
 
-def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
+def orpo_dpo_mix_40k_preprocessor(dataset: DATASET_TYPE):
 
     def preprocess(row):
         chosen_history = row['chosen']
@@ -1888,9 +1973,11 @@ def orpo_dpo_mix_40k_preprocessor(dataset: HfDataset):
             'rejected_response': rejected_response,
         }
 
-    return dataset.map(
-        preprocess, load_from_cache_file=dataset_enable_cache).filter(
-            lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess,
+                       **kwargs).filter(lambda r: r['source'] != 'toxic-dpo-v0.2' and r['query'] is not None)
 
 
 register_dataset(
@@ -1902,7 +1989,7 @@ register_dataset(
     tags=['dpo', 'orpo', 'en', 'quality'])
 
 
-def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
+def synthetic_text_to_sql_preprocesser(dataset: DATASET_TYPE):
 
     def preprocess(row):
         sql_prompt = row['sql_prompt']
@@ -1916,7 +2003,10 @@ def synthetic_text_to_sql_preprocesser(dataset: HfDataset):
             'response': response,
         }
 
-    return dataset.map(preprocess, load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(preprocess, **kwargs)
 
 
 register_dataset(
@@ -1935,19 +2025,16 @@ register_dataset(
     tags=['chat', 'general', 'multi-round'])
 
 
-def _preprocess_capcha_images(dataset: HfDataset) -> HfDataset:
+def _preprocess_capcha_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    from datasets import Image
     query = 'recognize the content.'
     image_key = 'image'
     response_key = 'solution'
 
-    response = []
-    images = []
-    for d in tqdm(dataset):
-        images.append(d[image_key])
-        response.append(d[response_key])
-    dataset = HfDataset.from_dict({'query': [query] * len(response), 'response': response, 'images': images})
-    dataset._info.features._column_requires_decoding['images'] = True
-    return dataset
+    def _process(d):
+        return {'query': query * len(d[response_key]), 'response': d[response_key], 'images': [d[image_key]]}
+
+    return dataset.map(_process).cast_column('image', Image(decode=True))
 
 
 register_dataset(
@@ -1976,12 +2063,13 @@ register_dataset(
     huge_dataset=True)
 
 
-def _preprocess_blossom_math(dataset: HfDataset) -> HfDataset:
-    response = []
-    for d in tqdm(dataset):
+def _preprocess_blossom_math(dataset: DATASET_TYPE) -> DATASET_TYPE:
+
+    def _process(d):
         output, answer = d['output'], d['answer']
-        response.append(f'{output}\n\nAnswer: {answer}')
-    return HfDataset.from_dict({'query': dataset['input'], 'response': response})
+        return {'query': d['input'], 'response': f'{output}\n\nAnswer: {answer}'}
+
+    return dataset.map(_process)
 
 
 register_dataset(
@@ -2010,22 +2098,21 @@ register_dataset(
     hf_dataset_id='b-mc2/sql-create-context')
 
 
-def _preprocess_tigerbot_law(dataset: HfDataset) -> HfDataset:
+def _preprocess_tigerbot_law(dataset: DATASET_TYPE) -> DATASET_TYPE:
     prompt = """{type}
 {title}
 """
-    response = []
-    for d in tqdm(dataset):
+
+    def _process(d):
         cur_prompt = prompt.format(type=d['type'], title=d['title'])
         for i in range(1, 4):
             chapter = d[f'chapter{i}']
             if chapter is not None:
                 cur_prompt += f'{chapter}'
         cur_prompt += f'{d["content"]}'
-        response.append(cur_prompt)
-    return HfDataset.from_dict({
-        'response': response,
-    })
+        return {'response': cur_prompt}
+
+    return dataset.map(_process)
 
 
 register_dataset(
@@ -2038,22 +2125,19 @@ register_dataset(
     hf_dataset_id='TigerResearch/tigerbot-law-plugin')
 
 
-def _preprocess_leetcode_python(dataset: HfDataset) -> HfDataset:
-    query = []
-    response = []
-    for d in dataset:
+def _preprocess_leetcode_python(dataset: DATASET_TYPE) -> DATASET_TYPE:
+
+    def _process(d):
         code_with_problem = d['code_with_problem']
         idx = code_with_problem.find('```python')
-        idx2 = code_with_problem.rfind('```python')
-        assert idx == idx2
         problem = code_with_problem[:idx]
         if problem.startswith('# '):
             problem = problem[2:]
         code = code_with_problem[idx:].strip()
         explanation = d['explanation_only']
-        query.append(problem)
-        response.append(f'{code}\n\n{explanation}')
-    return HfDataset.from_dict({'query': query, 'response': response})
+        return {'query': problem, 'response': f'{code}\n\n{explanation}'}
+
+    return dataset.map(_process)
 
 
 register_dataset(
@@ -2123,6 +2207,37 @@ def preprocess_mind2web(dataset):
             'content': 'string, which choices to choose'
         }]
     }]
+    if isinstance(dataset, HfIterableDataset):
+
+        def generate_example(dataset):
+            history = []
+            images = []
+            for row in dataset:
+                target_action_index = row['target_action_index']
+                row = preprocess_row(row)
+                query = row['query']
+                if target_action_index == '0':
+                    if history:
+                        query, response = history.pop(-1)
+                        yield {
+                            'history': history,
+                            'query': query,
+                            'response': response,
+                            'images': images,
+                            'tools': tools
+                        }
+                        images = []
+                        history = []
+                    query = query + '\n' + row['confirmed_task']
+                history.append([query, row['response']])
+                images.append([row['screenshot']])
+
+            if history:
+                query, response = history.pop(-1)
+                yield {'history': history, 'query': query, 'response': response, 'images': images, 'tools': tools}
+
+        return HfIterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
+
     history = []
     images = []
     for row in tqdm(dataset):
@@ -2161,12 +2276,11 @@ register_dataset(
     tags=['agent', 'multi-modal'])
 
 
-def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
+def _preprocess_msagent_multirole_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
     res_prompt = """\n\n【注意事项】\n1. 这是聊天室，不要发送私信给任何人\n2. 仅代表你个人说话,不要扮演其他人，
     只根据对话历史进行回复\n3. 长话短说，不要说太多话，不要超过50字 """
     history_prompt = '\n\n【chat history】'
     conv_prompt = '\n {name}:{content}'
-    system, query, response = [], [], []
 
     def process_conversation(conv):
         query, response = '', conv[-1]['value']
@@ -2181,12 +2295,11 @@ def _preprocess_msagent_multirole_dataset(dataset: HfDataset) -> HfDataset:
 
         return system, query, response
 
-    for d in dataset:
+    def _process(d):
         sys, qry, resp = process_conversation(d['conversations'])
-        system.append(sys)
-        query.append(qry)
-        response.append(resp)
-    return HfDataset.from_dict({'system': system, 'query': query, 'response': response})
+        return {'system': sys, 'query': qry, 'response': resp}
+
+    return dataset.map(_process)
 
 
 register_dataset(
@@ -2198,7 +2311,7 @@ register_dataset(
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
 
 
-def _preprocess_toolbench(dataset: HfDataset) -> HfDataset:
+def _preprocess_toolbench(dataset: DATASET_TYPE) -> DATASET_TYPE:
 
     def reorganize_row(row):
         convs = row['conversations']
@@ -2218,7 +2331,10 @@ def _preprocess_toolbench(dataset: HfDataset) -> HfDataset:
             'response': convs[-1]['value']
         }
 
-    return dataset.map(reorganize_row, load_from_cache_file=dataset_enable_cache)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(reorganize_row, **kwargs)
 
 
 register_dataset(
@@ -2231,12 +2347,24 @@ register_dataset(
     tags=['chat', 'agent', 'multi-round'])
 
 
-def _preprocess_hc3(dataset: HfDataset) -> HfDataset:
+def _preprocess_hc3(dataset: DATASET_TYPE) -> DATASET_TYPE:
     prompt = """Classification Task: Are the following responses from a human or from ChatGPT?
 Question: {question}
 Answer: {answer}
 Category: Human, ChatGPT
 Output:"""
+    if isinstance(dataset, HfIterableDataset):
+
+        def generate_example(dataset):
+            for example in dataset:
+                question = example['question']
+                for h in example['human_answers']:
+                    yield {'query': prompt.format(question=question, answer=h), 'response': 'Human'}
+                for c in example['chatgpt_answers']:
+                    yield {'query': prompt.format(question=question, answer=c), 'response': 'ChatGPT'}
+
+        return HfIterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
+
     query = []
     response = []
     for d in dataset:
@@ -2269,7 +2397,7 @@ register_dataset(
 NoneType = type(None)
 
 
-def process_rlaif_v(dataset: HfDataset):
+def process_rlaif_v(dataset: DATASET_TYPE):
 
     new_column_names = {'image': 'images', 'question': 'query', 'chosen': 'response', 'rejected': 'rejected_response'}
 
@@ -2397,10 +2525,10 @@ def _dataset_name_exists(dataset_list: List[str], dataset_name: str) -> List[int
 
 
 def _preprocess_self_cognition_dataset(
-    dataset_list: Tuple[HfDataset, Optional[HfDataset]],
+    dataset_list: Tuple[DATASET_TYPE, Optional[DATASET_TYPE]],
     model_name: Tuple[str, Optional[str]],
     model_author: Tuple[str, Optional[str]],
-) -> Tuple[HfDataset, Optional[HfDataset]]:
+) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     # model_name: Tuple[zh, en]
     assert model_name[0] is not None
     assert model_author[0] is not None
@@ -2415,19 +2543,34 @@ def _preprocess_self_cognition_dataset(
             continue
         query = []
         response = []
-        for d in dataset:
-            if d['tag'] == 'zh':
-                model_n, model_a = model_name[0], model_author[0]
-            else:
-                model_n, model_a = model_name[1], model_author[1]
+        if isinstance(dataset, HfIterableDataset):
 
-            q = d['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-            r = d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-            query.append(q)
-            response.append(r)
-        dataset = dataset.remove_columns('response').add_column('response', response)
-        dataset = dataset.remove_columns('query').add_column('query', query)
-        dataset = dataset.remove_columns('tag')
+            def generate_example(dataset):
+                for d in dataset:
+                    if d['tag'] == 'zh':
+                        model_n, model_a = model_name[0], model_author[0]
+                    else:
+                        model_n, model_a = model_name[1], model_author[1]
+                        yield {
+                            'query': d['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a),
+                            'response': d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                        }
+
+            dataset = HfIterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
+        else:
+            for d in dataset:
+                if d['tag'] == 'zh':
+                    model_n, model_a = model_name[0], model_author[0]
+                else:
+                    model_n, model_a = model_name[1], model_author[1]
+
+                q = d['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                r = d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                query.append(q)
+                response.append(r)
+            dataset = dataset.remove_columns('response').add_column('response', response)
+            dataset = dataset.remove_columns('query').add_column('query', query)
+            dataset = dataset.remove_columns('tag')
         res_d_list.append(dataset)
     return tuple(res_d_list)
 
@@ -2490,12 +2633,14 @@ def get_dataset(
         *,
         # for self-cognition
         model_name: Union[Tuple[str, str], List[str], None] = None,
-        model_author: Union[Tuple[str, str], List[str], None] = None) -> Tuple[HfDataset, Optional[HfDataset]]:
+        model_author: Union[Tuple[str, str], List[str], None] = None,
+        **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """Returns train_dataset and val_dataset"""
+    streaming = kwargs.get('streaming', False)
     if isinstance(dataset_name_list, str):
         dataset_name_list = [dataset_name_list]
-    train_dataset_list: List[HfDataset] = []
-    val_dataset_list: List[HfDataset] = []
+    train_dataset_list: List[DATASET_TYPE] = []
+    val_dataset_list: List[DATASET_TYPE] = []
 
     # dataset_id_or_path -> dataset_name
     dataset_name_list = _dataset_id_to_name(dataset_name_list)
@@ -2537,7 +2682,8 @@ def get_dataset(
             random_state=random_state,
             dataset_test_ratio=dataset_test_ratio,
             remove_useless_columns=remove_useless_columns,
-            use_hf=use_hf)
+            use_hf=use_hf,
+            **kwargs)
 
         if dataset_name == 'self-cognition':
             assert model_name is not None and model_author is not None
@@ -2557,20 +2703,25 @@ def get_dataset(
 
     train_dataset = None
     if len(train_dataset_list) > 0:
-        train_dataset = concatenate_datasets(train_dataset_list)
+        train_dataset = concatenate_datasets(train_dataset_list) if not streaming else interleave_datasets(
+            train_dataset_list)
     val_dataset = None
     if len(val_dataset_list) > 0:
-        val_dataset = concatenate_datasets(val_dataset_list)
+        val_dataset = concatenate_datasets(val_dataset_list) if not streaming else interleave_datasets(val_dataset_list)
     if check_dataset_strategy != 'none':
         logger.info('check dataset...')
         logger.info(f"check_dataset_strategy: '{check_dataset_strategy}'")
-    train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
-    val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
+
+    if not streaming:
+        train_dataset = _check_dataset(train_dataset, check_dataset_strategy)
+        val_dataset = _check_dataset(val_dataset, check_dataset_strategy)
+
     return train_dataset, val_dataset
 
 
 def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
-                            preprocess_func: PreprocessFunc) -> Optional[HfDataset]:
+                            preprocess_func: PreprocessFunc,
+                            streaming: bool = False) -> Optional[DATASET_TYPE]:
     if isinstance(dataset_path_list, str):
         dataset_path_list = [dataset_path_list]
     if dataset_path_list is None or len(dataset_path_list) == 0:
@@ -2587,8 +2738,12 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
             dataset = HfDataset.from_json(dataset_path)
         else:
             raise ValueError('The custom dataset only supports CSV, JSONL or JSON format.')
+        dataset = preprocess_func(dataset)
+        if streaming:
+            dataset = dataset.to_iterable_dataset()
         dataset_list.append(preprocess_func(dataset))
-    return concatenate_datasets(dataset_list)
+
+    return concatenate_datasets(dataset_list) if not streaming else interleave_datasets(dataset_list)
 
 
 def get_local_dataset(_1: str,
@@ -2599,9 +2754,11 @@ def get_local_dataset(_1: str,
                       random_state: Optional[RandomState] = None,
                       dataset_test_ratio: float = 0.,
                       remove_useless_columns: bool = True,
-                      **kwargs) -> Tuple[HfDataset, Optional[HfDataset]]:
-    dataset = load_dataset_from_local(split, preprocess_func)
-    return _post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio, remove_useless_columns)
+                      **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    streaming = kwargs.get('streaming', False)
+    dataset = load_dataset_from_local(split, preprocess_func, streaming)
+    return _post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio, remove_useless_columns,
+                            **kwargs)
 
 
 def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:

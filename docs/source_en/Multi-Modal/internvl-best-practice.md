@@ -262,7 +262,6 @@ LoRA fine-tuning:
 
 **note**
 - If your GPU does not support flash attention, use the argument --use_flash_attn false.
-- By default, only the qkv of the LLM part is fine-tuned using LoRA. If you want to fine-tune all linear layers including the vision model part, you can specify `--lora_target_modules ALL`.
 
 ```shell
 # Experimental environment: A100
@@ -349,7 +348,7 @@ The `objects` field contains a JSON string with four fields:
 
 This format will be converted to a format recognizable by InternVL2, specifically:
 ```json
-{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>"}
+{"query": "Find <ref>the man</ref>", "response": "<box> [[200, 200, 600, 600]] </box>", "images": ["image_path1"]}
 ```
 You can also directly input the above format, but please ensure that the coordinates use thousandth-scale coordinates.
 

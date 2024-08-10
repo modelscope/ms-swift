@@ -3,6 +3,7 @@
 import os.path
 from dataclasses import asdict, dataclass, field
 from functools import partial, reduce
+from types import MethodType
 from typing import Dict, Optional
 
 import json
@@ -76,7 +77,7 @@ class LoraConfig(peft.LoraConfig):
         return self
 
 
-def _create_and_replace_hook(self, *args, **kwargs):
+def _get_target(*args, **kwargs):
     target = None
     if 'target' in kwargs:
         target = kwargs['target']
@@ -85,9 +86,19 @@ def _create_and_replace_hook(self, *args, **kwargs):
             if isinstance(arg, torch.nn.Module):
                 target = arg
                 break
+    return target
 
+
+def _create_and_replace_hook(self, *args, **kwargs):
+    target = _get_target(*args, **kwargs)
     if target and target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
         return
+
+    return self._create_and_replace_origin(*args, **kwargs)
+
+
+def _create_and_replace_hook2(self, *args, **kwargs):
+    target = _get_target(*args, **kwargs)
 
     all_supported_names = ('linear', )
     all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D)
@@ -99,7 +110,7 @@ def _create_and_replace_hook(self, *args, **kwargs):
          for name in all_supported_names]) and not any([isinstance(target, type) for type in all_supported_types])):
         return
 
-    return self._create_and_replace_origin(*args, **kwargs)
+    return _create_and_replace_hook(self, *args, **kwargs)
 
 
 def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
@@ -275,6 +286,14 @@ def adalora_mask_to_budget(self, model, budget):
     return rank_pattern
 
 
+def keep_device_forward(self, *args, **kwargs):
+    x = args[0]
+    if self.weight.device != x.device:
+        return self.forward_origin(x.to(self.weight.device), *args[1:], **kwargs)
+    else:
+        return self.forward_origin(*args, **kwargs)
+
+
 def hot_patch_peft_module():
     from peft.tuners.lora import LoraLayer
 
@@ -282,17 +301,22 @@ def hot_patch_peft_module():
     LoraModel._create_and_replace_origin = LoraModel._create_and_replace
     LoraModel._create_and_replace = _create_and_replace_hook
     VeraModel._create_and_replace_origin = VeraModel._create_and_replace
-    VeraModel._create_and_replace = _create_and_replace_hook
+    VeraModel._create_and_replace = _create_and_replace_hook2
     BOFTModel._create_and_replace_origin = BOFTModel._create_and_replace
-    BOFTModel._create_and_replace = _create_and_replace_hook
+    BOFTModel._create_and_replace = _create_and_replace_hook2
     IA3Model._create_and_replace_origin = IA3Model._create_and_replace
-    IA3Model._create_and_replace = _create_and_replace_hook
+    IA3Model._create_and_replace = _create_and_replace_hook2
     if FourierFTModel is not None:
         FourierFTModel._create_and_replace_origin = FourierFTModel._create_and_replace
-        FourierFTModel._create_and_replace = _create_and_replace_hook
+        FourierFTModel._create_and_replace = _create_and_replace_hook2
 
     # Support type conversion
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name):
+        if isinstance(config, dict) and config.get('default') and isinstance(
+                getattr(config['default'], 'target_modules', None), str):
+            # Make sure the regex can find all linear in the module.
+            LoraModel._create_and_replace = _create_and_replace_hook2
+
         self.__init_origin__(model, config, adapter_name)
         if isinstance(self.active_adapter, list):
             self.active_adapter = self.active_adapter[0]
@@ -301,6 +325,10 @@ def hot_patch_peft_module():
             for name, module in model.named_modules():
                 if isinstance(module, LoraLayer):
                     _convert_dtype(module, self.active_adapter, active_config.lora_dtype)
+                    for lora in list(module.lora_A.values()) + list(module.lora_B.values()):
+                        if not hasattr(lora, 'forward_origin'):
+                            lora.forward_origin = lora.forward
+                            lora.forward = MethodType(keep_device_forward, lora)
 
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = init

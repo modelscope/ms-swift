@@ -120,8 +120,8 @@ print(f'history: {history}')
 query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？
 response: 马鞍山距离阳江62公里，广州距离广州293公里。
 query: 距离最远的城市是哪？
-response: 距离最最远的城市是广州，距离广州293公里。
-history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？', ' 马鞍山距离阳江62公里，广州距离广州293公里。'], ['距离最远的城市是哪？', ' 距离最远的城市是广州，距离广州293公里。']]
+response: 距离最远的城市是广州，距离广州293公里。
+history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road.png</img>距离各城市多远？', '马鞍山距离阳江62公里，广州距离广州293公里。'], ['距离最远的城市是哪？', '距离最远的城市是广州，距离广州293公里。']]
 """
 ```
 
@@ -135,7 +135,6 @@ road:
 ## 微调
 多模态大模型微调通常使用**自定义数据集**进行微调. 这里展示可直接运行的demo:
 
-(默认只对LLM部分的qkv进行lora微调. 不支持`--lora_target_modules ALL`. 支持全参数微调.)
 ```shell
 # Experimental environment: A10, 3090, V100, ...
 # 21GB GPU memory
