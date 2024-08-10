@@ -20,6 +20,7 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HfIterableDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from torch import device as Device
 from torch.nn import Linear, Module
@@ -36,6 +37,8 @@ from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, safe_ddp_
                          use_torchacc)
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
+
+DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
@@ -309,7 +312,13 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[s
     return data
 
 
-def dataset_map(dataset: HfDataset, map_func: MapFunc, num_proc: int = 1) -> Optional[LLMDataset]:
+def dataset_map(dataset: DATASET_TYPE,
+                map_func: MapFunc,
+                num_proc: int = 1,
+                streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
+    if streaming:
+        return LLMIterableDataset(dataset.map(map_func))  # num_proc is not supported for IterableDataset
+
     single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
         data = []
@@ -948,6 +957,34 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
     except Exception:
         pass
     return time_info
+
+
+class LLMIterableDataset(HfIterableDataset):
+
+    def __init__(self, dataset: HfIterableDataset, max_retries=10):
+        self.dataset = dataset
+        self.max_retries = max_retries
+        from .dataset import standard_keys
+        dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
+
+    def __iter__(self):
+        iterator = iter(self.dataset)
+        while True:
+            retries = 0
+            while retries < self.max_retries:
+                try:
+                    value = next(iterator)
+                    if value:
+                        yield value
+                        break
+                    else:
+                        raise ValueError
+                except StopIteration:
+                    return
+                except Exception as e:
+                    retries += 1
+                    if retries >= self.max_retries:
+                        raise e
 
 
 def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Optional[int]:

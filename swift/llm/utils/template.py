@@ -18,7 +18,9 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
-from swift.utils import get_dist_setting, upper_bound, use_torchacc
+from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
+
+logger = get_logger()
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 History = List[Union[Tuple[str, str], List[str]]]
@@ -246,7 +248,7 @@ class Template:
                        default_system: Optional[str] = None,
                        max_length: Optional[int] = None,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                       model=None,
+                       model: torch.nn.Module = None,
                        **kwargs) -> None:
         assert self._is_init is False, 'The template has been initialized.'
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
@@ -279,6 +281,9 @@ class Template:
             value = getattr(self, key)
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
+
+        if self.model:
+            self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
 
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
@@ -332,12 +337,13 @@ class Template:
                 example[media_key] = [example[media_key]]
 
         # Parse <img></img> format images and merged into images key
-        images_path = None
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
                 example.get('query'),
                 example.get('history') or [], '<image>')
-        if images_path:
+
+            if example.get('images') and images_path:
+                raise ValueError('Do not mix use the <img></img> tag and <image> tag.')
             example['images'] = example.get('images', []) + images_path
 
         # audio, video
@@ -347,8 +353,8 @@ class Template:
                 example['query'], example['history'], medias_path = replace_img_tag(
                     example.get('query'),
                     example.get('history') or [], tag, pattern)
-                if medias_path:
-                    example[k] = example.get(k, []) + medias_path
+
+                example[k] = example.get(k, []) + medias_path
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
@@ -430,13 +436,13 @@ class Template:
         self._preprocess_media(example)
         return example
 
-    def encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def encode(self, example: Dict[str, Any], streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         example = self.preprocess(example)
         _encode = self._encode
         if self._is_lmdeploy or self._is_vllm:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
-        return _encode(example)
+        return _encode(example) if not streaming else _encode(example)[0]
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -776,6 +782,8 @@ class Template:
 
         if self.max_length is not None:
             if truncation_strategy == 'delete' and len(input_ids) > self.max_length:
+                logger.warn(f'Current length of row({len(input_ids)}) is larger'
+                            f' than the max_length({self.max_length}), deleted.')
                 return {}, {}
             input_ids = input_ids[-self.max_length:]
             if labels is not None:
@@ -815,6 +823,13 @@ class Template:
             padded_sequences.append(padded_seq)
 
         return torch.stack(padded_sequences)
+
+    def _pre_forward_hook(self, module, args, kwargs):
+        self.pre_forward(args, kwargs)
+        return args, kwargs
+
+    def pre_forward(self, args, kwargs):
+        pass
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -908,6 +923,7 @@ class Template:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
+
         return res
 
     @staticmethod
@@ -2299,8 +2315,8 @@ class DeepseekVLTemplate(Template):
             new_labels = None
         new_input_ids = torch.tensor(new_input_ids)
         num_image_tokens = torch.tensor([processor.num_image_tokens] * len(idx_list))
-        images_outputs = processor.image_processor(images, return_tensors='pt')
         from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+        images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
             input_ids=new_input_ids,

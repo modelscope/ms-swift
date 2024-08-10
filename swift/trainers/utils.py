@@ -123,15 +123,20 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder:
 def patch_trl():
     from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
     from transformers import trainer
-    import torch
-    from typing import Any, Dict, List
-    from trl.trainer.utils import DPODataCollatorWithPadding, pad
 
     trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
     trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
     trainer.PrinterCallback = PrinterCallbackNew
 
     # fix encoder-decoder error
+    patch_datacollator()
+    patch_itds_map()
+
+
+def patch_datacollator():
+    import torch
+    from typing import Any, Dict, List
+    from trl.trainer.utils import DPODataCollatorWithPadding, pad
     if not hasattr(DPODataCollatorWithPadding, '_old_call'):  # Avoid double patching
         from torch.nn.utils.rnn import pad_sequence
         from functools import wraps
@@ -208,3 +213,25 @@ def patch_trl():
 
         DPODataCollatorWithPadding.__call__ = new_call
         DPODataCollatorWithPadding._old_call = old_call
+
+
+def patch_itds_map():
+    # resolve conflict with `num_proc` in iterable_dataset map func
+    from datasets import IterableDataset
+    from functools import wraps
+
+    def _patch_ids_map(map_func):
+        pass
+
+    if not hasattr(IterableDataset, '_old_map'):  # Avoid double patching
+        old_map = IterableDataset.map
+
+        @wraps(old_map)
+        def new_map(self, *args, **kwargs):
+            kwargs.pop('num_proc', None)
+            kwargs.pop('writer_batch_size', None)
+            return old_map(self, *args, **kwargs)
+
+        IterableDataset.map = new_map
+        IterableDataset._old_map = old_map
+        # model.forward = MethodType(_patch_ids_map(map_func), IterableDataset)

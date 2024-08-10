@@ -36,7 +36,10 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
         args.dataset_seed,
         check_dataset_strategy=args.check_dataset_strategy,
         model_name=args.model_name,
-        model_author=args.model_author)
+        model_author=args.model_author,
+        streaming=args.streaming,
+        streaming_val_size=args.streaming_val_size,
+        streaming_buffer_size=args.streaming_buffer_size)
     if len(args.val_dataset) > 0:
         # Loading val dataset
         _, val_dataset = get_dataset(
@@ -45,7 +48,10 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
             args.dataset_seed,
             check_dataset_strategy=args.check_dataset_strategy,
             model_name=args.model_name,
-            model_author=args.model_author)
+            model_author=args.model_author,
+            streaming=args.streaming,
+            streaming_val_size=args.streaming_val_size,
+            streaming_buffer_size=args.streaming_buffer_size)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
     logger.info(f'train_dataset: {train_dataset}')
@@ -111,6 +117,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
 def llm_sft(args: SftArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
+    streaming = args.streaming
     if is_generation and type(args) is SftArguments:
         logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. "
                        'Currently, SFT is in progress, but the template is used for PT.')
@@ -267,7 +274,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             fsdp_flatten_parameters=False)
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
-    training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0  # torchacc
+    if use_torchacc():
+        training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
     template_kwargs = {}
     template_kwargs['use_loss_scale'] = args.use_loss_scale
     if args.loss_scale_config_path is not None:
@@ -288,6 +296,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         args.truncation_strategy,
         model=model,
         **template_kwargs)
+    if streaming:
+        template.encode = partial(template.encode, streaming=streaming)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
@@ -307,10 +317,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
     elif not args.lazy_tokenize:
         dataset_info = {}
-        logger.info(f'Using num_proc: {args.preprocess_num_proc}')
-        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc)
+        if not streaming:
+            logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc)
+            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
@@ -321,11 +332,11 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
                                  '(1) The dataset contains None for input or labels;\n'
                                  "(2) The 'max_length' setting is too short causing data truncation.")
-        td0, tkwargs0 = train_dataset.data[0]
+        td0, tkwargs0 = train_dataset.data[0] if not streaming else (next(iter(train_dataset)), {})
         print_example(td0, tokenizer, tkwargs0)
-        dataset_info['train_dataset'] = stat_dataset(train_dataset)
+        dataset_info['train_dataset'] = stat_dataset(train_dataset) if not streaming else None
         if val_dataset is not None:
-            dataset_info['val_dataset'] = stat_dataset(val_dataset)
+            dataset_info['val_dataset'] = stat_dataset(val_dataset) if not streaming else None
     else:
         dataset_info = None
         td0, tkwargs0 = template.encode(train_dataset[0])
@@ -395,7 +406,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
-    train_time = get_time_info(trainer.state.log_history, len(train_dataset))
+    if not streaming:
+        train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master() and not use_torchacc():
         if 'tensorboard' in args.training_args.report_to:
@@ -407,7 +419,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             trainer.push_to_hub()
     run_info = {
         'memory': trainer.perf['memory'],
-        'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
@@ -416,6 +427,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         'model_info': model_info,
         'dataset_info': dataset_info,
     }
+    if not streaming:
+        run_info.update({'train_time': train_time})
     for key in ['gen_time', 'gen_len']:
         if trainer.perf[key] != 0:
             run_info[key] = trainer.perf[key]
