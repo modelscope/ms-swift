@@ -1537,6 +1537,7 @@ register_dataset(
     split=['train'],
     hf_dataset_id='liuhaotian/LLaVA-Pretrain',
     huge_dataset=True,
+    revision='e3a3f0bfaad05e90e46745152a32bf944e0f4a63',
     tags=['vqa', 'multi-modal', 'quality'])
 
 
