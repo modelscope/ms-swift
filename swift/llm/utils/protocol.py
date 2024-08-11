@@ -58,10 +58,16 @@ class XRequestConfig:
 
 
 @dataclass
+class MultiModalRequestMixin:
+    images: List[str] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
+    videos: List[str] = field(default_factory=list)
+
+
+@dataclass
 class CompletionRequestMixin:
     model: str
     prompt: str
-    images: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -70,16 +76,15 @@ class ChatCompletionRequestMixin:
     messages: List[Dict[str, Union[str, List[Dict]]]]
     tools: Optional[List[Dict[str, Union[str, Dict]]]] = None
     tool_choice: Optional[Union[str, Dict]] = 'auto'
-    images: List[str] = field(default_factory=list)
 
 
 @dataclass
-class CompletionRequest(XRequestConfig, CompletionRequestMixin):
+class CompletionRequest(MultiModalRequestMixin, XRequestConfig, CompletionRequestMixin):
     pass
 
 
 @dataclass
-class ChatCompletionRequest(XRequestConfig, ChatCompletionRequestMixin):
+class ChatCompletionRequest(MultiModalRequestMixin, XRequestConfig, ChatCompletionRequestMixin):
     pass
 
 

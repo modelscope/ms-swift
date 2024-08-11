@@ -3,10 +3,9 @@ import re
 from copy import deepcopy
 from functools import partial
 from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
-import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
@@ -19,6 +18,8 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
+from .vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
+                           load_video_llava, load_video_minicpmv, rescale_image, transform_image)
 
 logger = get_logger()
 
@@ -344,7 +345,7 @@ class Template:
 
             if example.get('images') and images_path:
                 raise ValueError('Do not mix use the <img></img> tag and <image> tag.')
-            example['images'] = example.get('images', []) + images_path
+            example['images'] = example.get('images') or [] + images_path
 
         # audio, video
         if self.is_multimodal in {True, None}:
@@ -354,7 +355,7 @@ class Template:
                     example.get('query'),
                     example.get('history') or [], tag, pattern)
 
-                example[k] = example.get(k, []) + medias_path
+                example[k] = example.get(k) or [] + medias_path
 
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
@@ -377,11 +378,10 @@ class Template:
             example['objects'] = objects
 
         # Load image into PIL format
-        from .vision_utils import load_image, rescale_image, _read_batch
         images = example.get('images') or []
         if images:
             if example.get('objects') or self.load_medias or self._is_lmdeploy or self._is_vllm:
-                images = _read_batch(images, load_image)
+                images = load_batch(images, load_image)
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
@@ -1138,13 +1138,6 @@ register_template(
     TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
 
-def _read_audio(audio_path, sampling_rate):
-    import librosa
-    from .vision_utils import _load_file
-    audio = _load_file(audio_path)
-    return librosa.load(audio, sr=sampling_rate)[0]
-
-
 class _Qwen2AudioTemplateMixin:
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1153,8 +1146,8 @@ class _Qwen2AudioTemplateMixin:
             return inputs, {}
         processor = self.tokenizer.processor
         sampling_rate = processor.feature_extractor.sampling_rate
-        from .vision_utils import _read_batch
-        audios = _read_batch(example.get('audios') or [], load_func=partial(_read_audio, sampling_rate=sampling_rate))
+        audios = load_batch(
+            example.get('audios') or [], load_func=partial(load_audio_qwen, sampling_rate=sampling_rate))
         if audios:
             audio_inputs = processor.feature_extractor(
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
@@ -1211,26 +1204,6 @@ yi_vl_default_system = (
     '仔细阅读所有的图像，并对人类的问题做出信息丰富、有帮助、详细的和礼貌的回答。')
 
 
-def _load_video_llava(video_path: str) -> np.ndarray:
-    import av
-    container = av.open(video_path)
-    total_frames = container.streams.video[0].frames
-    indices = np.arange(0, total_frames, total_frames / 8).astype(int)
-    frames = []
-    container.seek(0)
-    start_index = indices[0]
-    end_index = indices[-1]
-    for i, frame in enumerate(container.decode(video=0)):
-        if i > end_index:
-            break
-        if i >= start_index and i in indices:
-            frames.append(frame)
-    return np.stack([x.to_ndarray(format='rgb24') for x in frames])
-
-
-_T = TypeVar('_T')
-
-
 class YiVLTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
@@ -1247,7 +1220,7 @@ class YiVLTemplate(Template):
         if not hasattr(model, 'vision_tower'):
             model = model.model
         image_processor = model.vision_tower.image_processor
-        images = example.get('images', [])
+        images = example.get('images') or []
         for i, image in enumerate(images):
             background_color = tuple(int(x * 255) for x in image_processor.image_mean)
             image = expand2square(image, background_color)
@@ -1306,7 +1279,7 @@ class GLM4VTemplate(GLMTemplate):
         idx_list = _findall(input_ids, -100)
         if idx_list:
             idx = idx_list[0]
-            image = example.get('images', [])[0]
+            image = example.get('images')[0]
             placeholder = '<|begin_of_image|><|endoftext|><|end_of_image|>'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -1492,7 +1465,7 @@ class InternLMXComposer2Template(Template):
         if len(inputs) == 0:
             return inputs, {}
         dtype = self.model.dtype
-        images = example.get('images', [])
+        images = example.get('images') or []
 
         if self.version == 'v2.5':
             hd_num = 24
@@ -1622,8 +1595,7 @@ class InternvlTemplate(Template):
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
-        from .vision_utils import transform_image
-        images = example.get('images', [])
+        images = example.get('images')
         if images:
             pixel_values_images = [transform_image(image) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0)
@@ -1704,9 +1676,8 @@ class Internvl2Template(InternvlTemplate):
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
-        from .vision_utils import transform_image
-        images = example.get('images', [])
-        videos_path = example.get('videos', [])
+        images = example.get('images')
+        videos_path = example.get('videos')
         if images:
             pixel_values = [transform_image(image) for image in images]
             assert len(pixel_values) == len(
@@ -1729,8 +1700,7 @@ class Internvl2Template(InternvlTemplate):
             inputs['image_flags'] = torch.ones(patches)
         elif videos_path:
             assert len(videos_path) == 1, f'videos_path: {videos_path}'
-            from .vision_utils import load_video
-            pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
+            pixel_values, num_patches = load_video_internvl(videos_path[0], num_segments=self.video_segments)
             assert len(num_patches) == len(
                 idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
             added_tokens_len = 0
@@ -1835,9 +1805,8 @@ class FlorenceTemplate(Template):
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         processor = self.tokenizer.processor
-        images = example.get('images', [])
+        images = example.get('images') or []
         assert len(images) == 1, 'Florence series models only supports input with a single image.'
-        from .vision_utils import transform_image
         image_tensors = transform_image(images[0])
         example['_image'] = image_tensors
 
@@ -1889,7 +1858,6 @@ class FlorenceTemplate(Template):
         return generate_ids[0].tolist()
 
     def post_process_generate_response(self, response, example):
-        from .vision_utils import load_image
         if isinstance(example['images'], list):
             example['images'] = example['images'][0]
         image = load_image(example['images'])
@@ -1953,7 +1921,7 @@ class LlavaHfTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        images = example.get('images', [])
+        images = example.get('images')
         if images:
             image_processor = self.tokenizer.processor.image_processor
             image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
@@ -1983,8 +1951,7 @@ class LlavaVideoTemplate(Template):
         images = example.get('images') or []
         videos_path = example.get('videos') or []
         if len(videos_path) > 0:
-            from .vision_utils import _read_batch
-            videos = _read_batch(videos_path, _load_video_llava)
+            videos = load_batch(videos_path, load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
@@ -2035,7 +2002,7 @@ class LLavaTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        images = example.get('images', [])
+        images = example.get('images') or []
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images
         model = self.model.model
@@ -2132,7 +2099,7 @@ class LLavaLlamaTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        raw_image = example.get('images', [])
+        raw_image = example.get('images')
         if raw_image:
             pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
@@ -2164,7 +2131,7 @@ class PaliGemmaTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        raw_image = example.get('images', [])
+        raw_image = example.get('images')
         processor = self.tokenizer.processor
         if inputs['labels'] is not None:
             n = upper_bound(0, len(inputs['labels']), lambda idx: inputs['labels'][idx] == -100)
@@ -2204,7 +2171,7 @@ class Phi3VisionTemplate(Template):
             return super().replace_tag(media_type, index, example)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        images = example.get('images', [])
+        images = example.get('images') or []
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -2369,7 +2336,7 @@ class CogTemplate(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        image = example.get('images', [])
+        image = example.get('images') or []
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
@@ -2423,28 +2390,6 @@ register_template(
     lazy_tokenize=True)
 
 
-def _load_video_cogvlm2(video_path: str) -> np.ndarray:
-    from decord import cpu, VideoReader, bridge
-    from .vision_utils import _load_file
-    bridge.set_bridge('torch')
-    mp4_stream = _load_file(video_path)
-    clip_end_sec = 60
-    clip_start_sec = 0
-    num_frames = 24
-    if mp4_stream is not None:
-        decord_vr = VideoReader(mp4_stream, ctx=cpu(0))
-    else:
-        decord_vr = VideoReader(video_path, ctx=cpu(0))
-    duration = len(decord_vr)  # duration in terms of frames
-    start_frame = int(clip_start_sec * decord_vr.get_avg_fps())
-    end_frame = min(duration, int(clip_end_sec * decord_vr.get_avg_fps())) if \
-        clip_end_sec is not None else duration
-    frame_id_list = np.linspace(start_frame, end_frame - 1, num_frames, dtype=int)
-    video_data = decord_vr.get_batch(frame_id_list)
-    video_data = video_data.permute(3, 0, 1, 2)
-    return video_data
-
-
 class Cog2VideoTemplate(CogTemplate):
 
     def check_example(self, example):
@@ -2455,9 +2400,8 @@ class Cog2VideoTemplate(CogTemplate):
         inputs, _ = super(CogTemplate, self)._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        videos_path = example.get('videos', [])
-        from .vision_utils import _read_batch
-        video = _read_batch(videos_path, _load_video_cogvlm2)
+        videos_path = example.get('videos') or []
+        video = load_batch(videos_path, load_video_cogvlm2)
         inputs.pop('loss_scale', None)
         model = self.model
         inputs2 = model.build_conversation_input_ids(
@@ -2513,7 +2457,7 @@ class MiniCPMVTemplate(Template):
             return [[-1]]
 
     def check_example(self, example):
-        images = example.get('images', [])
+        images = example.get('images') or []
         if not self._is_vllm:
             assert len(images) == 1
 
@@ -2533,8 +2477,8 @@ class MiniCPMVTemplate(Template):
             grid = images[i].get('grid')
             if len(feat) > 1 and grid is not None:
                 context_list.append('<slice>')
-                for i in range(grid[1]):
-                    if i > 0:
+                for j in range(grid[1]):
+                    if j > 0:
                         context_list.append('\n')
                     for _ in range(grid[0]):
                         context_list += ['<image>', [-100], '</image>']
@@ -2620,30 +2564,6 @@ register_template(
     dataloader_pin_memory=False)
 
 
-def _encode_video(video_path):
-    from .vision_utils import _load_file
-    mp4_stream = _load_file(video_path)
-    MAX_NUM_FRAMES = 64
-
-    from PIL import Image
-    from decord import VideoReader, cpu  # pip install decord
-
-    def uniform_sample(_l, _n):
-        gap = len(_l) / _n
-        idxs = [int(i * gap + gap / 2) for i in range(_n)]
-        return [_l[i] for i in idxs]
-
-    vr = VideoReader(mp4_stream, ctx=cpu(0))
-    sample_fps = round(vr.get_avg_fps() / 1)  # FPS
-    frame_idx = [i for i in range(0, len(vr), sample_fps)]
-
-    if len(frame_idx) > MAX_NUM_FRAMES:
-        frame_idx = uniform_sample(frame_idx, MAX_NUM_FRAMES)
-    frames = vr.get_batch(frame_idx).asnumpy()
-    frames = [Image.fromarray(v.astype('uint8')) for v in frames]
-    return frames
-
-
 class MiniCPMV2_6Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
@@ -2654,7 +2574,6 @@ class MiniCPMV2_6Template(Template):
             return [[-1]]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        from .vision_utils import _read_batch
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -2666,7 +2585,7 @@ class MiniCPMV2_6Template(Template):
         max_slice_nums = None
 
         if videos_path:
-            images = _read_batch(videos_path, _encode_video)
+            images = load_batch(videos_path, load_video_minicpmv)
             use_image_id = False
             max_slice_nums = 1  # or 2
 
@@ -2807,7 +2726,7 @@ class mPlugOwl2Template(Template):
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         from mplug_owl2.mm_utils import process_images
         processor = self.tokenizer.processor
-        images = example.get('images', [])
+        images = example.get('images') or []
         for i, image in enumerate(images):
             # ref: https://modelscope.cn/models/iic/mPLUG-Owl2.1
             max_edge = max(image.size)
