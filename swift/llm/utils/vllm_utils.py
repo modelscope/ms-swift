@@ -556,8 +556,6 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         image_input_shape=args.image_input_shape,
         image_feature_size=args.image_feature_size)
     tokenizer = llm_engine.hf_tokenizer
-    model_config = llm_engine.model_config
-    logger.info(f'model_config: {model_config.hf_config}')
 
     if not args.do_sample:
         args.temperature = 0

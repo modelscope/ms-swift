@@ -18,8 +18,8 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
-from .vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                           load_video_llava, load_video_minicpmv, rescale_image, transform_image)
+from .vision_utils import (load_audio_qwen, load_batch, load_image, transform_image, load_video_cogvlm2,
+                           load_video_internvl, load_video_llava, load_video_minicpmv, rescale_image)
 
 logger = get_logger()
 
@@ -284,7 +284,11 @@ class Template:
             setattr(self, key, value)
 
         if self.model and hasattr(self.model, 'register_forward_pre_hook'):
-            self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
+
+            def _pre_forward_hook(module, args, kwargs):
+                return self.pre_forward(args, kwargs)
+
+            self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
 
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
@@ -662,25 +666,24 @@ class Template:
         replace_tag = self.replace_tag
         if self._is_lmdeploy:
             replace_tag = MethodType(Template.replace_tag, self)
+        for k in ['image', 'video', 'audio']:
+            example[f'{k}_index'] = 0
 
         for context, loss_scale in zip(context_list, loss_scale_list):
-            if context == '<image>':
-                c_list = replace_tag('image', example.get('image_index', 0), example)
-                example['image_index'] = example.get('image_index', 0) + 1
-            elif context == '<video>':
-                c_list = replace_tag('video', example.get('video_index', 0), example)
-                example['video_index'] = example.get('video_index', 0) + 1
-            elif context == '<audio>':
-                c_list = replace_tag('audio', example.get('audio_index', 0), example)
-                example['audio_index'] = example.get('audio_index', 0) + 1
-            elif context == '<ref-object>':
-                c_list = self.replace_object(example.get('object_index', 0), example)
-                example['object_index'] = example.get('object_index', 0) + 1
-            elif context == '<bbox>':
-                c_list = self.replace_box(example.get('box_index', 0), example)
-                example['box_index'] = example.get('box_index', 0) + 1
+            for k in ['image', 'video', 'audio']:
+                if context == f'<{k}>':
+                    c_list = replace_tag(k, example[f'{k}_index'], example)
+                    example[f'{k}_index'] += 1
+                    break
             else:
-                c_list = [context]
+                if context == '<ref-object>':
+                    c_list = self.replace_object(example.get('object_index', 0), example)
+                    example['object_index'] = example.get('object_index', 0) + 1
+                elif context == '<bbox>':
+                    c_list = self.replace_box(example.get('box_index', 0), example)
+                    example['box_index'] = example.get('box_index', 0) + 1
+                else:
+                    c_list = [context]
             res += c_list
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
@@ -823,10 +826,6 @@ class Template:
             padded_sequences.append(padded_seq)
 
         return torch.stack(padded_sequences)
-
-    def _pre_forward_hook(self, module, args, kwargs):
-        self.pre_forward(args, kwargs)
-        return args, kwargs
 
     def pre_forward(self, args, kwargs):
         pass
@@ -1645,6 +1644,12 @@ class Internvl2Template(InternvlTemplate):
             return image_context
         elif media_type == 'video':
             context_list = []
+            video = example['videos'][index]
+            images = example['images']
+            image_index = example['image_index']
+            new_images = load_video_internvl(video, num_segments=self.video_segments)
+            example['images'] = images[:image_index] + new_images + images[image_index:]
+            example['image_index'] += self.video_segments
             for i in range(self.video_segments):
                 context_list.append(f'Frame{i + 1}: ')
                 context_list += image_context
@@ -1677,45 +1682,28 @@ class Internvl2Template(InternvlTemplate):
         idx_list = _findall(input_ids, -100)
         labels = inputs.get('labels')
         images = example.get('images')
-        videos_path = example.get('videos')
         if images:
-            pixel_values = [transform_image(image) for image in images]
-            assert len(pixel_values) == len(
-                idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
-            added_tokens_len = 0
-            patches = 0
-            for idx, pv in zip(idx_list, pixel_values):
-                patches += pv.shape[0]
-                img_tokens: List[int] = self.tokenizer.encode(
-                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n',
-                    add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-                if labels is not None:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
-                added_tokens_len += len(img_tokens) - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
-            inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(patches)
-        elif videos_path:
-            assert len(videos_path) == 1, f'videos_path: {videos_path}'
-            pixel_values, num_patches = load_video_internvl(videos_path[0], num_segments=self.video_segments)
-            assert len(num_patches) == len(
-                idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
-            added_tokens_len = 0
-            for idx, num_patch in zip(idx_list, num_patches):
-                img_tokens: List[int] = self.tokenizer.encode(
-                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-                if labels is not None:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
-                added_tokens_len += len(img_tokens) - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
+            has_video = bool(example.get('videos'))
+            pixel_values = [transform_image(image, max_num=1 if has_video else 12) for image in images]
+            num_patches = [pv.shape[0] for pv in pixel_values]
+            pixel_values = torch.cat(pixel_values)
             inputs['pixel_values'] = pixel_values.to(self.model.dtype)
             inputs['image_flags'] = torch.ones(sum(num_patches))
+        else:
+            num_patches = []
+        assert len(num_patches) == len(
+            idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+        added_tokens_len = 0
+        for idx, num_patch in zip(idx_list, num_patches):
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>', add_special_tokens=False)
+            input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+            if labels is not None:
+                labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                             + 1:]
+            added_tokens_len += len(img_tokens) - 1
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
         inputs.pop('loss_scale', None)
         return inputs, {}
 
