@@ -41,7 +41,6 @@ pip install hqq
 
 # 使用eetq量化：
 # pip install transformers>=4.41
-
 # 参考https://github.com/NetEase-FuXi/EETQ
 git clone https://github.com/NetEase-FuXi/EETQ.git
 cd EETQ/
