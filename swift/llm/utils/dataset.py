@@ -314,7 +314,8 @@ def register_dataset_info(dataset_name: str, d_info: Dict[str, Any], **kwargs) -
 def load_ms_dataset(dataset_id: str,
                     subset_split_list: Optional[List[SubsetSplit]],
                     use_hf: bool = False,
-                    streaming: bool = False) -> Optional[DATASET_TYPE]:
+                    streaming: bool = False,
+                    revision: Optional[str] = None) -> Optional[DATASET_TYPE]:
     if not use_hf:
         from modelscope import MsDataset
 
@@ -328,7 +329,8 @@ def load_ms_dataset(dataset_id: str,
         subset_name, split = subset_split
         if use_hf:
             try:
-                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split, streaming=streaming)
+                dataset = load_hf_dataset(
+                    dataset_id, name=subset_name, split=split, streaming=streaming, revision=revision)
             except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
@@ -346,6 +348,7 @@ def load_ms_dataset(dataset_id: str,
                     dataset_id,
                     subset_name=subset_name,
                     split=split,
+                    version=revision or 'master',
                     download_mode=download_mode,
                     use_streaming=streaming)
             except ValueError as e:
@@ -458,7 +461,8 @@ def get_dataset_from_repo(dataset_id: str,
         subset_split_list = split
     else:
         subset_split_list = list(itertools.product(subsets, split))
-    dataset = load_ms_dataset(dataset_id, subset_split_list, use_hf, streaming=streaming)
+    dataset = load_ms_dataset(
+        dataset_id, subset_split_list, use_hf, streaming=streaming, revision=kwargs.get('revision'))
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns, **kwargs)
 
@@ -1466,6 +1470,7 @@ register_dataset(
     _preprocess_llava_instruct_images,
     get_dataset_from_repo,
     split=['train'],
+    revision='d5db3806e395c60496630a206c336932e85a2d00',
     tags=['chat', 'multi-modal', 'vision'])
 
 
@@ -1533,6 +1538,7 @@ register_dataset(
     split=['train'],
     hf_dataset_id='liuhaotian/LLaVA-Pretrain',
     huge_dataset=True,
+    revision='e3a3f0bfaad05e90e46745152a32bf944e0f4a63',
     tags=['vqa', 'multi-modal', 'quality'])
 
 
@@ -2683,6 +2689,7 @@ def get_dataset(
             dataset_test_ratio=dataset_test_ratio,
             remove_useless_columns=remove_useless_columns,
             use_hf=use_hf,
+            revision=dataset_info.get('revision'),
             **kwargs)
 
         if dataset_name == 'self-cognition':
