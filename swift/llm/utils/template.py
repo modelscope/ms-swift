@@ -18,8 +18,8 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
-from .vision_utils import (load_audio_qwen, load_batch, load_image, transform_image, load_video_cogvlm2,
-                           load_video_internvl, load_video_llava, load_video_minicpmv, rescale_image)
+from .vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
+                           load_video_llava, load_video_minicpmv, rescale_image, transform_image)
 
 logger = get_logger()
 
