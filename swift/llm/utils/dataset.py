@@ -329,7 +329,9 @@ def load_ms_dataset(dataset_id: str,
         subset_name, split = subset_split
         if use_hf:
             try:
-                dataset = load_hf_dataset(dataset_id, name=subset_name, split=split, streaming=streaming)
+                revision = revision if revision != 'master' else 'main'
+                dataset = load_hf_dataset(
+                    dataset_id, name=subset_name, split=split, streaming=streaming, revision=revision)
             except ValueError as e:
                 logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
                              f'split={split} with error: {e}')
