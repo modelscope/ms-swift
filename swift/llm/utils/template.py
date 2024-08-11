@@ -283,7 +283,7 @@ class Template:
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
 
-        if self.model:
+        if self.model and hasattr(self.model, 'register_forward_pre_hook'):
             self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
 
     def check_example(self, example: Dict[str, Any]) -> None:
