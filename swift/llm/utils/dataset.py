@@ -315,7 +315,7 @@ def load_ms_dataset(dataset_id: str,
                     subset_split_list: Optional[List[SubsetSplit]],
                     use_hf: bool = False,
                     streaming: bool = False,
-                    revision='master') -> Optional[DATASET_TYPE]:
+                    revision: str = 'master') -> Optional[DATASET_TYPE]:
     if not use_hf:
         from modelscope import MsDataset
 
