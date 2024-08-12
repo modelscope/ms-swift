@@ -36,10 +36,11 @@ from swift.llm import (
 
 # 'minicpm-v-v2_5-chat', 'minicpm-v-v2_6-chat', 'internvl2-1b', 'internvl2-4b', 'phi3-vision-128k-instruct'
 model_type = ModelType.llava1_6_mistral_7b_instruct
-llm_engine = get_vllm_engine(model_type)
+model_id_or_path = None
+llm_engine = get_vllm_engine(model_type, model_id_or_path=model_id_or_path)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer)
-# 与`transformers.GenerationConfig`类似的接口
+
 llm_engine.generation_config.max_new_tokens = 1024
 
 images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
@@ -69,6 +70,69 @@ history: [['Describe this image.', "The image features a close-up of a kitten's 
 """
 ```
 
+
+batch处理:
+```python
+# vllm>=0.5.4
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_vllm_engine, get_template, inference_vllm, ModelType,
+    get_default_template_type, inference_stream_vllm
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.minicpm_v_v2_6_chat
+model_id_or_path = None
+vllm_engine = get_vllm_engine(model_type, torch.bfloat16, model_id_or_path=model_id_or_path,
+                              max_model_len=8192)
+
+tokenizer = vllm_engine.hf_tokenizer
+vllm_engine.generation_config.max_new_tokens = 256
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+
+query = '<image>描述这张图片'
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+generation_info = {}
+request_list = [{'query': query, 'images': images} for _ in range(100)]
+resp_list = inference_vllm(vllm_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
+print(f'query: {query}')
+print(f'response: {resp_list[0]["response"]}')
+print(generation_info)
+
+# 流式
+generation_info = {}
+gen = inference_stream_vllm(vllm_engine, template, request_list, generation_info=generation_info)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+# only show first
+for resp_list in gen:
+    resp = resp_list[0]
+    if resp is None:
+        continue
+    response = resp['response']
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
+print(generation_info)
+"""
+100%|██████████████████████████████████████████████████████████████████████████████| 100/100 [00:01<00:00, 91.47it/s]
+100%|██████████████████████████████████████████████████████████████████████████████| 100/100 [00:22<00:00,  4.48it/s]
+query: <image>描述这张图片
+response: 这张图片展示了一只小猫咪的特写，可能是美国短毛猫品种，因为其花纹和毛发质地。猫咪有着引人注目的蓝色眼睛，这是其外貌中非常突出的特征。它皮毛上有着独特的黑色条纹，从面颊延伸至头顶，暗示着一种有条纹的花纹图案。它的耳朵小而尖，内侧是粉色的。猫咪的胡须细长而突出，围绕在它的下颌两侧和眼睛周围。猫咪坐着，用一种表达丰富的方式直视着，嘴巴微微张开，露出粉红色的内唇。背景模糊，柔和的光线增强了猫咪的特征。
+{'num_prompt_tokens': 2700, 'num_generated_tokens': 14734, 'num_samples': 100, 'runtime': 23.53027338697575, 'samples/s': 4.249844375176322, 'tokens/s': 626.1720702384794}
+query: <image>描述这张图片
+response: 这张图片展示了一只小猫的特写，可能是一只幼年猫，在模糊的背景中，集中注意力在猫的表情上。这只猫长着一身白色与黑色条纹相间的毛皮，带有微妙的灰褐色。它的眼睛大而圆，具有高度的反光度，表明它们可能含有异色瞳，即一只眼睛是蓝色的，另一只是绿色的，但这只猫两只眼睛都是绿色的。睫毛清晰可见，增添了一种生动的表情。猫的耳朵竖立着，内部呈粉红色，边缘有浅色的阴影，显示出柔软的毛发。胡须又长又明显，突显了小猫的脸部形状。这个品种的猫看起来是一个常见品种，毛皮图案和眼睛颜色表明它可能是一只虎斑猫。光线柔和，产生一种天鹅绒般的效果，突出了猫绒毛的质感。
+{'num_prompt_tokens': 2700, 'num_generated_tokens': 14986, 'num_samples': 100, 'runtime': 23.375922130944673, 'samples/s': 4.277906105257837, 'tokens/s': 641.0870089339394}
+"""
+```
+
 使用CLI:
 ```shell
 # 多模态模型必须显式指定`--infer_backend vllm`
@@ -77,6 +141,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --in
 # 对数据集进行批量推理
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --infer_backend vllm \
     --val_dataset coco-en-2-mini#100
+
+# TP:
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl2-1b \
+    --infer_backend vllm --tensor_parallel_size 2
 ```
 
 ```python
@@ -112,6 +180,10 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 **服务端:**
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-instruct --infer_backend vllm
+
+# TP:
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internvl2-1b \
+    --infer_backend vllm --tensor_parallel_size 2
 ```
 
 **客户端:**
