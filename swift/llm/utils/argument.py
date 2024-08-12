@@ -714,6 +714,7 @@ class SftArguments(ArgumentsBase):
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
+    auto_find_batch_size: bool = False
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
@@ -1113,6 +1114,9 @@ class SftArguments(ArgumentsBase):
 
         if 'accelerator_config' in parameters:
             kwargs['accelerator_config'] = {'dispatch_batches': False}
+
+        if 'auto_find_batch_size' in parameters:
+            kwargs['auto_find_batch_size'] = self.auto_find_batch_size
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,

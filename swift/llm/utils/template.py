@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import re
 from copy import deepcopy
 from functools import partial
@@ -825,10 +826,13 @@ class Template:
         return torch.stack(padded_sequences)
 
     def _pre_forward_hook(self, module, args, kwargs):
-        self.pre_forward(args, kwargs)
+        self.pre_forward(module, args, kwargs)
+        parameters = inspect.signature(module.forward).parameters
+        if 'position_ids' not in parameters:
+            kwargs.pop('position_ids', None)
         return args, kwargs
 
-    def pre_forward(self, args, kwargs):
+    def pre_forward(self, module, args, kwargs):
         pass
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -838,6 +842,7 @@ class Template:
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
+        from transformers import DataCollatorWithFlattening
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
         inputs_embeds, input_ids = None, None
