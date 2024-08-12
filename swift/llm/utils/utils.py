@@ -209,9 +209,11 @@ class ConstantLengthDataset(IterableDataset):
         packed_sequence = []
         for sequence in binpacked:
             packed = {}
+            position_id_lengths = [len(s[0]['input_ids']) for s in sequence]
             for key in sequence[0][0].keys():
                 packed[key] = np.concatenate([s[0][key] for s in sequence])
             packed_sequence.append(packed)
+            packed['position_ids'] = np.concatenate([list(range(pil)) for pil in position_id_lengths])
         return packed_sequence
 
     def __iter__(self):

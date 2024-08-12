@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.08.12: Support packing with flash-attention without the contamination of attention_mask, use `--packing` to begin. Check[PR](https://github.com/huggingface/transformers/pull/31629/files).
 - 🔥2024.08.09: Support for inference and fine-tuning of the qwen2-audio model. Best practice can be found [here](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.08: Supports the qwen2-math series models: 1.5B, 7B, 72B. Use `swift infer --model_type qwen2-math-1_5b-instruct` for an experience.
 - 🔥2024.08.07: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.

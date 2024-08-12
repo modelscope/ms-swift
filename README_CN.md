@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.08.12: 支持packing和flash-attention时不污染attention_mask, 使用`--packing`开启。详情见[PR](https://github.com/huggingface/transformers/pull/31629/files).
 - 🔥2024.08.09: 支持qwen2-audio模型的推理与微调. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.08: 支持qwen2-math系列模型, 1.5B, 7B, 72B. 使用`swift infer --model_type qwen2-math-1_5b-instruct`进行体验.
 - 🔥2024.08.07: 支持使用vllm对多模态大模型: llava系列, internvl2系列, phi3-vision, minicpm-v2.5进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.
