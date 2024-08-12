@@ -35,18 +35,16 @@ pip install auto_gptq optimum -U
 pip install bitsandbytes -U
 
 # Using hqq quantization:
-# Requires transformers version >4.40, install from source
-pip install git+https://github.com/huggingface/transformers pip install hqq
-# If compatibility with training is desired, install peft from source
-pip install git+https://github.com/huggingface/peft.git
+# pip install transformers>=4.41
+pip install hqq
 
 # Using eetq quantization:
-# Requires transformers version >4.40, install from source
-pip install git+https://github.com/huggingface/transformers
-# See https://github.com/NetEase-FuXi/EETQ for reference
-git clone https://github.com/NetEase-FuXi/EETQ.git cd EETQ/ git submodule update --init --recursive pip install .
-# If compatibility with training is desired, install peft from source
-pip install git+https://github.com/huggingface/peft.git
+# pip install transformers>=4.41
+# 参考https://github.com/NetEase-FuXi/EETQ
+git clone https://github.com/NetEase-FuXi/EETQ.git
+cd EETQ/
+git submodule update --init --recursive
+pip install .
 
 # Environment alignment (usually not needed. If you encounter errors, you can run the code below, the repository uses the latest environment for testing)
 pip install -r requirements/framework.txt -U

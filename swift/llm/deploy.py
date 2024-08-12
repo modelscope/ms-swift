@@ -2,7 +2,6 @@
 import asyncio
 import inspect
 import logging
-import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
@@ -165,17 +164,12 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         messages = request.messages
-        images = request.images
         if _args.is_multimodal:
-            compat_openai(messages, images, template.template_type)
+            compat_openai(messages, request)
             messages = decode_base64(messages=messages)['messages']
-            images = decode_base64(images=images)['images']
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)
         example = messages_to_history(messages)
-        if len(images) > 0:
-            example['images'] = images
-
         if request.tool_choice is not None and request.tools is not None:
             if isinstance(request.tool_choice, dict):
                 name = request.tool_choice['function']['name']
@@ -185,9 +179,6 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 example['tools'] = [tool]
             elif request.tool_choice == 'auto':
                 example['tools'] = request.tools
-        executor = ThreadPoolExecutor(max_workers=1)
-        loop = asyncio.get_running_loop()
-        inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = messages
     else:
@@ -197,19 +188,21 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
         prompt = request.prompt
-        images = request.images
         if _args.is_multimodal:
             prompt = decode_base64(prompt=prompt)['prompt']
-            images = decode_base64(images=images)['images']
         example = {'query': prompt}
-        if len(images) > 0:
-            example['images'] = images
-        executor = ThreadPoolExecutor(max_workers=1)
-        loop = asyncio.get_running_loop()
-        inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = prompt
 
+    for media_key in ['images', 'audios', 'videos']:
+        medias = getattr(request, media_key, None) or []
+        if medias:
+            break
+    if len(medias) > 0:
+        example[media_key] = medias
+    executor = ThreadPoolExecutor(max_workers=1)
+    loop = asyncio.get_running_loop()
+    inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
     request_info = {'request_id': request_id}
     request_info.update(_request)
 
