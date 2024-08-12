@@ -4122,6 +4122,7 @@ def patch_internvl_forward(model) -> None:
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
@@ -4143,6 +4144,7 @@ def patch_internvl_forward(model) -> None:
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-2B-V1-5')
@@ -4154,6 +4156,7 @@ def patch_internvl_forward(model) -> None:
     requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
@@ -5217,7 +5220,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
     ModelType.qwen_vl,
     'qwen/Qwen-VL',
     LoRATM.qwen_vl,
-    TemplateType.default_generation,
+    TemplateType.qwen_vl_generation,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -5378,8 +5381,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
 @register_model(
     ModelType.qwen_vl_chat_int4,
     'qwen/Qwen-VL-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.qwen,
+    LoRATM.qwen_vl,
+    TemplateType.qwen_vl,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={

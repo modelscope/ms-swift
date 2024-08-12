@@ -170,7 +170,7 @@ def transform_image(image, input_size=448, max_num=12):
 
 
 @load_file_decorator
-def load_video_internvl(video_io: BytesIO, bound=None, input_size=448, max_num=1, num_segments=32):
+def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
     from decord import VideoReader, cpu
     from PIL import Image
     vr = VideoReader(video_io, ctx=cpu(0), num_threads=1)

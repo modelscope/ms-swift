@@ -18,8 +18,8 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
-from .vision_utils import (load_audio_qwen, load_batch, load_image, transform_image, load_video_cogvlm2,
-                           load_video_internvl, load_video_llava, load_video_minicpmv, rescale_image)
+from .vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
+                           load_video_llava, load_video_minicpmv, rescale_image, transform_image)
 
 logger = get_logger()
 
@@ -35,6 +35,7 @@ class TemplateType:
     # text-generation
     default_generation = 'default-generation'
     chatglm_generation = 'chatglm-generation'
+    qwen_vl_generation = 'qwen-vl-generation'
     qwen_audio_generation = 'qwen-audio-generation'
     # chat
     default = 'default'
@@ -591,16 +592,14 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            return self.image_placeholder
+            if self._is_lmdeploy:
+                return [[-100]]
+            else:
+                return self.image_placeholder
         elif media_type == 'video':
             return ['<video>']
         elif media_type == 'audio':
             return ['<audio>']
-
-    def replace_tag_lmdeploy(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    example: Dict[str, Any]) -> List[Context]:
-        if media_type == 'image':
-            return [[-100]]
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -665,14 +664,13 @@ class Template:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
-        replace_tag = self.replace_tag_lmdeploy if self._is_lmdeploy else self.replace_tag
         for k in ['image', 'video', 'audio']:
             example[f'{k}_index'] = 0
 
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
                 if context == f'<{k}>':
-                    c_list = replace_tag(k, example[f'{k}_index'], example)
+                    c_list = self.replace_tag(k, example[f'{k}_index'], example)
                     example[f'{k}_index'] += 1
                     break
             else:
@@ -1045,7 +1043,7 @@ class QwenTemplate(Template):
                          auto_add_bos=auto_add_bos)
 
 
-class QwenVLTemplate(QwenTemplate):
+class _QwenVLTemplateMixin:
 
     load_medias = False
 
@@ -1059,10 +1057,13 @@ class QwenVLTemplate(QwenTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type == 'image'
-        images = example.get('images') or []
-        image = images[index]
-        assert isinstance(image, str)
-        return [f'Picture {index + 1}:<img>{image}</img>\n']
+        if self._is_lmdeploy:
+            return [f'Picture {index + 1}:', [-100], '\n']
+        else:
+            images = example.get('images') or []
+            image = images[index]
+            assert isinstance(image, str)
+            return [f'Picture {index + 1}:<img>{image}</img>\n']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
@@ -1076,7 +1077,19 @@ class QwenVLTemplate(QwenTemplate):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
+
+
+class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
+    pass
+
+
+class QwenVLGenerationTemplate(_QwenVLTemplateMixin, DefaultGenerationTemplate):
+    pass
+
+
 register_template(TemplateType.qwen_vl, QwenVLTemplate())
+register_template(TemplateType.qwen_vl_generation, QwenVLGenerationTemplate())
+
 register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
@@ -1585,7 +1598,11 @@ class InternvlTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return ['<img>', [-100], '</img>\n']
+        if self._is_vllm:
+            image_context = ['<img><image></img>\n']
+        else:
+            image_context = ['<img>', [-100], '</img>\n']
+        return image_context
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1601,7 +1618,8 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
-            img_tokens: List[int] = self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * image_bs
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * image_bs
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
@@ -1657,9 +1675,6 @@ class Internvl2Template(InternvlTemplate):
                 context_list += image_context
             return context_list
 
-    def replace_tag_lmdeploy(self, media_type, index, example) -> List[Context]:
-        return self.replace_tag(media_type, index, example)
-
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
         if objects:
@@ -1700,7 +1715,8 @@ class Internvl2Template(InternvlTemplate):
             idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
         added_tokens_len = 0
         for idx, num_patch in zip(idx_list, num_patches):
-            img_tokens: List[int] = self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)  * self.num_image_token * num_patch
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * num_patch
             input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
             if labels is not None:
                 labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
@@ -2257,7 +2273,7 @@ class DeepseekVLTemplate(Template):
         images = example.get('images')
         processor = self.tokenizer.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
-        idx_list = _findall(input_ids, processor.image_id)
+        idx_list = _findall(input_ids, processor.image_id)  # '<image_placeholder>'
         new_input_ids, new_labels = [], []
         lo = 0
         for hi in idx_list:
