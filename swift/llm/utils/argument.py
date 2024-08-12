@@ -1524,6 +1524,9 @@ class EvalArguments(InferArguments):
     eval_batch_size: int = 8
     deploy_timeout: int = 60
 
+    do_sample: bool = False  # Note: for evaluation default is False
+    temperature: float = 0.0
+
     def __post_init__(self):
         super().__post_init__()
         if isinstance(self.eval_dataset, str):
