@@ -1702,8 +1702,8 @@ class Internvl2Template(InternvlTemplate):
         inputs, _ = super(InternvlTemplate, self)._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        input_ids = inputs['input_ids']
-        idx_list = _findall(input_ids, -100)
+        input_ids = inputs['input_ids']         # _encode里(就是700行context_list截胡那个地方)会把视频先encode成-100
+        idx_list = _findall(input_ids, -100)    # 找到input_ids为-100的位置 后续会在这些位置填视频frames的img_tokens
         labels = inputs.get('labels')
         from .vision_utils import transform_image
         images = example.get('images', [])
@@ -1731,17 +1731,17 @@ class Internvl2Template(InternvlTemplate):
         elif videos_path:
             assert len(videos_path) == 1, f'videos_path: {videos_path}'
             from .vision_utils import load_video
-            pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)
+            pixel_values, num_patches = load_video(videos_path[0], num_segments=self.video_segments)    # pixel_values: [video_segments, 3, H/W, W/H]
             assert len(num_patches) == len(
                 idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
-            added_tokens_len = 0
+            added_tokens_len = 0    # 用于保存每轮循环中 历史上已经由于增加img_tokens而加了多长 来确定这次应该在哪替换
             for idx, num_patch in zip(idx_list, num_patches):
                 img_tokens: List[int] = self.tokenizer.encode(
                     '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]    # 将视频位置替换为视频frames的img_tokens
                 if labels is not None:
                     labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
+                                                                                                 + 1:]              # 这些位置对应的label是-100
                 added_tokens_len += len(img_tokens) - 1
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
@@ -1781,6 +1781,20 @@ register_template(
 register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
 
 register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
+
+
+class InternVideo2Template(Internvl2Template):
+    video_segments = 8
+    system = '你是由上海人工智能实验室联合商汤科技开发的多模态大模型, 英文名叫InternVideo, 是一个有用无害的人工智能助手。'
+
+    # def __init__(self):
+    #     Template.__init__(
+    #         self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
+    #         self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
+    #         auto_add_bos=True)
+    def __init__(self):
+        Template.__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+                         system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
 
 class FlorenceTemplate(Template):
