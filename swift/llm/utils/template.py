@@ -286,7 +286,7 @@ class Template:
             setattr(self, key, value)
 
         if self.model and hasattr(self.model, 'register_forward_pre_hook'):
-            self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+            self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
 
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
@@ -597,11 +597,6 @@ class Template:
             return ['<video>']
         elif media_type == 'audio':
             return ['<audio>']
-
-    def replace_tag_lmdeploy(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                             example: Dict[str, Any]) -> List[Context]:
-        if media_type == 'image':
-            return [[-100]]
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -1686,9 +1681,6 @@ class Internvl2Template(InternvlTemplate):
                 context_list.append(f'Frame{i + 1}: ')
                 context_list += image_context
             return context_list
-
-    def replace_tag_lmdeploy(self, media_type, index, example) -> List[Context]:
-        return self.replace_tag(media_type, index, example)
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
