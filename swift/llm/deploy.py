@@ -195,11 +195,9 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         _request['prompt'] = prompt
 
     for media_key in ['images', 'audios', 'videos']:
-        medias = getattr(request, media_key, None) or []
+        medias = getattr(request, media_key, None)
         if medias:
-            break
-    if len(medias) > 0:
-        example[media_key] = medias
+            example[media_key] = medias
     executor = ThreadPoolExecutor(max_workers=1)
     loop = asyncio.get_running_loop()
     inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
