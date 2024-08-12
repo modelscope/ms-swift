@@ -562,6 +562,8 @@ class SftArguments(ArgumentsBase):
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
+    full_determinism: bool = False
+
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
                       'fourierft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
@@ -1144,6 +1146,7 @@ class SftArguments(ArgumentsBase):
             dataloader_pin_memory=self.dataloader_pin_memory,
             metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
             greater_is_better=self.predict_with_generate,
+            full_determinism=self.full_determinism,
             sortish_sampler=True,
             optim=self.optim,
             adam_beta1=self.adam_beta1,
