@@ -2482,7 +2482,7 @@ class MiniCPMVTemplate(Template):
             return
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
-        idx_list.insert(0, -100)
+        idx_list.insert(0, -1)
         new_input_ids = []
         features = []
         for i in range(len(idx_list) - 1):
@@ -2607,7 +2607,7 @@ class MiniCPMV2_6Template(Template):
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -100)
-        idx_list.insert(0, -100)
+        idx_list.insert(0, -1)
 
         from .utils import to_device
         image_processor = self.tokenizer.processor.image_processor
