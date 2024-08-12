@@ -562,6 +562,8 @@ class SftArguments(ArgumentsBase):
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
+    full_determinism: bool = False
+
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
                       'fourierft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
@@ -714,6 +716,7 @@ class SftArguments(ArgumentsBase):
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
+    auto_find_batch_size: bool = False
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
@@ -1103,7 +1106,7 @@ class SftArguments(ArgumentsBase):
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
-        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen']:
+        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size']:
             if k in parameters:
                 kwargs[k] = getattr(self, k)
         if 'eval_strategy' in parameters:
@@ -1140,6 +1143,7 @@ class SftArguments(ArgumentsBase):
             dataloader_pin_memory=self.dataloader_pin_memory,
             metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
             greater_is_better=self.predict_with_generate,
+            full_determinism=self.full_determinism,
             sortish_sampler=True,
             optim=self.optim,
             adam_beta1=self.adam_beta1,

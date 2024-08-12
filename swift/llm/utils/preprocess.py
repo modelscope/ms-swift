@@ -8,6 +8,7 @@ from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 from transformers.utils import strtobool
 
+from swift.utils import get_logger
 from .media import MediaTag
 from .template import History
 
@@ -15,6 +16,8 @@ PreprocessFunc = Callable[[HfDataset], HfDataset]
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
+
+logger = get_logger()
 
 
 def _reduce_columns(cls: type) -> type:
@@ -268,7 +271,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 else:
                     row[self.media_key] = medias
             return row
-        except (AssertionError, SyntaxError):
+        except (AssertionError, SyntaxError) as e:
+            logger.error(e)
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
             else:

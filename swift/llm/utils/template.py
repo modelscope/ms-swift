@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import re
 from copy import deepcopy
 from functools import partial
@@ -825,10 +826,13 @@ class Template:
         return torch.stack(padded_sequences)
 
     def _pre_forward_hook(self, module, args, kwargs):
-        self.pre_forward(args, kwargs)
+        self.pre_forward(module, args, kwargs)
+        parameters = inspect.signature(module.forward).parameters
+        if 'position_ids' not in parameters:
+            kwargs.pop('position_ids', None)
         return args, kwargs
 
-    def pre_forward(self, args, kwargs):
+    def pre_forward(self, module, args, kwargs):
         pass
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -851,6 +855,7 @@ class Template:
             attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
         labels = [torch.tensor(b['labels']) for b in batch]
         loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
+        position_ids = [torch.tensor(b['position_ids']) for b in batch] if 'position_ids' in batch[0] else None
         padding_right = self.padding_side == 'right'
 
         if padding_to is not None:
@@ -873,6 +878,8 @@ class Template:
         attention_mask = self.pad_sequence(attention_mask, 0, self.padding_side)
         if loss_scale:
             loss_scale = self.pad_sequence(loss_scale, 0., self.padding_side)
+        if position_ids:
+            position_ids = self.pad_sequence(position_ids, -1, self.padding_side)
         labels = self.pad_sequence(labels, -100, self.padding_side)
 
         if use_torchacc():
@@ -890,9 +897,8 @@ class Template:
                 padding_right=padding_right)
         if input_ids is not None:
             bs, seq_len = input_ids.shape
-            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-
             if self.sequence_parallel_size > 1:
+                position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
                 assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
                 from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
                 if get_xtuner_sequence_parallel_world_size() > 1:
@@ -923,7 +929,8 @@ class Template:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
-
+        if position_ids is not None:
+            res['position_ids'] = position_ids
         return res
 
     @staticmethod
