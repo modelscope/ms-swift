@@ -393,6 +393,37 @@ class LLMInfer(BaseUI):
             if h[0] and h[0].strip():
                 total_history.append(h[:2])
         return total_history
+    
+    @classmethod
+    def _get_text_history(cls, history, prompt):
+        total_history = []
+        for h in history:
+            if h[0]:
+                prefix = ''
+                if h[3]:
+                    prefix=''.join([f'<{media_type}>' for media_type in h[3]])
+                total_history.append([prefix+h[0], h[1]])
+        
+        if not history[-1][0] and history[-1][2]:
+            prefix=''.join([f'<{media_type}>' for media_type in history[-1][3]])
+            prompt = prefix + prompt
+        return total_history, prompt
+
+    @classmethod
+    def _get_medias(cls, history):
+        images = []
+        videos = []
+        audios = []
+        for h in history:
+            if h[2]:
+                for media, media_type in zip(h[2], h[3]):
+                    if media_type == 'image':
+                        images.append(media)
+                    if media_type == 'video':
+                        videos.append(media)
+                    if media_type == 'audio':
+                        audios.append(media)
+        return images, videos, audios
 
     @classmethod
     def agent_type(cls, response):
@@ -410,11 +441,13 @@ class LLMInfer(BaseUI):
             return '', None, None, []
 
         if not history or history[-1][1]:
-            history.append([None, None, []])
+            history.append([None, None, [], []])
         media = image or video or audio
+        media_type = 'image' if image else 'video' if video else 'audio'
         if media:
             if not history[-1][2] or history[-1][2][-1] != media:
                 history[-1][2].append(media)
+                history[-1][3].append(media_type)
 
         if not prompt:
             yield '', cls._replace_tag_with_media(history), None, history
@@ -430,11 +463,18 @@ class LLMInfer(BaseUI):
         request_config.stream = True
         request_config.stop = ['Observation:']
         stream_resp_with_history = ''
-        medias = [m for h in old_history for m in h[2]]
         media_infer_type = TEMPLATE_MAPPING[template].get('infer_media_type', 'round')
         interactive = media_infer_type != 'dialogue'
 
-        text_history = [h for h in old_history if h[0]]
+        text_history, new_prompt = cls._get_text_history(old_history, prompt)
+        images, videos, audios = cls._get_medias(old_history)
+        media_kwargs = {}
+        if images:
+            media_kwargs['images'] = images
+        if videos:
+            media_kwargs['videos'] = videos
+        if audios:
+            media_kwargs['audios'] = audios
         roles = []
         for i in range(len(text_history) + 1):
             roles.append(['user', 'assistant'])
@@ -449,13 +489,13 @@ class LLMInfer(BaseUI):
         if not template_type.endswith('generation'):
             stream_resp = inference_client(
                 model_type,
-                prompt,
-                images=medias,
-                history=[h[:2] for h in text_history],
+                new_prompt,
+                history=text_history,
                 system=system,
                 port=args['port'],
                 request_config=request_config,
                 roles=roles,
+                **media_kwargs,
             )
             for chunk in stream_resp:
                 stream_resp_with_history += chunk.choices[0].delta.content
@@ -486,11 +526,13 @@ class LLMInfer(BaseUI):
             return '', None, None, []
 
         if not history or history[-1][1]:
-            history.append([None, None, []])
+            history.append([None, None, [], []])
         media = image or video or audio
+        media_type = 'image' if image else 'video' if video else 'audio'
         if media:
             if not history[-1][2] or history[-1][2][-1] != media:
                 history[-1][2].append(media)
+                history[-1][3].append(media_type)
 
         if not prompt:
             yield '', cls._replace_tag_with_media(history), None, history
@@ -509,16 +551,25 @@ class LLMInfer(BaseUI):
             do_sample=do_sample,
             max_new_tokens=int(max_new_tokens),
             repetition_penalty=repetition_penalty)
-        medias = [m for h in old_history for m in h[2]]
+        text_history, new_prompt = cls._get_text_history(old_history, prompt)
+        images, videos, audios = cls._get_medias(old_history)
+        media_kwargs = {}
+        if images:
+            media_kwargs['images'] = images
+        if videos:
+            media_kwargs['videos'] = videos
+        if audios:
+            media_kwargs['audios'] = audios
         gen = inference_stream(
             model,
             template,
-            prompt,
-            images=medias,
-            history=[h[:2] for h in old_history],
+            new_prompt,
+            history=text_history,
             system=system,
             generation_config=generation_config,
-            stop_words=['Observation:'])
+            stop_words=['Observation:'],
+            **media_kwargs,
+            )
         for _, history in gen:
             old_history[-1][0] = history[-1][0]
             old_history[-1][1] = history[-1][1]
