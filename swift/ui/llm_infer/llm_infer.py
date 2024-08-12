@@ -166,8 +166,8 @@ class LLMInfer(BaseUI):
                         outputs=[prompt, chatbot, image, video, audio, history],
                         queue=True)
 
-                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image,
-                                                                                  video, audio, history])
+                    clear_history.click(
+                        fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, history])
 
                     cls.element('load_checkpoint').click(
                         cls.reset_memory, [], [model_and_template]) \
@@ -202,8 +202,8 @@ class LLMInfer(BaseUI):
                         outputs=[prompt, chatbot, image, video, audio, history],
                         queue=True)
 
-                    clear_history.click(fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image,
-                                                                                  video, audio, history])
+                    clear_history.click(
+                        fn=cls.clear_session, inputs=[], outputs=[prompt, chatbot, image, video, audio, history])
 
                     base_tab.element('running_tasks').change(
                         partial(Runtime.task_changed, base_tab=base_tab), [base_tab.element('running_tasks')],
@@ -376,13 +376,13 @@ class LLMInfer(BaseUI):
 
     @classmethod
     def clear_session(cls):
-        return ('', [], gr.update(value=None, interactive=True),
-                gr.update(value=None, interactive=True), gr.update(value=None, interactive=True), [])
+        return ('', [], gr.update(value=None, interactive=True), gr.update(value=None, interactive=True),
+                gr.update(value=None, interactive=True), [])
 
     @classmethod
     def change_interactive(cls):
-        return (gr.update(interactive=True), gr.update(interactive=True),
-                gr.update(interactive=True), gr.update(interactive=True))
+        return (gr.update(interactive=True), gr.update(interactive=True), gr.update(interactive=True),
+                gr.update(interactive=True))
 
     @classmethod
     def _replace_tag_with_media(cls, history):
@@ -393,7 +393,7 @@ class LLMInfer(BaseUI):
             if h[0] and h[0].strip():
                 total_history.append(h[:2])
         return total_history
-    
+
     @classmethod
     def _get_text_history(cls, history, prompt):
         total_history = []
@@ -401,11 +401,11 @@ class LLMInfer(BaseUI):
             if h[0]:
                 prefix = ''
                 if h[3]:
-                    prefix=''.join([f'<{media_type}>' for media_type in h[3]])
-                total_history.append([prefix+h[0], h[1]])
-        
+                    prefix = ''.join([f'<{media_type}>' for media_type in h[3]])
+                total_history.append([prefix + h[0], h[1]])
+
         if not history[-1][0] and history[-1][2]:
-            prefix=''.join([f'<{media_type}>' for media_type in history[-1][3]])
+            prefix = ''.join([f'<{media_type}>' for media_type in history[-1][3]])
             prompt = prefix + prompt
         return total_history, prompt
 
@@ -501,10 +501,9 @@ class LLMInfer(BaseUI):
                 stream_resp_with_history += chunk.choices[0].delta.content
                 old_history[-1][0] = prompt
                 old_history[-1][1] = stream_resp_with_history
-                yield ('', cls._replace_tag_with_media(old_history),
-                       gr.update(value=None, interactive=interactive),
-                       gr.update(value=None, interactive=interactive),
-                       gr.update(value=None, interactive=interactive), old_history)
+                yield ('', cls._replace_tag_with_media(old_history), gr.update(value=None, interactive=interactive),
+                       gr.update(value=None, interactive=interactive), gr.update(value=None,
+                                                                                 interactive=interactive), old_history)
         else:
             request_config.max_tokens = max_new_tokens
             stream_resp = inference_client(
@@ -513,14 +512,13 @@ class LLMInfer(BaseUI):
                 stream_resp_with_history += chunk.choices[0].text
                 old_history[-1][0] = prompt
                 old_history[-1][1] = stream_resp_with_history
-                yield ('', cls._replace_tag_with_media(old_history),
-                       gr.update(value=None, interactive=interactive),
-                       gr.update(value=None, interactive=interactive),
-                       gr.update(value=None, interactive=interactive), old_history)
+                yield ('', cls._replace_tag_with_media(old_history), gr.update(value=None, interactive=interactive),
+                       gr.update(value=None, interactive=interactive), gr.update(value=None,
+                                                                                 interactive=interactive), old_history)
 
     @classmethod
-    def generate_chat(cls, model_and_template, template_type, prompt: str, image, video, audio,
-                      history, system, max_new_tokens, temperature, do_sample, top_k, top_p, repetition_penalty):
+    def generate_chat(cls, model_and_template, template_type, prompt: str, image, video, audio, history, system,
+                      max_new_tokens, temperature, do_sample, top_k, top_p, repetition_penalty):
         if not model_and_template:
             gr.Warning(cls.locale('generate_alert', cls.lang)['value'])
             return '', None, None, []
@@ -569,7 +567,7 @@ class LLMInfer(BaseUI):
             generation_config=generation_config,
             stop_words=['Observation:'],
             **media_kwargs,
-            )
+        )
         for _, history in gen:
             old_history[-1][0] = history[-1][0]
             old_history[-1][1] = history[-1][1]
