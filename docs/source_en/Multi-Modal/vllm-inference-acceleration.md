@@ -199,6 +199,51 @@ curl http://localhost:8000/v1/chat/completions \
 }'
 ```
 
+Using ms-swift:
+```python
+import asyncio
+from swift.llm import get_model_list_client, XRequestConfig, inference_client_async
+
+model_list = get_model_list_client()
+model_type = model_list.data[0].id
+print(f'model_type: {model_type}')
+request_config = XRequestConfig(seed=42)
+
+query = '<image>Describe this image.'
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+tasks = [inference_client_async(model_type, query, images=images, request_config=request_config) for _ in range(100)]
+async def _batch_run(tasks):
+    return await asyncio.gather(*tasks)
+
+resp_list = asyncio.run(_batch_run(tasks))
+print(f'query: {query}')
+print(f'response0: {resp_list[0].choices[0].message.content}')
+print(f'response1: {resp_list[1].choices[0].message.content}')
+
+query = '<image>How many sheep are in the picture?'
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
+
+async def _stream():
+    global query
+    request_config = XRequestConfig(seed=42, stream=True)
+    stream_resp = await inference_client_async(model_type, query, images=images, request_config=request_config)
+    print(f'query: {query}')
+    print('response: ', end='')
+    async for chunk in stream_resp:
+        print(chunk.choices[0].delta.content, end='', flush=True)
+    print()
+
+asyncio.run(_stream())
+"""
+model_type: llava1_6-vicuna-13b-instruct
+query: <image>Describe this image.
+response0: The image captures a moment of tranquility featuring a kitten. The kitten, with its fur a mix of gray and white, is the main subject of the image. It's sitting on a surface that appears to be a table or a similar flat surface. The kitten's eyes, a striking shade of blue, are wide open, giving it a curious and alert expression. Its ears, also gray and white, are perked up, suggesting it's attentive to its surroundings. The background is blurred, drawing focus to the kitten, and it's a soft, muted color that doesn't distract from the main subject. The overall image gives a sense of calm and innocence.
+response1: The image captures a moment of tranquility featuring a kitten. The kitten, with its fur a mix of gray and white, is the main subject of the image. It's sitting on a surface that appears to be a table or a similar flat surface. The kitten's eyes, a striking shade of blue, are wide open, giving it a curious and alert expression. Its ears, also gray and white, are perked up, suggesting it's attentive to its surroundings. The background is blurred, drawing focus to the kitten, and it's a soft, muted color that doesn't distract from the main subject. The overall image gives a sense of calm and innocence.
+query: <image>How many sheep are in the picture?
+response: There are four sheep in the picture.
+"""
+```
+
 Using OpenAI
 ```python
 from openai import OpenAI
@@ -227,8 +272,8 @@ query = 'Describe this image.'
 messages = [{
     'role': 'user',
     'content': [
-        {'type': 'text', 'text': query},
         {'type': 'image_url', 'image_url': {'url': image_url}},
+        {'type': 'text', 'text': query},
     ]
 }]
 
@@ -245,8 +290,8 @@ query = 'How many sheep are in the picture?'
 messages = [{
     'role': 'user',
     'content': [
+        {'type': 'image_url', 'image_url': {'url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'}},
         {'type': 'text', 'text': query},
-        {'type': 'image_url', 'image_url': {'url': 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'}}
     ]
 }]
 stream_resp = client.chat.completions.create(
@@ -263,7 +308,7 @@ print()
 """
 model_type: llava1_6-vicuna-13b-instruct
 query: Describe this image.
-response: In the image, a kitten with striking blue eyes is the main subject. The kitten, with its fur in shades of gray and white, is sitting on a white surface. Its head is slightly tilted to the left, giving it a curious and endearing expression. The kitten's eyes are wide open, and its mouth is slightly open, as if it's in the middle of a meow or perhaps just finished one. The background is blurred, drawing focus to the kitten, but it appears to be a room with a window, suggesting an indoor setting. The overall image gives a sense of warmth and cuteness.
+response: The image captures a moment of tranquility featuring a kitten. The kitten, with its fur a mix of gray and white, is the main subject of the image. It's sitting on a surface that appears to be a table or a similar flat surface. The kitten's eyes, a striking shade of blue, are wide open, giving it a curious and alert expression. Its ears, also gray and white, are perked up, suggesting it's attentive to its surroundings. The background is blurred, drawing focus to the kitten, and it's a soft, muted color that doesn't distract from the main subject. The overall image gives a sense of calm and innocence.
 query: How many sheep are in the picture?
 response: There are four sheep in the picture.
 """
