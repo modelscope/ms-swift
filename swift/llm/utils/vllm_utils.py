@@ -55,9 +55,6 @@ def get_vllm_engine(
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        # multimodal
-        image_input_shape: Optional[str] = None,
-        image_feature_size: Optional[int] = None,
         **kwargs) -> LLMEngine:
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
@@ -176,6 +173,7 @@ class VllmGenerationConfig(SamplingParams):
         num_beams: int = 1,
         *,
         n: int = 1,
+        seed: Optional[int] = None,
         length_penalty: float = 1.,
         stop: Optional[List[str]] = None,
         skip_special_tokens: bool = False,
@@ -205,6 +203,7 @@ class VllmGenerationConfig(SamplingParams):
             kwargs['use_beam_search'] = True
             kwargs['best_of'] = num_beams
         kwargs['n'] = n
+        kwargs['seed'] = seed
         kwargs['length_penalty'] = length_penalty
         kwargs['stop'] = stop
         kwargs['skip_special_tokens'] = skip_special_tokens
@@ -552,9 +551,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
         max_loras=min(len(args.lora_modules), 1),
-        max_lora_rank=args.vllm_max_lora_rank,
-        image_input_shape=args.image_input_shape,
-        image_feature_size=args.image_feature_size)
+        max_lora_rank=args.vllm_max_lora_rank)
     tokenizer = llm_engine.hf_tokenizer
 
     if not args.do_sample:
