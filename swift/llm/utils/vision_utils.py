@@ -1,9 +1,8 @@
 import base64
-import binascii
 import math
 import os
 from io import BytesIO
-from typing import Callable, List, TypeVar, Union
+from typing import Any, Callable, List, TypeVar, Union
 
 import numpy as np
 import requests
@@ -89,36 +88,54 @@ def dynamic_preprocess(image, min_num=1, max_num=6, image_size=448, use_thumbnai
     return processed_images
 
 
-def load_image(img_path: Union[str, 'PIL.Image.Image']) -> 'PIL.Image.Image':
-    from PIL import Image, UnidentifiedImageError
-    if isinstance(img_path, str):
-        img_path = img_path.strip()
-        if img_path.startswith('http'):
-            content = requests.get(img_path).content
-            image = Image.open(BytesIO(content))
-        elif os.path.exists(img_path):
-            image = Image.open(img_path)
+_T = TypeVar('_T')
+
+
+def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
+    res = path
+    if isinstance(path, str):
+        path = path.strip()
+        if path.startswith('http'):
+            content = requests.get(path).content
+            res = BytesIO(content)
+        elif os.path.exists(path):
+            with open(path, 'rb') as f:
+                res = BytesIO(f.read())
         else:  # base64_str
+            import binascii
             try:
-                image_data = base64.b64decode(img_path)
-                image = Image.open(BytesIO(image_data))
-            except (ValueError, binascii.Error, UnidentifiedImageError) as error:
-                if len(img_path) < 200:
-                    raise ValueError(f'invalid image: "{img_path}"')
+                data = base64.b64decode(path)
+                res = BytesIO(data)
+            except (ValueError, binascii.Error) as error:
+                if len(path) < 200:
+                    raise ValueError(f'invalid image: "{path}"')
                 else:
                     raise ValueError(f'invalid image: {error}')
-    else:
-        image = img_path
+    return res
+
+
+def load_file_decorator(func):
+
+    def new_func(path, *args, **kwargs):
+        path = load_file(path)
+        res = func(path, *args, **kwargs)
+        return res
+
+    return new_func
+
+
+@load_file_decorator
+def load_image(image: Union['PIL.Image.Image', BytesIO]) -> 'PIL.Image.Image':
+    from PIL import Image
+    if isinstance(image, BytesIO):
+        image = Image.open(image)
     if image.mode != 'RGB':
         image = image.convert('RGB')
     return image
 
 
-_T = TypeVar('_T')
-
-
-def _read_batch(path_list: List[Union[str, 'PIL.Image.Image', None]],
-                load_func: Callable[[str], _T] = load_image) -> List[_T]:
+def load_batch(path_list: List[Union[str, None, Any, BytesIO]],
+               load_func: Callable[[Any], _T] = load_image) -> List[_T]:
     res = []
     for path in path_list:
         if path is None:  # ignore None
@@ -148,21 +165,11 @@ def get_index(bound, fps, max_frame, first_idx=0, num_segments=32):
     return frame_indices
 
 
-def _load_file(video_path: str) -> BytesIO:
-    video_path = video_path.strip()
-    if video_path.startswith('http'):
-        content = requests.get(video_path).content
-        mp4_stream = BytesIO(content)
-    else:
-        with open(video_path, 'rb') as f:
-            mp4_stream = BytesIO(f.read())
-    return mp4_stream
-
-
-def load_video(video_path, bound=None, input_size=448, max_num=1, num_segments=32):
+@load_file_decorator
+def load_video_internvl(video_io: BytesIO, bound=None, input_size=448, max_num=1, num_segments=32):
     from decord import VideoReader, cpu
     from PIL import Image
-    vr = VideoReader(_load_file(video_path), ctx=cpu(0), num_threads=1)
+    vr = VideoReader(video_io, ctx=cpu(0), num_threads=1)
     max_frame = len(vr) - 1
     fps = float(vr.get_avg_fps())
 
@@ -193,6 +200,71 @@ def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
     image.save(output_file)
 
 
+@load_file_decorator
+def load_video_cogvlm2(video_io: BytesIO) -> np.ndarray:
+    from decord import cpu, VideoReader, bridge
+    bridge.set_bridge('torch')
+    clip_end_sec = 60
+    clip_start_sec = 0
+    num_frames = 24
+    decord_vr = VideoReader(video_io, ctx=cpu(0))
+    duration = len(decord_vr)  # duration in terms of frames
+    start_frame = int(clip_start_sec * decord_vr.get_avg_fps())
+    end_frame = min(duration, int(clip_end_sec * decord_vr.get_avg_fps())) if \
+        clip_end_sec is not None else duration
+    frame_id_list = np.linspace(start_frame, end_frame - 1, num_frames, dtype=int)
+    video_data = decord_vr.get_batch(frame_id_list)
+    video_data = video_data.permute(3, 0, 1, 2)
+    return video_data
+
+
+@load_file_decorator
+def load_video_llava(video_io: BytesIO) -> np.ndarray:
+    import av
+    container = av.open(video_io)
+    total_frames = container.streams.video[0].frames
+    indices = np.arange(0, total_frames, total_frames / 8).astype(int)
+    frames = []
+    container.seek(0)
+    start_index = indices[0]
+    end_index = indices[-1]
+    for i, frame in enumerate(container.decode(video=0)):
+        if i > end_index:
+            break
+        if i >= start_index and i in indices:
+            frames.append(frame)
+    return np.stack([x.to_ndarray(format='rgb24') for x in frames])
+
+
+@load_file_decorator
+def load_video_minicpmv(video_io: BytesIO):
+    MAX_NUM_FRAMES = 64
+
+    from PIL import Image
+    from decord import VideoReader, cpu  # pip install decord
+
+    def uniform_sample(_l, _n):
+        gap = len(_l) / _n
+        idxs = [int(i * gap + gap / 2) for i in range(_n)]
+        return [_l[i] for i in idxs]
+
+    vr = VideoReader(video_io, ctx=cpu(0))
+    sample_fps = round(vr.get_avg_fps() / 1)  # FPS
+    frame_idx = [i for i in range(0, len(vr), sample_fps)]
+
+    if len(frame_idx) > MAX_NUM_FRAMES:
+        frame_idx = uniform_sample(frame_idx, MAX_NUM_FRAMES)
+    frames = vr.get_batch(frame_idx).asnumpy()
+    frames = [Image.fromarray(v.astype('uint8')) for v in frames]
+    return frames
+
+
+@load_file_decorator
+def load_audio_qwen(audio_io: BytesIO, sampling_rate):
+    import librosa
+    return librosa.load(audio_io, sr=sampling_rate)[0]
+
+
 if __name__ == '__main__':
     # A test main to draw bbox
-    draw_plot('/mnt/workspace/man.jpg', [354, 462, 580, 738], 'norm_1000', '/mnt/workspace/man_bbox.jpg')
+    draw_plot('man.jpg', [354, 462, 580, 738], 'norm_1000', 'man_bbox.jpg')
