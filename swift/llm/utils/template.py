@@ -18,8 +18,8 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
-from .vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                           load_video_llava, load_video_minicpmv, rescale_image, transform_image)
+from .vision_utils import (load_audio_qwen, load_batch, load_image, transform_image, load_video_cogvlm2,
+                           load_video_internvl, load_video_llava, load_video_minicpmv, rescale_image)
 
 logger = get_logger()
 
@@ -591,14 +591,16 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            if self._is_lmdeploy:
-                return [[-100]]
-            else:
-                return self.image_placeholder
-        if media_type == 'video':
+            return self.image_placeholder
+        elif media_type == 'video':
             return ['<video>']
-        if media_type == 'audio':
+        elif media_type == 'audio':
             return ['<audio>']
+
+    def replace_tag_lmdeploy(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        if media_type == 'image':
+            return [[-100]]
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -663,9 +665,7 @@ class Template:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
-        replace_tag = self.replace_tag
-        if self._is_lmdeploy:
-            replace_tag = MethodType(Template.replace_tag, self)
+        replace_tag = self.replace_tag_lmdeploy if self._is_lmdeploy else self.replace_tag
         for k in ['image', 'video', 'audio']:
             example[f'{k}_index'] = 0
 
@@ -1585,7 +1585,7 @@ class InternvlTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return [[-100], '\n']
+        return ['<img>', [-100], '</img>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1601,8 +1601,7 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
-            img_tokens: List[int] = self.tokenizer.encode(
-                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * image_bs + '</img>', add_special_tokens=False)
+            img_tokens: List[int] = self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * image_bs
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
@@ -1639,7 +1638,10 @@ class Internvl2Template(InternvlTemplate):
             auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
-        image_context = ['<image>\n'] if self._is_vllm else [[-100], '\n']
+        if self._is_vllm:
+            image_context = ['<img><image></img>\n']
+        else:
+            image_context = ['<img>', [-100], '</img>\n']
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
@@ -1654,6 +1656,9 @@ class Internvl2Template(InternvlTemplate):
                 context_list.append(f'Frame{i + 1}: ')
                 context_list += image_context
             return context_list
+
+    def replace_tag_lmdeploy(self, media_type, index, example) -> List[Context]:
+        return self.replace_tag(media_type, index, example)
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -1695,8 +1700,7 @@ class Internvl2Template(InternvlTemplate):
             idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
         added_tokens_len = 0
         for idx, num_patch in zip(idx_list, num_patches):
-            img_tokens: List[int] = self.tokenizer.encode(
-                '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>', add_special_tokens=False)
+            img_tokens: List[int] = self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)  * self.num_image_token * num_patch
             input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
             if labels is not None:
                 labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
