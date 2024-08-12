@@ -2473,7 +2473,7 @@ class MiniCPMVTemplate(Template):
 
     def check_example(self, example):
         images = example.get('images') or []
-        if not self._is_vllm:
+        if not self._is_vllm and not self._is_lmdeploy:
             assert len(images) == 1
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
