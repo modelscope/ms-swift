@@ -5856,7 +5856,7 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     version = kwargs.get('version', 'v2.5')
-    if version == 'v2.6':
+    if load_model and version == 'v2.6':
         model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
         model_cls._no_split_modules = []
     model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
