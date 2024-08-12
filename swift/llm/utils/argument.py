@@ -1106,7 +1106,7 @@ class SftArguments(ArgumentsBase):
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
-        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen']:
+        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size']:
             if k in parameters:
                 kwargs[k] = getattr(self, k)
         if 'eval_strategy' in parameters:
@@ -1116,9 +1116,6 @@ class SftArguments(ArgumentsBase):
 
         if 'accelerator_config' in parameters:
             kwargs['accelerator_config'] = {'dispatch_batches': False}
-
-        if 'auto_find_batch_size' in parameters:
-            kwargs['auto_find_batch_size'] = self.auto_find_batch_size
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,

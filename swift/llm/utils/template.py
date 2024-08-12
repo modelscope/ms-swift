@@ -842,7 +842,6 @@ class Template:
             padding_to(`int`, optional): Whether padding the batch to a fixed length, if none, the batch
                 will be padded to the `longest`
         """
-        from transformers import DataCollatorWithFlattening
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
         inputs_embeds, input_ids = None, None
