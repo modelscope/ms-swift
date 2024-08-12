@@ -68,6 +68,70 @@ history: [['Describe this image.', "The image features a close-up of a kitten's 
 """
 ```
 
+Batch processin:
+```python
+# vllm>=0.5.4
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+from swift.llm import (
+    get_vllm_engine, get_template, inference_vllm, ModelType,
+    get_default_template_type, inference_stream_vllm
+)
+from swift.utils import seed_everything
+import torch
+
+model_type = ModelType.minicpm_v_v2_6_chat
+model_id_or_path = None
+vllm_engine = get_vllm_engine(model_type, torch.bfloat16, model_id_or_path=model_id_or_path,
+                              max_model_len=8192)
+
+tokenizer = vllm_engine.hf_tokenizer
+vllm_engine.generation_config.max_new_tokens = 256
+template_type = get_default_template_type(model_type)
+print(f'template_type: {template_type}')
+template = get_template(template_type, tokenizer)
+seed_everything(42)
+
+query = '<image>Describe this image.'
+images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+generation_info = {}
+request_list = [{'query': query, 'images': images} for _ in range(100)]
+resp_list = inference_vllm(vllm_engine, template, request_list, generation_info=generation_info, use_tqdm=True)
+print(f'query: {query}')
+print(f'response: {resp_list[0]["response"]}')
+print(generation_info)
+
+# streaming
+generation_info = {}
+gen = inference_stream_vllm(vllm_engine, template, request_list, generation_info=generation_info)
+print_idx = 0
+print(f'query: {query}\nresponse: ', end='')
+# only show first
+for resp_list in gen:
+    resp = resp_list[0]
+    if resp is None:
+        continue
+    response = resp['response']
+    delta = response[print_idx:]
+    print(delta, end='', flush=True)
+    print_idx = len(response)
+print()
+print(generation_info)
+
+"""
+100%|███████████████████████████████████████████████████████████████████| 100/100 [00:05<00:00, 17.80it/s]
+100%|███████████████████████████████████████████████████████████████████| 100/100 [00:22<00:00,  4.53it/s]
+query: <image>Describe this image.
+response: The image features a close-up of a kitten that appears to be a young domestic cat. Its large, expressive eyes are striking, and the fur pattern is a mix of striped and spotted markings, which is common in certain breeds like the Nebelung. Kitten's eyes are typically blue at birth, turning to their permanent color within four to six months. The kitten's curious and attentive gaze could suggest it is alert to its surroundings and possibly interested in something outside the frame of the image. The soft focus and warm lighting contribute to a cozy and inviting atmosphere, which is often associated with young animals and can invoke feelings of warmth and affection in viewers.
+{'num_prompt_tokens': 2800, 'num_generated_tokens': 12569, 'num_samples': 100, 'runtime': 27.816649557033088, 'samples/s': 3.5949692573495526, 'tokens/s': 451.85168595626527}
+query: <image>Describe this image.
+response: The image features a close-up of a kitten, likely a young maine coon, characterized by its distinctive facial markings and large, expressive eyes. Maine coons are known for their robust stature and friendly demeanor, traits that this kitten also seems to exhibit. The blurred background suggests that the focus is entirely on the kitten, enhancing its cuteness and making it the central subject of the photograph. This kind of image is often used to elicit feelings of affection and to highlight the charm and innocence of young animals. It's a simple yet powerful image that could be used for themes such as pet adoption, animal welfare, or simply as an adorable piece for pet enthusiasts.
+{'num_prompt_tokens': 2800, 'num_generated_tokens': 12275, 'num_samples': 100, 'runtime': 40.04483833198901, 'samples/s': 2.4972007421020606, 'tokens/s': 306.53139109302793}
+"""
+```
+
+
 Using CLI:
 ```shell
 # Multimodal models must explicitly specify `--infer_backend vllm`.
@@ -76,6 +140,10 @@ CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --in
 # Batch inference on the dataset
 CUDA_VISIBLE_DEVICES=0 swift infer --model_type llava1_6-vicuna-7b-instruct --infer_backend vllm \
     --val_dataset coco-en-2-mini#100
+
+# TP:
+CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internvl2-1b \
+    --infer_backend vllm --tensor_parallel_size 2
 ```
 
 ```python
@@ -111,6 +179,10 @@ I'm a language model called Vicuna, and I was trained by researchers from Large 
 **Server**:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type llava1_6-vicuna-13b-instruct --infer_backend vllm
+
+# TP:
+CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internvl2-1b \
+    --infer_backend vllm --tensor_parallel_size 2
 ```
 
 **Client**:

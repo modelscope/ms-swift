@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import re
 from copy import deepcopy
 from functools import partial
@@ -35,6 +36,7 @@ class TemplateType:
     # text-generation
     default_generation = 'default-generation'
     chatglm_generation = 'chatglm-generation'
+    qwen_vl_generation = 'qwen-vl-generation'
     qwen_audio_generation = 'qwen-audio-generation'
     # chat
     default = 'default'
@@ -284,10 +286,6 @@ class Template:
             setattr(self, key, value)
 
         if self.model and hasattr(self.model, 'register_forward_pre_hook'):
-
-            def _pre_forward_hook(module, args, kwargs):
-                return self.pre_forward(args, kwargs)
-
             self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
 
     def check_example(self, example: Dict[str, Any]) -> None:
@@ -591,7 +589,10 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            return self.image_placeholder
+            if self._is_lmdeploy:
+                return [[-100]]
+            else:
+                return self.image_placeholder
         elif media_type == 'video':
             return ['<video>']
         elif media_type == 'audio':
@@ -665,14 +666,13 @@ class Template:
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
-        replace_tag = self.replace_tag_lmdeploy if self._is_lmdeploy else self.replace_tag
         for k in ['image', 'video', 'audio']:
             example[f'{k}_index'] = 0
 
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
                 if context == f'<{k}>':
-                    c_list = replace_tag(k, example[f'{k}_index'], example)
+                    c_list = self.replace_tag(k, example[f'{k}_index'], example)
                     example[f'{k}_index'] += 1
                     break
             else:
@@ -827,7 +827,14 @@ class Template:
 
         return torch.stack(padded_sequences)
 
-    def pre_forward(self, args, kwargs):
+    def _pre_forward_hook(self, module, args, kwargs):
+        self.pre_forward(module, args, kwargs)
+        parameters = inspect.signature(module.forward).parameters
+        if 'position_ids' not in parameters:
+            kwargs.pop('position_ids', None)
+        return args, kwargs
+
+    def pre_forward(self, module, args, kwargs):
         pass
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -850,6 +857,7 @@ class Template:
             attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
         labels = [torch.tensor(b['labels']) for b in batch]
         loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
+        position_ids = [torch.tensor(b['position_ids']) for b in batch] if 'position_ids' in batch[0] else None
         padding_right = self.padding_side == 'right'
 
         if padding_to is not None:
@@ -872,6 +880,8 @@ class Template:
         attention_mask = self.pad_sequence(attention_mask, 0, self.padding_side)
         if loss_scale:
             loss_scale = self.pad_sequence(loss_scale, 0., self.padding_side)
+        if position_ids:
+            position_ids = self.pad_sequence(position_ids, -1, self.padding_side)
         labels = self.pad_sequence(labels, -100, self.padding_side)
 
         if use_torchacc():
@@ -889,9 +899,8 @@ class Template:
                 padding_right=padding_right)
         if input_ids is not None:
             bs, seq_len = input_ids.shape
-            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-
             if self.sequence_parallel_size > 1:
+                position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
                 assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
                 from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
                 if get_xtuner_sequence_parallel_world_size() > 1:
@@ -922,7 +931,8 @@ class Template:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         if loss_scale is not None:
             res['loss_scale'] = loss_scale
-
+        if position_ids is not None:
+            res['position_ids'] = position_ids
         return res
 
     @staticmethod
@@ -1045,7 +1055,7 @@ class QwenTemplate(Template):
                          auto_add_bos=auto_add_bos)
 
 
-class QwenVLTemplate(QwenTemplate):
+class _QwenVLTemplateMixin:
 
     load_medias = False
 
@@ -1059,10 +1069,13 @@ class QwenVLTemplate(QwenTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type == 'image'
-        images = example.get('images') or []
-        image = images[index]
-        assert isinstance(image, str)
-        return [f'Picture {index + 1}:<img>{image}</img>\n']
+        if self._is_lmdeploy:
+            return [f'Picture {index + 1}:', [-100], '\n']
+        else:
+            images = example.get('images') or []
+            image = images[index]
+            assert isinstance(image, str)
+            return [f'Picture {index + 1}:<img>{image}</img>\n']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
@@ -1076,7 +1089,19 @@ class QwenVLTemplate(QwenTemplate):
 
 
 register_template(TemplateType.qwen, QwenTemplate())
+
+
+class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
+    pass
+
+
+class QwenVLGenerationTemplate(_QwenVLTemplateMixin, DefaultGenerationTemplate):
+    pass
+
+
 register_template(TemplateType.qwen_vl, QwenVLTemplate())
+register_template(TemplateType.qwen_vl_generation, QwenVLGenerationTemplate())
+
 register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
 
 register_template(
@@ -1585,7 +1610,11 @@ class InternvlTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
-        return ['<img>', [-100], '</img>\n']
+        if self._is_vllm:
+            image_context = ['<img><image></img>\n']
+        else:
+            image_context = ['<img>', [-100], '</img>\n']
+        return image_context
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -1601,7 +1630,8 @@ class InternvlTemplate(Template):
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
-            img_tokens: List[int] = self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * image_bs
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * image_bs
             input_ids = input_ids[:idx] + img_tokens + input_ids[idx2 + 1:]
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
@@ -1700,7 +1730,8 @@ class Internvl2Template(InternvlTemplate):
             idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
         added_tokens_len = 0
         for idx, num_patch in zip(idx_list, num_patches):
-            img_tokens: List[int] = self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)  * self.num_image_token * num_patch
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * num_patch
             input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
             if labels is not None:
                 labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
@@ -2257,7 +2288,7 @@ class DeepseekVLTemplate(Template):
         images = example.get('images')
         processor = self.tokenizer.processor
         input_ids, labels = inputs['input_ids'], inputs['labels']
-        idx_list = _findall(input_ids, processor.image_id)
+        idx_list = _findall(input_ids, processor.image_id)  # '<image_placeholder>'
         new_input_ids, new_labels = [], []
         lo = 0
         for hi in idx_list:
