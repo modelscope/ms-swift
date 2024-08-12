@@ -179,6 +179,9 @@ CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internlm-xcomposer2_5-7b-chat 
 ```
 
 ## Deployment
+
+**Server**:
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
 
@@ -192,4 +195,76 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internlm-xcomposer2_5-7b-chat
     --infer_backend lmdeploy --tp 2
 ```
 
-The method for client invocation can be found in: [MLLM Deployment Documentation](mutlimodal-deployment.md), [vLLM Inference Acceleration Documentation](vllm-inference-acceleration.md#deployment).
+**Client**:
+
+This section introduces a demonstration of client calls to internvl2-2b:
+
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+# use base64
+# import base64
+# with open('baby.mp4', 'rb') as f:
+#     vid_base64 = base64.b64encode(f.read()).decode('utf-8')
+# video_url = f'data:video/mp4;base64,{vid_base64}'
+
+# use local_path
+# from swift.llm import convert_to_base64
+# video_url = convert_to_base64(images=['baby.mp4'])['images'][0]
+# video_url = f'data:video/mp4;base64,{video_url}'
+
+# use url
+video_url = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
+
+query = 'Describe this video.'
+messages = [{
+    'role': 'user',
+    'content': [
+        {'type': 'video_url', 'video_url': {'url': video_url}},
+        {'type': 'text', 'text': query},
+    ]
+}]
+resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    temperature=0)
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+# Streaming
+query = 'How many sheep are in the picture?'
+image_url = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+messages = [{
+    'role': 'user',
+    'content': [
+        {'type': 'image_url', 'image_url': {'url': image_url}},
+        {'type': 'text', 'text': query},
+    ]
+}]
+stream_resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stream=True,
+    temperature=0)
+
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+"""
+model_type: internvl2-2b
+query: Describe this video.
+response: The video features a young child, who appears to be a toddler, sitting on a bed and reading a book. The child is wearing a light blue shirt and dark glasses, and is engrossed in the book. The bed has a floral-patterned bedspread, and there is a white blanket on the bed. In the background, there is a wooden crib with a pink blanket and a white blanket on the bed. The room appears to be a bedroom, and there is a television on the wall, which is turned off. The child is holding the book with both hands and appears to be reading it with great interest. The child's face is illuminated by the light from the book, and the glasses reflect the light, making the child's eyes visible. The child's hair is light-colored, and it is neatly pulled back. The video captures the child's concentration and the peacefulness of the moment, as the child is absorbed in the book. The overall atmosphere of the video is calm and serene, with the child's focus on the book and the peacefulness of the room.
+query: How many sheep are in the picture?
+response: There are four sheep in the picture.
+"""
+```
+The method for client invocation can be found in: [MLLM Deployment Documentation](mutlimodal-deployment.md).

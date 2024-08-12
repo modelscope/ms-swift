@@ -231,6 +231,9 @@ CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internlm-xcomposer2_5-7b-chat 
 ```
 
 ## 部署
+
+**服务端:**
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
 
@@ -244,4 +247,84 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internlm-xcomposer2_5-7b-chat
     --infer_backend lmdeploy --tp 2
 ```
 
-客户端调用方式可以查看: [MLLM部署文档](MLLM部署文档.md), [vLLM推理加速文档](vLLM推理加速文档.md#部署)
+**客户端:**
+
+这里介绍对internvl2-2b进行客户端调用的展示:
+
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+# use base64
+# import base64
+# with open('baby.mp4', 'rb') as f:
+#     vid_base64 = base64.b64encode(f.read()).decode('utf-8')
+# video_url = f'data:video/mp4;base64,{vid_base64}'
+
+# use local_path
+# from swift.llm import convert_to_base64
+# video_url = convert_to_base64(images=['baby.mp4'])['images'][0]
+# video_url = f'data:video/mp4;base64,{video_url}'
+
+# use url
+video_url = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
+
+query = '描述这段视频'
+messages = [{
+    'role': 'user',
+    'content': [
+        {'type': 'video_url', 'video_url': {'url': video_url}},
+        {'type': 'text', 'text': query},
+    ]
+}]
+resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    temperature=0)
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+# 流式
+query = '图中有几只羊'
+image_url = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+messages = [{
+    'role': 'user',
+    'content': [
+        {'type': 'image_url', 'image_url': {'url': image_url}},
+        {'type': 'text', 'text': query},
+    ]
+}]
+stream_resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stream=True,
+    temperature=0)
+
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+
+"""
+model_type: internvl2-2b
+query: 描述这段视频
+response: 这段视频展示了一个小女孩坐在床上，专注地阅读一本书。她戴着一副黑框眼镜，穿着浅绿色的无袖上衣，头发梳成马尾辫。视频中，小女孩的注意力完全集中在书本上，她用双手捧着书，时而翻页，时而抬头看向镜头。
+
+背景中可以看到一个木制的婴儿床，床上铺着花纹的床单，旁边还有一些衣物和玩具。房间的墙壁上挂着一些装饰品，显得温馨而舒适。
+
+视频中，小女孩的动作非常自然，她时而翻页，时而用手指轻轻拨动书页，显得非常专注和投入。她的表情平静而专注，似乎完全沉浸在书中的内容中。
+
+整个视频给人一种温馨、宁静的感觉，小女孩的专注和认真让人感到非常温暖。视频中的每一个细节都展示了小女孩的纯真和好奇心，让人不禁想要和她一起探索书中的世界。
+query: 图中有几只羊
+response: 图中有四只羊。
+"""
+```
+
+更多客户端调用方式可以查看: [MLLM部署文档](MLLM部署文档.md).
