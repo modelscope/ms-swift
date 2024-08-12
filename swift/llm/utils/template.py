@@ -286,7 +286,13 @@ class Template:
             setattr(self, key, value)
 
         if self.model and hasattr(self.model, 'register_forward_pre_hook'):
-            self.model.register_forward_pre_hook(self._pre_forward_hook, with_kwargs=True)
+            def _pre_forward_hook(module, args, kwargs):
+                self._post_encode()
+                parameters = inspect.signature(module.forward).parameters
+                if 'position_ids' not in parameters:
+                    kwargs.pop('position_ids', None)
+                return args, kwargs
+            self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
 
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
@@ -822,14 +828,7 @@ class Template:
 
         return torch.stack(padded_sequences)
 
-    def _pre_forward_hook(self, module, args, kwargs):
-        self.pre_forward(module, args, kwargs)
-        parameters = inspect.signature(module.forward).parameters
-        if 'position_ids' not in parameters:
-            kwargs.pop('position_ids', None)
-        return args, kwargs
-
-    def pre_forward(self, module, args, kwargs):
+    def _post_encode(self, module, args, kwargs):
         pass
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
