@@ -236,6 +236,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         else:
             kwargs[key] = new_value
     kwargs['stop'] = (llm_engine.generation_config.stop or []) + (getattr(request, 'stop') or [])
+    kwargs['seed'] = request.seed
 
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search and request.stream:
@@ -251,7 +252,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         if token_str not in generation_config.stop:
             generation_config.stop.append(token_str)
     request_info['generation_config'] = generation_config
-    request_info.update({'seed': request.seed, 'stream': request.stream})
+    request_info.update({'stream': request.stream})
     if _args.verbose:
         logger.info(request_info)
 
@@ -412,10 +413,11 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
     _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
     kwargs['stop_words'] = stop_words
+    kwargs['random_seed'] = request.seed
 
     generation_config = LmdeployGenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
-    request_info.update({'seed': request.seed, 'stream': request.stream})
+    request_info.update({'stream': request.stream})
     if _args.verbose:
         logger.info(request_info)
 

@@ -2469,7 +2469,7 @@ class MiniCPMVTemplate(Template):
         if self._is_vllm:
             return ['(<image>./</image>)\n']
         else:
-            return [[-1]]
+            return [[-100]]
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -2512,7 +2512,7 @@ class MiniCPMVTemplate(Template):
         images = example['images']
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        idx_list = _findall(input_ids, -1)
+        idx_list = _findall(input_ids, -100)
         idx = idx_list[0]
         config = self.model.config
         tgt_sizes = None
@@ -2586,7 +2586,7 @@ class MiniCPMV2_6Template(Template):
         if self._is_vllm:
             return ['(<image>./</image>)\n']
         else:
-            return [[-1]]
+            return [[-100]]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -2606,7 +2606,7 @@ class MiniCPMV2_6Template(Template):
 
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        idx_list = _findall(input_ids, -1)
+        idx_list = _findall(input_ids, -100)
         idx_list.insert(0, -1)
 
         from .utils import to_device

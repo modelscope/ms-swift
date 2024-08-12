@@ -1330,8 +1330,6 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
-    image_input_shape: Optional[str] = None
-    image_feature_size: Optional[int] = None
 
     # lmdeploy
     tp: int = 1
