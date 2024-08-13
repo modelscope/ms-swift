@@ -293,15 +293,14 @@ class Template:
 
         def _pre_forward_hook(module, args, kwargs):
             if '_data' in kwargs:
-                from .utils import to_device
                 res_extra = []
                 data = kwargs.pop('_data')
                 for d in data:
-                    d = to_device(d, module.device)
                     res_extra.append(self._post_encode(d))
-                kwargs.update(to_device(self.data_collator(res_extra), module.device))
-                if 'inputs_embeds' in kwargs:
+                res_extra = self.data_collator(res_extra)
+                if 'inputs_embeds' in res_extra:
                     kwargs.pop('input_ids', None)
+                    kwargs['inputs_embeds'] = res_extra['inputs_embeds']
 
             parameters = inspect.signature(module.forward).parameters
             if 'position_ids' not in parameters:
