@@ -297,6 +297,7 @@ class Template:
                 res_extra = []
                 data = kwargs.pop('_data')
                 for d in data:
+                    d = to_device(d, module.device)
                     res_extra.append(self._post_encode(d))
                 kwargs.update(to_device(self.data_collator(res_extra), module.device))
                 if 'inputs_embeds' in kwargs:
@@ -475,17 +476,19 @@ class Template:
         return example
 
     def encode(self, example: Dict[str, Any], streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        from .utils import to_device
         example = self.preprocess(example)
         _encode = self._encode
         if self._is_lmdeploy or self._is_vllm:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
         res = _encode(example)
-        if not self._is_training and '_data' in res:
-            inputs = res[0]
+        inputs = res[0]
+        if not self._is_training and '_data' in inputs:
             data = inputs.pop('_data')
+            data = to_device(data, self.model.device)
             inputs.update(self._post_encode(data))
-        return res if not streaming else res[0]
+        return res if not streaming else inputs
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -921,7 +924,7 @@ class Template:
                 rank,
                 world_size,
                 padding_right=padding_right)
-        if self.sequence_parallel_size > 1 and 'input_ids' in res:
+        if self.sequence_parallel_size > 1 and input_ids is not None:
             bs, seq_len = input_ids.shape
             position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
             assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
@@ -2669,7 +2672,7 @@ class MiniCPMV2_6Template(Template):
             'input_ids': input_ids,
             'labels': labels,
             '_data': {
-                'input_ids': input_ids,
+                'input_ids': torch.tensor(input_ids)[None],
                 'image_bound': image_bound,
                 'pixel_values': image_inputs['pixel_values'],
                 'tgt_sizes': image_inputs['tgt_sizes']
@@ -2678,9 +2681,6 @@ class MiniCPMV2_6Template(Template):
         return inputs, {}
 
     def _post_encode(self, data: Any) -> Dict[str, Any]:
-        from .utils import to_device
-        data = to_device(data, self.model.device)
-        data['input_ids'] = torch.tensor(data['input_ids'], device=self.model.device)[None]
         inputs_embeds, _ = self.model.get_vllm_embedding(data)
         return {'inputs_embeds': inputs_embeds[0]}
 
