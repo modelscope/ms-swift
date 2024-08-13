@@ -24,6 +24,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     training_args = args.training_args
+    streaming = args.streaming
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
     else:
@@ -169,6 +170,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
         training_args.do_eval = False
+        training_args.eval_strategy = IntervalStrategy.NO
 
     template_kwargs = {}
     template_info = TEMPLATE_MAPPING[args.template_type]
@@ -183,10 +185,10 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
 
     template: Template = get_template(
         args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
-    if not template.support_multi_round and 'history' in train_dataset[0]:
+    if not template.support_multi_round and 'history' in next(iter(train_dataset)):
         logger.info(
             'The current template does not support multi-turn dialogue. The chatml template is used by default. \
-You can also use the --model_type parameter to specify the  template.')
+    You can also use the --model_type parameter to specify the  template.')
         template: Template = get_template(
             'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
     args.system = template.default_system
@@ -206,6 +208,8 @@ You can also use the --model_type parameter to specify the  template.')
     trainer_kwargs['is_vision'] = args.is_vision
     model.config.model_type += '_'  # add suffix to avoid checks in hfDPOTrainer
 
+    trainer_kwargs['streaming'] = streaming
+
     trainer = trainer_cls(
         model=model,
         train_dataset=train_dataset,
@@ -223,11 +227,13 @@ You can also use the --model_type parameter to specify the  template.')
                 json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    trainer.train(training_args.resume_from_checkpoint)
+    with template.training_context():
+        trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
-    train_time = get_time_info(trainer.state.log_history, len(train_dataset))
+    if not streaming:
+        train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master():
         if 'tensorboard' in args.training_args.report_to:
@@ -239,15 +245,16 @@ You can also use the --model_type parameter to specify the  template.')
             trainer.push_to_hub()
     run_info = {
         'memory': trainer.perf['memory'],
-        'train_time': train_time,
         'last_model_checkpoint': last_model_checkpoint,
         'best_model_checkpoint': trainer.state.best_model_checkpoint,
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
-        'model_info': model_info,
-        'dataset_info': trainer.dataset_info,
+        'model_info': model_info
     }
+    if not streaming:
+        run_info.update({'train_time': train_time})
+        run_info.update({'dataset_info': trainer.dataset_info})
     if is_master():
         jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
         append_to_jsonl(jsonl_path, run_info)

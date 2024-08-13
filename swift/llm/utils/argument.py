@@ -13,6 +13,7 @@ import torch
 import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets
 from packaging import version
 from torch import dtype as Dtype
@@ -34,6 +35,7 @@ from .template import TEMPLATE_MAPPING
 from .utils import is_lmdeploy_available, is_quant_model, is_vllm_available
 
 logger = get_logger()
+DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 def is_adapter(sft_type: str) -> bool:
@@ -374,11 +376,14 @@ class ArgumentsBase:
                                      'Representing the model name and model author in Chinese and English.')
                 setattr(self, k, v)
 
-    def _handle_dataset_compat(self: Union['SftArguments', 'InferArguments'], train_dataset: Optional[HfDataset],
-                               val_dataset: Optional[HfDataset]) -> Tuple[Optional[HfDataset], Optional[HfDataset]]:
+    def _handle_dataset_compat(
+            self: Union['SftArguments', 'InferArguments'], train_dataset: Optional[DATASET_TYPE],
+            val_dataset: Optional[DATASET_TYPE]) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
         # compatibility. (Deprecated)
+        streaming = getattr(self, 'streaming', False)
         random_state = np.random.RandomState(self.dataset_seed)
         val_dataset_sample = self.val_dataset_sample
+
         if train_dataset is not None and self.train_dataset_sample >= 0:
             train_dataset_sample = min(self.train_dataset_sample, train_dataset.shape[0])
             if train_dataset.shape[0] > train_dataset_sample:
@@ -388,10 +393,13 @@ class ArgumentsBase:
             if val_dataset_sample is None:
                 val_dataset_sample = max(int(train_dataset_sample * self.dataset_test_ratio), 1)
         if val_dataset is not None and val_dataset_sample is not None and val_dataset_sample >= 0:
-            if val_dataset.shape[0] > val_dataset_sample:
+            if not streaming and val_dataset.shape[0] > val_dataset_sample:
                 logger.info(f'val_dataset_sample: {val_dataset_sample}')
                 val_idxs = random_state.permutation(val_dataset_sample)
                 val_dataset = val_dataset.select(val_idxs)
+            elif streaming:
+                val_dataset = val_dataset.shuffle(
+                    seed=self.dataset_seed, buffer_size=self.streaming_buffer_size).take(val_dataset_sample)
 
         if (train_dataset is None or not hasattr(self, 'train_dataset_mix_ratio') or self.train_dataset_mix_ratio <= 0
                 or len(self.train_dataset_mix_ds) == 0):
@@ -401,7 +409,11 @@ class ArgumentsBase:
         logger.info(f'train_dataset_mix_ds: {self.train_dataset_mix_ds}')
         logger.info(f'len(train_dataset): {len(train_dataset)}, mix_dataset_sample: {mix_dataset_sample}')
         mixed_dataset = get_dataset(
-            self.train_dataset_mix_ds, 0.0, random_state, check_dataset_strategy=self.check_dataset_strategy)[0]
+            self.train_dataset_mix_ds,
+            0.0,
+            random_state,
+            check_dataset_strategy=self.check_dataset_strategy,
+            streaming=streaming)[0]
         if len(mixed_dataset) < mix_dataset_sample:
             logger.warn(f'The length of dataset used for mixin: {self.train_dataset_mix_ds} are '
                         'lesser than the ratio required by the `train_dataset_mix_ratio` '
@@ -507,8 +519,11 @@ class ArgumentsBase:
         imported_keys = [
             'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
             'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
-            'custom_register_path', 'custom_dataset_info', 'tp', 'pp'
+            'custom_register_path', 'custom_dataset_info'
         ]
+        if (isinstance(self, SftArguments) and self.train_backend == 'megatron'
+                or isinstance(self, ExportArguments) and self.to_hf is True):
+            imported_keys += ['tp', 'pp']
         if not is_sft:
             imported_keys += ['sft_type', 'rope_scaling', 'system']
             if getattr(self, 'load_dataset_config', False) and from_sft_args:
@@ -546,6 +561,8 @@ class SftArguments(ArgumentsBase):
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
+
+    full_determinism: bool = False
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
                       'fourierft'] = 'lora'
@@ -587,7 +604,10 @@ class SftArguments(ArgumentsBase):
     max_length: int = 2048  # -1: no limit
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
-
+    # streaming dataset
+    streaming: bool = False
+    streaming_val_size: int = 0
+    streaming_buffer_size: int = 16384
     # Chinese name and English name
     model_name: List[str] = field(default_factory=lambda: [None, None], metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: List[str] = field(
@@ -696,6 +716,7 @@ class SftArguments(ArgumentsBase):
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
+    auto_find_batch_size: bool = False
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
@@ -1022,7 +1043,8 @@ class SftArguments(ArgumentsBase):
         if self.gradient_accumulation_steps is None:
             self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
         template_info = TEMPLATE_MAPPING[self.template_type]
-        if self.lazy_tokenize is None:
+        self._handle_streaming_args()
+        if self.lazy_tokenize is None and not self.streaming:
             self.lazy_tokenize = template_info.get('lazy_tokenize', False)
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         if self.dataloader_num_workers is None:
@@ -1084,12 +1106,16 @@ class SftArguments(ArgumentsBase):
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
-        if 'include_num_input_tokens_seen' in parameters:
-            kwargs['include_num_input_tokens_seen'] = self.include_num_input_tokens_seen
+        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size']:
+            if k in parameters:
+                kwargs[k] = getattr(self, k)
         if 'eval_strategy' in parameters:
             kwargs['eval_strategy'] = self.evaluation_strategy
         else:
             kwargs['evaluation_strategy'] = self.evaluation_strategy
+
+        if 'accelerator_config' in parameters:
+            kwargs['accelerator_config'] = {'dispatch_batches': False}
 
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
@@ -1103,7 +1129,6 @@ class SftArguments(ArgumentsBase):
             num_train_epochs=self.num_train_epochs,
             max_steps=self.max_steps,
             lr_scheduler_type=self.lr_scheduler_type,
-            lr_scheduler_kwargs=self.lr_scheduler_kwargs,
             warmup_ratio=self.warmup_ratio,
             warmup_steps=self.warmup_steps,
             logging_steps=self.logging_steps,
@@ -1118,6 +1143,7 @@ class SftArguments(ArgumentsBase):
             dataloader_pin_memory=self.dataloader_pin_memory,
             metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
             greater_is_better=self.predict_with_generate,
+            full_determinism=self.full_determinism,
             sortish_sampler=True,
             optim=self.optim,
             adam_beta1=self.adam_beta1,
@@ -1177,6 +1203,42 @@ class SftArguments(ArgumentsBase):
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = False
             logger.info(f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}')
+
+    def _handle_streaming_args(self) -> None:
+        if not self.streaming:
+            return
+        if self.max_steps == -1:
+            raise ValueError('Please specify `max_steps` in streaming mode.')
+
+        if self.packing:
+            self.packing = False
+            logger.warning('Packing is not supported for streaming dataset, set to False')
+
+        if self.test_oom_error:
+            self.test_oom_error = False
+            logger.warning('test_oom_error is not supported for streaming dataset, set to False')
+
+        if self.lazy_tokenize:
+            self.lazy_tokenize = False
+            logger.info('lazy_tokenize set to False in streaming dataset')
+
+        if self.train_dataset_mix_ratio > 0:
+            logger.warning('train_dataset_mix_ratio is not supported for streaming dataset, set to 0')
+            self.train_dataset_mix_ratio = 0
+
+        if self.dataset_test_ratio > 0:
+            logger.info('Set dataset_test_ratio to 0 in streaming mode.'
+                        'You can manually set val_dataset and val_dataset_sample.'
+                        'or set streaming_val_size instead to split from train dataset')
+            self.dataset_test_ratio = 0
+
+        if self.train_dataset_sample > 0:
+            logger.warning('train_dataset_sample is not supported for streaming dataset, set to -1')
+            self.train_dataset_sample = -1
+
+        if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
+            logger.info('Set dataloader_num_workers to 0 in streaming mode')
+            self.dataloader_num_workers = 0
 
 
 @dataclass
@@ -1268,8 +1330,6 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
-    image_input_shape: Optional[str] = None
-    image_feature_size: Optional[int] = None
 
     # lmdeploy
     tp: int = 1
@@ -1465,6 +1525,9 @@ class EvalArguments(InferArguments):
     eval_backend: Literal['Native', 'OpenCompass'] = 'OpenCompass'
     eval_batch_size: int = 8
     deploy_timeout: int = 60
+
+    do_sample: bool = False  # Note: for evaluation default is False
+    temperature: float = 0.0
 
     def __post_init__(self):
         super().__post_init__()

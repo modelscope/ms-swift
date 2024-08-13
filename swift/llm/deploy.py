@@ -2,7 +2,6 @@
 import asyncio
 import inspect
 import logging
-import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
@@ -165,17 +164,12 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         messages = request.messages
-        images = request.images
         if _args.is_multimodal:
-            compat_openai(messages, images, template.template_type)
+            compat_openai(messages, request)
             messages = decode_base64(messages=messages)['messages']
-            images = decode_base64(images=images)['images']
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)
         example = messages_to_history(messages)
-        if len(images) > 0:
-            example['images'] = images
-
         if request.tool_choice is not None and request.tools is not None:
             if isinstance(request.tool_choice, dict):
                 name = request.tool_choice['function']['name']
@@ -185,9 +179,6 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 example['tools'] = [tool]
             elif request.tool_choice == 'auto':
                 example['tools'] = request.tools
-        executor = ThreadPoolExecutor(max_workers=1)
-        loop = asyncio.get_running_loop()
-        inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
         request_id = f'chatcmpl-{random_uuid()}'
         _request['messages'] = messages
     else:
@@ -197,19 +188,19 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
         prompt = request.prompt
-        images = request.images
         if _args.is_multimodal:
             prompt = decode_base64(prompt=prompt)['prompt']
-            images = decode_base64(images=images)['images']
         example = {'query': prompt}
-        if len(images) > 0:
-            example['images'] = images
-        executor = ThreadPoolExecutor(max_workers=1)
-        loop = asyncio.get_running_loop()
-        inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = prompt
 
+    for media_key in ['images', 'audios', 'videos']:
+        medias = getattr(request, media_key, None)
+        if medias:
+            example[media_key] = medias
+    executor = ThreadPoolExecutor(max_workers=1)
+    loop = asyncio.get_running_loop()
+    inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
     request_info = {'request_id': request_id}
     request_info.update(_request)
 
@@ -245,6 +236,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         else:
             kwargs[key] = new_value
     kwargs['stop'] = (llm_engine.generation_config.stop or []) + (getattr(request, 'stop') or [])
+    kwargs['seed'] = request.seed
 
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search and request.stream:
@@ -260,7 +252,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         if token_str not in generation_config.stop:
             generation_config.stop.append(token_str)
     request_info['generation_config'] = generation_config
-    request_info.update({'seed': request.seed, 'stream': request.stream})
+    request_info.update({'stream': request.stream})
     if _args.verbose:
         logger.info(request_info)
 
@@ -421,10 +413,11 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
     _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
     kwargs['stop_words'] = stop_words
+    kwargs['random_seed'] = request.seed
 
     generation_config = LmdeployGenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
-    request_info.update({'seed': request.seed, 'stream': request.stream})
+    request_info.update({'stream': request.stream})
     if _args.verbose:
         logger.info(request_info)
 

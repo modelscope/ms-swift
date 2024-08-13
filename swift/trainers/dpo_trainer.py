@@ -7,13 +7,11 @@ from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.utils import pad_to_length
 
 from swift.llm.utils.template import Template
-from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer, patch_trl
+from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
 
 logger = get_logger()
-patch_trl()
 
 
 class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
@@ -21,21 +19,33 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
     def __init__(self, *args, template: Template, sft_beta=0., test_oom_error=False, **kwargs):
         self.template = template
         self.sft_beta = sft_beta
+        self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
-        self.keys = []
-        super().__init__(*args, **kwargs)
-        self.train_dataset = self.train_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
-        if self.eval_dataset is not None:
-            self.eval_dataset = self.eval_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
-        train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
+        patch_trl(is_vision)
+        self.keys = []  # keys appears in tokenize_row
+        self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
+        self.need_filter: bool = False
 
+        super().__init__(*args, **kwargs)
+        # remove origin columns to resolve conflit in streaming mode
+        self.train_dataset = self.train_dataset.remove_columns(self.column_names)
         if self.eval_dataset is not None:
-            val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
-            self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
-        else:
-            self.dataset_info = {'train_dataset': train_ds_info}
+            self.eval_dataset = self.eval_dataset.remove_columns(self.column_names)
+
+        if self.need_filter:
+            self.train_dataset = self.train_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
+            if self.eval_dataset is not None:
+                self.eval_dataset = self.eval_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
+        if not self.streaming:
+            train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
+
+            if self.eval_dataset is not None:
+                val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
+                self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
+            else:
+                self.dataset_info = {'train_dataset': train_ds_info}
         if test_oom_error:
-            self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
+            self.train_dataset = sort_by_max_length(self.train_dataset, 20000, self.is_encoder_decoder)
         # performance
         self.perf: Dict[str, Any] = {
             'gen_time': 0.,
@@ -43,6 +53,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             'memory': {},
             'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
         }
+        # modify after init
         self.is_vision_model = is_vision
         self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix
 
@@ -63,6 +74,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
             # Skip examples that do not contain 'input_ids'
             if 'input_ids' not in prompt_tokens:
+                self.need_filter = True
                 return {k: None for k in self.keys}
 
             # resolve conflict in data_collator when labels are None, pop it afterwards

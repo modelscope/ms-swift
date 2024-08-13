@@ -14,7 +14,7 @@ from requests.exceptions import HTTPError
 
 from .protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
                        CompletionStreamResponse, ModelList, XRequestConfig)
-from .template import TEMPLATE_MAPPING, History
+from .template import History
 from .utils import Messages, history_to_messages
 
 
@@ -158,8 +158,7 @@ def decode_base64(*,
     return res
 
 
-def compat_openai(messages: Messages, images: List[str], template_type: str) -> None:
-    infer_media_type = TEMPLATE_MAPPING[template_type].get('infer_media_type', 'interleave')
+def compat_openai(messages: Messages, request) -> None:
     for message in messages:
         content = message['content']
         if isinstance(content, list):
@@ -169,16 +168,21 @@ def compat_openai(messages: Messages, images: List[str], template_type: str) -> 
                 value = line[_type]
                 if _type == 'text':
                     text += value
-                elif _type == 'image_url':
+                elif _type in {'image_url', 'audio_url', 'video_url'}:
                     value = value['url']
                     if value.startswith('data:'):
                         match_ = re.match(r'data:(.+?);base64,(.+)', value)
                         assert match_ is not None
                         value = match_.group(2)
-                    if infer_media_type == 'interleave':
-                        text += f'<img>{value}</img>'
+                    if _type == 'image_url':
+                        text += '<image>'
+                        request.images.append(value)
+                    elif _type == 'audio_url':
+                        text += '<audio>'
+                        request.audios.append(value)
                     else:
-                        images.append(value)
+                        text += '<video>'
+                        request.videos.append(value)
                 else:
                     raise ValueError(f'line: {line}')
             message['content'] = text
@@ -199,8 +203,6 @@ def _pre_inference_client(model_type: str,
                           host: str = '127.0.0.1',
                           port: str = '8000',
                           **kwargs) -> Tuple[str, Dict[str, Any], bool]:
-    if images is None:
-        images = []
     if model_list is not None:
         for model in model_list.data:
             if model_type == model.id:
@@ -221,7 +223,6 @@ def _pre_inference_client(model_type: str,
         messages = history_to_messages(history, query, system, kwargs.get('roles'))
         if is_multimodal:
             messages = convert_to_base64(messages=messages)['messages']
-            images = convert_to_base64(images=images)['images']
         data['messages'] = messages
         url = f'{url}/chat/completions'
     else:
@@ -229,12 +230,13 @@ def _pre_inference_client(model_type: str,
             'The chat template for text generation does not support system and history.')
         if is_multimodal:
             query = convert_to_base64(prompt=query)['prompt']
-            images = convert_to_base64(images=images)['images']
         data['prompt'] = query
         url = f'{url}/completions'
     data['model'] = model_type
-    if len(images) > 0:
-        data['images'] = images
+    for media_key, medias in zip(['images', 'audios', 'videos'], [images, kwargs.get('audios'), kwargs.get('videos')]):
+        if medias:
+            medias = convert_to_base64(images=medias)['images']
+            data[media_key] = medias
     if tools and len(tools) > 0:
         data['tools'] = tools
     if tool_choice:

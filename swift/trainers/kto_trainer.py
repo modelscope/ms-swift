@@ -1,17 +1,30 @@
+import heapq
 from typing import Any, Dict, List, Optional
 
 import torch
+from datasets import Dataset as HfDataset
 from transformers import trainer
 from trl import KTOTrainer as HFKTOTrainer
 from trl.trainer import kto_trainer
 
 from swift.llm.utils.template import Context, History, Template
-from swift.llm.utils.utils import sort_by_max_length
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 logger = get_logger()
+
+
+def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
+    logger.info('sort by max length...')
+    dataset_prompt_len = [len(d['prompt_input_ids']) for d in dataset]
+    if not is_encoder_decoder:
+        dataset_answer_len = [len(d['answer_input_ids']) for d in dataset]
+        idx = heapq.nlargest(
+            num_dataset, range(len(dataset_prompt_len)), key=lambda i: (dataset_prompt_len[i] + dataset_answer_len[i]))
+    else:
+        idx = heapq.nlargest(num_dataset, range(len(dataset_prompt_len)), key=lambda i: dataset_prompt_len[i])
+    return dataset.select(idx)
 
 
 def encode_batch(batch: Dict[str, List[Any]], template: Template):
@@ -83,17 +96,20 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
                 fn_kwargs={'template': template},
                 desc='Encode dataset with template',
             )
+        self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
+        self.column_names = next(iter(kwargs.get('train_dataset'))).keys()
         super().__init__(*args, **kwargs)
-        train_ds_info = self.stat_dataset(self.train_dataset)
-        if self.eval_dataset is not None:
-            val_ds_info = self.stat_dataset(self.eval_dataset)
-            self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
-        else:
-            self.dataset_info = {'train_dataset': train_ds_info}
-        self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
+        if not self.streaming:
+            train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
+
+            if self.eval_dataset is not None:
+                val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
+                self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
+            else:
+                self.dataset_info = {'train_dataset': train_ds_info}
         if test_oom_error:
-            self.train_dataset = sort_by_max_length(self.train_dataset, 20000)
+            self.train_dataset = sort_by_max_length(self.train_dataset, 20000, self.is_encoder_decoder)
         # performance
         self.perf: Dict[str, Any] = {
             'gen_time': 0.,
@@ -111,15 +127,19 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         return res
 
     @staticmethod
-    def stat_dataset(llm_dataset) -> Any:
+    def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
         _token_len = []
         from datasets import Dataset as HfDataset
         from swift.utils.np_utils import stat_array
         if isinstance(llm_dataset, HfDataset):
             prompt_input_ids = llm_dataset['prompt_input_ids']
-            answer_input_ids = llm_dataset['answer_input_ids']
-            for pi, ai in zip(prompt_input_ids, answer_input_ids):
-                _token_len.append(len(pi) + len(ai))
+            if not is_encoder_decoder:
+                answer_input_ids = llm_dataset['answer_input_ids']
+                for pi, ai in zip(prompt_input_ids, answer_input_ids):
+                    _token_len.append(len(pi) + len(ai))
+            else:
+                for pi in prompt_input_ids:
+                    _token_len.append(len(pi))
         _, stat_str = stat_array(_token_len)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str

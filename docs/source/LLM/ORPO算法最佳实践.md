@@ -46,8 +46,11 @@ swift内置了处理方法将`answer_zh`作为`response`,将`answer_en`作为`re
 # Experimental environment: A100
 # DDP + MP
 # Memory usage: 4*24G
+nproc_per_node=2
+
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NPROC_PER_NODE=2 \
+NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29500 \
 swift rlhf \
     --rlhf_type orpo \
     --model_type  llama3-8b-instruct \
