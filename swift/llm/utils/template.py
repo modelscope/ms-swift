@@ -292,15 +292,15 @@ class Template:
         self._is_training = True
 
         def _pre_forward_hook(module, args, kwargs):
+            from .utils import to_device
             if '_data' in kwargs:
                 res_extra = []
                 data = kwargs.pop('_data')
                 for d in data:
                     res_extra.append(self._post_encode(d))
-                res_extra = self.data_collator(res_extra)
-                if 'inputs_embeds' in res_extra:
+                kwargs.update(to_device(self.data_collator(res_extra), module.device))
+                if 'inputs_embeds' in kwargs:
                     kwargs.pop('input_ids', None)
-                    kwargs['inputs_embeds'] = res_extra['inputs_embeds']
 
             parameters = inspect.signature(module.forward).parameters
             if 'position_ids' not in parameters:
@@ -1524,11 +1524,17 @@ class InternLMXComposer2Template(Template):
         images = [self.model.vis_processor(image).to(dtype) for image in images]
         if len(images) > 0:
             images = torch.stack(images, dim=0)
-            images = self.model.img2emb(images)[0]
+        inputs['_data'] = {
+            'input_ids': inputs['input_ids'],
+            'labels': inputs['labels'],
+            'images': images
+        }
+        return inputs, {}
 
-        inputs.pop('loss_scale', None)
-        input_ids = inputs['input_ids']
-        labels = inputs['labels']
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        input_ids = data['input_ids']
+        labels = data['labels']
+        images = data['images']
         if len(images) > 0:  # ignore <s>
             input_ids = input_ids[1:]
             if labels is not None:
@@ -1547,6 +1553,7 @@ class InternLMXComposer2Template(Template):
         if not hasattr(internlm2_model, 'tok_embeddings'):
             internlm2_model = internlm2_model.model
         tok_embeddings = internlm2_model.tok_embeddings
+        images = self.model.img2emb(images)[0]
         while i < len(input_ids):
             if input_ids[i] == 2:  # replace_token
                 res_input_ids = torch.tensor([1] + input_ids[pre_i:i], device=device)
@@ -1564,15 +1571,16 @@ class InternLMXComposer2Template(Template):
             i += 1
         if len(labels) == 0:
             res_labels = None
-        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0).detach()
-        wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool)[None]
-        return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}, {}
+        res_inputs_embeds = torch.concat(res_inputs_embeds, dim=0)
+        wrap_im_mask = torch.tensor(wrap_im_mask, dtype=torch.bool, device=device)[None]
+        return {'inputs_embeds': res_inputs_embeds, 'im_mask': wrap_im_mask, 'labels': res_labels}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        im_mask = [b['im_mask'][0] for b in batch]
-        im_mask = self.pad_sequence(im_mask, 0, self.padding_side)
-        res['im_mask'] = im_mask
+        if 'im_mask' in batch[0]:
+            im_mask = [b['im_mask'][0] for b in batch]
+            im_mask = self.pad_sequence(im_mask, 0, self.padding_side)
+            res['im_mask'] = im_mask
         return res
 
     @staticmethod
@@ -1584,9 +1592,7 @@ register_template(
     TemplateType.internlm_xcomposer2,
     InternLMXComposer2Template(version='v2'),
     use_model=True,
-    lazy_tokenize=True,
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    lazy_tokenize=True)
 
 
 class InternLMXComposer2_5Template(InternLMXComposer2Template):
@@ -1605,17 +1611,13 @@ register_template(
     TemplateType.internlm_xcomposer2_5,
     InternLMXComposer2_5Template(version='v2.5'),
     use_model=True,
-    lazy_tokenize=True,
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    lazy_tokenize=True)
 
 register_template(
     TemplateType.internlm_xcomposer2_4khd,
     InternLMXComposer2_5Template(version='v2-4khd'),
     use_model=True,
-    lazy_tokenize=True,
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    lazy_tokenize=True)
 
 
 class InternvlTemplate(Template):
@@ -2489,7 +2491,6 @@ class MiniCPMVTemplate(Template):
         super().__init__(*args, **kwargs)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
-        assert media_type == 'image'
         if self._is_vllm:
             return ['(<image>./</image>)\n']
         else:
@@ -2543,15 +2544,14 @@ class MiniCPMVTemplate(Template):
         slice_mode = getattr(config, 'slice_mode', False)
         if slice_mode:
             if self.is_v2_5:
-                from .utils import to_device
                 image_processor = self.tokenizer.processor.image_processor
                 image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
                 placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
-                pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
+                pixel_values = image_inputs['pixel_values']
                 tgt_sizes = image_inputs['tgt_sizes']
             else:
                 images, placeholder = self.model.get_slice_image_placeholder(images[0], self.tokenizer)
-                pixel_values = [[self.model.transform(img).to(device=self.model.device) for img in images]]
+                pixel_values = [[self.model.transform(img) for img in images]]
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -2573,47 +2573,35 @@ class MiniCPMVTemplate(Template):
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
             image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-            pixel_values = [[self.model.transform(images[0]).to(device=self.model.device)]]
-        data = {
-            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
-            'image_bound': image_bound,
-            'pixel_values': pixel_values
+            pixel_values = [[self.model.transform(images[0])]]
+        inputs = {
+            'input_ids': input_ids,
+            'labels': labels,
+            '_data': {
+                'input_ids': torch.tensor(input_ids)[None],
+                'image_bound': image_bound,
+                'pixel_values': pixel_values,
+                'tgt_sizes': tgt_sizes
+            }
         }
-        if tgt_sizes is not None:  # v2.5
-            data['tgt_sizes'] = tgt_sizes
-        inputs_embeds, _ = self.model.get_vllm_embedding(data)
-        inputs_embeds = inputs_embeds.detach()
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
-        inputs['inputs_embeds'] = inputs_embeds[0]
         return inputs, {}
+
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        return {'inputs_embeds': inputs_embeds[0]}
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
 
-
-register_template(
-    TemplateType.minicpm_v,
-    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
-
-
-class MiniCPMV2_6Template(Template):
+class MiniCPMV2_6Template(MiniCPMVTemplate):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type in {'image', 'video'}
-        if self._is_vllm:
-            return ['(<image>./</image>)\n']
-        else:
-            return [[-100]]
+        return super().replace_tag(media_type, index, example)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+        inputs, _ = Template._encode(self, example)
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images')
@@ -2679,14 +2667,6 @@ class MiniCPMV2_6Template(Template):
         }
         return inputs, {}
 
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
-        inputs_embeds, _ = self.model.get_vllm_embedding(data)
-        return {'inputs_embeds': inputs_embeds[0]}
-
-    @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0].tolist()
-
 
 register_template(
     TemplateType.minicpm_v_v2_6,
@@ -2704,9 +2684,14 @@ register_template(
                      is_v2_5=True),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    infer_media_type='dialogue')
+
+register_template(
+    TemplateType.minicpm_v,
+    MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue')
 
 gemma_template = Template(['<bos>'], ['<start_of_turn>user\n{{QUERY}}<end_of_turn>\n<start_of_turn>model\n'],
                           ['<end_of_turn>\n'], ['<end_of_turn>'], None,
