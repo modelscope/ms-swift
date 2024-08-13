@@ -4234,7 +4234,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     TemplateType.internlm_xcomposer2_4khd,
     support_flash_attn=True,
     support_lmdeploy=True,
-    eos_token='[UNUSED_TOKEN_145]',
+    eos_token='<|im_end|>',
     function_kwargs={'version': 'v2-4khd'},
     tags=['multi-modal', 'vision'],
     hf_model_id='internlm/internlm-xcomposer2-4khd-7b')
