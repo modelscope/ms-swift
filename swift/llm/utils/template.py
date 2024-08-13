@@ -324,6 +324,9 @@ class Template:
         yield
         self._is_lmdeploy = False
 
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        return {}
+
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
 

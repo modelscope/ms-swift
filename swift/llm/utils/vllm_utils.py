@@ -1,4 +1,3 @@
-import asyncio
 import concurrent.futures
 import inspect
 import os
@@ -13,12 +12,11 @@ from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
-from transformers.utils.versions import require_version
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
 from .argument import InferArguments
-from .model import MODEL_MAPPING, get_model_tokenizer
+from .model import get_model_tokenizer
 from .template import Template, get_template
 
 try:

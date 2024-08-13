@@ -4381,6 +4381,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             **kwargs):
     version = kwargs.pop('version', 'v2')
     model_config = None
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
     if version == 'v2-4khd':
         from transformers import CLIPVisionModel
 
@@ -4394,7 +4395,6 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         CLIPVisionTower.load_model = load_model
     elif version == 'v2':
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-        use_flash_attn = kwargs.pop('use_flash_attn', False)
         model_config._flash_attn_2_enabled = use_flash_attn
 
     model, tokenizer = get_model_tokenizer_internlm2(
