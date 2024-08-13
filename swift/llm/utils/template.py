@@ -1549,7 +1549,8 @@ class InternLMXComposer2Template(Template):
         if not hasattr(internlm2_model, 'tok_embeddings'):
             internlm2_model = internlm2_model.model
         tok_embeddings = internlm2_model.tok_embeddings
-        images = self.model.img2emb(images)[0]
+        if len(images) > 0:
+            images = self.model.img2emb(images)[0]
         while i < len(input_ids):
             if input_ids[i] == 2:  # replace_token
                 res_input_ids = torch.tensor([1] + input_ids[pre_i:i], device=device)
