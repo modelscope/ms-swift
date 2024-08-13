@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import re
+from contextlib import contextmanager
 from copy import deepcopy
 from functools import partial
 from types import MethodType
@@ -216,6 +217,7 @@ class Template:
         self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
         self._is_vllm = False
         self._is_lmdeploy = False
+        self._is_training = False
         self.padding_side = padding_side
 
     @staticmethod
@@ -285,14 +287,33 @@ class Template:
             value = self._preprocess_prompt(tokenizer, value)
             setattr(self, key, value)
 
-        if self.model and hasattr(self.model, 'register_forward_pre_hook'):
-            def _pre_forward_hook(module, args, kwargs):
-                self._post_encode()
-                parameters = inspect.signature(module.forward).parameters
-                if 'position_ids' not in parameters:
-                    kwargs.pop('position_ids', None)
-                return args, kwargs
-            self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+    @contextmanager
+    def training_context(self):
+        self._is_training = True
+
+        def _pre_forward_hook(module, args, kwargs):
+            self._post_encode(kwargs)
+            parameters = inspect.signature(module.forward).parameters
+            if 'position_ids' not in parameters:
+                kwargs.pop('position_ids', None)
+            return args, kwargs
+
+        handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+        yield
+        self._is_training = False
+        handle.remove()
+
+    @contextmanager
+    def vllm_context(self):
+        self._is_vllm = True
+        yield
+        self._is_vllm = False
+
+    @contextmanager
+    def lmdeploy_context(self):
+        self._is_lmdeploy = True
+        yield
+        self._is_lmdeploy = False
 
     def check_example(self, example: Dict[str, Any]) -> None:
         pass
@@ -450,7 +471,10 @@ class Template:
         if self._is_lmdeploy or self._is_vllm:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
-        return _encode(example) if not streaming else _encode(example)[0]
+        res = _encode(example)
+        if not self._is_training:
+            self._post_encode(res[0])
+        return res if not streaming else res[0]
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
@@ -828,7 +852,7 @@ class Template:
 
         return torch.stack(padded_sequences)
 
-    def _post_encode(self, module, args, kwargs):
+    def _post_encode(self, inputs: Dict[str, Any]) -> None:
         pass
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -2608,11 +2632,8 @@ class MiniCPMV2_6Template(Template):
         idx_list = _findall(input_ids, -100)
         idx_list.insert(0, -1)
 
-        from .utils import to_device
         image_processor = self.tokenizer.processor.image_processor
         image_inputs = image_processor(images, return_tensors='pt', max_slice_nums=max_slice_nums).to(self.model.dtype)
-        pixel_values = to_device(image_inputs['pixel_values'], self.model.device)
-        tgt_sizes = image_inputs['tgt_sizes']
 
         res_input_ids = []
         res_labels = []
@@ -2645,18 +2666,23 @@ class MiniCPMV2_6Template(Template):
         else:
             image_bound = []
 
-        data = {
-            'input_ids': torch.tensor(input_ids)[None].to(device=self.model.device),
+        inputs = {
+            'input_ids': input_ids,
+            'labels': labels,
             'image_bound': image_bound,
-            'pixel_values': pixel_values,
-            'tgt_sizes': tgt_sizes
+            'pixel_values': image_inputs['pixel_values'],
+            'tgt_sizes': image_inputs['tgt_sizes']
         }
-        inputs_embeds, _ = self.model.get_vllm_embedding(data)
-        inputs_embeds = inputs_embeds.detach()
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
-        inputs['inputs_embeds'] = inputs_embeds[0]
         return inputs, {}
+
+    def _post_encode(self, inputs: Dict[str, Any]) -> None:
+        from .utils import to_device
+        data = to_device(inputs, self.model.device)
+        data['input_ids'] = torch.tensor(data['input_ids'], device=self.model.device)[None]
+        inputs_embeds, _ = self.model.get_vllm_embedding(data)
+        for k in ['image_bound', 'pixel_values', 'tgt_sizes']:
+            inputs.pop(k, None)
+        inputs['inputs_embeds'] = inputs_embeds[0]
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
@@ -2668,9 +2694,7 @@ register_template(
     MiniCPMV2_6Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
                         ['<|im_end|>'], DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']),
     use_model=True,
-    lazy_tokenize=True,
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    lazy_tokenize=True)
 
 register_template(
     TemplateType.minicpm_v_v2_5,

@@ -33,7 +33,7 @@ logger = get_logger()
 try:
     if is_vllm_available():
         from .vllm_utils import (VllmGenerationConfig, get_vllm_engine, inference_stream_vllm, inference_vllm,
-                                 prepare_vllm_engine_template, vllm_context)
+                                 prepare_vllm_engine_template)
         try:
             from .vllm_utils import LoRARequest
         except ImportError:
@@ -51,7 +51,6 @@ try:
     if is_lmdeploy_available():
         from .lmdeploy_utils import (
             prepare_lmdeploy_engine_template,
-            lmdeploy_context,
             LmdeployGenerationConfig,
             get_lmdeploy_engine,
             inference_stream_lmdeploy,

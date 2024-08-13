@@ -961,13 +961,13 @@ def get_model_tokenizer_from_repo(model_dir: str,
         is_gptq = True
     else:
         is_gptq = kwargs.pop('is_gptq', False)
-    is_training = kwargs.pop('is_training', False)
-    if is_awq and is_training:
+    training = kwargs.pop('training', False)
+    if is_awq and training:
         _check_awq_ext()
-    if is_gptq and is_training:
+    if is_gptq and training:
         _check_gptq_model(gptq_bits, model_config, model_kwargs)
     context = kwargs.get('context', None)
-    if is_aqlm and is_training:
+    if is_aqlm and training:
         require_version('transformers>=4.39')
         import aqlm
         context = aqlm.optimize_for_training()
@@ -3920,8 +3920,10 @@ def get_model_tokenizer_internlm2(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
+                                  model_config=None,
                                   **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     if use_flash_attn:
         model_config.attn_implementation = 'flash_attention_2'
@@ -4272,7 +4274,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, **kwargs)
 
-    if use_bnb and kwargs.get('is_training'):
+    if use_bnb and kwargs.get('training'):
         # patch: bnb backward shape mismatch bug
         if model is not None and model.language_model is not None:
             model.language_model.output.state.force_no_igemmlt = True
@@ -4356,6 +4358,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
     LoRATM.internlm_xcomposer,
     TemplateType.internlm_xcomposer2,
+    support_flash_attn=True,
     support_lmdeploy=True,
     eos_token='[UNUSED_TOKEN_145]',
     tags=['multi-modal', 'vision'],
@@ -4365,6 +4368,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b',
     LoRATM.internlm_xcomposer,
     TemplateType.internlm_xcomposer2_4khd,
+    support_flash_attn=True,
     support_lmdeploy=True,
     eos_token='[UNUSED_TOKEN_145]',
     function_kwargs={'version': 'v2-4khd'},
@@ -4387,19 +4391,15 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 
         CLIPVisionTower = get_class_from_dynamic_module('build_mlp.CLIPVisionTower', model_dir)
         CLIPVisionTower.load_model = load_model
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config._flash_attn_2_enabled = use_flash_attn
+    elif version == 'v2':
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        use_flash_attn = kwargs.pop('use_flash_attn', False)
+        model_config._flash_attn_2_enabled = use_flash_attn
 
-    eos_token = kwargs.pop('eos_token', None)
-    model, tokenizer = get_model_tokenizer_from_repo(
+    model, tokenizer = get_model_tokenizer_internlm2(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    if eos_token is not None:
-        if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
-            del tokenizer.__class__.eos_token_id
-        tokenizer.eos_token = eos_token
     if model is not None:
-        if use_flash_attn:
+        if version == 'v2' and use_flash_attn:
             # fix AttributeError: no attribute 'attention_dropout'
             model.model.layers[0].attention.__class__.attention_dropout = 0.
 
@@ -5857,8 +5857,11 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     version = kwargs.get('version', 'v2.5')
     if load_model and version == 'v2.6':
-        model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
-        model_cls._no_split_modules = []
+        try:
+            model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
+            model_cls._no_split_modules = []
+        except ImportError:
+            pass
     model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if load_model:
@@ -6339,8 +6342,8 @@ def get_model_tokenizer(model_type: str,
     placeholder_tokens = model_info.get('placeholder_tokens')
     if placeholder_tokens is not None:
         kwargs['placeholder_tokens'] = placeholder_tokens
-    if 'is_training' not in kwargs:
-        kwargs['is_training'] = False
+    if 'training' not in kwargs:
+        kwargs['training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     is_multimodal = 'multi-modal' in model_info.get('tags', [])
     if model is not None:
