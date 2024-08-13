@@ -1641,9 +1641,10 @@ class InternvlTemplate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
-        labels = inputs.get('labels')
+        pixel_values = None
         images = example.get('images')
         if images:
+            labels = inputs.get('labels')
             pixel_values_images = [transform_image(image) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0)
             image_bs = pixel_values.shape[0]
@@ -1655,12 +1656,24 @@ class InternvlTemplate(Template):
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
             inputs['input_ids'] = input_ids
+            pixel_values = pixel_values.to(self.model.dtype)
             inputs['labels'] = labels
-
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-
+            inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
         return inputs, {}
+
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        embedding = self.model.get_input_embeddings()
+        device = embedding.weight.device
+        input_ids = data['input_ids']
+        inputs_embeds = embedding(input_ids)
+        pixel_values = data['pixel_values']
+        if pixel_values is not None:
+            pixel_values = pixel_values.to(device=device)
+            vit_embeds = self.model.extract_feature(pixel_values)
+            selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
+            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
+        return {'inputs_embeds': inputs_embeds}
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
@@ -1728,10 +1741,9 @@ class Internvl2Template(InternvlTemplate):
             has_video = bool(example.get('videos'))
             pixel_values = [transform_image(image, max_num=1 if has_video else 12) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
-            pixel_values = torch.cat(pixel_values)
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(sum(num_patches))
+            pixel_values = torch.cat(pixel_values).to(self.model.dtype)
         else:
+            pixel_values = None
             num_patches = []
         assert len(num_patches) == len(
             idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
@@ -1746,6 +1758,7 @@ class Internvl2Template(InternvlTemplate):
             added_tokens_len += len(img_tokens) - 1
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
         return inputs, {}
 
@@ -1772,38 +1785,14 @@ class Internvl2Phi3Template(Internvl2Template):
 
 
 register_template(
-    TemplateType.internvl,
-    InternvlTemplate(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl, InternvlTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl_phi3,
-    InternvlPhi3Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
-register_template(
-    TemplateType.internvl2,
-    Internvl2Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
 
-register_template(
-    TemplateType.internvl2_phi3,
-    Internvl2Phi3Template(),
-    use_model=True,
-    lazy_tokenize=True,
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
 
 
 class FlorenceTemplate(Template):
