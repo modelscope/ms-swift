@@ -1641,11 +1641,12 @@ class InternvlTemplate(Template):
             return inputs, {}
         input_ids = inputs['input_ids']
         idx_list = _findall(input_ids, -100)
-        labels = inputs.get('labels')
+        pixel_values = None
         images = example.get('images')
         if images:
+            labels = inputs.get('labels')
             pixel_values_images = [transform_image(image) for image in images]
-            pixel_values = torch.cat(pixel_values_images, dim=0)
+            pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model.dtype)
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
@@ -1656,20 +1657,22 @@ class InternvlTemplate(Template):
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
             inputs['input_ids'] = input_ids
             inputs['labels'] = labels
-
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(image_bs)
-
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
         return inputs, {}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
-        if any('pixel_values' in b for b in batch):
-            image_flags = [b['image_flags'] for b in batch if 'image_flags' in b]
-            if image_flags:
-                res['image_flags'] = torch.concat(image_flags)
-        return res
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        embedding = self.model.get_input_embeddings()
+        device = embedding.weight.device
+        input_ids = data['input_ids']
+        inputs_embeds = embedding(input_ids)
+        pixel_values = data['pixel_values']
+        if pixel_values is not None:
+            pixel_values = pixel_values.to(device=device)
+            vit_embeds = self.model.extract_feature(pixel_values)
+            selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
+            inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
+        return {'inputs_embeds': inputs_embeds}
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
@@ -1679,12 +1682,6 @@ class InternvlTemplate(Template):
 class Internvl2Template(InternvlTemplate):
     video_segments = 8
     system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
-
-    def __init__(self):
-        Template.__init__(
-            self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
-            self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
-            auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if self._is_vllm:
@@ -1737,10 +1734,9 @@ class Internvl2Template(InternvlTemplate):
             has_video = bool(example.get('videos'))
             pixel_values = [transform_image(image, max_num=1 if has_video else 12) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
-            pixel_values = torch.cat(pixel_values)
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(sum(num_patches))
+            pixel_values = torch.cat(pixel_values).to(self.model.dtype)
         else:
+            pixel_values = None
             num_patches = []
         assert len(num_patches) == len(
             idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
@@ -1755,29 +1751,27 @@ class Internvl2Template(InternvlTemplate):
             added_tokens_len += len(img_tokens) - 1
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
         return inputs, {}
 
 
-class InternvlPhi3Template(InternvlTemplate):
+class InternvlPhi3TemplateMixin:
+
+    def __init__(self):
+        Template.__init__(
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
+            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            auto_add_bos=True)
+        self.padding_side = 'left'
+
+
+class InternvlPhi3Template(InternvlPhi3TemplateMixin, InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
-    def __init__(self):
-        Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
-            auto_add_bos=True)
-        self.padding_side = 'left'
 
-
-class Internvl2Phi3Template(Internvl2Template):
-
-    def __init__(self):
-        Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
-            auto_add_bos=True)
-        self.padding_side = 'left'
+class Internvl2Phi3Template(InternvlPhi3TemplateMixin, Internvl2Template):
+    pass
 
 
 register_template(
