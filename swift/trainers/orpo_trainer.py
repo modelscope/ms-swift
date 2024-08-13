@@ -11,7 +11,6 @@ from .mixin import PushToMsHubMixin, SwiftMixin
 from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
 
 logger = get_logger()
-patch_trl()
 
 
 class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
@@ -20,6 +19,7 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         self.template = template
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
+        patch_trl(is_vision)
         self.keys = []
         self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
         self.need_filter: bool = False

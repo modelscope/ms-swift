@@ -12,7 +12,6 @@ from .mixin import PushToMsHubMixin, SwiftMixin
 from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
 
 logger = get_logger()
-patch_trl()
 
 
 class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
@@ -22,6 +21,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.sft_beta = sft_beta
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
+        patch_trl(is_vision)
         self.keys = []  # keys appears in tokenize_row
         self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
         self.need_filter: bool = False

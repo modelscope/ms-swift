@@ -3,6 +3,7 @@
 
 import heapq
 import inspect
+from functools import partial
 from types import FunctionType, MethodType
 from typing import Dict, List, Optional, Union
 
@@ -120,7 +121,7 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder:
     return dataset.select(idx)
 
 
-def patch_trl():
+def patch_trl(is_vision_model: bool = False):
     from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
     from transformers import trainer
 
@@ -129,7 +130,10 @@ def patch_trl():
     trainer.PrinterCallback = PrinterCallbackNew
 
     # fix encoder-decoder error
-    patch_datacollator()
+    if is_vision_model:
+        patch_datacollator()
+        patch_dataset_map()
+
     patch_itds_map()
 
 
@@ -235,3 +239,16 @@ def patch_itds_map():
         IterableDataset.map = new_map
         IterableDataset._old_map = old_map
         # model.forward = MethodType(_patch_ids_map(map_func), IterableDataset)
+
+
+def patch_dataset_map():
+    original_map = HfDataset.map
+    if not hasattr(HfDataset, '_old_map'):
+
+        def patched_map(self, function, **kwargs):
+            if 'writer_batch_size' not in kwargs:
+                kwargs['writer_batch_size'] = 10
+            return original_map(self, function, **kwargs)
+
+        HfDataset.map = patched_map
+        HfDataset._old_map = original_map
