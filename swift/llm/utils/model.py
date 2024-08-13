@@ -4380,6 +4380,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             load_model: bool = True,
                                             **kwargs):
     version = kwargs.pop('version', 'v2')
+    model_config = None
     if version == 'v2-4khd':
         from transformers import CLIPVisionModel
 

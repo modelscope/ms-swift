@@ -902,7 +902,7 @@ class Template:
                         res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
                                             'constant', value)
         for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
-                              [tokenizer.pad_token_id, 0, 0, -100, 0., -1]):
+                              [tokenizer.pad_token_id, 0., 0, -100, 0., -1]):
             if key in res:
                 res[key] = self.pad_sequence(res[key], value, self.padding_side)
 
