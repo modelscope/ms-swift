@@ -1646,7 +1646,7 @@ class InternvlTemplate(Template):
         if images:
             labels = inputs.get('labels')
             pixel_values_images = [transform_image(image) for image in images]
-            pixel_values = torch.cat(pixel_values_images, dim=0)
+            pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model.dtype)
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
@@ -1656,9 +1656,8 @@ class InternvlTemplate(Template):
             if labels is not None:
                 labels = labels[:idx] + [-100] * len(img_tokens) + labels[idx2 + 1:]
             inputs['input_ids'] = input_ids
-            pixel_values = pixel_values.to(self.model.dtype)
             inputs['labels'] = labels
-            inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
         return inputs, {}
 
@@ -1684,11 +1683,6 @@ class Internvl2Template(InternvlTemplate):
     video_segments = 8
     system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
-    def __init__(self):
-        Template.__init__(
-            self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
-            self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
-            auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if self._is_vllm:
@@ -1763,26 +1757,19 @@ class Internvl2Template(InternvlTemplate):
         return inputs, {}
 
 
-class InternvlPhi3Template(InternvlTemplate):
+class InternvlPhi3TemplateMixin:
+    def __init__(self):
+        Template.__init__(
+            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
+            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            auto_add_bos=True)
+        self.padding_side = 'left'
+
+class InternvlPhi3Template(InternvlPhi3TemplateMixin, InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
-    def __init__(self):
-        Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
-            auto_add_bos=True)
-        self.padding_side = 'left'
-
-
-class Internvl2Phi3Template(Internvl2Template):
-
-    def __init__(self):
-        Template.__init__(
-            self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
-            auto_add_bos=True)
-        self.padding_side = 'left'
-
+class Internvl2Phi3Template(InternvlPhi3TemplateMixin, Internvl2Template):
+    pass
 
 register_template(
     TemplateType.internvl, InternvlTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')

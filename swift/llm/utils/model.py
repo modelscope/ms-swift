@@ -4076,8 +4076,8 @@ def fix_internvl_inplace_bug(model) -> None:
     TemplateType.internvl_phi3,
     requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
-    support_lmdeploy=True,
     support_vllm=True,
+    eos_token='<|end|>',
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
@@ -4117,6 +4117,7 @@ def fix_internvl_inplace_bug(model) -> None:
     support_flash_attn=True,
     support_lmdeploy=True,
     support_vllm=True,
+    eos_token='<|end|>',
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-4B')
@@ -4177,6 +4178,11 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
+    if kwargs.get('eos_token') is None:
+        del tokenizer.__class__.eos_token_id
+        tokenizer.eos_token = '<|im_end|>'
+
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
@@ -4189,7 +4195,6 @@ def get_model_tokenizer_internvl(model_dir: str,
     if isinstance(quantization_config, BitsAndBytesConfig):
         use_bnb = True
 
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, **kwargs)
 
