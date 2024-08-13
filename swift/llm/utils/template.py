@@ -1683,7 +1683,6 @@ class Internvl2Template(InternvlTemplate):
     video_segments = 8
     system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
-
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if self._is_vllm:
             image_context = ['<img><image></img>\n']
@@ -1758,6 +1757,7 @@ class Internvl2Template(InternvlTemplate):
 
 
 class InternvlPhi3TemplateMixin:
+
     def __init__(self):
         Template.__init__(
             self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
@@ -1765,11 +1765,14 @@ class InternvlPhi3TemplateMixin:
             auto_add_bos=True)
         self.padding_side = 'left'
 
+
 class InternvlPhi3Template(InternvlPhi3TemplateMixin, InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
+
 class Internvl2Phi3Template(InternvlPhi3TemplateMixin, Internvl2Template):
     pass
+
 
 register_template(
     TemplateType.internvl, InternvlTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
