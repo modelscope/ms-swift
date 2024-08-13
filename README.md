@@ -42,7 +42,7 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 
 SWIFT has rich documentations for users, please feel free to check our documentation website:
 <p align="center">
-        <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
+        <a href="https://arxiv.org/abs/2408.05517">Paper</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
 </p>
 
 ## ☎ Groups
@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.08.12: 🎉 SWIFT paper has been published to arXiv. Check [this link](https://arxiv.org/abs/2408.05517) to read.
 - 🔥2024.08.12: Support packing with flash-attention without the contamination of attention_mask, use `--packing` to begin. Check[PR](https://github.com/huggingface/transformers/pull/31629/files).
 - 🔥2024.08.09: Support for inference and fine-tuning of the qwen2-audio model. Best practice can be found [here](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.08: Supports the qwen2-math series models: 1.5B, 7B, 72B. Use `swift infer --model_type qwen2-math-1_5b-instruct` for an experience.
@@ -718,11 +719,14 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 ## 📎 Citation
 
 ```bibtex
-@Misc{swift,
-  title = {SWIFT:Scalable lightWeight Infrastructure for Fine-Tuning},
-  author = {The ModelScope Team},
-  howpublished = {\url{https://github.com/modelscope/swift}},
-  year = {2024}
+@misc{zhao2024swiftascalablelightweightinfrastructure,
+      title={SWIFT:A Scalable lightWeight Infrastructure for Fine-Tuning},
+      author={Yuze Zhao and Jintao Huang and Jinghan Hu and Daoze Zhang and Zeyinzi Jiang and Zhikai Wu and Baole Ai and Ang Wang and Wenmeng Zhou and Yingda Chen},
+      year={2024},
+      eprint={2408.05517},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2408.05517},
 }
 ```
 
