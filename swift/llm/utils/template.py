@@ -292,7 +292,16 @@ class Template:
         self._is_training = True
 
         def _pre_forward_hook(module, args, kwargs):
-            self._post_encode(kwargs)
+            if '_data' in kwargs:
+                from .utils import to_device
+                res_extra = []
+                data = kwargs.pop('_data')
+                for d in data:
+                    res_extra.append(self._post_encode(d))
+                kwargs.update(to_device(self.data_collator(res_extra), module.device))
+                if 'inputs_embeds' in kwargs:
+                    kwargs.pop('input_ids', None)
+
             parameters = inspect.signature(module.forward).parameters
             if 'position_ids' not in parameters:
                 kwargs.pop('position_ids', None)
@@ -472,8 +481,10 @@ class Template:
             assert self.is_multimodal is not None, 'Please use the get_model_tokenizer function.'
             _encode = MethodType(Template._encode, self)
         res = _encode(example)
-        if not self._is_training:
-            self._post_encode(res[0])
+        if not self._is_training and '_data' in res:
+            inputs = res[0]
+            data = inputs.pop('_data')
+            inputs.update(self._post_encode(data))
         return res if not streaming else res[0]
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
@@ -852,9 +863,6 @@ class Template:
 
         return torch.stack(padded_sequences)
 
-    def _post_encode(self, inputs: Dict[str, Any]) -> None:
-        pass
-
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
@@ -864,44 +872,42 @@ class Template:
         """
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
-        inputs_embeds, input_ids = None, None
+        padding_right = self.padding_side == 'right'
+        res = {}
+
         if 'inputs_embeds' in batch[0]:
             inputs_embeds = [b['inputs_embeds'] for b in batch]
-            attention_mask = [
+            res['inputs_embeds'] = inputs_embeds
+            res['attention_mask'] = [
                 torch.ones((inputs_embeds[i].shape[0]), dtype=torch.int64) for i in range(len(inputs_embeds))
             ]
-        else:
+        elif 'input_ids' in batch[0]:
             input_ids = [torch.tensor(b['input_ids']) for b in batch]
-            attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
-        labels = [torch.tensor(b['labels']) for b in batch]
-        loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
-        position_ids = [torch.tensor(b['position_ids']) for b in batch] if 'position_ids' in batch[0] else None
-        padding_right = self.padding_side == 'right'
+            res['input_ids'] = input_ids
+            res['attention_mask'] = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
+
+        for key in ['labels', 'loss_scale', 'position_ids']:
+            if key in batch[0]:
+                res[key] = [torch.tensor(b[key]) for b in batch]
 
         if padding_to is not None:
-            assert input_ids is not None  # inputs_embeds not support padding_to
-            padding_len = padding_to - input_ids[0].shape[-1]
+            assert 'input_ids' in res
+            padding_len = padding_to - res['input_ids'][0].shape[-1]
             if padding_len > 0:
-                input_ids[0] = F.pad(input_ids[0], (0, padding_len) if padding_right else (padding_len, 0), 'constant',
-                                     tokenizer.pad_token_id)
-                attention_mask[0] = F.pad(attention_mask[0], (0, padding_len) if padding_right else (padding_len, 0),
-                                          'constant', 0)
-                labels[0] = F.pad(labels[0], (0, padding_len) if padding_right else (padding_len, 0), 'constant', -100)
-                if loss_scale:
-                    loss_scale[0] = F.pad(loss_scale[0], (0, padding_to - labels[0].shape[-1]) if padding_right else
-                                          (padding_to - labels[0].shape[-1], 0), 'constant', 0.)
+                for key, value in zip(['input_ids', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
+                                      [tokenizer.pad_token_id, 0, -100, 0., -1]):
+                    if key in res:
+                        res[key][0] = F.pad(res[key][0], (0, padding_len) if padding_right else (padding_len, 0),
+                                            'constant', value)
+        for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
+                              [tokenizer.pad_token_id, 0, 0, -100, 0., -1]):
+            if key in res:
+                res[key] = self.pad_sequence(res[key], value, self.padding_side)
 
-        if input_ids is None:
-            inputs_embeds = self.pad_sequence(inputs_embeds, 0, self.padding_side)
-        else:
-            input_ids = self.pad_sequence(input_ids, tokenizer.pad_token_id, self.padding_side)
-        attention_mask = self.pad_sequence(attention_mask, 0, self.padding_side)
-        if loss_scale:
-            loss_scale = self.pad_sequence(loss_scale, 0., self.padding_side)
-        if position_ids:
-            position_ids = self.pad_sequence(position_ids, -1, self.padding_side)
-        labels = self.pad_sequence(labels, -100, self.padding_side)
-
+        input_ids = res.get('input_ids')
+        attention_mask = res.get('attention_mask')
+        labels = res.get('labels')
+        loss_scale = res.get('loss_scale')
         if use_torchacc():
             rank, _, world_size, _ = get_dist_setting()
             input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
@@ -915,26 +921,25 @@ class Template:
                 rank,
                 world_size,
                 padding_right=padding_right)
-        if input_ids is not None:
+        if self.sequence_parallel_size > 1 and 'input_ids' in res:
             bs, seq_len = input_ids.shape
-            if self.sequence_parallel_size > 1:
-                position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-                assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
-                from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
-                if get_xtuner_sequence_parallel_world_size() > 1:
-                    from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
-                    input_ids, labels, position_ids, attention_mask, loss_scale = \
-                        pad_and_split_for_sequence_parallel(
-                            tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+            assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
+            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
+            if get_xtuner_sequence_parallel_world_size() > 1:
+                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
+                input_ids, labels, position_ids, attention_mask, loss_scale = \
+                    pad_and_split_for_sequence_parallel(
+                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+            res['position_ids'] = position_ids
+        _local_var = locals()
+        for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
+            value = _local_var[key]
+            if value is not None:
+                res[key] = value
 
-        res = {
-            'attention_mask': attention_mask,
-            'labels': labels,
-        }
-        if inputs_embeds is not None:
-            res['inputs_embeds'] = inputs_embeds
-        else:
-            res['input_ids'] = input_ids
+        if '_data' in batch[0]:
+            res['_data'] = [b['_data'] for b in batch]
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
         if len(pixel_values) > 0:
@@ -947,10 +952,6 @@ class Template:
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
-        if loss_scale is not None:
-            res['loss_scale'] = loss_scale
-        if position_ids is not None:
-            res['position_ids'] = position_ids
         return res
 
     @staticmethod
@@ -1074,7 +1075,6 @@ class QwenTemplate(Template):
 
 
 class _QwenVLTemplateMixin:
-
     load_medias = False
 
     def check_example(self, example):
@@ -2195,7 +2195,6 @@ register_template(
 
 
 class Phi3VisionTemplate(Template):
-
     image_placeholder = [[32044], '\n']  # <|image|>\n
 
     def __init__(self):
@@ -2669,20 +2668,21 @@ class MiniCPMV2_6Template(Template):
         inputs = {
             'input_ids': input_ids,
             'labels': labels,
-            'image_bound': image_bound,
-            'pixel_values': image_inputs['pixel_values'],
-            'tgt_sizes': image_inputs['tgt_sizes']
+            '_data': {
+                'input_ids': input_ids,
+                'image_bound': image_bound,
+                'pixel_values': image_inputs['pixel_values'],
+                'tgt_sizes': image_inputs['tgt_sizes']
+            }
         }
         return inputs, {}
 
-    def _post_encode(self, inputs: Dict[str, Any]) -> None:
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
         from .utils import to_device
-        data = to_device(inputs, self.model.device)
+        data = to_device(data, self.model.device)
         data['input_ids'] = torch.tensor(data['input_ids'], device=self.model.device)[None]
         inputs_embeds, _ = self.model.get_vllm_embedding(data)
-        for k in ['image_bound', 'pixel_values', 'tgt_sizes']:
-            inputs.pop(k, None)
-        inputs['inputs_embeds'] = inputs_embeds[0]
+        return {'inputs_embeds': inputs_embeds[0]}
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
