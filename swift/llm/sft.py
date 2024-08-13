@@ -219,7 +219,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         model_id_or_path=args.model_id_or_path,
         revision=args.model_revision,
         quant_method=args.quant_method,
-        training=True,
+        is_training=True,
         **kwargs)
     for k in ['gptq', 'awq', 'aqlm']:
         if getattr(model, f'is_{k}', None):

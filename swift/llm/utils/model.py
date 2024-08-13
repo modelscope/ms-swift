@@ -961,13 +961,13 @@ def get_model_tokenizer_from_repo(model_dir: str,
         is_gptq = True
     else:
         is_gptq = kwargs.pop('is_gptq', False)
-    training = kwargs.pop('training', False)
-    if is_awq and training:
+    is_training = kwargs.pop('is_training', False)
+    if is_awq and is_training:
         _check_awq_ext()
-    if is_gptq and training:
+    if is_gptq and is_training:
         _check_gptq_model(gptq_bits, model_config, model_kwargs)
     context = kwargs.get('context', None)
-    if is_aqlm and training:
+    if is_aqlm and is_training:
         require_version('transformers>=4.39')
         import aqlm
         context = aqlm.optimize_for_training()
@@ -4274,7 +4274,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, **kwargs)
 
-    if use_bnb and kwargs.get('training'):
+    if use_bnb and kwargs.get('is_training'):
         # patch: bnb backward shape mismatch bug
         if model is not None and model.language_model is not None:
             model.language_model.output.state.force_no_igemmlt = True
@@ -6343,8 +6343,8 @@ def get_model_tokenizer(model_type: str,
     placeholder_tokens = model_info.get('placeholder_tokens')
     if placeholder_tokens is not None:
         kwargs['placeholder_tokens'] = placeholder_tokens
-    if 'training' not in kwargs:
-        kwargs['training'] = False
+    if 'is_training' not in kwargs:
+        kwargs['is_training'] = False
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     is_multimodal = 'multi-modal' in model_info.get('tags', [])
     if model is not None:
