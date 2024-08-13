@@ -1524,11 +1524,7 @@ class InternLMXComposer2Template(Template):
         images = [self.model.vis_processor(image).to(dtype) for image in images]
         if len(images) > 0:
             images = torch.stack(images, dim=0)
-        inputs['_data'] = {
-            'input_ids': inputs['input_ids'],
-            'labels': inputs['labels'],
-            'images': images
-        }
+        inputs['_data'] = {'input_ids': inputs['input_ids'], 'labels': inputs['labels'], 'images': images}
         return inputs, {}
 
     def _post_encode(self, data: Any) -> Dict[str, Any]:
@@ -1589,10 +1585,7 @@ class InternLMXComposer2Template(Template):
 
 
 register_template(
-    TemplateType.internlm_xcomposer2,
-    InternLMXComposer2Template(version='v2'),
-    use_model=True,
-    lazy_tokenize=True)
+    TemplateType.internlm_xcomposer2, InternLMXComposer2Template(version='v2'), use_model=True, lazy_tokenize=True)
 
 
 class InternLMXComposer2_5Template(InternLMXComposer2Template):
@@ -2321,35 +2314,28 @@ class DeepseekVLTemplate(Template):
             new_labels += labels[lo:]
         else:
             new_labels = None
-        new_input_ids = torch.tensor(new_input_ids)
-        num_image_tokens = torch.tensor([processor.num_image_tokens] * len(idx_list))
         from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
         images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
-            input_ids=new_input_ids,
+            input_ids=torch.tensor(new_input_ids),
             pixel_values=images_outputs.pixel_values,
-            num_image_tokens=num_image_tokens)
-        batched_output = processor.batchify([output])
-        model = self.model
-        batched_output = batched_output.to(device=model.device, dtype=model.dtype)
-        inputs_embeds = model.prepare_inputs_embeds(**batched_output)[0]
-        inputs['inputs_embeds'] = inputs_embeds
-        inputs['labels'] = new_labels
+            num_image_tokens=torch.tensor([processor.num_image_tokens] * len(idx_list)))
+        batched_output = dict(processor.batchify([output]))
+        batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=self.model.dtype)
+        inputs = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
         return inputs, {}
+
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        inputs_embeds = self.model.prepare_inputs_embeds(**data)[0]
+        return {'inputs_embeds': inputs_embeds}
 
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
 
 
-register_template(
-    TemplateType.deepseek_vl,
-    DeepseekVLTemplate(),
-    use_model=True,
-    lazy_tokenize=True,
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)  # only 'cpu' can pin_memory
+register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True)
 
 register_template(
     TemplateType.zephyr,
@@ -2593,6 +2579,7 @@ class MiniCPMVTemplate(Template):
     @staticmethod
     def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
         return generate_ids[0].tolist()
+
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
 
