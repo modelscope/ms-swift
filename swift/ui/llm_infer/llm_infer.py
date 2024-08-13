@@ -141,7 +141,7 @@ class LLMInfer(BaseUI):
                         with gr.TabItem(label='Image'):
                             image = gr.Image(type='filepath')
                         with gr.TabItem(label='Video'):
-                            video = gr.Video(type='filepath')
+                            video = gr.Video()
                         with gr.TabItem(label='Audio'):
                             audio = gr.Audio(type='filepath')
 
