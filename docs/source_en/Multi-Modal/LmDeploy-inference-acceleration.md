@@ -39,6 +39,8 @@ from swift.llm import (
     get_template, inference_lmdeploy, inference_stream_lmdeploy
 )
 
+# ModelType.qwen_vl_chat, ModelType.deepseek_vl_1_3b_chat
+# ModelType.internlm_xcomposer2_5_7b_chat, ModelType.minicpm_v_v2_5_chat
 model_type = ModelType.internvl2_2b
 lmdeploy_engine = get_lmdeploy_engine(model_type)
 template_type = get_default_template_type(model_type)

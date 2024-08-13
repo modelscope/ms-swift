@@ -1,9 +1,7 @@
-import asyncio
 import concurrent.futures
 import inspect
 import os
 import time
-from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -14,12 +12,11 @@ from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
-from transformers.utils.versions import require_version
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
 from .argument import InferArguments
-from .model import MODEL_MAPPING, get_model_tokenizer
+from .model import get_model_tokenizer
 from .template import Template, get_template
 
 try:
@@ -28,13 +25,6 @@ except ImportError:
     pass
 
 logger = get_logger()
-
-
-@contextmanager
-def vllm_context(self: Template):
-    self._is_vllm = True
-    yield
-    self._is_vllm = False
 
 
 def get_vllm_engine(
@@ -302,7 +292,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
         prog_bar.update()
         return inputs
 
-    with vllm_context(template), concurrent.futures.ThreadPoolExecutor(
+    with template.vllm_context(), concurrent.futures.ThreadPoolExecutor(
             max_workers=min(max_workers, len(request_list))) as executor:
         futures = [executor.submit(_prepare_inputs, request) for request in request_list]
         concurrent.futures.wait(futures)
