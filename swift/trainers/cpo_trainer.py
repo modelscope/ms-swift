@@ -11,7 +11,6 @@ from .mixin import PushToMsHubMixin, SwiftMixin
 from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
 
 logger = get_logger()
-patch_trl()
 
 
 class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
@@ -21,6 +20,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         kwargs.pop('gamma', None)
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
+        patch_trl(is_vision)
         self.keys = []  # keys appears in tokenize_row
         self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
         self.need_filter: bool = False
