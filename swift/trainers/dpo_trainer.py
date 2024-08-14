@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn.parallel import DistributedDataParallel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.utils import pad_to_length
@@ -299,7 +298,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             model_kwargs['decoder_input_ids'] = concatenated_batch.pop('concatenated_decoder_input_ids', None)
 
         if self.is_vision_model:
-            model_dtype = model.module.dtype if isinstance(model, DistributedDataParallel) else model.dtype
+            model_dtype = self.accelerator.unwrap_model(model).dtype
             model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model_dtype)
 
             if 'image_flags' in concatenated_batch:
