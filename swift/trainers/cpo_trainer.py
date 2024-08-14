@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from torch import nn
+from torch.nn.parallel import DistributedDataParallel
 from transformers import PreTrainedModel
 from trl import CPOTrainer as HFCPOTrainer
 
@@ -222,7 +223,8 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         } if self.is_encoder_decoder else {})
 
         if self.is_vision_model:
-            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model.dtype)
+            model_dtype = model.module.dtype if isinstance(model, DistributedDataParallel) else model.dtype
+            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model_dtype)
 
             if 'image_flags' in concatenated_batch:
                 model_kwargs['image_flags'] = concatenated_batch['image_flags']
