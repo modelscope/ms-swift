@@ -141,6 +141,7 @@ def load_image(image: Union['PIL.Image.Image', BytesIO]) -> 'PIL.Image.Image':
 def load_batch(path_list: List[Union[str, None, Any, BytesIO]],
                load_func: Callable[[Any], _T] = load_image) -> List[_T]:
     res = []
+    assert isinstance(path_list, (list, tuple)), f'path_list: {path_list}'
     for path in path_list:
         if path is None:  # ignore None
             continue
