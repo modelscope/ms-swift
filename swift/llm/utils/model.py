@@ -4204,9 +4204,30 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
+        # avoid double patching
+        if not hasattr(model.language_model, '__old_forward'):
+            # device_map
+            __old_forward = model.language_model.forward
+
+            def _new_forward(*args, **kwargs) -> Tensor:
+                inputs = kwargs.get('inputs_embeds')
+                if inputs is None:
+                    inputs = kwargs.get('input_ids')
+                device = inputs.device
+                output = __old_forward(*args, **kwargs)
+                if output.logits is not None:
+                    output.logits = output.logits.to(device)
+                if output.loss is not None:
+                    output.loss = output.loss.to(device)
+                return output
+
+            model.language_model.forward = _new_forward
+            model.language_model.__old_forward = __old_forward
+
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
         fix_internvl_inplace_bug(model)
+
     return model, tokenizer
 
 

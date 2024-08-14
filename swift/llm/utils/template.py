@@ -1664,11 +1664,11 @@ class InternvlTemplate(Template):
         embedding = self.model.get_input_embeddings()
         device = embedding.weight.device
         input_ids = data['input_ids']
-        inputs_embeds = embedding(input_ids)
+        inputs_embeds = embedding(input_ids).to(device=device)
         pixel_values = data['pixel_values']
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            vit_embeds = self.model.extract_feature(pixel_values)
+            vit_embeds = self.model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
         return {'inputs_embeds': inputs_embeds}
