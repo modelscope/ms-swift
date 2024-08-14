@@ -298,7 +298,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             model_kwargs['decoder_input_ids'] = concatenated_batch.pop('concatenated_decoder_input_ids', None)
 
         if self.is_vision_model:
-            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model.dtype)
+            model_dtype = self.accelerator.unwrap_model(model).dtype
+            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model_dtype)
 
             if 'image_flags' in concatenated_batch:
                 model_kwargs['image_flags'] = concatenated_batch['image_flags']
