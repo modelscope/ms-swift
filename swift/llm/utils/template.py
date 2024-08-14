@@ -1628,7 +1628,6 @@ class InternvlTemplate(Template):
                          auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
-        assert media_type == 'image'
         if self._is_vllm:
             image_context = ['<img><image></img>\n']
         else:
@@ -1698,7 +1697,7 @@ class Internvl2Template(InternvlTemplate):
     system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
-        image_context = super().replace_tag(media_type, index, example)
+        image_context = super().replace_tag('image', index, example)
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
@@ -2588,7 +2587,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type in {'image', 'video'}
-        image_context = super().replace_tag(media_type, index, example)
+        image_context = super().replace_tag('image', index, example)
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
