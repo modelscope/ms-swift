@@ -4210,7 +4210,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             __old_forward = model.language_model.forward
 
             def _new_forward(*args, **kwargs) -> Tensor:
-_                inputs = kwargs.get('inputs_embeds')
+                inputs = kwargs.get('inputs_embeds')
                 if inputs is None:
                     inputs = kwargs.get('input_ids')
                 device = inputs.device
