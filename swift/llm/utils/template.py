@@ -1680,7 +1680,7 @@ class InternvlTemplate(Template):
 
 def _replace_video2image(load_video_func, example, replace_tag) -> List[Context]:
     context_list = []
-    video_index = example['image_index']
+    video_index = example['video_index']
     video = example['videos'][video_index]
     images = example['images']
     image_index = example['image_index']
