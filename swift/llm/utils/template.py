@@ -2648,10 +2648,10 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             image_bound = [[]]
 
         inputs = {
-            'input_ids': res_input_ids,
-            'labels': res_labels,
+            'input_ids': input_ids,
+            'labels': labels,
             '_data': {
-                'input_ids': torch.tensor(res_input_ids)[None],
+                'input_ids': torch.tensor(input_ids)[None],
                 'image_bound': image_bound,
                 'pixel_values': image_inputs['pixel_values'],
                 'tgt_sizes': image_inputs['tgt_sizes']
