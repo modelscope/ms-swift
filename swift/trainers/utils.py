@@ -3,7 +3,6 @@
 
 import heapq
 import inspect
-from functools import partial
 from types import FunctionType, MethodType
 from typing import Dict, List, Optional, Union
 

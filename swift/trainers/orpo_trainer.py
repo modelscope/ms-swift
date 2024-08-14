@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from torch import nn
+from torch.nn.parallel import DistributedDataParallel
 from transformers import PreTrainedModel
 from trl import ORPOTrainer as HFORPOTrainer
 
@@ -23,7 +24,7 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         self.keys = []
         self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
         self.need_filter: bool = False
-
+        kwargs['model'] = kwargs['model'].to(torch.float16)
         super().__init__(*args, **kwargs)
         self.train_dataset = self.train_dataset.remove_columns(self.column_names)
         if self.eval_dataset is not None:
@@ -222,7 +223,8 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         } if self.is_encoder_decoder else {})
 
         if self.is_vision_model:
-            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model.dtype)
+            model_dtype = model.module.dtype if isinstance(model, DistributedDataParallel) else model.dtype
+            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model_dtype)
 
             if 'image_flags' in concatenated_batch:
                 model_kwargs['image_flags'] = concatenated_batch['image_flags']
