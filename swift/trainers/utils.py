@@ -151,6 +151,7 @@ def patch_datacollator():
         def new_call(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
             padded_batch = {}
             for k in features[0].keys():
+                # TODO: process _data
                 if k.endswith(('_input_ids', '_attention_mask', '_labels', '_pixel_values')):
                     if self.is_encoder_decoder:
                         to_pad = [torch.LongTensor(ex[k]) for ex in features]

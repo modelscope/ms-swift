@@ -18,6 +18,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
     def __init__(self, *args, template: Template, sft_beta=0., test_oom_error=False, **kwargs):
         self.template = template
+        template._is_training = True
         self.sft_beta = sft_beta
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
@@ -80,16 +81,22 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             # resolve conflict in data_collator when labels are None, pop it afterwards
             prompt_tokens['labels'] = prompt_tokens['input_ids']
             # Batching image-related information for paired response using template
+            prompt_tokens.pop('input_embeds', None)
             prompt_tokens = [prompt_tokens] * 2
             prompt_tokens = self.template.data_collator(prompt_tokens)
             prompt_tokens.pop('labels')
             for k in prompt_tokens:
-                if 'image' in k or 'pixel' in k:
+                # retain image-related information for paired response
+                if k == '_data' or 'image' in k or 'pixel' in k:
                     continue
+                # for text related information, retain single example
                 prompt_tokens[k] = prompt_tokens[k][0]
                 if isinstance(prompt_tokens[k], torch.Tensor):
                     prompt_tokens[k] = prompt_tokens[k].tolist()
-
+            if prompt_tokens.get('_data') and 'pixel_values' in prompt_tokens['_data'][0] and prompt_tokens['_data'][0]['pixel_values'].dtype == torch.bfloat16:
+                prompt_tokens['_data'][0]['pixel_values'] = prompt_tokens['_data'][0]['pixel_values'].to(torch.float32)
+                prompt_tokens['_data'][1]['pixel_values'] = prompt_tokens['_data'][1]['pixel_values'].to(torch.float32)
+            
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
                 # datasets do not accept bfloat16; convert to float32.
                 prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
