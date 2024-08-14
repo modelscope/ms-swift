@@ -1628,7 +1628,6 @@ class InternvlTemplate(Template):
                          auto_add_bos=True)
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
-        assert media_type == 'image'
         if self._is_vllm:
             image_context = ['<img><image></img>\n']
         else:
@@ -1679,29 +1678,31 @@ class InternvlTemplate(Template):
         return generate_ids[0].tolist()
 
 
+def _replace_video2image(load_video_func, example, replace_tag) -> List[Context]:
+    context_list = []
+    video_index = example['video_index']
+    video = example['videos'][video_index]
+    images = example['images']
+    image_index = example['image_index']
+    new_images = load_video_func(video)
+    example['images'] = images[:image_index] + new_images + images[image_index:]
+    for i in range(len(new_images)):
+        context_list += replace_tag(i)
+    example['image_index'] += len(new_images)
+    return context_list
+
+
 class Internvl2Template(InternvlTemplate):
     video_segments = 8
     system = '你是由上海人工智能实验室联合商汤科技开发的书生多模态大模型，英文名叫InternVL, 是一个有用无害的人工智能助手。'
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
-        if self._is_vllm:
-            image_context = ['<img><image></img>\n']
-        else:
-            image_context = ['<img>', [-100], '</img>\n']
+        image_context = super().replace_tag('image', index, example)
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            context_list = []
-            video = example['videos'][index]
-            images = example['images']
-            image_index = example['image_index']
-            new_images = load_video_internvl(video, num_segments=self.video_segments)
-            example['images'] = images[:image_index] + new_images + images[image_index:]
-            example['image_index'] += self.video_segments
-            for i in range(self.video_segments):
-                context_list.append(f'Frame{i + 1}: ')
-                context_list += image_context
-            return context_list
+            load_video = partial(load_video_internvl, num_segments=self.video_segments)
+            return _replace_video2image(load_video, example, lambda i: [f'Frame{i + 1}: '] + image_context)
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example.get('objects')
@@ -2581,23 +2582,28 @@ class MiniCPMVTemplate(Template):
 
 class MiniCPMV2_6Template(MiniCPMVTemplate):
 
+    def check_example(self, example):
+        pass
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type in {'image', 'video'}
-        return super().replace_tag(media_type, index, example)
+        image_context = super().replace_tag('image', index, example)
+        if media_type == 'image':
+            return image_context
+        elif media_type == 'video':
+            return _replace_video2image(load_video_minicpmv, example, lambda i: image_context)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = Template._encode(self, example)
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images')
-        videos_path = example.get('videos')
-        is_plain_text = not images and not videos_path
-        images = [images]
+        use_video = bool(example.get('videos'))
+        is_plain_text = not images and not use_video
         use_image_id = True
         max_slice_nums = None
 
-        if videos_path:
-            images = load_batch(videos_path, load_video_minicpmv)
+        if use_video:
             use_image_id = False
             max_slice_nums = 1  # or 2
 
@@ -2607,7 +2613,8 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         idx_list.insert(0, -1)
 
         image_processor = self.tokenizer.processor.image_processor
-        image_inputs = image_processor(images, return_tensors='pt', max_slice_nums=max_slice_nums).to(self.model.dtype)
+        image_inputs = image_processor([images], return_tensors='pt',
+                                       max_slice_nums=max_slice_nums).to(self.model.dtype)
 
         res_input_ids = []
         res_labels = []
@@ -2638,7 +2645,7 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
             ranges.append([start, indices[-1] + 1])
             image_bound = [torch.tensor(ranges)]
         else:
-            image_bound = []
+            image_bound = [[]]
 
         inputs = {
             'input_ids': input_ids,
