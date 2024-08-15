@@ -4059,6 +4059,28 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     return model, tokenizer
 
 
+def _patch_output_device_map(llm_model):
+    # avoid double patching
+    if not hasattr(llm_model, '__old_forward'):
+        # device_map
+        __old_forward = llm_model.forward
+
+        def _new_forward(*args, **kwargs) -> Tensor:
+            inputs = kwargs.get('inputs_embeds')
+            if inputs is None:
+                inputs = kwargs.get('input_ids')
+            device = inputs.device
+            output = __old_forward(*args, **kwargs)
+            if output.logits is not None:
+                output.logits = output.logits.to(device)
+            if output.loss is not None:
+                output.loss = output.loss.to(device)
+            return output
+
+        llm_model.forward = _new_forward
+        llm_model.__old_forward = __old_forward
+
+
 def fix_internvl_inplace_bug(model) -> None:
     embedding = model.language_model.get_input_embeddings()
     if not hasattr(embedding, '__old_forward'):  # Avoid double patching
@@ -4242,8 +4264,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-
-
+        _patch_output_device_map(model.language_model)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
         fix_internvl_inplace_bug(model)
@@ -5631,28 +5652,6 @@ def get_model_tokenizer_yi_vl(model_dir: str,
         if not hasattr(model.config, 'max_sequence_length'):
             model.config.max_sequence_length = 2048
     return model, tokenizer
-
-
-def _patch_output_device_map(llm_model):
-    # avoid double patching
-    if not hasattr(llm_model, '__old_forward'):
-        # device_map
-        __old_forward = llm_model.forward
-
-        def _new_forward(*args, **kwargs) -> Tensor:
-            inputs = kwargs.get('inputs_embeds')
-            if inputs is None:
-                inputs = kwargs.get('input_ids')
-            device = inputs.device
-            output = __old_forward(*args, **kwargs)
-            if output.logits is not None:
-                output.logits = output.logits.to(device)
-            if output.loss is not None:
-                output.loss = output.loss.to(device)
-            return output
-
-        llm_model.forward = _new_forward
-        llm_model.__old_forward = __old_forward
 
 
 def _patch_minicpm_v_device_map(model) -> None:
