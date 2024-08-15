@@ -329,6 +329,8 @@ class ModelType:
     # deepseek2-coder
     deepseek_coder_v2_instruct = 'deepseek-coder-v2-instruct'
     deepseek_coder_v2_lite_instruct = 'deepseek-coder-v2-lite-instruct'
+    deepseek_coder_v2 = 'deepseek-coder-v2'
+    deepseek_coder_v2_lite = 'deepseek-coder-v2-lite'
     # deepseek-math
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
@@ -1773,6 +1775,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B')
 @register_model(
@@ -3060,6 +3063,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_vllm=True,
     requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
+    support_gradient_checkpointing=False,
     function_kwargs={'gptq_bits': 4},
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4')
 @register_model(
@@ -3069,6 +3073,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct')
 @register_model(
@@ -3938,6 +3943,28 @@ def get_model_tokenizer_internlm2(model_dir: str,
 
 
 @register_model(
+    ModelType.deepseek_coder_v2,
+    'deepseek-ai/DeepSeek-Coder-V2-Base',
+    LoRATM.deepseek2,
+    TemplateType.default_generation,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Base')
+@register_model(
+    ModelType.deepseek_coder_v2_lite,
+    'deepseek-ai/DeepSeek-Coder-V2-Lite-Base',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Base')
+@register_model(
     ModelType.deepseek_coder_v2_instruct,
     'deepseek-ai/DeepSeek-Coder-V2-Instruct',
     LoRATM.deepseek2,
@@ -3979,6 +4006,16 @@ def get_model_tokenizer_internlm2(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-V2-Lite-Chat')
+@register_model(
+    ModelType.deepseek_v2,
+    'deepseek-ai/DeepSeek-V2',
+    LoRATM.deepseek2,
+    TemplateType.default_generation,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2')
 @register_model(
     ModelType.deepseek_v2_chat,
     'deepseek-ai/DeepSeek-V2-Chat',
