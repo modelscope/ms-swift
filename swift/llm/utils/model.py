@@ -341,6 +341,7 @@ class ModelType:
     deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
     # deepseek-v2
+    deepseek_v2 = 'deepseek-v2'
     deepseek_v2_chat = 'deepseek-v2-chat'
     deepseek_v2_lite = 'deepseek-v2-lite'
     deepseek_v2_lite_chat = 'deepseek-v2-lite-chat'
@@ -4241,25 +4242,7 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        # avoid double patching
-        if not hasattr(model.language_model, '__old_forward'):
-            # device_map
-            __old_forward = model.language_model.forward
 
-            def _new_forward(*args, **kwargs) -> Tensor:
-                inputs = kwargs.get('inputs_embeds')
-                if inputs is None:
-                    inputs = kwargs.get('input_ids')
-                device = inputs.device
-                output = __old_forward(*args, **kwargs)
-                if output.logits is not None:
-                    output.logits = output.logits.to(device)
-                if output.loss is not None:
-                    output.loss = output.loss.to(device)
-                return output
-
-            model.language_model.forward = _new_forward
-            model.language_model.__old_forward = __old_forward
 
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
@@ -4425,31 +4408,6 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
         setattr(model, key, _get_new_func(key))
 
 
-def _patch_deepseek_vl(model) -> None:
-    if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
-        return
-    if hasattr(model.language_model, '__old_forward'):
-        # avoid double patching
-        return
-    # device_map
-    __old_forward = model.language_model.forward
-
-    def _new_forward(*args, **kwargs) -> Tensor:
-        inputs = kwargs.get('inputs_embeds')
-        if inputs is None:
-            inputs = kwargs.get('input_ids')
-        device = inputs.device
-        output = __old_forward(*args, **kwargs)
-        if output.logits is not None:
-            output.logits = output.logits.to(device)
-        if output.loss is not None:
-            output.loss = output.loss.to(device)
-        return output
-
-    model.language_model.forward = _new_forward
-    model.language_model.__old_forward = __old_forward
-
-
 @register_model(
     ModelType.deepseek_vl_7b_chat,
     'deepseek-ai/deepseek-vl-7b-chat',
@@ -4499,7 +4457,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
     tokenizer.processor = processor
     if load_model:
-        _patch_deepseek_vl(model)
+        _patch_output_device_map(model.language_model)
         model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
@@ -5675,6 +5633,28 @@ def get_model_tokenizer_yi_vl(model_dir: str,
     return model, tokenizer
 
 
+def _patch_output_device_map(llm_model):
+    # avoid double patching
+    if not hasattr(llm_model, '__old_forward'):
+        # device_map
+        __old_forward = llm_model.forward
+
+        def _new_forward(*args, **kwargs) -> Tensor:
+            inputs = kwargs.get('inputs_embeds')
+            if inputs is None:
+                inputs = kwargs.get('input_ids')
+            device = inputs.device
+            output = __old_forward(*args, **kwargs)
+            if output.logits is not None:
+                output.logits = output.logits.to(device)
+            if output.loss is not None:
+                output.loss = output.loss.to(device)
+            return output
+
+        llm_model.forward = _new_forward
+        llm_model.__old_forward = __old_forward
+
+
 def _patch_minicpm_v_device_map(model) -> None:
     if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
         return
@@ -5703,22 +5683,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 
         model.resampler.forward = _new_resampler_forward
 
-    __old_forward = model.llm.forward
-
-    def _new_forward(*args, **kwargs) -> Tensor:
-        inputs = kwargs.get('inputs_embeds')
-        if inputs is None:
-            inputs = kwargs.get('input_ids')
-        device = inputs.device
-        output = __old_forward(*args, **kwargs)
-        if output.logits is not None:
-            output.logits = output.logits.to(device)
-        if output.loss is not None:
-            output.loss = output.loss.to(device)
-        return output
-
-    model.llm.forward = _new_forward
-    model.llm.__old_forward = __old_forward
+    _patch_output_device_map(model.llm)
 
 
 @register_model(
