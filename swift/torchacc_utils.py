@@ -30,7 +30,7 @@ def get_bucket_sizes(max_length: int) -> List[int]:
     if os.getenv('TORCHACC_DATA_BUCKETS') is not None:
         bucket_sizes = [int(x) for x in os.getenv('TORCHACC_DATA_BUCKETS').split(',')]
         bucket_sizes.append(max_length)
-    else: # default normal distribution bucketing.
+    else:  # default normal distribution bucketing.
         mean = max_length // 2
         var = max_length // 8
         bucket_sizes = [mean + i * var for i in range(-3, 4)]
