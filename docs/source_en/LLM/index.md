@@ -7,7 +7,7 @@
 3. [LRHF Training](Human-Preference-Alignment-Training-Documentation.md)
 4. [Web-UI Training and Inference](../GetStarted/Web-ui.md)
 5. [LLM Evaluation](LLM-eval.md)
-6. [LLM Quantization](LLM-quantization.md)
+6. [LLM Quantization and Export](LLM-quantization-and-export.md)
 7. [OLLAMA Export](./OLLaMA-Export.md)
 8. [VLLM Inference and Deployment](VLLM-inference-acceleration-and-deployment.md)
 9. [LmDeploy Inference and Deployment](LmDeploy-inference-acceleration-and-deployment.md)

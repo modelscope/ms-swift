@@ -25,7 +25,7 @@ Swift DOCUMENTATION
    LLM/LLM-fine-tuning.md
    LLM/Human-Preference-Alignment-Training-Documentation.md
    LLM/LLM-eval.md
-   LLM/LLM-quantization.md
+   LLM/LLM-quantization-and-export.md
    LLM/OLLaMA-Export.md
    LLM/VLLM-inference-acceleration-and-deployment.md
    LLM/LmDeploy-inference-acceleration-and-deployment.md
