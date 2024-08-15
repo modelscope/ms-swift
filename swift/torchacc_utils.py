@@ -326,6 +326,11 @@ def save_ta_fsdp_checkpoint(self_model, tokenizer, args, output_dir):
     if tokenizer is not None and args.should_save:
         tokenizer.save_pretrained(output_dir, is_main_process=xm.is_master_ordinal(local=False), save_function=xm.save)
 
+    if isinstance(model, PeftModel):
+        consolidate_checkpoint(output_dir, 'adapter_model')
+    else:
+        consolidate_checkpoint(output_dir, 'model')
+
 
 def ta_trim_graph():
     if use_torchacc() and torchacc_trim_graph():

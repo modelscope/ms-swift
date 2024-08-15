@@ -210,8 +210,6 @@ def prepare_model(model, args: SftArguments):
                 logger.info(f'fourier_config: {fourier_config}')
         else:
             if use_torchacc():
-                if args.fsdp_num > 1:
-                    consolidate_checkpoint(args.resume_from_checkpoint, 'adapter_model')
                 model = Swift.from_pretrained(
                     model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
             else:
@@ -235,8 +233,6 @@ def prepare_model(model, args: SftArguments):
         if len(args.additional_trainable_parameters) > 0:
             activate_model_parameters(model, args.additional_trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint is not None:
-            if args.fsdp_num > 1:
-                consolidate_checkpoint(args.resume_from_checkpoint, 'model')
             weights_file = os.path.join(args.resume_from_checkpoint, 'model.bin')
             state_dict = torch.load(weights_file, map_location='cpu')
             model.load_state_dict(state_dict, False)
