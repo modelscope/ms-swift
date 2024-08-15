@@ -6037,6 +6037,7 @@ def get_model_tokenizer_llava(model_dir: str,
     LoRATM.idefics3,
     TemplateType.idefics3,
     support_flash_attn=True,
+    placeholder_tokens=['<image>'],
     requires=['transformers>=4.45.0.dev0'],
     tags=['multi-modal', 'vision'],
     hf_model_id='HuggingFaceM4/Idefics3-8B-Llama3')

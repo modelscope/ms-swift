@@ -267,9 +267,9 @@ GLM4V_KEYS = MultiModelKeys(
 )
 
 IDEFICS3_KEYS = MultiModelKeys(
-    language_model='text_model',
-    projector='connector',
-    vision_tower='model',
+    language_model='model.text_model',
+    projector='model.connector',
+    vision_tower='model.vision_model',
 )
 
 MODEL_KEYS_MAPPING = OrderedDict([
