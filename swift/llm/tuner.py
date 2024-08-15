@@ -31,7 +31,8 @@ def handle_target_modules(model, args: SftArguments) -> None:
         target_modules.remove('ALL')
         target_modules += find_all_linears(model, args.quantization_bit, args.model_type, args.quant_method)
     args.target_modules = target_modules
-    logger.info(f'target_modules: {args.target_modules}')
+    if not args.target_regex:
+        logger.info(f'target_modules: {args.target_modules}')
 
 
 def handle_same_dim_target_modules(model: torch.nn.Module, config: VeraConfig):
@@ -72,8 +73,8 @@ def prepare_model(model, args: SftArguments):
             if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
             if args.target_regex:
-                logger.info(f'Value of target_modules: {args.target_modules} will have no effect '
-                            f'because target_regex value: {args.target_regex} exists.')
+                logger.info(f'Value of target_modules: `{args.target_modules}` will have no effect '
+                            f'because target_regex value: `{args.target_regex}` exists.')
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.target_regex or args.target_modules,
