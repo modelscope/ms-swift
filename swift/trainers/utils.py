@@ -151,7 +151,6 @@ def patch_datacollator():
         def new_call(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
             padded_batch = {}
             for k in features[0].keys():
-                # TODO: process _data
                 if k.endswith(('_input_ids', '_attention_mask', '_labels', '_pixel_values')):
                     if self.is_encoder_decoder:
                         to_pad = [torch.LongTensor(ex[k]) for ex in features]
@@ -212,7 +211,19 @@ def patch_datacollator():
                     # the cached reference model logprobs
                     padded_batch[k] = torch.tensor([ex[k] for ex in features])
                 else:
-                    padded_batch[k] = [ex[k] for ex in features]
+                    if k == 'prompt__data':
+                        padded_batch['prompt__data'] = [
+                            {
+                                **{k: v for k, v in data.items() if k not in ['input_ids', 'pixel_values']},
+                                'input_ids': torch.tensor(data['input_ids']) if 'input_ids' in data else None,
+                                'pixel_values': torch.tensor(data['pixel_values']) if 'pixel_values' in data else None
+                            }
+                            for ex in features for data in ex['prompt__data'] 
+                        ]
+                        # for ex in features (遍历每个数据), for data in ex['prompt__data'] (遍历每个数据中的数据) 保留除了'input_ids', 'pixel_values'的键, 对'input_ids', 'pixel_values'的值转换为tensor
+                        # padded_batch[k] = [torch.tensor[k] for ex in features][0]
+                    else:
+                        padded_batch[k] = [ex[k] for ex in features]
 
             return padded_batch
 

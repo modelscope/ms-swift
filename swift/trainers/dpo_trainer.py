@@ -93,12 +93,13 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                 prompt_tokens[k] = prompt_tokens[k][0]
                 if isinstance(prompt_tokens[k], torch.Tensor):
                     prompt_tokens[k] = prompt_tokens[k].tolist()
+                    
+            # datasets do not accept bfloat16; convert to float32.
             if prompt_tokens.get('_data') and 'pixel_values' in prompt_tokens['_data'][0] and prompt_tokens['_data'][0]['pixel_values'].dtype == torch.bfloat16:
                 prompt_tokens['_data'][0]['pixel_values'] = prompt_tokens['_data'][0]['pixel_values'].to(torch.float32)
                 prompt_tokens['_data'][1]['pixel_values'] = prompt_tokens['_data'][1]['pixel_values'].to(torch.float32)
             
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
-                # datasets do not accept bfloat16; convert to float32.
                 prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
 
             if 'attention_mask' not in prompt_tokens:
@@ -305,8 +306,10 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             model_kwargs['decoder_input_ids'] = concatenated_batch.pop('concatenated_decoder_input_ids', None)
 
         if self.is_vision_model:
-            model_dtype = self.accelerator.unwrap_model(model).dtype
-            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model_dtype)
+            # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
+            if 'pixel_values' in concatenated_batch:
+                model_dtype = self.accelerator.unwrap_model(model).dtype
+                model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model_dtype)
 
             if 'image_flags' in concatenated_batch:
                 model_kwargs['image_flags'] = concatenated_batch['image_flags']
@@ -317,6 +320,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if 'image_sizes' in concatenated_batch:
                 model_kwargs['image_sizes'] = concatenated_batch['image_sizes']
 
+            if '_data' in concatenated_batch:
+                model_kwargs['_data'] = concatenated_batch['_data']
+            
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True
 
@@ -437,8 +443,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         # patch here
         if is_vision_model:
-            pixel_values = [values for values in batch['prompt_pixel_values']]
-            concatenated_batch['pixel_values'] = torch.concat(pixel_values)
+            if "prompt_pixel_values" in batch:
+                pixel_values = [values for values in batch['prompt_pixel_values']]
+                concatenated_batch['pixel_values'] = torch.concat(pixel_values)
 
             if 'prompt_image_flags' in batch:
                 image_flags = [torch.tensor(flags) for flags in batch['prompt_image_flags']]
@@ -451,6 +458,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if 'prompt_image_sizes' in batch:
                 concatenated_batch['image_sizes'] = sum([b for b in batch['prompt_image_sizes']], start=[])
 
+            if 'prompt__data' in batch:
+                concatenated_batch['_data'] = batch['prompt__data']
+        
         return concatenated_batch
 
     @staticmethod
