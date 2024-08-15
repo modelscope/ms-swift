@@ -4,6 +4,7 @@
 export USE_TORCHACC=1
 export PJRT_ALLOCATOR_FRACTION=0.96
 export XLA_EXPERIMENTAL=nonzero:masked_select
+export TORCHACC_DATA_BUCKETS=512,1024,1536,2048
 
 export XLA_PERSISTENT_CACHE_PATH=./output/compiled_cache/Meta-Llama-3-70B-Instruct
 mkdir -p $XLA_PERSISTENT_CACHE_PATH

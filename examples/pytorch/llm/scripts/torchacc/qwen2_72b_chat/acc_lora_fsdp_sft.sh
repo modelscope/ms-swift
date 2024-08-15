@@ -5,6 +5,7 @@ export USE_TORCHACC=1
 # export TORCHACC_TRIM_GRAPH=1
 export PJRT_ALLOCATOR_FRACTION=0.96
 export XLA_EXPERIMENTAL=nonzero:masked_select
+export TORCHACC_DATA_BUCKETS=512,1024,1536,2048
 
 export XLA_PERSISTENT_CACHE_PATH=./output/compiled_cache/qwen2-72b-instruct-0724
 export XLA_FLAGS="--xla_gpu_enable_cudnn_fmha=false --xla_gpu_enable_priority_fusion=false --xla_gpu_normalize_layouts=false --xla_gpu_memory_limit_slop_factor=400"

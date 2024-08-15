@@ -22,7 +22,20 @@ logger = get_logger()
 
 # DataLoader
 def get_bucket_sizes(max_length: int) -> List[int]:
-    return [max_length // 4 * (i + 1) for i in range(4)]
+    """Get the bucket sizes for TorchAcc.
+    You can set the environment variable TORCHACC_DATA_BUCKETS to specify
+    the bucket sizes. If not set, we use a normal distribution bucketing with
+    8 buckets.
+    """
+    if os.getenv('TORCHACC_DATA_BUCKETS') is not None:
+        bucket_sizes = [int(x) for x in os.getenv('TORCHACC_DATA_BUCKETS').split(',')]
+        bucket_sizes.append(max_length)
+    else:  # default normal distribution bucketing.
+        mean = max_length // 2
+        var = max_length // 8
+        bucket_sizes = [mean + i * var for i in range(-3, 4)]
+        bucket_sizes.append(max_length)
+    return bucket_sizes
 
 
 def _get_closet_bucket(bucket_sizes, data_length):
