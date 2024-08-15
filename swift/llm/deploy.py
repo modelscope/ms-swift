@@ -342,10 +342,14 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 completion_tokens=num_generated_tokens,
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
+            is_diff = False
             for output in result.outputs:
                 output.delta_text = template.generate_ids_to_response(
                     output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
                 total_res[output.index] += output.delta_text
+                is_diff |= bool(output.delta_text)
+            if not is_diff:
+                continue
             if isinstance(request, ChatCompletionRequest):
                 choices = []
                 for output in result.outputs:
@@ -498,6 +502,8 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                 )
                 delta_text = template.generate_ids_to_response(
                     output.token_ids, is_finished, return_delta=True, print_idx=print_idx)
+                if not delta_text:
+                    continue
                 total_response += delta_text
 
                 finish_reason = None
@@ -692,9 +698,11 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 completion_tokens=num_generated_tokens,
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
+            delta_text = response[print_idx:]
+            if not delta_text:
+                continue
+            print_idx = len(response)
             if isinstance(request, ChatCompletionRequest):
-                delta_text = response[print_idx:]
-                print_idx = len(response)
                 toolcall = None
                 if is_finished:
                     action, action_input = split_action_action_input(response)
@@ -714,8 +722,6 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 resp = ChatCompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             else:
-                delta_text = response[print_idx:]
-                print_idx = len(response)
                 choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=None)]
                 resp = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)

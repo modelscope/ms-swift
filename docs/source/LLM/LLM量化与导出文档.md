@@ -1,4 +1,4 @@
-# LLM量化文档
+# LLM量化与导出文档
 swift支持使用awq、gptq、bnb、hqq、eetq技术对模型进行量化。其中awq、gptq量化技术支持vllm进行推理加速，需要使用校准数据集，量化性能更好，但量化速度较慢。而bnb、hqq、eetq无需校准数据，量化速度较快。这五种量化方法都支持qlora微调。
 
 awq、gptq需要使用`swift export`进行量化。而bnb、hqq、eetq可以直接在sft和infer时进行快速量化。
