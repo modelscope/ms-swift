@@ -214,6 +214,8 @@ class ModelType:
     chinese_alpaca_2_13b_16k = 'chinese-alpaca-2-13b-16k'
     llama_3_chinese_8b = 'llama-3-chinese-8b'
     llama_3_chinese_8b_instruct = 'llama-3-chinese-8b-instruct'
+    # idefics
+    idefics3_8b_llama3 = 'idefics3-8b-llama3'
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -537,6 +539,7 @@ class LoRATM(NamedTuple):
     cogvlm = f'{get_regex_for_mm_default_lora("cogvlm")}'
     cogagent = f'{get_regex_for_mm_default_lora("cogagent")}'
     florence = f'{get_regex_for_mm_default_lora("florence")}'
+    idefics3 = f'{get_regex_for_mm_default_lora("idefics3")}'
     # default lora target modules for nlp llms.
     baichuan = ['W_pack']
     chatglm = ['query_key_value']
@@ -3485,7 +3488,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio,
     support_flash_attn=True,
-    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    requires=['librosa', 'transformers>=4.45.0.dev0'],
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B-Instruct')
 @register_model(
@@ -3494,7 +3497,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio_generation,
     support_flash_attn=True,
-    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    requires=['librosa', 'transformers>=4.45.0.dev0'],
     eos_token='<|endoftext|>',
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B')
@@ -6025,6 +6028,24 @@ def get_model_tokenizer_llava(model_dir: str,
         if not hasattr(model.config, 'max_sequence_length'):
             model.config.max_sequence_length = 2048
         _patch_llava(model)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.idefics3_8b_llama3,
+    'AI-ModelScope/Idefics3-8B-Llama3',
+    LoRATM.idefics3,
+    TemplateType.idefics3,
+    support_flash_attn=True,
+    requires=['transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='HuggingFaceM4/Idefics3-8B-Llama3')
+def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, AutoModelForVision2Seq
+    processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = AutoModelForVision2Seq
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
     return model, tokenizer
 
 

@@ -62,6 +62,7 @@ class TemplateType:
     llama_llava_next = 'llama-llava-next'
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
+    idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -2008,6 +2009,24 @@ register_template(
     LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
     use_model=True,
     infer_media_type='round',
+    lazy_tokenize=True)
+
+
+class Idefics3Template(Template):
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example.get('images') or []
+        print()
+
+
+register_template(
+    TemplateType.idefics3,
+    Idefics3Template(['<|begin_of_text|>'], ['User:{{QUERY}}<end_of_utterance>\nAssistant:'], ['<end_of_utterance>\n'],
+                     ['<end_of_utterance>'], None, ['System:{{SYSTEM}}<end_of_utterance>\n']),
+    use_model=True,
     lazy_tokenize=True)
 
 
