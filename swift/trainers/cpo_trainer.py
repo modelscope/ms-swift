@@ -154,7 +154,6 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
             prompt_tokens = self.template.encode(prompt)[0]
             prompt_tokens.pop('labels', None)
 
-            # Batching image-related information for paired response using template
             if '_data' in prompt_tokens:
                 if not self._data_keys:
                     self._data_keys = prompt_tokens['_data'].keys()
