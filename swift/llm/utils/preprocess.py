@@ -117,6 +117,8 @@ class RowPreprocessMixin:
 class SwiftPreprocessor:
 
     def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+        if isinstance(dataset, HfIterableDataset):
+            return dataset
         if 'history' in dataset.features:
             old_history = dataset['history']
             has_history = False

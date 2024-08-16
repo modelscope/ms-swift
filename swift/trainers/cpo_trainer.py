@@ -17,12 +17,14 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
 
     def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
         self.template = template
+        template._is_training = True
         kwargs.pop('gamma', None)
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
         patch_trl(is_vision)
-        self.keys = []  # keys appears in tokenize_row
+        self.processed_keys = []  # keys after tokenize_row mapiing
         self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
+        self._data_keys = []  # vision related key in _data
         self.need_filter: bool = False
         super().__init__(*args, **kwargs)
         self.train_dataset = self.train_dataset.remove_columns(self.column_names)
@@ -63,31 +65,27 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
 
         batch = {}
         if not self.is_encoder_decoder:
-            # first: encode without response
+            # encode without response
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
-
-            # Skip examples that do not contain 'input_ids'
+            prompt_tokens.pop('labels', None)
+            # Skip examples that have too lengthy prompt to avoid conflict in following processing
             if 'input_ids' not in prompt_tokens:
                 self.need_filter = True
-                return {k: None for k in self.keys}
+                return {k: None for k in self.processed_keys}
 
-            # resolve conflict in data_collator when labels are None, pop it afterwards
-            prompt_tokens['labels'] = prompt_tokens['input_ids']
-            # Batching image-related information for paired response using template
-            prompt_tokens = [prompt_tokens] * 2
-            prompt_tokens = self.template.data_collator(prompt_tokens)
-            prompt_tokens.pop('labels')
-            for k in prompt_tokens:
-                if 'image' in k or 'pixel' in k:
-                    continue
-                prompt_tokens[k] = prompt_tokens[k][0]
-                if isinstance(prompt_tokens[k], torch.Tensor):
-                    prompt_tokens[k] = prompt_tokens[k].tolist()
+            # for MLLM, pop vision related data to process after
+            if '_data' in prompt_tokens:
+                if not self._data_keys:
+                    self._data_keys = prompt_tokens['_data'].keys()
+                for key in prompt_tokens['_data'].keys():
+                    if key not in prompt_tokens:
+                        prompt_tokens[key] = prompt_tokens['_data'][key]
+                prompt_tokens.pop('_data')
 
+            # convert bfloat16 to float32 to avoid conflict in mapping
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
-                # datasets do not accept bfloat16; convert to float32.
                 prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
 
             if 'attention_mask' not in prompt_tokens:
@@ -131,6 +129,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                 k: rejected_tokens[f'prompt_{k}'] + rejected_tokens[k]
                 for k in ['input_ids', 'attention_mask']
             }
+
             chosen_sequence_tokens['labels'] = chosen_sequence_tokens['input_ids'][:]
             _paddings = [self.label_pad_token_id] * len(chosen_tokens['prompt_input_ids'])
             chosen_sequence_tokens['labels'][:len(chosen_tokens['prompt_input_ids'])] = _paddings
@@ -153,20 +152,15 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
+            prompt_tokens.pop('labels', None)
 
-            # resolve conflict in data_collator when labels are None, pop it afterwards
-            prompt_tokens['labels'] = prompt_tokens['input_ids']
-
-            # Batching image-related information for paired response using template
-            prompt_tokens = [prompt_tokens] * 2
-            prompt_tokens = self.template.data_collator(prompt_tokens)
-            prompt_tokens.pop('labels')
-            for k in prompt_tokens:
-                if 'image' in k or 'pixel' in k:
-                    continue
-                prompt_tokens[k] = prompt_tokens[k][0]
-                if isinstance(prompt_tokens[k], torch.Tensor):
-                    prompt_tokens[k] = prompt_tokens[k].tolist()
+            if '_data' in prompt_tokens:
+                if not self._data_keys:
+                    self._data_keys = prompt_tokens['_data'].keys()
+                for key in prompt_tokens['_data'].keys():
+                    if key not in prompt_tokens:
+                        prompt_tokens[key] = prompt_tokens['_data'][key]
+                prompt_tokens.pop('_data')
 
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
                 # datasets do not accept bfloat16; convert to float32.
@@ -190,8 +184,8 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                     labels=torch.tensor(batch['chosen_labels']))
 
             batch.update(prompt_tokens)
-        if not self.keys:
-            self.keys = (list(batch.keys()))
+        if not self.processed_keys:
+            self.processed_keys = (list(batch.keys()))
         return batch
 
     def concatenated_forward(
@@ -222,17 +216,20 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         } if self.is_encoder_decoder else {})
 
         if self.is_vision_model:
-            model_dtype = self.accelerator.unwrap_model(model).dtype
-            model_kwargs['pixel_values'] = concatenated_batch['pixel_values'].to(model_dtype)
-
-            if 'image_flags' in concatenated_batch:
-                model_kwargs['image_flags'] = concatenated_batch['image_flags']
-
-            if 'pixel_attention_mask' in concatenated_batch:
-                model_kwargs['pixel_attention_mask'] = concatenated_batch['pixel_attention_mask']
-
-            if 'image_sizes' in concatenated_batch:
-                model_kwargs['image_sizes'] = concatenated_batch['image_sizes']
+            batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
+            if self._data_keys is not None:
+                _data = [dict() for _ in range(batch_size)]
+                for k in self._data_keys:
+                    if k == 'input_ids':
+                        _data = [{**d, k: concatenated_batch['concatenated_input_ids'][i]} for i, d in enumerate(_data)]
+                    elif k == 'pixel_values':
+                        # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
+                        model_dtype = self.accelerator.unwrap_model(model).dtype
+                        # for vision related data, paired response share the same one
+                        _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
+                    else:
+                        _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
+                model_kwargs['_data'] = _data
 
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True
@@ -296,19 +293,20 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         batch: Dict[str, Union[List, torch.LongTensor]],
         concatenated_batch: Dict[str, torch.LongTensor],
     ) -> Dict[str, torch.LongTensor]:
-        pixel_values = [values for values in batch['prompt_pixel_values']]
-        concatenated_batch['pixel_values'] = torch.concat(pixel_values)
+        if 'prompt_pixel_values' in batch:
+            pixel_values = [values for values in batch['prompt_pixel_values']]
+            concatenated_batch['pixel_values'] = pixel_values
 
         if 'prompt_image_flags' in batch:
             image_flags = [torch.tensor(flags) for flags in batch['prompt_image_flags']]
-            concatenated_batch['image_flags'] = torch.concat(image_flags)
+            concatenated_batch['image_flags'] = image_flags
 
         if 'prompt_pixel_attention_mask' in batch:
             pixel_attention_mask = [mask for mask in batch['pixel_attention_mask']]
-            concatenated_batch['pixel_attention_mask'] = torch.concat(pixel_attention_mask)
+            concatenated_batch['pixel_attention_mask'] = pixel_attention_mask
 
         if 'prompt_image_sizes' in batch:
-            concatenated_batch['image_sizes'] = sum([b for b in batch['prompt_image_sizes']], start=[])
+            concatenated_batch['image_sizes'] = batch['prompt_image_sizes']
 
         return concatenated_batch
 
