@@ -3,7 +3,7 @@ import inspect
 import math
 import os
 import sys
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from functools import partial, update_wrapper, wraps
 from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Type, Union
@@ -4082,20 +4082,6 @@ def _patch_output_device_map(llm_model):
         llm_model.__old_forward = __old_forward
 
 
-def fix_internvl_inplace_bug(model) -> None:
-    embedding = model.language_model.get_input_embeddings()
-    if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-        old_forward = embedding.forward
-
-        @wraps(old_forward)
-        def _new_forward(*args, **kwargs):
-            device = args[0].device
-            return old_forward(*args, **kwargs).requires_grad_(True).clone().to(device)
-
-        embedding.__old_forward = old_forward
-        embedding.forward = _new_forward
-
-
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -4268,7 +4254,8 @@ def get_model_tokenizer_internvl(model_dir: str,
         _patch_output_device_map(model.language_model)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
-        fix_internvl_inplace_bug(model)
+        embedding = model.language_model.get_input_embeddings()
+        embedding.register_forward_hook(_clone_hook)
 
     return model, tokenizer
 
@@ -5686,6 +5673,20 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
     return model, tokenizer
 
 
+@contextmanager
+def ignore_check_imports():
+    import transformers.dynamic_module_utils as td
+
+    @wraps(td.check_imports)
+    def _check_imports(filename) -> List[str]:
+        return td.get_relative_imports(filename)
+
+    td._old_check_imports = td.check_imports
+    td.check_imports = _check_imports
+    yield
+    td.check_imports = td._old_check_imports
+
+
 @register_model(
     ModelType.minicpm_v_v2_6_chat,
     'OpenBMB/MiniCPM-V-2_6',
@@ -5718,24 +5719,15 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     version = kwargs.get('version', 'v2.5')
     if load_model and version == 'v2.6':
-        try:
+        with ignore_check_imports():
             model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
             model_cls._no_split_modules = []
-        except ImportError:
-            pass
     model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if load_model:
         embedding = model.get_input_embeddings()
-        if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-            old_forward = embedding.forward
+        embedding.register_forward_hook(_clone_hook)
 
-            @wraps(old_forward)
-            def _new_forward(*args, **kwargs):
-                return old_forward(*args, **kwargs).requires_grad_(True).clone()
-
-            embedding.__old_forward = old_forward
-            embedding.forward = _new_forward
     return model, tokenizer
 
 
