@@ -343,12 +343,14 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
             is_diff = False
+            has_finished = False
             for output in result.outputs:
                 output.delta_text = template.generate_ids_to_response(
                     output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
                 total_res[output.index] += output.delta_text
                 is_diff |= bool(output.delta_text)
-            if not is_diff:
+                has_finished |= output.finish_reason is not None
+            if not is_diff and not has_finished:
                 continue
             if isinstance(request, ChatCompletionRequest):
                 choices = []
@@ -502,14 +504,13 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                 )
                 delta_text = template.generate_ids_to_response(
                     output.token_ids, is_finished, return_delta=True, print_idx=print_idx)
-                if not delta_text:
-                    continue
-                total_response += delta_text
 
                 finish_reason = None
                 if output.status.name == 'FINISH':
                     finish_reason = 'stop'
-
+                if not delta_text and finish_reason != 'stop':
+                    continue
+                total_response += delta_text
                 if isinstance(request, ChatCompletionRequest):
                     toolcall = None
                     if finish_reason == 'stop':
@@ -699,7 +700,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
             delta_text = response[print_idx:]
-            if not delta_text:
+            if not delta_text and not is_finished:
                 continue
             print_idx = len(response)
             if isinstance(request, ChatCompletionRequest):
