@@ -25,7 +25,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         patch_trl(is_vision)
         self.processed_keys = []  # keys after tokenize_row mapiing
         self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
-        self._data_keys = [] # vision related key in _data
+        self._data_keys = []  # vision related key in _data
         self.need_filter: bool = False
 
         super().__init__(*args, **kwargs)
@@ -156,20 +156,16 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
-
-            # resolve conflict in data_collator when labels are None, pop it afterwards
-            prompt_tokens['labels'] = prompt_tokens['input_ids']
+            prompt_tokens.pop('labels', None)
 
             # Batching image-related information for paired response using template
-            prompt_tokens = [prompt_tokens] * 2
-            prompt_tokens = self.template.data_collator(prompt_tokens)
-            prompt_tokens.pop('labels', None)
-            for k in prompt_tokens:
-                if 'image' in k or 'pixel' in k:
-                    continue
-                prompt_tokens[k] = prompt_tokens[k][0]
-                if isinstance(prompt_tokens[k], torch.Tensor):
-                    prompt_tokens[k] = prompt_tokens[k].tolist()
+            if '_data' in prompt_tokens:
+                if not self._data_keys:
+                    self._data_keys = prompt_tokens['_data'].keys()
+                for key in prompt_tokens['_data'].keys():
+                    if key not in prompt_tokens:
+                        prompt_tokens[key] = prompt_tokens['_data'][key]
+                prompt_tokens.pop('_data')
 
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
                 # datasets do not accept bfloat16; convert to float32.

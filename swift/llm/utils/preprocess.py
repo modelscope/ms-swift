@@ -120,7 +120,6 @@ class SwiftPreprocessor:
         if isinstance(dataset, HfIterableDataset):
             return dataset
         if 'history' in dataset.features:
-            
             old_history = dataset['history']
             has_history = False
             history: List[History] = []
