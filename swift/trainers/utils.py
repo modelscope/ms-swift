@@ -211,18 +211,7 @@ def patch_datacollator():
                     # the cached reference model logprobs
                     padded_batch[k] = torch.tensor([ex[k] for ex in features])
                 else:
-                #     if k == 'prompt__data':
-                #         # TODO: pad_sequence for the prompt__data
-                #         padded_batch['prompt__data'] = [
-                #             {
-                #                 **{k: v for k, v in data.items() if k not in ['input_ids', 'pixel_values']},
-                #                 'input_ids': torch.tensor(data['input_ids']) if 'input_ids' in data else None,
-                #                 'pixel_values': torch.tensor(data['pixel_values']) if 'pixel_values' in data else None
-                #             }
-                #             for ex in features for data in ex['prompt__data'] 
-                #         ]
-                    # else:
-                        padded_batch[k] = [ex[k] for ex in features]
+                    padded_batch[k] = [ex[k] for ex in features]
 
             return padded_batch
 
