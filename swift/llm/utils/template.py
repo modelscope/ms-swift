@@ -62,6 +62,7 @@ class TemplateType:
     llama_llava_next = 'llama-llava-next'
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
+    idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -2008,6 +2009,69 @@ register_template(
     LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
     use_model=True,
     infer_media_type='round',
+    lazy_tokenize=True)
+
+
+def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
+                       image_token: int) -> Tuple[List[int], List[int]]:
+    if isinstance(new_input_ids, torch.Tensor):
+        new_input_ids = new_input_ids.tolist()
+
+    # Find the tokens after the image_token in input_ids, and then align them.
+    i, j = 0, 0
+    while i < len(input_ids):
+        x = input_ids[i]
+        if x == image_token:
+            assert i + 1 < len(input_ids), f'input_ids[-10:]: {input_ids[-10:]}'
+            assert i - 1 >= 0, f'input_ids[:10]: {input_ids[:10]}'
+            # [1, 2, 3(i-1), image_token(i), 4(i+1) ,5, 6]
+            # [1, 2, 3(j_begin), a(j'), a, a, a, 4(j) ,5, 6]
+            j_begin = j - 1
+            for k in range(5):  # Increase robustness.
+                if j_begin + k < len(new_input_ids) and new_input_ids[j_begin + k] == input_ids[i - 1]:
+                    j_begin += k
+                    break
+                if j_begin - k >= 0 and new_input_ids[j_begin - k] == input_ids[i - 1]:
+                    j_begin -= k
+                    break
+            else:
+                raise ValueError(f'new_input_ids: {new_input_ids}, input_ids: {input_ids}')
+            j_begin += 1
+            while j < len(new_input_ids) and new_input_ids[j] != input_ids[i + 1]:
+                j += 1
+            input_ids = input_ids[:i] + new_input_ids[j_begin:j] + input_ids[i + 1:]
+            if labels:
+                labels = labels[:i] + [-100] * (j - j_begin) + labels[i + 1:]
+            i += j - j_begin
+        else:
+            j += 1
+        i += 1
+    return input_ids, labels
+
+
+class Idefics3Template(Template):
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example.get('images') or []
+        processor = self.tokenizer.processor
+        prompt = self.tokenizer.decode(inputs['input_ids'])
+        if images:
+            image_inputs = processor(text=prompt, images=images, return_tensors='pt', add_special_tokens=False)
+            image_token = 128257  # <image>
+            inputs['input_ids'], inputs['labels'] = align_image_inputs(inputs['input_ids'], inputs['labels'],
+                                                                       image_inputs['input_ids'][0], image_token)
+            inputs['pixel_values'] = image_inputs['pixel_values']
+        return inputs, {}
+
+
+register_template(
+    TemplateType.idefics3,
+    Idefics3Template(['<|begin_of_text|>'], ['User:{{QUERY}}<end_of_utterance>\nAssistant:'], ['<end_of_utterance>\n'],
+                     ['<end_of_utterance>'], None, ['System:{{SYSTEM}}<end_of_utterance>\n']),
+    use_model=True,
     lazy_tokenize=True)
 
 

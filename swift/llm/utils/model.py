@@ -214,6 +214,8 @@ class ModelType:
     chinese_alpaca_2_13b_16k = 'chinese-alpaca-2-13b-16k'
     llama_3_chinese_8b = 'llama-3-chinese-8b'
     llama_3_chinese_8b_instruct = 'llama-3-chinese-8b-instruct'
+    # idefics
+    idefics3_8b_llama3 = 'idefics3-8b-llama3'
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -537,6 +539,7 @@ class LoRATM(NamedTuple):
     cogvlm = f'{get_regex_for_mm_default_lora("cogvlm")}'
     cogagent = f'{get_regex_for_mm_default_lora("cogagent")}'
     florence = f'{get_regex_for_mm_default_lora("florence")}'
+    idefics3 = f'{get_regex_for_mm_default_lora("idefics3")}'
     # default lora target modules for nlp llms.
     baichuan = ['W_pack']
     chatglm = ['query_key_value']
@@ -1028,6 +1031,10 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
+def _output_device_map_hook(module, input, output):
+    return output.to(input[0].device)
+
+
 @register_model(
     ModelType.cogvlm2_video_13b_chat,
     'ZhipuAI/cogvlm2-video-llama3-chat',
@@ -1064,9 +1071,6 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
     if model is not None:
         # fix device map 4
-        def _output_device_map_hook(module, input, output):
-            return output.to(input[0].device)
-
         for layer in model.model.vision.transformer.layers:
             layer.mlp.register_forward_hook(_output_device_map_hook)
             layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
@@ -1701,9 +1705,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     # fix device_map 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
-
-    def _output_device_map_hook(module, input, output):
-        return output.to(input[0].device)
 
     if n_gpu // local_world_size >= 4:
         for layer in model.transformer.vision.transformer.layers:
@@ -3485,7 +3486,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio,
     support_flash_attn=True,
-    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    requires=['librosa', 'transformers>=4.45.0.dev0'],
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B-Instruct')
 @register_model(
@@ -3494,7 +3495,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio_generation,
     support_flash_attn=True,
-    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    requires=['librosa', 'transformers>=4.45.0.dev0'],
     eos_token='<|endoftext|>',
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B')
@@ -4239,10 +4240,9 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  load_model: bool = True,
                                  **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
-    if kwargs.get('eos_token') is None:
-        if tokenizer.eos_token != '<|im_end|>':
-            del tokenizer.__class__.eos_token_id
-            tokenizer.eos_token = '<|im_end|>'
+    if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
+        del tokenizer.__class__.eos_token_id
+        tokenizer.eos_token = '<|im_end|>'
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
@@ -4338,15 +4338,12 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 
         if version == 'v2.5':
 
-            def _output_device_map_hook(module, input, output):
+            def _output_device_map_hook2(module, input, output):
                 output = (output[0].to(input[1].device), output[1])
                 return output
 
-            def _output_device_map_hook2(module, input, output):
-                return output.to(input[0].device)
-
-            model.vit.register_forward_hook(_output_device_map_hook)
-            model.vision_proj.register_forward_hook(_output_device_map_hook2)
+            model.vit.register_forward_hook(_output_device_map_hook2)
+            model.vision_proj.register_forward_hook(_output_device_map_hook)
 
     return model, tokenizer
 
@@ -4382,36 +4379,6 @@ def git_clone_github(github_url: str,
 
         logger.info(f'local_repo_path: {local_repo_path}')
     return local_repo_path
-
-
-def __prepare_inputs_embeds(
-    self,
-    input_ids: torch.LongTensor,
-    pixel_values: torch.FloatTensor,
-    images_seq_mask: torch.LongTensor,
-    images_emb_mask: torch.LongTensor,
-    **kwargs,
-):
-    # for patching deepseek-vl
-    from einops import rearrange
-    bs, n = pixel_values.shape[0:2]
-    images = rearrange(pixel_values, 'b n c h w -> (b n) c h w')
-    # [b x n, T2, D]
-    images_embeds = self.aligner(self.vision_model(images))
-
-    # [b x n, T2, D] -> [b, n x T2, D]
-    images_embeds = rearrange(images_embeds, '(b n) t d -> b (n t) d', b=bs, n=n)
-    # [b, n, T2] -> [b, n x T2]
-    images_emb_mask = rearrange(images_emb_mask, 'b n t -> b (n t)')
-
-    # [b, T, D]
-    input_ids[input_ids < 0] = 0  # ignore the image embeddings
-    inputs_embeds = self.language_model.get_input_embeddings()(input_ids).to(input_ids.device)
-
-    # replace with the image embeddings (FIX)
-    inputs_embeds.data[images_seq_mask] = images_embeds[images_emb_mask]
-
-    return inputs_embeds
 
 
 def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
@@ -4480,7 +4447,8 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     tokenizer.processor = processor
     if load_model:
         _patch_output_device_map(model.language_model)
-        model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
+        model.language_model.model.embed_tokens.register_forward_hook(_clone_hook)
+        model.language_model.model.embed_tokens.register_forward_hook(_output_device_map_hook)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
         model.generation_config = model.language_model.generation_config
@@ -6025,6 +5993,25 @@ def get_model_tokenizer_llava(model_dir: str,
         if not hasattr(model.config, 'max_sequence_length'):
             model.config.max_sequence_length = 2048
         _patch_llava(model)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.idefics3_8b_llama3,
+    'AI-ModelScope/Idefics3-8B-Llama3',
+    LoRATM.idefics3,
+    TemplateType.idefics3,
+    support_flash_attn=True,
+    placeholder_tokens=['<image>'],
+    requires=['transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='HuggingFaceM4/Idefics3-8B-Llama3')
+def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, AutoModelForVision2Seq
+    processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = AutoModelForVision2Seq
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
     return model, tokenizer
 
 
