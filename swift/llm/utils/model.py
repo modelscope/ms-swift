@@ -4082,20 +4082,6 @@ def _patch_output_device_map(llm_model):
         llm_model.__old_forward = __old_forward
 
 
-def fix_internvl_inplace_bug(model) -> None:
-    embedding = model.language_model.get_input_embeddings()
-    if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-        old_forward = embedding.forward
-
-        @wraps(old_forward)
-        def _new_forward(*args, **kwargs):
-            device = args[0].device
-            return old_forward(*args, **kwargs).requires_grad_(True).clone().to(device)
-
-        embedding.__old_forward = old_forward
-        embedding.forward = _new_forward
-
-
 @register_model(
     ModelType.internvl_chat_v1_5,
     'AI-ModelScope/InternVL-Chat-V1-5',
@@ -4268,7 +4254,8 @@ def get_model_tokenizer_internvl(model_dir: str,
         _patch_output_device_map(model.language_model)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
-        fix_internvl_inplace_bug(model)
+        embedding = model.language_model.get_input_embeddings()
+        embedding.register_forward_hook(_clone_hook)
 
     return model, tokenizer
 
@@ -5739,15 +5726,8 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
     tokenizer.processor = processor
     if load_model:
         embedding = model.get_input_embeddings()
-        if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-            old_forward = embedding.forward
+        embedding.register_forward_hook(_clone_hook)
 
-            @wraps(old_forward)
-            def _new_forward(*args, **kwargs):
-                return old_forward(*args, **kwargs).requires_grad_(True).clone()
-
-            embedding.__old_forward = old_forward
-            embedding.forward = _new_forward
     return model, tokenizer
 
 
