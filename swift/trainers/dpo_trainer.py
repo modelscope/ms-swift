@@ -23,9 +23,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
         patch_trl(is_vision)
-        self.row_keys = []  # keys appears in tokenize_row
+        self.processed_keys = []  # keys after tokenize_row mapiing
         self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
-        self._data_keys = []
+        self._data_keys = [] # vision related key in _data
         self.need_filter: bool = False
 
         super().__init__(*args, **kwargs)
@@ -72,15 +72,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             # encode without response
             prompt = feature.copy()
             prompt['response'] = None
-            prompt_tokens = self.template.encode(prompt)
-            if not self.streaming:
-                prompt_tokens = prompt_tokens[0]
-
-            prompt_tokens.pop('labels')
+            prompt_tokens = self.template.encode(prompt)[0]
+            prompt_tokens.pop('labels', None)
             # Skip examples that have too lengthy prompt to avoid conflict in following processing
             if 'input_ids' not in prompt_tokens:
                 self.need_filter = True
-                return {k: None for k in self.row_keys}
+                return {k: None for k in self.processed_keys}
 
             # for MLLM, pop vision related data to process after
             if '_data' in prompt_tokens:
@@ -166,7 +163,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             # Batching image-related information for paired response using template
             prompt_tokens = [prompt_tokens] * 2
             prompt_tokens = self.template.data_collator(prompt_tokens)
-            prompt_tokens.pop('labels')
+            prompt_tokens.pop('labels', None)
             for k in prompt_tokens:
                 if 'image' in k or 'pixel' in k:
                     continue
@@ -196,8 +193,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                     labels=torch.tensor(batch['chosen_labels']))
 
             batch.update(prompt_tokens)
-        if not self.row_keys:
-            self.row_keys = (list(batch.keys()))
+        if not self.processed_keys:
+            self.processed_keys = (list(batch.keys()))
         return batch
 
     def get_batch_loss_metrics(
@@ -308,8 +305,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                     if k == 'input_ids':
                         _data = [{**d, k: concatenated_batch['concatenated_input_ids'][i]} for i, d in enumerate(_data)]
                     elif k == 'pixel_values':
-                        # # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
+                        # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
                         model_dtype = self.accelerator.unwrap_model(model).dtype
+                        # for vision related data, paired response share the same one
                         _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
                     else:
                         _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
