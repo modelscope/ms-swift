@@ -24,7 +24,7 @@ def test_vlm_sft():
     from swift.llm import sft_main, SftArguments, infer_main, InferArguments
     output = sft_main(SftArguments(model_type='idefics3-8b-llama3', dataset='coco-en-mini#100'))
     last_model_checkpoint = output['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True))
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
 
 if __name__ == '__main__':
