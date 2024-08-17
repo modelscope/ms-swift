@@ -1433,13 +1433,12 @@ register_template(TemplateType.mistral_nemo,
 class Llama3TemplateMixin:
     system = None
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         Template.__init__(self, ['<|begin_of_text|>'], [
             '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
             '<|start_header_id|>assistant<|end_header_id|>\n\n'
-        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'],
-                          *args, **kwargs)
+        ], ['<|eot_id|>'], ['<|eot_id|>'], self.system,
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
 
 
 class Llama3Template(Llama3TemplateMixin, Template):
@@ -1798,7 +1797,7 @@ class InternvlPhi3TemplateMixin:
     def __init__(self):
         Template.__init__(
             self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            getattr(self, 'system', None), ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
         self.padding_side = 'left'
 
@@ -2230,14 +2229,7 @@ class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
 register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=True, lazy_tokenize=True)
 
 
-class LLavaLlamaTemplate(Template):
-
-    def __init__(self):
-        Template.__init__(self, ['<|begin_of_text|>'], [
-            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-            '<|start_header_id|>assistant<|end_header_id|>\n\n'
-        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
+class LLavaLlamaTemplate(Llama3Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         return ['<image>\n']
@@ -2352,17 +2344,10 @@ class Phi3VisionTemplate(Template):
 register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
 
 
-class Llama3LlavaNextTemplate(LLavaTemplate):
-    default_system = 'You are a helpful language and vision assistant. ' \
+class Llama3LlavaNextTemplate(Llama3TemplateMixin, LLavaTemplate):
+    system = 'You are a helpful language and vision assistant. ' \
                      'You are able to understand the visual content that the user provides, ' \
                      'and assist the user with a variety of tasks using natural language.'
-
-    def __init__(self):
-        Template.__init__(self, ['<|begin_of_text|>'], [
-            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-            '<|start_header_id|>assistant<|end_header_id|>\n\n'
-        ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
 
 
 register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=True, lazy_tokenize=True)
