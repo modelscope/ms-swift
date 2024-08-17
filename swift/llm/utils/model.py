@@ -5813,7 +5813,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-next-110b-hf')
 @register_model(
-    ModelType.llava_next_110b_hf,
+    ModelType.llama3_llava_next_8b_hf,
     'swift/llama3-llava-next-8b-hf',
     LoRATM.llava,
     TemplateType.llama3_llava_next_hf,
