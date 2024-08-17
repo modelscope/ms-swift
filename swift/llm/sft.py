@@ -402,7 +402,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
                 json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    trainer.train(training_args.resume_from_checkpoint)
+    with template.training_context():
+        trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')

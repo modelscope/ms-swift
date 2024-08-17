@@ -266,6 +266,12 @@ GLM4V_KEYS = MultiModelKeys(
     vision_tower='transformer.vision',
 )
 
+IDEFICS3_KEYS = MultiModelKeys(
+    language_model='model.text_model',
+    projector='model.connector',
+    vision_tower='model.vision_model',
+)
+
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
     ('qwen_audio', QWEN_AUDIO_KEYS),
@@ -314,6 +320,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('phi3-small', LLAMA_KEYS),
     ('phi3', LLAMA_KEYS),
     ('minicpm', LLAMA_KEYS),
+    ('idefics3', IDEFICS3_KEYS),
 ])
 
 

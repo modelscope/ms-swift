@@ -112,7 +112,7 @@ class ChatCompletionMessageToolCall:
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
-    tool_calls: Optional[ChatCompletionMessageToolCall] = None
+    tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
 @dataclass
@@ -153,7 +153,7 @@ class CompletionResponse:
 class DeltaMessage:
     role: Literal['system', 'user', 'assistant']
     content: str
-    tool_calls: Optional[ChatCompletionMessageToolCall] = None
+    tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
 @dataclass

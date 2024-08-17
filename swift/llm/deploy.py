@@ -195,11 +195,9 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         _request['prompt'] = prompt
 
     for media_key in ['images', 'audios', 'videos']:
-        medias = getattr(request, media_key, None) or []
+        medias = getattr(request, media_key, None)
         if medias:
-            break
-    if len(medias) > 0:
-        example[media_key] = medias
+            example[media_key] = medias
     executor = ThreadPoolExecutor(max_workers=1)
     loop = asyncio.get_running_loop()
     inputs = (await loop.run_in_executor(executor, template.encode, example))[0]
@@ -238,6 +236,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         else:
             kwargs[key] = new_value
     kwargs['stop'] = (llm_engine.generation_config.stop or []) + (getattr(request, 'stop') or [])
+    kwargs['seed'] = request.seed
 
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search and request.stream:
@@ -253,7 +252,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         if token_str not in generation_config.stop:
             generation_config.stop.append(token_str)
     request_info['generation_config'] = generation_config
-    request_info.update({'seed': request.seed, 'stream': request.stream})
+    request_info.update({'stream': request.stream})
     if _args.verbose:
         logger.info(request_info)
 
@@ -343,10 +342,16 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 completion_tokens=num_generated_tokens,
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
+            is_diff = False
+            has_finished = False
             for output in result.outputs:
                 output.delta_text = template.generate_ids_to_response(
                     output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
                 total_res[output.index] += output.delta_text
+                is_diff |= bool(output.delta_text)
+                has_finished |= output.finish_reason is not None
+            if not is_diff and not has_finished:
+                continue
             if isinstance(request, ChatCompletionRequest):
                 choices = []
                 for output in result.outputs:
@@ -414,10 +419,11 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
     _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
     kwargs['stop_words'] = stop_words
+    kwargs['random_seed'] = request.seed
 
     generation_config = LmdeployGenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
-    request_info.update({'seed': request.seed, 'stream': request.stream})
+    request_info.update({'stream': request.stream})
     if _args.verbose:
         logger.info(request_info)
 
@@ -498,12 +504,13 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                 )
                 delta_text = template.generate_ids_to_response(
                     output.token_ids, is_finished, return_delta=True, print_idx=print_idx)
-                total_response += delta_text
 
                 finish_reason = None
                 if output.status.name == 'FINISH':
                     finish_reason = 'stop'
-
+                if not delta_text and finish_reason != 'stop':
+                    continue
+                total_response += delta_text
                 if isinstance(request, ChatCompletionRequest):
                     toolcall = None
                     if finish_reason == 'stop':
@@ -692,9 +699,11 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 completion_tokens=num_generated_tokens,
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
+            delta_text = response[print_idx:]
+            if not delta_text and not is_finished:
+                continue
+            print_idx = len(response)
             if isinstance(request, ChatCompletionRequest):
-                delta_text = response[print_idx:]
-                print_idx = len(response)
                 toolcall = None
                 if is_finished:
                     action, action_input = split_action_action_input(response)
@@ -714,8 +723,6 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 resp = ChatCompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             else:
-                delta_text = response[print_idx:]
-                print_idx = len(response)
                 choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=None)]
                 resp = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)

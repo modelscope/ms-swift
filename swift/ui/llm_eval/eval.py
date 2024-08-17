@@ -118,7 +118,8 @@ class Eval(BaseUI):
             from evalscope.backend.vlm_eval_kit import VLMEvalKitBackendManager
             eval_dataset_list = (
                 OpenCompassBackendManager.list_datasets() + VLMEvalKitBackendManager.list_supported_datasets())
-        except ImportError:
+        except Exception as e:
+            logger.error(e)
             eval_dataset_list = [
                 'AX_b', 'winogrande', 'mmlu', 'afqmc', 'COPA', 'commonsenseqa', 'CMRC', 'lcsts', 'nq', 'ocnli_fc',
                 'math', 'mbpp', 'DRCD', 'TheoremQA', 'CB', 'ReCoRD', 'lambada', 'tnews', 'flores', 'humaneval', 'AX_g',

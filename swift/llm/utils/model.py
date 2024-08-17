@@ -3,7 +3,7 @@ import inspect
 import math
 import os
 import sys
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from functools import partial, update_wrapper, wraps
 from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Type, Union
@@ -214,6 +214,8 @@ class ModelType:
     chinese_alpaca_2_13b_16k = 'chinese-alpaca-2-13b-16k'
     llama_3_chinese_8b = 'llama-3-chinese-8b'
     llama_3_chinese_8b_instruct = 'llama-3-chinese-8b-instruct'
+    # idefics
+    idefics3_8b_llama3 = 'idefics3-8b-llama3'
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
@@ -329,6 +331,8 @@ class ModelType:
     # deepseek2-coder
     deepseek_coder_v2_instruct = 'deepseek-coder-v2-instruct'
     deepseek_coder_v2_lite_instruct = 'deepseek-coder-v2-lite-instruct'
+    deepseek_coder_v2 = 'deepseek-coder-v2'
+    deepseek_coder_v2_lite = 'deepseek-coder-v2-lite'
     # deepseek-math
     deepseek_math_7b = 'deepseek-math-7b'
     deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
@@ -339,6 +343,7 @@ class ModelType:
     deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
     # deepseek-v2
+    deepseek_v2 = 'deepseek-v2'
     deepseek_v2_chat = 'deepseek-v2-chat'
     deepseek_v2_lite = 'deepseek-v2-lite'
     deepseek_v2_lite_chat = 'deepseek-v2-lite-chat'
@@ -534,6 +539,7 @@ class LoRATM(NamedTuple):
     cogvlm = f'{get_regex_for_mm_default_lora("cogvlm")}'
     cogagent = f'{get_regex_for_mm_default_lora("cogagent")}'
     florence = f'{get_regex_for_mm_default_lora("florence")}'
+    idefics3 = f'{get_regex_for_mm_default_lora("idefics3")}'
     # default lora target modules for nlp llms.
     baichuan = ['W_pack']
     chatglm = ['query_key_value']
@@ -1025,6 +1031,10 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
+def _output_device_map_hook(module, input, output):
+    return output.to(input[0].device)
+
+
 @register_model(
     ModelType.cogvlm2_video_13b_chat,
     'ZhipuAI/cogvlm2-video-llama3-chat',
@@ -1061,9 +1071,6 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_from_repo(*args, **kwargs)
     if model is not None:
         # fix device map 4
-        def _output_device_map_hook(module, input, output):
-            return output.to(input[0].device)
-
         for layer in model.model.vision.transformer.layers:
             layer.mlp.register_forward_hook(_output_device_map_hook)
             layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
@@ -1362,8 +1369,6 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, automodel_class=PaliGemmaForConditionalGeneration, **kwargs)
     tokenizer.processor = processor
-    if model is not None:
-        model.max_position_embeddings = model.language_model.config.max_position_embeddings
     return model, tokenizer
 
 
@@ -1701,9 +1706,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
 
-    def _output_device_map_hook(module, input, output):
-        return output.to(input[0].device)
-
     if n_gpu // local_world_size >= 4:
         for layer in model.transformer.vision.transformer.layers:
             layer.mlp.register_forward_hook(_output_device_map_hook)
@@ -1775,6 +1777,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B')
 @register_model(
@@ -3062,6 +3065,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_vllm=True,
     requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
+    support_gradient_checkpointing=False,
     function_kwargs={'gptq_bits': 4},
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4')
 @register_model(
@@ -3071,6 +3075,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    support_gradient_checkpointing=False,
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct')
 @register_model(
@@ -3481,7 +3486,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio,
     support_flash_attn=True,
-    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    requires=['librosa', 'transformers>=4.45.0.dev0'],
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B-Instruct')
 @register_model(
@@ -3490,7 +3495,7 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio_generation,
     support_flash_attn=True,
-    requires=['librosa'],  # 'transformers>=4.45.0.dev0',
+    requires=['librosa', 'transformers>=4.45.0.dev0'],
     eos_token='<|endoftext|>',
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B')
@@ -3920,8 +3925,10 @@ def get_model_tokenizer_internlm2(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
+                                  model_config=None,
                                   **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    if model_config is None:
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     if use_flash_attn:
         model_config.attn_implementation = 'flash_attention_2'
@@ -3937,6 +3944,28 @@ def get_model_tokenizer_internlm2(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.deepseek_coder_v2,
+    'deepseek-ai/DeepSeek-Coder-V2-Base',
+    LoRATM.deepseek2,
+    TemplateType.default_generation,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Base')
+@register_model(
+    ModelType.deepseek_coder_v2_lite,
+    'deepseek-ai/DeepSeek-Coder-V2-Lite-Base',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['coding'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Base')
 @register_model(
     ModelType.deepseek_coder_v2_instruct,
     'deepseek-ai/DeepSeek-Coder-V2-Instruct',
@@ -3980,6 +4009,16 @@ def get_model_tokenizer_internlm2(model_dir: str,
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-V2-Lite-Chat')
 @register_model(
+    ModelType.deepseek_v2,
+    'deepseek-ai/DeepSeek-V2',
+    LoRATM.deepseek2,
+    TemplateType.default_generation,
+    support_gradient_checkpointing=False,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2')
+@register_model(
     ModelType.deepseek_v2_chat,
     'deepseek-ai/DeepSeek-V2-Chat',
     LoRATM.deepseek2,
@@ -4021,97 +4060,26 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     return model, tokenizer
 
 
-def fix_internvl_inplace_bug(model) -> None:
-    embedding = model.language_model.get_input_embeddings()
-    if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-        old_forward = embedding.forward
+def _patch_output_device_map(llm_model):
+    # avoid double patching
+    if not hasattr(llm_model, '__old_forward'):
+        # device_map
+        __old_forward = llm_model.forward
 
-        @wraps(old_forward)
-        def _new_forward(*args, **kwargs):
-            device = args[0].device
-            return old_forward(*args, **kwargs).requires_grad_(True).clone().to(device)
+        def _new_forward(*args, **kwargs) -> Tensor:
+            inputs = kwargs.get('inputs_embeds')
+            if inputs is None:
+                inputs = kwargs.get('input_ids')
+            device = inputs.device
+            output = __old_forward(*args, **kwargs)
+            if output.logits is not None:
+                output.logits = output.logits.to(device)
+            if output.loss is not None:
+                output.loss = output.loss.to(device)
+            return output
 
-        embedding.__old_forward = old_forward
-        embedding.forward = _new_forward
-
-
-def _patch_internvl_forward(forward_func):
-    from transformers.modeling_outputs import CausalLMOutputWithPast
-    from torch.nn import CrossEntropyLoss
-
-    def wrapper(
-        self,
-        pixel_values: torch.FloatTensor = None,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        image_flags: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
-        if pixel_values is None:
-            inputs_embeds = self.language_model.get_input_embeddings()(input_ids)
-            outputs = self.language_model(
-                inputs_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
-            logits = outputs.logits
-            loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_logits = shift_logits.view(-1, self.language_model.config.vocab_size)
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                loss = loss_fct(shift_logits, shift_labels)
-            if return_dict:
-                output = (logits, ) + outputs[1:]
-                return (loss, ) + output if loss is not None else output
-            return CausalLMOutputWithPast(
-                loss=loss,
-                logits=logits,
-                past_key_values=outputs.past_key_values,
-                hidden_states=outputs.hidden_states,
-                attentions=outputs.attentions,
-            )
-        else:
-            return forward_func(
-                pixel_values,
-                input_ids,
-                attention_mask,
-                position_ids,
-                image_flags,
-                past_key_values,
-                labels,
-                use_cache,
-                output_attentions,
-                output_hidden_states,
-                return_dict,
-            )
-
-    return wrapper
-
-
-def patch_internvl_forward(model) -> None:
-    if not hasattr(model, '__old_forward'):  # Avoid double patching
-        forward = model.forward
-        model.__old_forward = forward
-        model.forward = MethodType(_patch_internvl_forward(model.forward), model)
+        llm_model.forward = _new_forward
+        llm_model.__old_forward = __old_forward
 
 
 @register_model(
@@ -4122,6 +4090,7 @@ def patch_internvl_forward(model) -> None:
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL-Chat-V1-5')
@@ -4143,6 +4112,7 @@ def patch_internvl_forward(model) -> None:
     requires=['transformers>=4.35', 'timm'],
     support_flash_attn=True,
     support_lmdeploy=True,
+    support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-2B-V1-5')
@@ -4153,7 +4123,8 @@ def patch_internvl_forward(model) -> None:
     TemplateType.internvl_phi3,
     requires=['transformers>=4.35,<4.42', 'timm'],
     support_flash_attn=True,
-    support_lmdeploy=True,
+    support_vllm=True,
+    eos_token='<|end|>',
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/Mini-InternVL-Chat-4B-V1-5')
@@ -4193,6 +4164,7 @@ def patch_internvl_forward(model) -> None:
     support_flash_attn=True,
     support_lmdeploy=True,
     support_vllm=True,
+    eos_token='<|end|>',
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision'],
     hf_model_id='OpenGVLab/InternVL2-4B')
@@ -4253,6 +4225,11 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
+    if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
+        del tokenizer.__class__.eos_token_id
+        tokenizer.eos_token = '<|im_end|>'
+
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
     model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
@@ -4265,7 +4242,6 @@ def get_model_tokenizer_internvl(model_dir: str,
     if isinstance(quantization_config, BitsAndBytesConfig):
         use_bnb = True
 
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, **kwargs)
 
@@ -4275,64 +4251,12 @@ def get_model_tokenizer_internvl(model_dir: str,
             model.language_model.output.state.force_no_igemmlt = True
 
     if model is not None:
-        model.config.max_position_embeddings = model.language_model.config.max_position_embeddings
-        _use_submodel_func(model, 'language_model', ['get_input_embeddings', 'gradient_checkpointing_enable'])
-        fix_internvl_inplace_bug(model)
-        patch_internvl_forward(model)
+        _patch_output_device_map(model.language_model)
+        func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
+        embedding = model.language_model.get_input_embeddings()
+        embedding.register_forward_hook(_clone_hook)
 
-        if not hasattr(model, '__old_generate'):
-            generate = model.generate
-            model.__old_generate = generate
-
-            @wraps(generate)
-            def _new_generate(*args, **kwargs):
-                kwargs.pop('image_flags', None)
-                return generate(*args, **kwargs)
-
-            model.generate = _new_generate
-
-        if not hasattr(model, '_old_extract_feature'):
-            extract_feature = model.extract_feature
-            model._old_extract_feature = extract_feature
-
-            @wraps(extract_feature)
-            def _new_extract_feature(pixel_values):
-                return extract_feature(pixel_values).to(pixel_values.device).to(pixel_values.dtype)
-
-            model.extract_feature = _new_extract_feature
-
-        if not hasattr(model.language_model, '__old_forward'):  # Avoid double patching
-            old_forward = model.language_model.forward
-            model.language_model.__old_forward = old_forward
-
-            @wraps(old_forward)
-            def _new_forward(*args, **kwargs):
-                input_ids: Optional[Tensor] = kwargs.get('input_ids', None)
-                input_embeds: Optional[Tensor] = kwargs.get('inputs_embeds', None)
-                device = input_ids.device if input_ids is not None else input_embeds.device
-                output = old_forward(*args, **kwargs)
-                output['logits'] = output['logits'].to(device)
-                return output
-
-            model.language_model.forward = _new_forward
-
-        IMG_CONTEXT_TOKEN = '<IMG_CONTEXT>'
-        img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
-        model.img_context_token_id = img_context_token_id
-        if not hasattr(model.config, 'hidden_size'):
-            model.config.hidden_size = model.config.llm_config.hidden_size
-        # fix single GPU bug
-        if not hasattr(dist, '_old_get_rank'):
-            get_rank = dist.get_rank
-
-            @wraps(get_rank)
-            def new_get_rank(group=None):
-                if not dist.is_initialized() or dist.get_world_size() == 1:
-                    return -1
-                return get_rank(group)
-
-            dist.get_rank = new_get_rank
-            dist._old_get_rank = get_rank
     return model, tokenizer
 
 
@@ -4353,6 +4277,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-7b',
     LoRATM.internlm_xcomposer,
     TemplateType.internlm_xcomposer2,
+    support_flash_attn=True,
     support_lmdeploy=True,
     eos_token='[UNUSED_TOKEN_145]',
     tags=['multi-modal', 'vision'],
@@ -4362,8 +4287,9 @@ def get_model_tokenizer_internvl(model_dir: str,
     'Shanghai_AI_Laboratory/internlm-xcomposer2-4khd-7b',
     LoRATM.internlm_xcomposer,
     TemplateType.internlm_xcomposer2_4khd,
+    support_flash_attn=True,
     support_lmdeploy=True,
-    eos_token='[UNUSED_TOKEN_145]',
+    eos_token='<|im_end|>',
     function_kwargs={'version': 'v2-4khd'},
     tags=['multi-modal', 'vision'],
     hf_model_id='internlm/internlm-xcomposer2-4khd-7b')
@@ -4373,6 +4299,8 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             load_model: bool = True,
                                             **kwargs):
     version = kwargs.pop('version', 'v2')
+    model_config = None
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
     if version == 'v2-4khd':
         from transformers import CLIPVisionModel
 
@@ -4384,33 +4312,25 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
 
         CLIPVisionTower = get_class_from_dynamic_module('build_mlp.CLIPVisionTower', model_dir)
         CLIPVisionTower.load_model = load_model
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config._flash_attn_2_enabled = use_flash_attn
+    elif version == 'v2':
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        model_config._flash_attn_2_enabled = use_flash_attn
 
-    eos_token = kwargs.pop('eos_token', None)
-    model, tokenizer = get_model_tokenizer_from_repo(
+    model, tokenizer = get_model_tokenizer_internlm2(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
-    if eos_token is not None:
-        if getattr(tokenizer.__class__.eos_token_id, 'fset', None) is None:
-            del tokenizer.__class__.eos_token_id
-        tokenizer.eos_token = eos_token
     if model is not None:
-        if use_flash_attn:
+        if version == 'v2' and use_flash_attn:
             # fix AttributeError: no attribute 'attention_dropout'
             model.model.layers[0].attention.__class__.attention_dropout = 0.
 
         if version == 'v2.5':
 
-            def _output_device_map_hook(module, input, output):
+            def _output_device_map_hook2(module, input, output):
                 output = (output[0].to(input[1].device), output[1])
                 return output
 
-            def _output_device_map_hook2(module, input, output):
-                return output.to(input[0].device)
-
-            model.vit.register_forward_hook(_output_device_map_hook)
-            model.vision_proj.register_forward_hook(_output_device_map_hook2)
+            model.vit.register_forward_hook(_output_device_map_hook2)
+            model.vision_proj.register_forward_hook(_output_device_map_hook)
 
     return model, tokenizer
 
@@ -4448,36 +4368,6 @@ def git_clone_github(github_url: str,
     return local_repo_path
 
 
-def __prepare_inputs_embeds(
-    self,
-    input_ids: torch.LongTensor,
-    pixel_values: torch.FloatTensor,
-    images_seq_mask: torch.LongTensor,
-    images_emb_mask: torch.LongTensor,
-    **kwargs,
-):
-    # for patching deepseek-vl
-    from einops import rearrange
-    bs, n = pixel_values.shape[0:2]
-    images = rearrange(pixel_values, 'b n c h w -> (b n) c h w')
-    # [b x n, T2, D]
-    images_embeds = self.aligner(self.vision_model(images))
-
-    # [b x n, T2, D] -> [b, n x T2, D]
-    images_embeds = rearrange(images_embeds, '(b n) t d -> b (n t) d', b=bs, n=n)
-    # [b, n, T2] -> [b, n x T2]
-    images_emb_mask = rearrange(images_emb_mask, 'b n t -> b (n t)')
-
-    # [b, T, D]
-    input_ids[input_ids < 0] = 0  # ignore the image embeddings
-    inputs_embeds = self.language_model.get_input_embeddings()(input_ids).to(input_ids.device)
-
-    # replace with the image embeddings (FIX)
-    inputs_embeds.data[images_seq_mask] = images_embeds[images_emb_mask]
-
-    return inputs_embeds
-
-
 def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
     submodel = getattr(model, submodel_name)
 
@@ -4492,31 +4382,6 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
     for key in func_list:
         setattr(model, key, _get_new_func(key))
-
-
-def _patch_deepseek_vl(model) -> None:
-    if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
-        return
-    if hasattr(model.language_model, '__old_forward'):
-        # avoid double patching
-        return
-    # device_map
-    __old_forward = model.language_model.forward
-
-    def _new_forward(*args, **kwargs) -> Tensor:
-        inputs = kwargs.get('inputs_embeds')
-        if inputs is None:
-            inputs = kwargs.get('input_ids')
-        device = inputs.device
-        output = __old_forward(*args, **kwargs)
-        if output.logits is not None:
-            output.logits = output.logits.to(device)
-        if output.loss is not None:
-            output.loss = output.loss.to(device)
-        return output
-
-    model.language_model.forward = _new_forward
-    model.language_model.__old_forward = __old_forward
 
 
 @register_model(
@@ -4568,8 +4433,9 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
     tokenizer.processor = processor
     if load_model:
-        _patch_deepseek_vl(model)
-        model.prepare_inputs_embeds = MethodType(__prepare_inputs_embeds, model)
+        _patch_output_device_map(model.language_model)
+        model.language_model.model.embed_tokens.register_forward_hook(_clone_hook)
+        model.language_model.model.embed_tokens.register_forward_hook(_output_device_map_hook)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
         model.generation_config = model.language_model.generation_config
@@ -5217,7 +5083,7 @@ def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> s
     ModelType.qwen_vl,
     'qwen/Qwen-VL',
     LoRATM.qwen_vl,
-    TemplateType.default_generation,
+    TemplateType.qwen_vl_generation,
     function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
     support_flash_attn=True,
     support_lmdeploy=True,
@@ -5378,8 +5244,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
 @register_model(
     ModelType.qwen_vl_chat_int4,
     'qwen/Qwen-VL-Chat-Int4',
-    LoRATM.qwen,
-    TemplateType.qwen,
+    LoRATM.qwen_vl,
+    TemplateType.qwen_vl,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={
@@ -5772,22 +5638,7 @@ def _patch_minicpm_v_device_map(model) -> None:
 
         model.resampler.forward = _new_resampler_forward
 
-    __old_forward = model.llm.forward
-
-    def _new_forward(*args, **kwargs) -> Tensor:
-        inputs = kwargs.get('inputs_embeds')
-        if inputs is None:
-            inputs = kwargs.get('input_ids')
-        device = inputs.device
-        output = __old_forward(*args, **kwargs)
-        if output.logits is not None:
-            output.logits = output.logits.to(device)
-        if output.loss is not None:
-            output.loss = output.loss.to(device)
-        return output
-
-    model.llm.forward = _new_forward
-    model.llm.__old_forward = __old_forward
+    _patch_output_device_map(model.llm)
 
 
 @register_model(
@@ -5822,6 +5673,20 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
     return model, tokenizer
 
 
+@contextmanager
+def ignore_check_imports():
+    import transformers.dynamic_module_utils as td
+
+    @wraps(td.check_imports)
+    def _check_imports(filename) -> List[str]:
+        return td.get_relative_imports(filename)
+
+    td._old_check_imports = td.check_imports
+    td.check_imports = _check_imports
+    yield
+    td.check_imports = td._old_check_imports
+
+
 @register_model(
     ModelType.minicpm_v_v2_6_chat,
     'OpenBMB/MiniCPM-V-2_6',
@@ -5853,22 +5718,16 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     version = kwargs.get('version', 'v2.5')
-    if version == 'v2.6':
-        model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
-        model_cls._no_split_modules = []
+    if load_model and version == 'v2.6':
+        with ignore_check_imports():
+            model_cls = get_class_from_dynamic_module('modeling_navit_siglip.SiglipVisionTransformer', model_dir)
+            model_cls._no_split_modules = []
     model, tokenizer = get_model_tokenizer_minicpm_v(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if load_model:
         embedding = model.get_input_embeddings()
-        if not hasattr(embedding, '__old_forward'):  # Avoid double patching
-            old_forward = embedding.forward
+        embedding.register_forward_hook(_clone_hook)
 
-            @wraps(old_forward)
-            def _new_forward(*args, **kwargs):
-                return old_forward(*args, **kwargs).requires_grad_(True).clone()
-
-            embedding.__old_forward = old_forward
-            embedding.forward = _new_forward
     return model, tokenizer
 
 
@@ -6126,6 +5985,25 @@ def get_model_tokenizer_llava(model_dir: str,
         if not hasattr(model.config, 'max_sequence_length'):
             model.config.max_sequence_length = 2048
         _patch_llava(model)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.idefics3_8b_llama3,
+    'AI-ModelScope/Idefics3-8B-Llama3',
+    LoRATM.idefics3,
+    TemplateType.idefics3,
+    support_flash_attn=True,
+    placeholder_tokens=['<image>'],
+    requires=['transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='HuggingFaceM4/Idefics3-8B-Llama3')
+def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, AutoModelForVision2Seq
+    processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = AutoModelForVision2Seq
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
     return model, tokenizer
 
 
