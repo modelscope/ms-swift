@@ -53,15 +53,22 @@ class TemplateType:
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    # llava-hf
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava-mistral'
     llava_vicuna = 'llava-vicuna'
     llava_yi = 'llava-yi'
-    llava_llama_instruct = 'llava-llama-instruct'
-    llava_qwen_instruct = 'llava-qwen-instruct'
-    llama_llava_next = 'llama-llava-next'
+    llama3_llava_next_hf = 'llama-llava-next-hf'
+    llava_qwen_hf = 'llama-llava-next-hf'
+    # llava-video
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
+    # lmms-lab:llava
+    llama3_llava_next = 'llama3-llava-next'
+    llava_qwen = 'llava-qwen'
+    # xtuner:llava
+    llava_llama_instruct = 'llava-llama-instruct'
+
     idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
     openbuddy = 'openbuddy'
@@ -1408,13 +1415,24 @@ register_template(
 register_template(TemplateType.mistral_nemo,
                   Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
 
-register_template(
-    TemplateType.llama3,
-    Template(['<|begin_of_text|>'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-        '<|start_header_id|>assistant<|end_header_id|>\n\n'
-    ], ['<|eot_id|>'], ['<|eot_id|>'], None,
-             ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>']))
+
+class Llama3TemplateMixin:
+    system = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(['<|begin_of_text|>'], [
+            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+            '<|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
+                         ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'], *args,
+                         **kwargs)
+
+
+class Llama3Template(Llama3TemplateMixin, Template):
+    pass
+
+
+register_template(TemplateType.llama3, Llama3Template())
 
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
@@ -2137,7 +2155,7 @@ class Llava1_6Template(LlavaHfTemplate):
         for b in batch:
             pixel_values = b.get('pixel_values')
             if pixel_values is not None:
-                b['pixel_values'] = pixel_values.squeeze(0)
+                b['pixel_values'] = pixel_values.squeeze(0)  # 5d -> 4d
         res = super().data_collator(batch, padding_to)
         return res
 
@@ -2179,6 +2197,13 @@ class LLava1_6YiTemplate(Llava1_6Template):
 
 
 register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class Llama3LlavaNextHfTemplate(Llama3TemplateMixin, Llava1_6Template):
+    pass
+
+
+register_template(TemplateType.llama3_llava_next_hf, Llama3LlavaNextHfTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Template):
@@ -2303,7 +2328,7 @@ class Phi3VisionTemplate(Template):
 register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
 
 
-class LlamaLlavaNextTemplate(LLavaTemplate):
+class Llama3LlavaNextTemplate(LLavaTemplate):
     default_system = 'You are a helpful language and vision assistant. ' \
                      'You are able to understand the visual content that the user provides, ' \
                      'and assist the user with a variety of tasks using natural language.'
@@ -2316,7 +2341,7 @@ class LlamaLlavaNextTemplate(LLavaTemplate):
                           ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
 
 
-register_template(TemplateType.llama_llava_next, LlamaLlavaNextTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaQwenTemplate(LLavaTemplate):
@@ -2328,7 +2353,7 @@ class LLavaQwenTemplate(LLavaTemplate):
                           ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
 
 
-register_template(TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:
@@ -2731,13 +2756,14 @@ register_template(
     use_model=True,
     lazy_tokenize=True)
 
+
+class MiniCPMV2_5Template(Llama3TemplateMixin, MiniCPMVTemplate):
+    pass
+
+
 register_template(
     TemplateType.minicpm_v_v2_5,
-    MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-        '<|start_header_id|>assistant<|end_header_id|>\n\n'
-    ], ['<|eot_id|>'], ['<|eot_id|>'],
-                     is_v2_5=True),
+    MiniCPMV2_5Template(is_v2_5=True),
     use_model=True,
     lazy_tokenize=True,
     infer_media_type='dialogue')
