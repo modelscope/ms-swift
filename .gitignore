@@ -128,6 +128,8 @@ result.jpg
 result.mp4
 output/
 *.out
+benchmarks/
+eval_outputs/
 
 # Pytorch
 *.pth
