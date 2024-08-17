@@ -5793,7 +5793,27 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 
 @register_model(
-    ModelType.llama3_llava_next_8b_hf,
+    ModelType.llava_next_72b_hf,
+    'AI-ModelScope/llava-next-72b-hf',
+    LoRATM.llava,
+    TemplateType.llava_qwen_hf,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-next-72b-hf')
+@register_model(
+    ModelType.llava_next_110b_hf,
+    'AI-ModelScope/llava-next-110b-hf',
+    LoRATM.llava,
+    TemplateType.llava_qwen_hf,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-next-110b-hf')
+@register_model(
+    ModelType.llava_next_110b_hf,
     'swift/llama3-llava-next-8b-hf',
     LoRATM.llava,
     TemplateType.llama3_llava_next_hf,

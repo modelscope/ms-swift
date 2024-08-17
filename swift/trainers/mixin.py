@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
+import inspect
 import os
 import re
 import shutil
-import inspect
 import time
 from pathlib import Path
 from types import MethodType
@@ -423,6 +423,7 @@ class SwiftMixin:
         if is_deepspeed_zero3_enabled() and not hasattr(self.deepspeed, '_zero3_consolidated_16bit_state_dict_origin'):
             parameters = inspect.signature(self.deepspeed._zero3_consolidated_16bit_state_dict).parameters
             if 'exclude_frozen_parameters' in parameters:
+
                 def _zero3_consolidated_16bit_state_dict(_model, exclude_frozen_parameters=False):
                     unwrapped = unwrap_model(_model)
                     exclude_frozen_parameters = False
@@ -431,10 +432,11 @@ class SwiftMixin:
                     if isinstance(unwrapped, PeftModel):
                         exclude_frozen_parameters = True
                     return _model._zero3_consolidated_16bit_state_dict_origin(exclude_frozen_parameters)
+
                 self.deepspeed._zero3_consolidated_16bit_state_dict_origin = (
                     self.deepspeed._zero3_consolidated_16bit_state_dict)
                 self.deepspeed._zero3_consolidated_16bit_state_dict = MethodType(_zero3_consolidated_16bit_state_dict,
-                                                                                self.deepspeed)
+                                                                                 self.deepspeed)
         if version.parse(transformers.__version__) >= version.parse('4.36') or not self.args.save_only_model:
             result = super()._save_checkpoint(model, trial, metrics)
         else:
