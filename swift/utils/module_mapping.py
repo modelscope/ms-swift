@@ -212,6 +212,12 @@ INTERNVL_KEYS = MultiModelKeys(
     vision_tower='vision_model',
 )
 
+INTERNVIDEO_KEYS = MultiModelKeys(
+    language_model='lm',
+    # projector='',
+    vision_tower='vision_encoder',
+)
+
 DEEPSEEK_VL_KEYS = MultiModelKeys(
     language_model='language_model',
     projector='aligner',
@@ -279,6 +285,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('yi_vl', LLAVA_LLAMA_KEYS),
     ('internlm_xcomposer', INTERNLM_XCOMPOSER_KEYS),
     ('internvl', INTERNVL_KEYS),
+    ('internvideo', INTERNVIDEO_KEYS), 
     ('deepseek_vl', DEEPSEEK_VL_KEYS),
     ('paligemma', LLAVA_KEYS),
     ('minicpm_v', MINICPM_V_KEYS),
