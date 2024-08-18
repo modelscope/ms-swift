@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -204,7 +204,8 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         )
 
         if self.is_vision_model:
-            concatenated_batch = self.concatenated_vision_inputs(batch, concatenated_batch)
+            concatenated_batch = self.concatenated_vision_inputs(
+                batch, concatenated_batch, device=self.accelerator.device)
 
         len_chosen = batch['chosen_labels'].shape[0]
 
@@ -216,8 +217,9 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         } if self.is_encoder_decoder else {})
 
         if self.is_vision_model:
+            # Here, we restore the _data, processing image information within the forward hook of the model.
             batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
-            if self._data_keys is not None:
+            if self._data_keys:
                 _data = [dict() for _ in range(batch_size)]
                 for k in self._data_keys:
                     if k == 'input_ids':
@@ -230,6 +232,9 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                     else:
                         _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
                 model_kwargs['_data'] = _data
+
+            if 'images' in concatenated_batch:
+                model_kwargs['images'] = concatenated_batch['images']
 
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True
@@ -292,6 +297,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
     def concatenated_vision_inputs(
         batch: Dict[str, Union[List, torch.LongTensor]],
         concatenated_batch: Dict[str, torch.LongTensor],
+        device: Optional[torch.device] = None,
     ) -> Dict[str, torch.LongTensor]:
         if 'prompt_pixel_values' in batch:
             pixel_values = [values for values in batch['prompt_pixel_values']]
@@ -308,6 +314,9 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         if 'prompt_image_sizes' in batch:
             concatenated_batch['image_sizes'] = batch['prompt_image_sizes']
 
+        if 'prompt_images' in batch:
+            # images not in _data, we manually execute data collector here
+            concatenated_batch['images'] = batch['prompt_images'].squeeze(1).repeat(2, 1, 1, 1).to(device=device)
         return concatenated_batch
 
     @staticmethod
