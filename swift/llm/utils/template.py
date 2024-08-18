@@ -71,6 +71,7 @@ class TemplateType:
     internvl2 = 'internvl2'
     internvl_phi3 = 'internvl-phi3'
     internvl2_phi3 = 'internvl2-phi3'
+    internvideo2 = 'internvideo2' 
     florence = 'florence'
     yi = 'yi'
     yi1_5 = 'yi1_5'
@@ -849,7 +850,10 @@ class Template:
         else:
             input_ids = [torch.tensor(b['input_ids']) for b in batch]
             attention_mask = [torch.ones(len(input_ids[i]), dtype=torch.int64) for i in range(len(input_ids))]
-        labels = [torch.tensor(b['labels']) for b in batch]
+        try:
+            labels = [torch.tensor(b['labels']) for b in batch]
+        except:
+            raise ValueError('label is None')
         loss_scale = [torch.tensor(b['loss_scale']) for b in batch] if 'loss_scale' in batch[0] else None
         padding_right = self.padding_side == 'right'
 
@@ -912,7 +916,10 @@ class Template:
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
         if len(pixel_values) > 0:
-            res['pixel_values'] = torch.concat(pixel_values)
+            try:
+                res['pixel_values'] = torch.concat(pixel_values)
+            except:
+                raise ValueError('pixel_values is not aligned, cannot be concat.')
 
             image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
             if len(image_sizes) > 0:
@@ -1750,6 +1757,23 @@ register_template(
 register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
 
 register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
+
+
+class InternVideo2Template(Internvl2Template):
+    video_segments = 8
+    system = '你是由上海人工智能实验室联合商汤科技开发的多模态大模型, 英文名叫InternVideo, 是一个有用无害的人工智能助手。'
+
+    # def __init__(self):
+    #     Template.__init__(
+    #         self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'], ['<|im_end|>'],
+    #         self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>'],
+    #         auto_add_bos=True)
+    def __init__(self):
+        Template.__init__(self, ['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+                         system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
+
+
+register_template(TemplateType.internvideo2, InternVideo2Template(), use_model=True, lazy_tokenize=True)
 
 
 class FlorenceTemplate(Template):
