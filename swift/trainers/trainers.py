@@ -198,6 +198,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         else:
             loss = outputs['loss'] if isinstance(outputs, dict) else outputs[0]
 
+        if torch.isnan(loss).any():
+            raise ValueError(f"loss contains NaN values.")
+
         if labels is None:
             labels = inputs['labels']
 

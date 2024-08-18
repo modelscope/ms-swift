@@ -355,6 +355,7 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
         self.multi_modal_projector = LlavaNextMultiModalProjector(config)
         embed_std = 1 / math.sqrt(config.text_config.hidden_size)
         self.image_newline = nn.Parameter(torch.randn(config.text_config.hidden_size, dtype=self.dtype) * embed_std)
+        # image_newline: let model know when an image line ends  这里是赋不上值的 只能赋上nn.Parameter()的shape和requires_grad
 
         self.vocab_size = config.text_config.vocab_size
         self.language_model = AutoModelForCausalLM.from_config(
@@ -597,6 +598,9 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
         attention_mask = attention_mask.to(target_device)
         input_ids = input_ids.to(target_device)
 
+        if torch.isnan(inputs_embeds).any():
+            raise ValueError(f"inputs_embeds contains NaN values.")
+
         # 4. Fill the embeddings based on the mask. If we have ["hey" "<image>", "how", "are"]
         # we need to index copy on [0, 577, 578, 579] for the text and [1:576] for the image features # 原输入中不是图像且未被mask位置的input_embeds放入final_embedding的对应位置
         final_embedding     [batch_indices, text_to_overwrite] = inputs_embeds [batch_indices, non_image_indices]   # [bsz, max_embed_dim=final embed的个数, embed_dim]
@@ -634,6 +638,10 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
                     f" the number of image given to the model is {num_images}. "
                     f"This prevents correct indexing and breaks batch generation."
                 )
+        
+        if torch.isnan(image_features).any():
+            raise ValueError(f"image_features contains NaN values.")
+
         final_embedding[image_to_overwrite] = image_features.contiguous().reshape(-1, embed_dim).to(target_device)
         final_attention_mask |= image_to_overwrite
         position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_((final_attention_mask == 0), 1)
@@ -659,16 +667,19 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
             feature_lens (`List[int]`)
                 token length of each image in image_features
         """
+        if torch.isnan(image_newline).any():
+            raise ValueError(f"image_newline contains NaN values.") 
+
         new_image_features = []
         feature_lens = []
         for image_idx, image_feature in enumerate(image_features):
             if image_feature.shape[0] > 1:
-                base_image_feature = image_feature[0]
+                base_image_feature = image_feature[0]   # 0位置是单独的那个小图
                 image_feature = image_feature[1:]
                 height = width = self.config.vision_config.image_size // self.config.vision_config.patch_size
                 if height * width != base_image_feature.shape[0]:
                     raise ValueError("The number of patches is not consistent with the image size.")
-                num_patch_width, num_patch_height = get_anyres_image_grid_shape(
+                num_patch_width, num_patch_height = get_anyres_image_grid_shape(    # (2, 2)
                     image_sizes[image_idx],
                     self.config.image_grid_pinpoints,
                     self.config.vision_config.image_size,
@@ -676,16 +687,18 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
                 image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
                 image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
                 image_feature = image_feature.flatten(1, 2).flatten(2, 3)
-                image_feature = unpad_image(image_feature, image_sizes[image_idx])
+                image_feature = unpad_image(image_feature, image_sizes[image_idx])  # 去除image_feature里的pad部分
                 if image_newline is not None:
-                    image_feature = torch.cat(
+                    image_feature_ = torch.cat(
                         (
                             image_feature,
                             image_newline[:, None, None].expand(*image_feature.shape[:-1], 1).to(image_feature.dtype),
                         ),
                         dim=-1,
                     )
-                image_feature = image_feature.flatten(1, 2).transpose(0, 1)
+                else:
+                    image_feature_ = image_feature
+                image_feature = image_feature_.flatten(1, 2).transpose(0, 1)
                 image_feature = torch.cat((base_image_feature, image_feature), dim=0)
             else:
                 image_feature = image_feature[0]
@@ -693,6 +706,10 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
                     image_feature = torch.cat((image_feature, image_newline[None].to(image_feature)), dim=0)
             new_image_features.append(image_feature)
             feature_lens.append(image_feature.size(0))
+        
+            if torch.isnan(image_feature).any():
+                print(f"image_feature contains NaN values.") 
+
         image_features = torch.cat(new_image_features, dim=0)
         feature_lens = torch.tensor(feature_lens, dtype=torch.long, device=image_features.device)
         return image_features, feature_lens
@@ -803,6 +820,11 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
             
                 image_features = torch.split(image_features, image_num_patches, dim=0)
 
+                if torch.isnan(image_features[0]).any():
+                    raise ValueError(f"image_features[0] contains NaN values.")
+                if torch.isnan(image_features[1]).any():
+                    raise ValueError(f"image_features[1] contains NaN values.")
+
                 # NOTE we only support multimodal_patch_merge_type == "spatial_unpad"
 
                 image_features, feature_lens = self.pack_image_features(
@@ -815,6 +837,8 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel):
 
                 if torch.isnan(inputs_embeds).any():
                     raise ValueError(f"inputs_embeds contains NaN values.")
+                if torch.isnan(image_features).any():
+                    raise ValueError(f"image_features contains NaN values.")
 
                 inputs_embeds, attention_mask, position_ids, labels, _ = self._merge_input_ids_with_image_features(
                     image_features,

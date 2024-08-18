@@ -27,7 +27,9 @@ def _reduce_columns(cls: type) -> type:
     cls._patching = True
 
     def new_call_func(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        self.column_state = set(['images', 'videos', 'audios'])
+        # self.column_state = set(['images', 'videos', 'audios'])
+        self.column_state = set(['images', 'videos', 'audios', 
+        'history', 'history_roles', 'query', 'query_roles', 'response'])
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()

@@ -341,7 +341,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         dataset_info = None
         td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, template)
+        train_dataset = LazyLLMDataset(train_dataset, template) # 对原始dataset用template进行encode 在其中
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)
     if val_dataset is None:

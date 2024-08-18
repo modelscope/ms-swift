@@ -1457,7 +1457,7 @@ def _preprocess_llava_instruct_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     kwargs = {}
     if not isinstance(dataset, HfIterableDataset):
         kwargs['load_from_cache_file'] = dataset_enable_cache
-    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda example: example['images'] is not None and example['conversations'] is not None )
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)

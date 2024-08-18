@@ -3348,8 +3348,7 @@ class Trainer:
         else:
             self.accelerator.backward(loss, **kwargs)
 
-        if torch.isnan(model.multi_modal_projector.linear_1.weight.grad).any():
-            print("linear_1 grad contains NaN values.")
+        # if torch.isnan(model.multi_modal_projector.linear_1.weight.grad).any():
             # raise ValueError(f"linear_1 grad contains NaN values.")
 
         return loss.detach() / self.args.gradient_accumulation_steps
