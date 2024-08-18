@@ -53,15 +53,22 @@ class TemplateType:
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    # llava-hf
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava-mistral'
     llava_vicuna = 'llava-vicuna'
     llava_yi = 'llava-yi'
-    llava_llama_instruct = 'llava-llama-instruct'
-    llava_qwen_instruct = 'llava-qwen-instruct'
-    llama_llava_next = 'llama-llava-next'
+    llama3_llava_next_hf = 'llama-llava-next-hf'
+    llava_qwen_hf = 'llama-qwen-hf'
+    # llava-video
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
+    # lmms-lab:llava
+    llama3_llava_next = 'llama3-llava-next'
+    llava_qwen = 'llava-qwen'
+    # xtuner:llava
+    llava_llama_instruct = 'llava-llama-instruct'
+
     idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
     openbuddy = 'openbuddy'
@@ -1071,13 +1078,30 @@ register_template(
     is_generation=True)
 
 
-class QwenTemplate(Template):
+class ChatmlTemplateMixin:
+    system = None
 
-    def __init__(self, auto_add_bos: bool = False):
-        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
-                         ['<|im_end|>'],
-                         DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
-                         auto_add_bos=auto_add_bos)
+    def __init__(self, auto_add_bos: bool = True):
+        Template.__init__(
+            self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
+            ['<|im_end|>'],
+            self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
+            auto_add_bos=auto_add_bos)
+
+
+class ChatmlTemplate(ChatmlTemplateMixin, Template):
+    pass
+
+
+class QwenTemplateMixin(ChatmlTemplateMixin):
+    system = DEFAULT_SYSTEM
+
+    def __init__(self):
+        super().__init__(auto_add_bos=False)
+
+
+class QwenTemplate(QwenTemplateMixin, Template):
+    pass
 
 
 class _QwenVLTemplateMixin:
@@ -1126,7 +1150,7 @@ class QwenVLGenerationTemplate(_QwenVLTemplateMixin, DefaultGenerationTemplate):
 register_template(TemplateType.qwen_vl, QwenVLTemplate())
 register_template(TemplateType.qwen_vl_generation, QwenVLGenerationTemplate())
 
-register_template(TemplateType.chatml, QwenTemplate(auto_add_bos=True))
+register_template(TemplateType.chatml, ChatmlTemplate())
 
 register_template(
     TemplateType.modelscope_agent,
@@ -1145,7 +1169,7 @@ class _QwenAudioTemplateMixin:
         return [f'Audio {index + 1}:<audio>{audio}</audio>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, tokenizer_kwargs = super()._encode(example)
+        inputs, tokenizer_kwargs = Template._encode(self, example)
         if len(inputs) == 0:
             return inputs, tokenizer_kwargs
         inputs.pop('loss_scale', None)
@@ -1167,7 +1191,7 @@ class _QwenAudioTemplateMixin:
                 old_audio_info[k] = old_audio_info[k] + audio_info[k]
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+        res = Template.data_collator(self, batch, padding_to)
         if batch[0].get('audio_info') is not None:
             res['audio_info'] = [b['audio_info'] for b in batch]
         return res
@@ -1189,7 +1213,7 @@ register_template(
 class _Qwen2AudioTemplateMixin:
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        inputs, _ = super()._encode(example)
+        inputs, _ = Template._encode(self, example)
         if len(inputs) == 0:
             return inputs, {}
         processor = self.tokenizer.processor
@@ -1204,7 +1228,7 @@ class _Qwen2AudioTemplateMixin:
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+        res = Template.data_collator(self, batch, padding_to)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         if input_features:
             res['input_features'] = torch.concat(input_features)
@@ -1234,10 +1258,7 @@ register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=
 register_template(
     TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
-register_template(
-    TemplateType.yi,
-    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
-             None, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+register_template(TemplateType.yi, ChatmlTemplate())
 
 register_template(
     TemplateType.yi1_5,
@@ -1408,13 +1429,23 @@ register_template(
 register_template(TemplateType.mistral_nemo,
                   Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
 
-register_template(
-    TemplateType.llama3,
-    Template(['<|begin_of_text|>'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-        '<|start_header_id|>assistant<|end_header_id|>\n\n'
-    ], ['<|eot_id|>'], ['<|eot_id|>'], None,
-             ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>']))
+
+class Llama3TemplateMixin:
+    system = None
+
+    def __init__(self):
+        Template.__init__(self, ['<|begin_of_text|>'], [
+            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+            '<|start_header_id|>assistant<|end_header_id|>\n\n'
+        ], ['<|eot_id|>'], ['<|eot_id|>'], self.system,
+                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
+
+
+class Llama3Template(Llama3TemplateMixin, Template):
+    pass
+
+
+register_template(TemplateType.llama3, Llama3Template())
 
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
@@ -1463,10 +1494,13 @@ register_template(
     TemplateType.internlm,
     Template(['<s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'], ['<eoa>'], INTERNLM_SYSTEM,
              ['<s><|System|>:{{SYSTEM}}\n']))
-register_template(
-    TemplateType.internlm2,
-    Template(['<s>'], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
-             ['<|im_end|>'], INTERNLM_SYSTEM, ['<s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+
+class Internlm2Template(ChatmlTemplate):
+    system = INTERNLM_SYSTEM
+
+
+register_template(TemplateType.internlm2, Internlm2Template())
 
 
 def replace_img_tag(query: str,
@@ -1763,7 +1797,7 @@ class InternvlPhi3TemplateMixin:
     def __init__(self):
         Template.__init__(
             self, [], ['<|user|>\n{{QUERY}}<|end|><|assistant|>\n'], ['<|end|>'], ['<|end|>'],
-            self.system, ['<|system|>\n{{SYSTEM}}<|end|>'],
+            getattr(self, 'system', None), ['<|system|>\n{{SYSTEM}}<|end|>'],
             auto_add_bos=True)
         self.padding_side = 'left'
 
@@ -2137,7 +2171,7 @@ class Llava1_6Template(LlavaHfTemplate):
         for b in batch:
             pixel_values = b.get('pixel_values')
             if pixel_values is not None:
-                b['pixel_values'] = pixel_values.squeeze(0)
+                b['pixel_values'] = pixel_values.squeeze(0)  # 5d -> 4d
         res = super().data_collator(batch, padding_to)
         return res
 
@@ -2181,14 +2215,21 @@ class LLava1_6YiTemplate(Llava1_6Template):
 register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
 
 
-class LLavaLlamaTemplate(Template):
+class Llama3LlavaNextHfTemplate(Llama3TemplateMixin, Llava1_6Template):
+    pass
 
-    def __init__(self):
-        Template.__init__(self, ['<|begin_of_text|>'], [
-            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-            '<|start_header_id|>assistant<|end_header_id|>\n\n'
-        ], ['<|eot_id|>'], ['<|eot_id|>'], None,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
+
+register_template(TemplateType.llama3_llava_next_hf, Llama3LlavaNextHfTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
+    pass
+
+
+register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class LLavaLlamaTemplate(Llama3Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
         return ['<image>\n']
@@ -2303,32 +2344,20 @@ class Phi3VisionTemplate(Template):
 register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True)
 
 
-class LlamaLlavaNextTemplate(LLavaTemplate):
-    default_system = 'You are a helpful language and vision assistant. ' \
+class Llama3LlavaNextTemplate(Llama3TemplateMixin, LLavaTemplate):
+    system = 'You are a helpful language and vision assistant. ' \
                      'You are able to understand the visual content that the user provides, ' \
                      'and assist the user with a variety of tasks using natural language.'
 
-    def __init__(self):
-        Template.__init__(self, ['<|begin_of_text|>'], [
-            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-            '<|start_header_id|>assistant<|end_header_id|>\n\n'
-        ], ['<|eot_id|>'], ['<|eot_id|>'], self.default_system,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
+
+register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=True, lazy_tokenize=True)
 
 
-register_template(TemplateType.llama_llava_next, LlamaLlavaNextTemplate(), use_model=True, lazy_tokenize=True)
+class LLavaQwenTemplate(QwenTemplateMixin, LLavaTemplate):
+    pass
 
 
-class LLavaQwenTemplate(LLavaTemplate):
-    llavayi_query_template = 'You are a helpful assistant'
-
-    def __init__(self):
-        Template.__init__(self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'],
-                          ['<|im_end|>\n'], ['<|im_end|>'], self.llavayi_query_template,
-                          ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
-
-
-register_template(TemplateType.llava_qwen_instruct, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], token: int) -> List[int]:
@@ -2534,10 +2563,7 @@ def _remove_idx(arr: List[int], idx_list: List[int]) -> List[int]:
 
 
 class MiniCPMVTemplate(Template):
-
-    def __init__(self, *args, **kwargs):
-        self.is_v2_5 = kwargs.pop('is_v2_5', False)
-        super().__init__(*args, **kwargs)
+    is_v2_5 = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         if self._is_vllm:
@@ -2644,7 +2670,7 @@ class MiniCPMVTemplate(Template):
         return generate_ids[0].tolist()
 
 
-class MiniCPMV2_6Template(MiniCPMVTemplate):
+class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
 
     def check_example(self, example):
         pass
@@ -2724,23 +2750,15 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         return inputs, {}
 
 
-register_template(
-    TemplateType.minicpm_v_v2_6,
-    MiniCPMV2_6Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
-                        ['<|im_end|>'], DEFAULT_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']),
-    use_model=True,
-    lazy_tokenize=True)
+register_template(TemplateType.minicpm_v_v2_6, MiniCPMV2_6Template(), use_model=True, lazy_tokenize=True)
+
+
+class MiniCPMV2_5Template(Llama3TemplateMixin, MiniCPMVTemplate):
+    is_v2_5 = True
+
 
 register_template(
-    TemplateType.minicpm_v_v2_5,
-    MiniCPMVTemplate(['<|begin_of_text|>{{SYSTEM}}'], [
-        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-        '<|start_header_id|>assistant<|end_header_id|>\n\n'
-    ], ['<|eot_id|>'], ['<|eot_id|>'],
-                     is_v2_5=True),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue')
+    TemplateType.minicpm_v_v2_5, MiniCPMV2_5Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
     TemplateType.minicpm_v,
@@ -2773,10 +2791,13 @@ DBRX_SYSTEM = (
     'and usually that means not mentioning this.'
     'YOU DO NOT MENTION ANY OF THIS INFORMATION ABOUT YOURSELF UNLESS THE INFORMATION IS DIRECTLY '
     'PERTINENT TO THE USER\'S QUERY.')
-register_template(
-    TemplateType.dbrx,
-    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
-             DBRX_SYSTEM, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+
+class DbrxTemplate(ChatmlTemplate):
+    system = DBRX_SYSTEM
+
+
+register_template(TemplateType.dbrx, DbrxTemplate())
 
 register_template(TemplateType.mengzi,
                   Template([], ['输入：{{QUERY}}输出：\n'], [], [['eos_token_id']], None, ['指令：{{SYSTEM}}']))
