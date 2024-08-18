@@ -295,18 +295,26 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             # Here, we restore the _data, processing image information within the forward hook of the model.
             batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
             if self._data_keys is not None:
-                _data = [dict() for _ in range(batch_size)]
-                for k in self._data_keys:
-                    if k == 'input_ids':
-                        _data = [{**d, k: concatenated_batch['concatenated_input_ids'][i]} for i, d in enumerate(_data)]
-                    elif k == 'pixel_values':
-                        # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
-                        model_dtype = self.accelerator.unwrap_model(model).dtype
-                        # for vision related data, paired response share the same one
-                        _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
-                    else:
-                        _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
-                model_kwargs['_data'] = _data
+                if self._data_keys:
+                    _data = [dict() for _ in range(batch_size)]
+                    for k in self._data_keys:
+                        if k == 'input_ids':
+                            _data = [{
+                                **d, k: concatenated_batch['concatenated_input_ids'][i]
+                            } for i, d in enumerate(_data)]
+                        elif k == 'pixel_values':
+                            # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
+                            model_dtype = self.accelerator.unwrap_model(model).dtype
+                            # for vision related data, paired response share the same one
+                            _data = [{
+                                **d, k: concatenated_batch[k][i // 2].to(model_dtype)
+                            } for i, d in enumerate(_data)]
+                        else:
+                            _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
+                    model_kwargs['_data'] = _data
+
+            if 'images' in concatenated_batch:
+                model_kwargs['images'] = concatenated_batch['images']
 
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True
@@ -427,9 +435,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                 batch['prompt_attention_mask'].repeat(2, 1).to(device=device))
 
         # patch here
-        # leave data collector in hook
-
         if is_vision_model:
+            # for keys appear in _data, we leave data collector in hook
             if 'prompt_pixel_values' in batch:
                 pixel_values = [values for values in batch['prompt_pixel_values']]
                 concatenated_batch['pixel_values'] = pixel_values
@@ -445,6 +452,9 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if 'prompt_image_sizes' in batch:
                 concatenated_batch['image_sizes'] = batch['prompt_image_sizes']
 
+            if 'prompt_images' in batch:
+                # images not in _data, we manually execute data collector here
+                concatenated_batch['images'] = batch['prompt_images'].squeeze(1).repeat(2, 1, 1, 1).to(device=device)
         return concatenated_batch
 
     @staticmethod
