@@ -294,23 +294,22 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if self.is_vision_model:
             # Here, we restore the _data, processing image information within the forward hook of the model.
             batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
-            if self._data_keys is not None:
-                if self._data_keys:
-                    _data = [dict() for _ in range(batch_size)]
-                    for k in self._data_keys:
-                        if k == 'input_ids':
-                            _data = [{
-                                **d, k: concatenated_batch['concatenated_input_ids'][i]
-                            } for i, d in enumerate(_data)]
-                        elif k == 'pixel_values':
-                            # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
-                            model_dtype = self.accelerator.unwrap_model(model).dtype
-                            # for vision related data, paired response share the same one
-                            _data = [{
-                                **d, k: concatenated_batch[k][i // 2].to(model_dtype)
-                            } for i, d in enumerate(_data)]
-                        else:
-                            _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
+            if self._data_keys:
+                _data = [dict() for _ in range(batch_size)]
+                for k in self._data_keys:
+                    if k == 'input_ids':
+                        _data = [{
+                            **d, k: concatenated_batch['concatenated_input_ids'][i]
+                        } for i, d in enumerate(_data)]
+                    elif k == 'pixel_values':
+                        # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
+                        model_dtype = self.accelerator.unwrap_model(model).dtype
+                        # for vision related data, paired response share the same one
+                        _data = [{
+                            **d, k: concatenated_batch[k][i // 2].to(model_dtype)
+                        } for i, d in enumerate(_data)]
+                    else:
+                        _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
                     model_kwargs['_data'] = _data
 
             if 'images' in concatenated_batch:
