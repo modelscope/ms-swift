@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -204,7 +204,8 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         )
 
         if self.is_vision_model:
-            concatenated_batch = self.concatenated_vision_inputs(batch, concatenated_batch)
+            concatenated_batch = self.concatenated_vision_inputs(
+                batch, concatenated_batch, device=self.accelerator.device)
 
         len_chosen = batch['chosen_labels'].shape[0]
 
@@ -301,6 +302,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
     def concatenated_vision_inputs(
         batch: Dict[str, Union[List, torch.LongTensor]],
         concatenated_batch: Dict[str, torch.LongTensor],
+        device: Optional[torch.device] = None,
     ) -> Dict[str, torch.LongTensor]:
         if 'prompt_pixel_values' in batch:
             pixel_values = [values for values in batch['prompt_pixel_values']]
@@ -317,6 +319,9 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         if 'prompt_image_sizes' in batch:
             concatenated_batch['image_sizes'] = batch['prompt_image_sizes']
 
+        if 'prompt_images' in batch:
+            # images not in _data, we manually execute data collector here
+            concatenated_batch['images'] = batch['prompt_images'].squeeze(1).repeat(2, 1, 1, 1).to(device=device)
         return concatenated_batch
 
     @staticmethod
