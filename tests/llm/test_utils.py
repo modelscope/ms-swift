@@ -18,7 +18,7 @@ class TestLlmUtils(unittest.TestCase):
 
     def test_inference(self):
         model_type = ModelType.qwen2_7b_instruct
-        model, tokenizer = get_model_tokenizer(model_type)
+        model, tokenizer = get_model_tokenizer(model_type, use_flash_attn=False)
         template_type = get_default_template_type(model_type)
         template = get_template(template_type, tokenizer)
         model.generation_config.max_length = 128
