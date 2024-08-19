@@ -2329,7 +2329,6 @@ def _preprocess_toolbench(dataset: DATASET_TYPE) -> DATASET_TYPE:
             history_roles.append((convs[idx]['from'], convs[idx + 1]['from']))
 
         return {
-            'system': sys,
             'history': history,
             'history_roles': history_roles,
             'query': convs[-2]['value'],

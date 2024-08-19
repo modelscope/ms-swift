@@ -198,5 +198,8 @@ def get_tools_prompt(TOOLS: List[Dict[str, Union[str, dict]]], prompt_format: st
     elif prompt_format == 'react_zh':
         return REACT_ZH_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
     elif prompt_format == 'glm4':
-        return GLM4_PROMPT.format(tool_list='\n\n## '.join(tool_descs))
+        tool_list = ''
+        for name, tool in zip(tool_names, tool_descs):
+            tool_list += f'## {name}\n\n{tool}\n\n'
+        return GLM4_PROMPT.format(tool_list=tool_list)
     return TOOLBENCH_PROMPT.format(tool_list='\n\n'.join(tool_descs))
