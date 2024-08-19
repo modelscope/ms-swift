@@ -64,6 +64,12 @@ use function Finish->give_up_and_restart.
 2.Do not use origin tool names, use only subfunctions' names.
 Specifically, you have access to the following APIs: {tool_list}'''
 
+GLM4_PROMPT = '''你是一个名为 ChatGLM 的人工智能助手。你是基于智谱AI训练的语言模型 GLM-4 模型开发的，你的任务是针对用户的问题和要求提供适当的答复和支持。
+
+# 可用工具
+
+{tool_list}'''
+
 
 def calculate_loss_scale(query: str,
                          response: str,
@@ -186,10 +192,13 @@ def get_tools_prompt(TOOLS: List[Dict[str, Union[str, dict]]], prompt_format: st
             print('invalid tools format, please check'
                   'https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Agent-deployment-best-practice.md')
             return None
-    tool_descs = '\n\n'.join(tool_descs)
-    tool_names = ','.join(tool_names)
     if prompt_format == 'react_en':
-        return REACT_PROMPT.format(tool_list=tool_descs, tool_names=tool_names)
+        return REACT_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
     elif prompt_format == 'react_zh':
-        return REACT_ZH_PROMPT.format(tool_list=tool_descs, tool_names=tool_names)
-    return TOOLBENCH_PROMPT.format(tool_list=tool_descs)
+        return REACT_ZH_PROMPT.format(tool_list='\n\n'.join(tool_descs), tool_names=','.join(tool_names))
+    elif prompt_format == 'glm4':
+        tool_list = ''
+        for name, tool in zip(tool_names, tool_descs):
+            tool_list += f'## {name}\n\n{tool}\n\n'
+        return GLM4_PROMPT.format(tool_list=tool_list)
+    return TOOLBENCH_PROMPT.format(tool_list='\n\n'.join(tool_descs))
