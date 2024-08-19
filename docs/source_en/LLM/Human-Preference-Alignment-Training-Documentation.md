@@ -90,8 +90,11 @@ swift rlhf \
 
 # DDP + MP
 # Memory usage: 4*24G
+nproc_per_node=2
+
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NPROC_PER_NODE=2 \
+NPROC_PER_NODE=$nproc_per_node \
+MASTER_PORT=29500 \
 swift rlhf \
     --rlhf_type dpo \
     --model_type  llama3-8b-instruct \

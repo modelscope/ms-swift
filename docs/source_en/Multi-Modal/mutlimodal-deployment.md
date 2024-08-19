@@ -578,7 +578,6 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type internvl2-2b
 
 **Client**:
 
-
 Using swift:
 ```python
 from swift.llm import get_model_list_client, XRequestConfig, inference_client

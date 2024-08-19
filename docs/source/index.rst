@@ -25,7 +25,7 @@ Swift DOCUMENTATION
    LLM/LLM微调文档.md
    LLM/人类偏好对齐训练文档.md
    LLM/LLM评测文档.md
-   LLM/LLM量化文档.md
+   LLM/LLM量化与导出文档.md
    LLM/OLLAMA导出文档.md
    LLM/VLLM推理加速与部署.md
    LLM/LmDeploy推理加速与部署.md

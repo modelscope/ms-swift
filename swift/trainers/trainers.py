@@ -236,6 +236,11 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 if 'acc' not in self._custom_metrics:
                     self._custom_metrics['acc'] = self._acc
                 self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
+
+        if use_torchacc() and self.args.gradient_accumulation_steps > 1:
+            import torchacc as ta
+            ta.mark_step()
+
         return (loss, outputs) if return_outputs else loss
 
     def get_train_dataloader(self):
