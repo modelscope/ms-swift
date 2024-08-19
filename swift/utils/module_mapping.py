@@ -214,7 +214,7 @@ INTERNVL_KEYS = MultiModelKeys(
 
 INTERNVIDEO_KEYS = MultiModelKeys(
     language_model='lm',
-    # projector='',
+    projector=['project_up', 'qformer'],
     vision_tower='vision_encoder',
 )
 
