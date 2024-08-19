@@ -151,7 +151,7 @@ def patch_datacollator():
         def new_call(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
             padded_batch = {}
             for k in features[0].keys():
-                if k.endswith(('_input_ids', '_attention_mask', '_labels', '_pixel_values')):
+                if k.endswith(('_input_ids', '_attention_mask', '_labels', '_pixel_values', '_images')):
                     if self.is_encoder_decoder:
                         to_pad = [torch.LongTensor(ex[k]) for ex in features]
 
@@ -187,7 +187,7 @@ def patch_datacollator():
                             padding_value = self.label_pad_token_id
                         elif k.endswith('_attention_mask'):
                             padding_value = 0
-                        elif k.endswith('_pixel_values'):
+                        elif k.endswith(('_pixel_values', '_images')):
                             padding_value = 0
                         else:
                             raise ValueError(f"Unexpected key in batch '{k}'")
@@ -199,7 +199,7 @@ def patch_datacollator():
                             padding_side = 'right'
 
                         # Set the dtype
-                        if k.endswith('_pixel_values'):
+                        if k.endswith(('_pixel_values', '_images')):
                             dtype = torch.float32  # will be downcasted if necessary by the Trainer
                         else:
                             dtype = torch.int64

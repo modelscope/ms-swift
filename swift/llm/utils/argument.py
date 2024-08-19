@@ -988,6 +988,10 @@ class SftArguments(ArgumentsBase):
                 self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
+                logger.warning(
+                    'Due to the adoption of full-parameter training, '
+                    'in order to avoid saving excessive weights, we set save_only_model to True. '
+                    'If you want to resume training from a checkpoint, please manually pass `--save_only_model false`.')
             if self.eval_steps is None:
                 self.eval_steps = 200
         else:

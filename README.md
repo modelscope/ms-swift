@@ -626,6 +626,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Phi3-Vision                                             | Microsoft                                                                              | English            | 4B                                    | chat model               |
 | PaliGemma                                               | Google                                                                                 | English            | 3B                                    | chat model               |
 | Florence                                                | Microsoft                                                                              | English            | 0.23B-0.77B                           | chat model               |
+| Idefics3                                | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | English       | 8B      | chat model       |
 
 
 #### Diffusion Models

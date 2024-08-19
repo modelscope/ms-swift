@@ -296,6 +296,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         args.truncation_strategy,
         model=model,
         **template_kwargs)
+    template._is_training = True
     if streaming:
         template.encode = partial(template.encode, streaming=streaming)
     args.system = template.default_system

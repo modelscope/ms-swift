@@ -616,10 +616,13 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 7B-110B          | chat模型           |
 | mPLUG-Owl                                               | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 11B              | chat模型           |
 | InternVL<br>Mini-InternVL<br>InternVL2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 1B-40B<br>包含量化版本 | chat模型           |
-| Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文       | 8B               | chat model       |
-| Phi3-Vision                                             | 微软                                                                         | 英文       | 4B               | chat model       |
-| PaliGemma                                               | Google                                                                     | 英文       | 3B               | chat model       |
-| Florence                                                | 微软                                                                         | 英文       | 0.23B-0.77B      | chat model       |
+| Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文       | 8B               | chat模型       |
+| Phi3-Vision                                             | 微软                                                                         | 英文       | 4B               | chat模型       |
+| PaliGemma                                               | Google                                                                     | 英文       | 3B               | chat模型       |
+| Florence                                                | 微软                                                                         | 英文       | 0.23B-0.77B      | chat模型       |
+| Idefics3                                | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | 英文       | 8B      | chat模型       |
+
+
 
 #### 扩散模型
 

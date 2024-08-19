@@ -3,6 +3,7 @@ import concurrent.futures
 import inspect
 import os
 import time
+from contextlib import contextmanager
 from copy import deepcopy
 from functools import wraps
 from queue import Queue
@@ -25,6 +26,28 @@ from .template import Template, get_template
 from .utils import get_max_model_len
 
 logger = get_logger()
+
+
+@contextmanager
+def _patch_pipeline(tokenizer):
+    _old_from_pretrained = AutoTokenizer.from_pretrained
+
+    @wraps(_old_from_pretrained)
+    def _from_pretrained(self, *args, **kwargs):
+        return tokenizer
+
+    AutoTokenizer.from_pretrained = _from_pretrained
+
+    from lmdeploy.serve import async_engine
+    _old_best_match_model = async_engine.best_match_model
+
+    def _best_match_model(query: str) -> Optional[str]:
+        return tokenizer.model_type
+
+    async_engine.best_match_model = _best_match_model
+    yield
+    AutoTokenizer.from_pretrained = _old_from_pretrained
+    async_engine.best_match_model = _old_best_match_model
 
 
 def get_lmdeploy_engine(
@@ -69,15 +92,8 @@ def get_lmdeploy_engine(
         pipeline_kwargs['vision_config'] = vision_config
         logger.info(f'vision_config: {vision_config}')
 
-    _old_from_pretrained = AutoTokenizer.from_pretrained
-
-    @wraps(_old_from_pretrained)
-    def _from_pretrained(self, *args, **kwargs):
-        return tokenizer
-
-    AutoTokenizer.from_pretrained = _from_pretrained
-    lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
-    AutoTokenizer.from_pretrained = _old_from_pretrained  # recover
+    with _patch_pipeline(tokenizer):
+        lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
 
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
