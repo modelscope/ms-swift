@@ -1677,7 +1677,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_vllm=True,
     support_lmdeploy=True,
     requires=['transformers>=4.43'],
-    hf_model_id='THUDM/LongWriter-glm4-9b') 
+    hf_model_id='THUDM/LongWriter-glm4-9b')
 def get_model_tokenizer_glm4(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],

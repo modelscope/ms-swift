@@ -1363,8 +1363,7 @@ register_template(
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
-LONGWRITER_DEFAULT_SYSTEM = (
-    '你是由智谱AI开发的长文本生成模型，可以在一分钟内生成超过10,000个字！')
+LONGWRITER_DEFAULT_SYSTEM = ('你是由智谱AI开发的长文本生成模型，可以在一分钟内生成超过10,000个字！')
 
 register_template(
     TemplateType.longwriter_llama3,
