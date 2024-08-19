@@ -219,17 +219,21 @@ class ModelType:
     # atom
     atom_7b = 'atom-7b'
     atom_7b_chat = 'atom-7b-chat'
-    # llava
+    # llava-hf
     llava1_5_7b_instruct = 'llava1_5-7b-instruct'
     llava1_5_13b_instruct = 'llava1_5-13b-instruct'
     llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
     llava1_6_vicuna_7b_instruct = 'llava1_6-vicuna-7b-instruct'
     llava1_6_vicuna_13b_instruct = 'llava1_6-vicuna-13b-instruct'
     llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
+    llama3_llava_next_8b_hf = 'llama3-llava-next-8b-hf'
+    llava_next_72b_hf = 'llava-next-72b-hf'
+    llava_next_110b_hf = 'llava-next-110b-hf'
+    # llava
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
     llava_next_110b = 'llava-next-110b'
-    # llava_next_video
+    # llava_next_video-hf
     llava_next_video_7b_instruct = 'llava-next-video-7b-instruct'
     llava_next_video_7b_32k_instruct = 'llava-next-video-7b-32k-instruct'
     llava_next_video_7b_dpo_instruct = 'llava-next-video-7b-dpo-instruct'
@@ -265,7 +269,7 @@ class ModelType:
     # yi-vl
     yi_vl_6b_chat = 'yi-vl-6b-chat'
     yi_vl_34b_chat = 'yi-vl-34b-chat'
-    # llava-llama
+    # llava-llama (xtuner)
     llava_llama3_8b_v1_1 = 'llava-llama-3-8b-v1_1'
     # internlm
     internlm_7b = 'internlm-7b'
@@ -525,19 +529,14 @@ class LoRATM(NamedTuple):
     qwen2_audio = f'{get_regex_for_mm_default_lora("qwen2_audio")}'
     glm4v = f'{get_regex_for_mm_default_lora("glm4v")}'
     llava_next_video = f'{get_regex_for_mm_default_lora("llava_next_video")}'
-    llava_next = f'{get_regex_for_mm_default_lora("llava_next")}'
     llava_llama = f'{get_regex_for_mm_default_lora("llava_llama")}'
     llava = f'{get_regex_for_mm_default_lora("llava")}'
-    yi_vl = f'{get_regex_for_mm_default_lora("yi_vl")}'
     internlm_xcomposer = ['attention.wqkv', 'attention.wo', 'feed_forward.w1', 'feed_forward.w2', 'feed_forward.w3']
     internvl = f'{get_regex_for_mm_default_lora("internvl")}'
     deepseek_vl = f'{get_regex_for_mm_default_lora("deepseek_vl")}'
-    paligemma = f'{get_regex_for_mm_default_lora("paligemma")}'
     minicpm_v = f'{get_regex_for_mm_default_lora("minicpm_v")}'
     phi3v = f'{get_regex_for_mm_default_lora("phi3v")}'
-    cogvlm2 = f'{get_regex_for_mm_default_lora("cogvlm2")}'
     cogvlm = f'{get_regex_for_mm_default_lora("cogvlm")}'
-    cogagent = f'{get_regex_for_mm_default_lora("cogagent")}'
     florence = f'{get_regex_for_mm_default_lora("florence")}'
     idefics3 = f'{get_regex_for_mm_default_lora("idefics3")}'
     # default lora target modules for nlp llms.
@@ -1038,7 +1037,7 @@ def _output_device_map_hook(module, input, output):
 @register_model(
     ModelType.cogvlm2_video_13b_chat,
     'ZhipuAI/cogvlm2-video-llama3-chat',
-    LoRATM.cogvlm2,
+    LoRATM.cogvlm,
     TemplateType.cogvlm2_video,
     support_gradient_checkpointing=False,
     requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
@@ -1048,7 +1047,7 @@ def _output_device_map_hook(module, input, output):
 @register_model(
     ModelType.cogvlm2_en_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chat-19B',
-    LoRATM.cogvlm2,
+    LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     support_lmdeploy=True,
@@ -1059,7 +1058,7 @@ def _output_device_map_hook(module, input, output):
 @register_model(
     ModelType.cogvlm2_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
-    LoRATM.cogvlm2,
+    LoRATM.cogvlm,
     TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     support_lmdeploy=True,
@@ -1215,7 +1214,7 @@ def get_model_tokenizer_mamba(model_dir: str,
 @register_model(
     ModelType.cogagent_18b_chat,
     'ZhipuAI/cogagent-chat',
-    LoRATM.cogagent,
+    LoRATM.cogvlm,
     TemplateType.cogagent_chat,
     support_gradient_checkpointing=False,
     requires=['timm'],
@@ -1224,7 +1223,7 @@ def get_model_tokenizer_mamba(model_dir: str,
 @register_model(
     ModelType.cogagent_18b_instruct,
     'ZhipuAI/cogagent-vqa',
-    LoRATM.cogagent,
+    LoRATM.cogvlm,
     TemplateType.cogagent_instruct,
     support_gradient_checkpointing=False,
     requires=['timm'],
@@ -1307,7 +1306,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_224,
     'AI-ModelScope/paligemma-3b-pt-224',
-    LoRATM.paligemma,
+    LoRATM.llava,
     TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
@@ -1318,7 +1317,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_448,
     'AI-ModelScope/paligemma-3b-pt-448',
-    LoRATM.paligemma,
+    LoRATM.llava,
     TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
@@ -1329,7 +1328,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_896,
     'AI-ModelScope/paligemma-3b-pt-896',
-    LoRATM.paligemma,
+    LoRATM.llava,
     TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
@@ -1340,7 +1339,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_224,
     'AI-ModelScope/paligemma-3b-mix-224',
-    LoRATM.paligemma,
+    LoRATM.llava,
     TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
@@ -1351,7 +1350,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_448,
     'AI-ModelScope/paligemma-3b-mix-448',
-    LoRATM.paligemma,
+    LoRATM.llava,
     TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
@@ -5557,7 +5556,7 @@ def get_model_tokenizer_orion(model_dir: str,
 @register_model(
     ModelType.yi_vl_34b_chat,
     '01ai/Yi-VL-34B',
-    LoRATM.yi_vl,
+    LoRATM.llava_llama,
     TemplateType.yi_vl,
     support_flash_attn=True,
     requires=['transformers>=4.34'],
@@ -5566,7 +5565,7 @@ def get_model_tokenizer_orion(model_dir: str,
 @register_model(
     ModelType.yi_vl_6b_chat,
     '01ai/Yi-VL-6B',
-    LoRATM.yi_vl,
+    LoRATM.llava_llama,
     TemplateType.yi_vl,
     support_flash_attn=True,
     requires=['transformers>=4.34'],
@@ -5794,6 +5793,36 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 
 @register_model(
+    ModelType.llava_next_72b_hf,
+    'AI-ModelScope/llava-next-72b-hf',
+    LoRATM.llava,
+    TemplateType.llava_qwen_hf,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-next-72b-hf')
+@register_model(
+    ModelType.llava_next_110b_hf,
+    'AI-ModelScope/llava-next-110b-hf',
+    LoRATM.llava,
+    TemplateType.llava_qwen_hf,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llava-next-110b-hf')
+@register_model(
+    ModelType.llama3_llava_next_8b_hf,
+    'swift/llama3-llava-next-8b-hf',
+    LoRATM.llava,
+    TemplateType.llama3_llava_next_hf,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.39'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='llava-hf/llama3-llava-next-8b-hf')
+@register_model(
     ModelType.llava1_6_vicuna_7b_instruct,
     'swift/llava-v1.6-vicuna-7b-hf',
     LoRATM.llava,
@@ -5901,7 +5930,7 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
     ModelType.llama3_llava_next_8b,
     'AI-Modelscope/llama3-llava-next-8b',
     LoRATM.llava_llama,
-    TemplateType.llama_llava_next,
+    TemplateType.llama3_llava_next,
     support_flash_attn=True,
     support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
@@ -5910,8 +5939,8 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 @register_model(
     ModelType.llava_next_72b,
     'AI-Modelscope/llava-next-72b',
-    LoRATM.llava_next,
-    TemplateType.llava_qwen_instruct,
+    LoRATM.llava,
+    TemplateType.llava_qwen,
     support_flash_attn=True,
     support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
@@ -5920,8 +5949,8 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
 @register_model(
     ModelType.llava_next_110b,
     'AI-Modelscope/llava-next-110b',
-    LoRATM.llava_next,
-    TemplateType.llava_qwen_instruct,
+    LoRATM.llava,
+    TemplateType.llava_qwen,
     support_flash_attn=True,
     support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
