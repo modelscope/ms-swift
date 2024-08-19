@@ -1703,6 +1703,7 @@ def get_model_tokenizer_longwriter_glm4(*args, **kwargs):
         tokenizer.add_tokens(k)
     return model, tokenizer
 
+
 @register_model(
     ModelType.glm4v_9b_chat,
     'ZhipuAI/glm-4v-9b',
