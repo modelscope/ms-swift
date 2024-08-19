@@ -27,8 +27,17 @@ def test_vlm_sft():
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
 
+def test_llm_sft():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    from swift.llm import sft_main, SftArguments, infer_main, InferArguments
+    output = sft_main(SftArguments(model_type='longwriter-glm4-9b', dataset='alpaca-zh#100'))
+    last_model_checkpoint = output['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+
+
 if __name__ == '__main__':
     # test_eval_llm()
     # test_eval_vlm()
     # test_pt()
-    test_vlm_sft()
+    # test_vlm_sft()
+    test_llm_sft()

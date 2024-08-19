@@ -697,5 +697,10 @@
         "subsets": ["sharegpt", "firefly", "codefuse", "metamathqa"],
         "tags": ["chat", "sft", "general", "🔥"],
         "huge_dataset": true
+    },
+    "longwriter-6k": {
+        "dataset_id": "ZhipuAI/LongWriter-6k",
+        "tags": ["long", "chat", "sft", "🔥"],
+        "hf_dataset_id": "THUDM/LongWriter-6k"
     }
 }

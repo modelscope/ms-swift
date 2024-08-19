@@ -54,6 +54,7 @@ class TemplateType:
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava-mistral'
@@ -1437,6 +1438,11 @@ register_template(
     TemplateType.llama,
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+
+register_template(
+    TemplateType.longwriter_llama3,
+    Template(['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'], None,
+             ['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 register_template(TemplateType.mistral_nemo,
                   Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
