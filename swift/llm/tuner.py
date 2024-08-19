@@ -7,7 +7,6 @@ import torch
 import transformers
 from packaging import version
 
-from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift, VeraConfig)
@@ -233,11 +232,31 @@ def prepare_model(model, args: SftArguments):
         if len(args.additional_trainable_parameters) > 0:
             activate_model_parameters(model, args.additional_trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint is not None:
-            weights_file = os.path.join(args.resume_from_checkpoint, 'model.bin')
-            state_dict = torch.load(weights_file, map_location='cpu')
-            model.load_state_dict(state_dict, False)
-            # release memory
-            del state_dict
+            import safetensors
+            weights_file = os.path.join(args.resume_from_checkpoint, 'pytorch_model.bin')
+            safe_weights_file = os.path.join(args.resume_from_checkpoint, 'model.safetensors')
+            if os.path.isfile(weights_file) or os.path.isfile(safe_weights_file):
+                if args.save_safetensors and os.path.isfile(safe_weights_file):
+                    state_dict = safetensors.torch.load_file(safe_weights_file, device='cpu')
+                else:
+                    state_dict = torch.load(weights_file, map_location='cpu')
+                model.load_state_dict(state_dict, False)
+                del state_dict
+            else:
+                from transformers.modeling_utils import load_sharded_checkpoint
+                # We load the sharded checkpoint
+                load_result = load_sharded_checkpoint(
+                    model, args.resume_from_checkpoint, strict=False, prefer_safe=args.save_safetensors)
+                if len(load_result.missing_keys) != 0:
+                    if model._keys_to_ignore_on_save is not None and set(load_result.missing_keys) == set(
+                            model._keys_to_ignore_on_save):
+                        model.tie_weights()
+                    else:
+                        logger.warning(
+                            f'There were missing keys in the checkpoint model loaded: {load_result.missing_keys}.')
+                if len(load_result.unexpected_keys) != 0:
+                    logger.warning(
+                        f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 
