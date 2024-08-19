@@ -4404,6 +4404,8 @@ def get_model_tokenizer_internvideo(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, 
         automodel_class=AutoModel, **kwargs)
 
+    model.base_model_prefix = 'lm'
+
     return model, tokenizer
 
 
