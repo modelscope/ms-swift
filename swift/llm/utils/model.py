@@ -1671,6 +1671,16 @@ def get_model_tokenizer_chatglm(model_dir: str,
     support_lmdeploy=True,
     requires=['transformers>=4.42'],
     hf_model_id='THUDM/glm-4-9b-chat-1m')
+@register_model(
+    ModelType.longwriter_glm4_9b,
+    'ZhipuAI/LongWriter-glm4-9b',
+    LoRATM.chatglm,
+    TemplateType.longwriter_glm4,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.43'],
+    hf_model_id='THUDM/LongWriter-glm4-9b') 
 def get_model_tokenizer_glm4(model_dir: str,
                              torch_dtype: Dtype,
                              model_kwargs: Dict[str, Any],
@@ -4407,6 +4417,8 @@ def get_model_tokenizer_internvideo(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, 
         automodel_class=AutoModel, **kwargs)
+    
+    model.base_model_prefix = 'lm'
 
     return model, tokenizer
 
@@ -5050,24 +5062,13 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     ModelType.longwriter_llama3_1_8b,
     'ZhipuAI/LongWriter-llama3.1-8b',
     LoRATM.llama,
-    TemplateType.longwriter,
+    TemplateType.longwriter_llama3,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
     requires=['transformers>=4.43'],
     ignore_file_pattern=[r'.+\.pth$'],
     hf_model_id='THUDM/LongWriter-llama3.1-8b')
-@register_model(
-    ModelType.longwriter_glm4_9b,
-    'ZhipuAI/LongWriter-glm4-9b',
-    LoRATM.chatglm,
-    TemplateType.longwriter,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.43'],
-    ignore_file_pattern=[r'.+\.pth$'],
-    hf_model_id='THUDM/LongWriter-glm4-9b') 
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: Dtype,
                                model_kwargs: Dict[str, Any],
