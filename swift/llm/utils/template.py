@@ -50,6 +50,7 @@ class TemplateType:
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    longwriter = 'longwriter'
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava-mistral'
     llava_vicuna = 'llava-vicuna'
@@ -1364,6 +1365,14 @@ register_template(
     TemplateType.llama,
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+
+LONGWRITER_DEFAULT_SYSTEM = (
+    '你是由智谱AI开发的长文本生成模型，可以在一分钟内生成超过10,000个字！')
+
+register_template(
+    TemplateType.longwriter,
+    Template(['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], [''], LONGWRITER_DEFAULT_SYSTEM,
+             ['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 register_template(TemplateType.mistral_nemo,
                   Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
