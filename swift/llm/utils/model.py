@@ -1679,10 +1679,10 @@ def get_model_tokenizer_glm4(model_dir: str,
                              load_model: bool = True,
                              **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    use_flash_attn = kwargs.pop('use_flash_attn', None)
     if use_flash_attn:
         model_config._attn_implementation = 'flash_attention_2'
-    else:
+    elif use_flash_attn is False:
         model_config._attn_implementation = 'eager'
     return get_model_tokenizer_chatglm(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
@@ -2600,11 +2600,11 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         **kwargs):
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    use_flash_attn = kwargs.pop('use_flash_attn', None)
     if version.parse(transformers.__version__) >= version.parse('4.36'):
         if use_flash_attn:
             model_config._attn_implementation = 'flash_attention_2'
-        else:
+        elif use_flash_attn is False:
             model_config._attn_implementation = 'eager'
     else:
         model_config._flash_attn_2_enabled = use_flash_attn
@@ -4142,7 +4142,7 @@ def _patch_output_device_map(llm_model):
     support_lmdeploy=True,
     support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-1B')
 @register_model(
     ModelType.internvl2_2b,
@@ -4155,7 +4155,7 @@ def _patch_output_device_map(llm_model):
     support_lmdeploy=True,
     support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-2B')
 @register_model(
     ModelType.internvl2_4b,
@@ -4169,7 +4169,7 @@ def _patch_output_device_map(llm_model):
     support_vllm=True,
     eos_token='<|end|>',
     placeholder_tokens=['<IMG_CONTEXT>'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-4B')
 @register_model(
     ModelType.internvl2_8b,
@@ -4182,7 +4182,7 @@ def _patch_output_device_map(llm_model):
     support_lmdeploy=True,
     support_vllm=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-8B')
 @register_model(
     ModelType.internvl2_26b,
@@ -4195,7 +4195,7 @@ def _patch_output_device_map(llm_model):
     support_vllm=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-26B')
 @register_model(
     ModelType.internvl2_40b,
@@ -4208,7 +4208,7 @@ def _patch_output_device_map(llm_model):
     support_vllm=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-40B')
 @register_model(
     ModelType.internvl2_llama3_76b,
@@ -4221,7 +4221,7 @@ def _patch_output_device_map(llm_model):
     support_vllm=True,
     support_lmdeploy=True,
     placeholder_tokens=['<IMG_CONTEXT>'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-Llama3-76B')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
@@ -5700,7 +5700,7 @@ def ignore_check_imports():
     requires=['timm', 'transformers>=4.36', 'decord'],
     placeholder_tokens=['<unk>'],
     function_kwargs={'version': 'v2.6'},
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='openbmb/MiniCPM-V-2_6')
 @register_model(
     ModelType.minicpm_v_v2_5_chat,
