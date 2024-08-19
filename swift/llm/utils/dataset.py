@@ -2415,7 +2415,8 @@ register_dataset(
     'swift/RLAIF-V-Dataset', ['default'],
     process_rlaif_v,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'multi-modal', 'en'])
+    tags=['rlhf', 'dpo', 'multi-modal', 'en'],
+    hf_dataset_id='openbmb/RLAIF-V-Dataset')
 
 
 def _check_dataset(dataset: Optional[HfDataset], check_dataset_strategy: Literal['none', 'discard', 'error',

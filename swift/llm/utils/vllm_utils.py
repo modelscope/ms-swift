@@ -1,9 +1,7 @@
-import asyncio
 import concurrent.futures
 import inspect
 import os
 import time
-from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -14,12 +12,11 @@ from packaging import version
 from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
-from transformers.utils.versions import require_version
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
 from .argument import InferArguments
-from .model import MODEL_MAPPING, get_model_tokenizer
+from .model import get_model_tokenizer
 from .template import Template, get_template
 
 try:
@@ -28,13 +25,6 @@ except ImportError:
     pass
 
 logger = get_logger()
-
-
-@contextmanager
-def vllm_context(self: Template):
-    self._is_vllm = True
-    yield
-    self._is_vllm = False
 
 
 def get_vllm_engine(
@@ -55,9 +45,6 @@ def get_vllm_engine(
         enable_lora: bool = False,
         max_loras: int = 1,
         max_lora_rank: int = 16,
-        # multimodal
-        image_input_shape: Optional[str] = None,
-        image_feature_size: Optional[int] = None,
         **kwargs) -> LLMEngine:
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
@@ -176,6 +163,7 @@ class VllmGenerationConfig(SamplingParams):
         num_beams: int = 1,
         *,
         n: int = 1,
+        seed: Optional[int] = None,
         length_penalty: float = 1.,
         stop: Optional[List[str]] = None,
         skip_special_tokens: bool = False,
@@ -205,6 +193,7 @@ class VllmGenerationConfig(SamplingParams):
             kwargs['use_beam_search'] = True
             kwargs['best_of'] = num_beams
         kwargs['n'] = n
+        kwargs['seed'] = seed
         kwargs['length_penalty'] = length_penalty
         kwargs['stop'] = stop
         kwargs['skip_special_tokens'] = skip_special_tokens
@@ -303,7 +292,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
         prog_bar.update()
         return inputs
 
-    with vllm_context(template), concurrent.futures.ThreadPoolExecutor(
+    with template.vllm_context(), concurrent.futures.ThreadPoolExecutor(
             max_workers=min(max_workers, len(request_list))) as executor:
         futures = [executor.submit(_prepare_inputs, request) for request in request_list]
         concurrent.futures.wait(futures)
@@ -552,12 +541,8 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
         max_loras=min(len(args.lora_modules), 1),
-        max_lora_rank=args.vllm_max_lora_rank,
-        image_input_shape=args.image_input_shape,
-        image_feature_size=args.image_feature_size)
+        max_lora_rank=args.vllm_max_lora_rank)
     tokenizer = llm_engine.hf_tokenizer
-    model_config = llm_engine.model_config
-    logger.info(f'model_config: {model_config.hf_config}')
 
     if not args.do_sample:
         args.temperature = 0

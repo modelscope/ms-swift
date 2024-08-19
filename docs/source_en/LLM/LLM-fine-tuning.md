@@ -178,7 +178,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 ## Quantization
 
-For quantization of the fine-tuned model, you can check [LLM Quantization Documentation](LLM-quantization.md#fine-tuned-model)
+For quantization of the fine-tuned model, you can check [LLM Quantization Documentation](LLM-quantization-and-export.md#fine-tuned-model)
 
 ## Inference
 If you want to use VLLM for accelerated inference, you can check [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md)
