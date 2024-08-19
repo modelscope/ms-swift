@@ -50,9 +50,11 @@ class TemplateType:
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
+    chatglm4 = 'chatglm4'
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava-mistral'
@@ -1398,6 +1400,13 @@ register_template(
     TemplateType.chatglm3,
     GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None, ['<|system|>\n{{SYSTEM}}']))
 
+register_template(
+    TemplateType.chatglm4,
+    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'],
+                None, ['<|system|>\n{{SYSTEM}}'],
+                tools_prompt='glm4',
+                tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
+
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
 register_template(
@@ -1430,6 +1439,11 @@ register_template(
     TemplateType.llama,
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+
+register_template(
+    TemplateType.longwriter_llama3,
+    Template(['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'], None,
+             ['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 register_template(TemplateType.mistral_nemo,
                   Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
