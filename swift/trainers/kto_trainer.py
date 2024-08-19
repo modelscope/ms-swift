@@ -75,7 +75,8 @@ def encode_batch(batch: Dict[str, List[Any]], template: Template):
                                       response=r,
                                       round0=i)
     template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
-    res_context_list, compute_loss_idx = template._simplify_context_list(res_context_list, compute_loss_idx)
+    res_context_list, compute_loss_idx = template._simplify_context_list(
+        res_context_list, compute_loss_idx, example=batch)
     prompt = ''.join(res_context_list)
 
     return {'prompt': prompt, 'completion': batch['response'], 'label': batch['label']}

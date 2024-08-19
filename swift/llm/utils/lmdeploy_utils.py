@@ -3,7 +3,6 @@ import concurrent.futures
 import inspect
 import os
 import time
-from contextlib import contextmanager
 from copy import deepcopy
 from functools import wraps
 from queue import Queue
@@ -102,13 +101,6 @@ def get_lmdeploy_engine(
     return lmdeploy_engine
 
 
-@contextmanager
-def lmdeploy_context(self: Template):
-    self._is_lmdeploy = True
-    yield
-    self._is_lmdeploy = False
-
-
 class LmdeployGenerationConfig(_LmdeployGenerationConfig):
 
     def __init__(
@@ -121,6 +113,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
         *,
         n: int = 1,
         stop_words: Optional[List[int]] = None,
+        random_seed: Optional[int] = None,
         skip_special_tokens: bool = False,
         **kwargs,
     ) -> None:
@@ -134,6 +127,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             repetition_penalty=repetition_penalty,
             n=n,
             stop_words=stop_words,
+            random_seed=random_seed,
             skip_special_tokens=skip_special_tokens,
             **kwargs)
 
@@ -188,7 +182,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         prog_bar.update()
         return inputs
 
-    with lmdeploy_context(template), concurrent.futures.ThreadPoolExecutor(
+    with template.lmdeploy_context(), concurrent.futures.ThreadPoolExecutor(
             max_workers=min(max_workers, len(request_list))) as executor:
         futures = [executor.submit(_prepare_inputs, request) for request in request_list]
         concurrent.futures.wait(futures)

@@ -183,7 +183,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 ## 量化
 
-对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档.md#微调后模型)
+对微调后模型进行量化可以查看[LLM量化与导出文档](LLM量化与导出文档.md#微调后模型)
 
 ## 推理
 如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#微调后的模型)
@@ -299,4 +299,4 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 ```
 
 ## 推送模型
-如果你想推送模型到ModelScope，可以参考[模型推送文档](LLM量化文档.md#推送模型)
+如果你想推送模型到ModelScope，可以参考[模型推送文档](LLM量化与导出文档.md#推送模型)
