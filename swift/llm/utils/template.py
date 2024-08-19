@@ -60,6 +60,7 @@ class TemplateType:
     llava_yi = 'llava-yi'
     llama3_llava_next_hf = 'llama-llava-next-hf'
     llava_qwen_hf = 'llama-qwen-hf'
+    llava_onevision_qwen = 'llava-onevision-qwen'
     # llava-video
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
@@ -2231,6 +2232,13 @@ class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
 
 
 register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
+    system = None
+
+
+register_template(TemplateType.llava_onevision_qwen, LlavaOneVisonTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Llama3Template):
