@@ -315,10 +315,14 @@ class Template:
                 kwargs.pop('position_ids', None)
             return args, kwargs
 
-        handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+        parameters = inspect.signature(self.model.register_forward_pre_hook).parameters
+        handle = None
+        if 'with_kwargs' in parameters:
+            handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
         yield
         self._is_training = False
-        handle.remove()
+        if handle is not None:
+            handle.remove()
 
     @contextmanager
     def vllm_context(self):
