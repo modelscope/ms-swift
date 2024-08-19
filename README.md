@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.08.20: Supported models: longwriter-glm4-9b, longwriter-llama3_1-8b. Supported dataset: longwriter-6k.
 - 🔥2024.08.12: 🎉 SWIFT paper has been published to arXiv. Check [this link](https://arxiv.org/abs/2408.05517) to read.
 - 🔥2024.08.12: Support packing with flash-attention without the contamination of attention_mask, use `--packing` to begin. Check[PR](https://github.com/huggingface/transformers/pull/31629/files).
 - 🔥2024.08.09: Support for inference and fine-tuning of the qwen2-audio model. Best practice can be found [here](https://github.com/modelscope/ms-swift/issues/1653).

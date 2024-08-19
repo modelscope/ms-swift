@@ -4860,7 +4860,11 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     'ZhipuAI/LongWriter-llama3.1-8b',
     LoRATM.llama,
     TemplateType.longwriter_llama3,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.43'],
+    hf_model_id='THUDM/LongWriter-llama3.1-8b')
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: Dtype,
                                model_kwargs: Dict[str, Any],
