@@ -47,14 +47,24 @@ class LoReft(SwiftAdapter):
 
         import pyreft
         from pyreft import ReftModel
+
+        def __getattr__(self, name: str):
+            try:
+                return super(ReftModel, self).__getattr__(name)
+            except AttributeError:
+                return getattr(self.model, name)
+        
+        ReftModel.__getattr__ = __getattr__
+
         model_key_mapping = LoReft._get_model_key_mapping(config.model_type, config)
         logger.info(f'Applying LoReft to module: {model_key_mapping.module_list}')
         module_list: nn.ModuleList = model.get_submodule(model_key_mapping.module_list)
-        down_proj = model_key_mapping.down_proj
         representations = []
         for idx, layer in enumerate(module_list):
+            if config.layers and idx not in config.layers:
+                continue
             intervention_config = {
-                "layer": idx, "component": down_proj.replace('.{}.', f'[{idx}].'),
+                "layer": idx, "component": model_key_mapping.module_list + f'[{idx}].output',
                 "low_rank_dimension": config.r,
                 "intervention": pyreft.LoreftIntervention(embed_dim=model.config.hidden_size,
                                                           low_rank_dimension=config.r)
@@ -62,28 +72,29 @@ class LoReft(SwiftAdapter):
             representations.append(intervention_config)
 
         reft_config = pyreft.ReftConfig(representations=representations)
-        reft_model = pyreft.get_reft_model(model, reft_config)
+        reft_model = pyreft.get_reft_model(model, reft_config, set_device=False)
+        reft_model.loreft_config = reft_model.config
+        reft_model.config = reft_model.model.config
+
+        def _pre_forward_hook(module, args, kwargs):
+            
+        reft_model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
 
         def save_callback(swift_model, model_dir, adapter_name):
-            reft_model.save(model_dir)
+            reft_model.save_intervention(save_directory=model_dir)
+        
+        def mark_trainable_callback(model):
+            return
 
         def load_callback(swift_model, model_dir, adapter_name):
-            swift_model.base_model = ReftModel.load(model_dir)
+            reft_model.load_intervention(model_dir)
 
         return SwiftOutput(
             model=reft_model,
             config=config,
+            mark_trainable_callback=mark_trainable_callback,
             save_callback=save_callback,
             load_callback=load_callback)
-
-    @staticmethod
-    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
-        name_list = [name for name, _ in module.named_modules(remove_duplicate=False)]
-        for name in name_list:
-            sub_module: nn.Module = module.get_submodule(name)
-            if re.fullmatch(f'.*_part_{adapter_name}$', name):
-                sub_module.activated = activate
-                SwiftAdapter.save_memory(sub_module, adapter_name, name, activate, offload)
 
     @staticmethod
     def has_additional_modules():

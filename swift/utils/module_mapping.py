@@ -307,7 +307,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('ziya', LLAMA_KEYS),
     ('skywork', LLAMA_KEYS),
     ('chatglm', LLAMA_KEYS),
-    ('glm4', LLAMA_KEYS),
+    ('glm4', CHATGLM_KEYS),
     ('baichuan', LLAMA_KEYS),
     ('yuan', LLAMA_KEYS),
     ('codefuse', LLAMA_KEYS),
