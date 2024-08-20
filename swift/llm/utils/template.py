@@ -3,7 +3,7 @@ import inspect
 import re
 from contextlib import contextmanager
 from copy import deepcopy
-from functools import partial
+from functools import partial, wraps
 from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -16,6 +16,7 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
@@ -320,12 +321,26 @@ class Template:
 
         parameters = inspect.signature(self.model.register_forward_pre_hook).parameters
         handle = None
+        deepspeed = None
         if 'with_kwargs' in parameters:
             handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+            if is_deepspeed_zero3_enabled():
+                import deepspeed
+                _old_initialize = deepspeed.initialize
+
+                @wraps(_old_initialize)
+                def _initialize(*args, **kwargs):
+                    res = _old_initialize(*args, **kwargs)
+                    self.model._forward_pre_hooks.move_to_end(handle.id)
+                    return res
+
+                deepspeed.initialize = _initialize
         yield
         self._is_training = False
-        if handle is not None:
+        if handle:
             handle.remove()
+        if deepspeed:
+            deepspeed.initialize = _old_initialize
 
     @contextmanager
     def vllm_context(self):

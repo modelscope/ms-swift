@@ -4273,6 +4273,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
     support_flash_attn=True,
     support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
+    placeholder_tokens=['<image_placeholder>'],
     hf_model_id='deepseek-ai/deepseek-vl-7b-chat')
 @register_model(
     ModelType.deepseek_vl_1_3b_chat,
@@ -4282,6 +4283,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
     support_flash_attn=True,
     support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
+    placeholder_tokens=['<image_placeholder>'],
     hf_model_id='deepseek-ai/deepseek-vl-1.3b-chat')
 def get_model_tokenizer_deepseek_vl(model_dir: str,
                                     torch_dtype: Dtype,
