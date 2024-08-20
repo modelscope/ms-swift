@@ -232,6 +232,10 @@ class ModelType:
     llama3_llava_next_8b_hf = 'llama3-llava-next-8b-hf'
     llava_next_72b_hf = 'llava-next-72b-hf'
     llava_next_110b_hf = 'llava-next-110b-hf'
+
+    llava_onevision_qwen2_0_5b_ov = 'llava-onevision-qwen2-0_5b-ov'
+    llava_onevision_qwen2_7b_ov = 'llava-onevision-qwen2-7b-ov'
+    llava_onevision_qwen2_72b_ov = 'llava-onevision-qwen2-72b-ov'
     # llava
     llama3_llava_next_8b = 'llama3-llava-next-8b'
     llava_next_72b = 'llava-next-72b'
@@ -5819,6 +5823,43 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
 def get_model_tokenizer_llava_1_5(*args, **kwargs):
     from transformers import LlavaForConditionalGeneration
     kwargs['automodel_class'] = LlavaForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
+
+
+@register_model(
+    ModelType.llava_onevision_qwen2_0_5b_ov,
+    'AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf',
+    LoRATM.llava,
+    TemplateType.llava_onevision_qwen,
+    support_flash_attn=True,
+    requires=['transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision', 'video'],
+    ignore_file_pattern=['onnx'],
+    placeholder_tokens=['<image>'],
+    hf_model_id='llava-hf/llava-onevision-qwen2-0.5b-ov-hf')
+@register_model(
+    ModelType.llava_onevision_qwen2_7b_ov,
+    'AI-ModelScope/llava-onevision-qwen2-7b-ov-hf',
+    LoRATM.llava,
+    TemplateType.llava_onevision_qwen,
+    support_flash_attn=True,
+    requires=['transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision', 'video'],
+    placeholder_tokens=['<image>'],
+    hf_model_id='llava-hf/llava-onevision-qwen2-7b-ov-hf')
+@register_model(
+    ModelType.llava_onevision_qwen2_72b_ov,
+    'AI-ModelScope/llava-onevision-qwen2-72b-ov-hf',
+    LoRATM.llava,
+    TemplateType.llava_onevision_qwen,
+    support_flash_attn=True,
+    requires=['transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision', 'video'],
+    placeholder_tokens=['<image>'],
+    hf_model_id='llava-hf/llava-onevision-qwen2-72b-ov-hf')
+def get_model_tokenizer_llava_onevision(*args, **kwargs):
+    from transformers import LlavaOnevisionForConditionalGeneration
+    kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 

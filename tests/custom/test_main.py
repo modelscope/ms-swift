@@ -22,7 +22,11 @@ def test_pt():
 def test_vlm_sft():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
     from swift.llm import sft_main, SftArguments, infer_main, InferArguments
-    output = sft_main(SftArguments(model_type='idefics3-8b-llama3', dataset='coco-en-mini#100'))
+    model_type = 'llava-onevision-qwen2-7b-ov'
+    dataset = 'coco-en-mini#100'
+    infer_main(InferArguments(model_type=model_type, val_dataset=dataset))
+
+    output = sft_main(SftArguments(model_type=model_type, dataset=dataset))
     last_model_checkpoint = output['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 
@@ -30,7 +34,11 @@ def test_vlm_sft():
 def test_llm_sft():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
     from swift.llm import sft_main, SftArguments, infer_main, InferArguments
-    output = sft_main(SftArguments(model_type='longwriter-glm4-9b', dataset='alpaca-zh#100'))
+    model_type = 'longwriter-glm4-9b'
+    dataset = 'alpaca-zh#100'
+    infer_main(InferArguments(model_type=model_type, val_dataset=dataset))
+
+    output = sft_main(SftArguments(model_type=model_type, dataset=dataset))
     last_model_checkpoint = output['last_model_checkpoint']
     infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
 

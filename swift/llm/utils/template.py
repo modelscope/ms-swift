@@ -62,6 +62,7 @@ class TemplateType:
     llava_yi = 'llava-yi'
     llama3_llava_next_hf = 'llama-llava-next-hf'
     llava_qwen_hf = 'llama-qwen-hf'
+    llava_onevision_qwen = 'llava-onevision-qwen'
     # llava-video
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
@@ -2245,6 +2246,43 @@ class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
 
 
 register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
+    system = None
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = Template._encode(self, example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example.get('images')
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 151646)  # <image>
+        processor = self.tokenizer.processor
+        if images:
+            image_processor = processor.image_processor
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+            height, width = image_inputs['pixel_values'][0].shape[-2:]
+            added_tokens_len = 0
+            for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
+                orig_height, orig_width = image_size
+                num_image_tokens = processor._get_number_of_features(orig_height, orig_width, height, width)
+                input_ids = input_ids[:added_tokens_len
+                                      + idx] + [151646] * num_image_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels is not None:
+                    labels = labels[:added_tokens_len + idx] + [-100] * num_image_tokens + labels[added_tokens_len + idx
+                                                                                                  + 1:]
+                added_tokens_len += num_image_tokens - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = image_inputs['pixel_values']
+            if 'image_sizes' in image_inputs:
+                inputs['image_sizes'] = image_inputs['image_sizes']
+        return inputs, {}
+
+
+register_template(TemplateType.llava_onevision_qwen, LlavaOneVisonTemplate(), use_model=True, lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Llama3Template):
