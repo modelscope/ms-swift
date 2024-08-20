@@ -1741,7 +1741,7 @@ class InternvlTemplate(Template):
             selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
         elif is_deepspeed_zero3_enabled():
-            dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=self.model.dtype)
+            dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = self.model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
