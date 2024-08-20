@@ -162,64 +162,6 @@ def ta_test_dataloader(test_dataset, data_collator, sampler, args):
 
 
 # Save/load checkpoint
-def consolidate_checkpoint(resume_from_checkpoint, model_name='adapter_model'):
-    """ Consolidate the sharded TorchAcc checkpoints into a single model checkpoint.
-    """
-    import torch_xla.core.xla_model as xm
-    from torch_xla.distributed.fsdp import consolidate_sharded_state_dicts
-
-    if model_name not in ('adapter_model', 'model'):
-        logger.error('Only support PeftModel and PreTrainedModel.')
-        return
-
-    model_dir = os.path.join(resume_from_checkpoint, '0')
-    is_pretrained_model = False
-    if os.path.exists(os.path.join(model_dir, f'{model_name}.safetensors')):
-        use_safetensors = True
-    elif os.path.exists(os.path.join(model_dir, f'{model_name}.bin')):
-        use_safetensors = False
-    elif os.path.exists(os.path.join(model_dir, 'pytorch_model.bin')):
-        # PreTrainedModel use 'pytorch_model.bin' and 'model.safetensors'
-        use_safetensors = False
-        is_pretrained_model = True
-    else:
-        logger.error('Cannot find checkpoint.')
-
-    state_dict_list = []
-    if xm.is_master_ordinal(local=False) and use_safetensors:
-        from safetensors.torch import load_file
-        for rank in range(xm.xrt_world_size()):
-            shard_dir = os.path.join(resume_from_checkpoint, f'{rank}')
-            filename = os.path.join(shard_dir, f'{model_name}.safetensors')
-            state_dict = load_file(filename, device='cpu')
-            state_dict = OrderedDict(('_fsdp_wrapped_module.' + k, v) for k, v in state_dict.items())
-            state_dict_list.append(state_dict)
-        shard_metadata = torch.load(os.path.join(model_dir, 'shard_meta.pth'), map_location='cpu')
-    elif xm.is_master_ordinal(local=False):
-        for rank in range(xm.xrt_world_size()):
-            shard_dir = os.path.join(resume_from_checkpoint, f'{rank}')
-            if not is_pretrained_model:
-                filename = os.path.join(shard_dir, f'{model_name}.bin')
-            else:
-                filename = os.path.join(shard_dir, 'pytorch_model.bin')
-            state_dict = torch.load(filename, map_location='cpu')
-            state_dict = OrderedDict(('_fsdp_wrapped_module.' + k, v) for k, v in state_dict.items())
-            state_dict_list.append(state_dict)
-        shard_metadata = torch.load(os.path.join(model_dir, 'shard_meta.pth'), map_location='cpu')
-
-    if xm.is_master_ordinal(local=False):
-        full_state_dict = consolidate_sharded_state_dicts(state_dict_list, shard_metadata)
-        # peft will prepend "default." prefix automatically, so we remove the
-        # "default." prefix to prevent the duplication of the prefix.
-        full_state_dict = OrderedDict((k.replace('default.', ''), v) for k, v in full_state_dict.items())
-        torch.save(full_state_dict, os.path.join(resume_from_checkpoint, f'{model_name}.bin'))
-        if model_name == 'adapter_model':
-            config_path = os.path.join(resume_from_checkpoint, 'adapter_config.json')
-            old_config_path = os.path.join(model_dir, 'adapter_config.json')
-            os.system(f'cp {old_config_path} {config_path}')
-    xm.rendezvous('ckpt_consolidation')
-
-
 def ta_save_optimizer_and_scheduler(optimizer, lr_scheduler, output_dir):
     import torch_xla.core.xla_model as xm
     xm.rendezvous('saving_optimizer_states')
@@ -283,53 +225,58 @@ def save_ta_ddp_checkpoint(self_model, tokenizer, args, output_dir: Optional[str
 
 def save_ta_fsdp_checkpoint(self_model, tokenizer, args, output_dir):
     import torch_xla.core.xla_model as xm
+    from torch_xla.distributed.fsdp import consolidate_sharded_model_checkpoints
+
     xm.mark_step()
 
     if xm.is_master_ordinal(local=False):
         os.makedirs(output_dir, exist_ok=True)
         torch.save(args, os.path.join(output_dir, 'training_args.bin'))
 
-    model = self_model._get_underlay_model().module.module
-
     supported_classes = (PreTrainedModel, PeftModel)
-    save_safetensors = args.save_safetensors
-    # Save a trained model and configuration using `save_pretrained()`.
-    # They can then be reloaded using `from_pretrained()`
+    model = self_model._get_underlay_model().module.module
+    unwrapped_model = unwrap_model(model)
+
     xm.rendezvous('saving_checkpoint')
-    out_dir = os.path.join(output_dir, f'{xm.get_ordinal()}')
-    if not isinstance(model, supported_classes):
-        if isinstance(unwrap_model(model), supported_classes):
-            unwrap_model(model).save_pretrained(
-                out_dir,
-                state_dict=xm._maybe_convert_to_cpu(model.state_dict()),
+    ckpt = {
+        'model': self_model._get_underlay_model().state_dict(),
+        'shard_metadata': self_model._get_underlay_model().get_shard_metadata(),
+    }
+    if isinstance(model, PeftModel):
+        ckpt_path = os.path.join(output_dir, f'rank{args.process_index}-of-{args.world_size}-adapter_model.bin')
+    else:
+        ckpt_path = os.path.join(output_dir, f'rank{args.process_index}-of-{args.world_size}-pytorch_model.bin')
+    xm.save(ckpt, ckpt_path, master_only=False)
+    # Make sure all ranks have saved checkpoints
+    xm.rendezvous('save_full_checkpoints')
+
+    if tokenizer is not None and args.should_save:
+        tokenizer.save_pretrained(output_dir, is_main_process=xm.is_master_ordinal(local=False), save_function=xm.save)
+
+    # rank 0 consolidates and saves the whole checkpoint.
+    if xm.is_master_ordinal(local=False):
+        if isinstance(model, PeftModel):
+            ckpt_suffix = 'rank*-of-*-adapter_model.bin'
+        else:
+            ckpt_suffix = 'rank*-of-*-pytorch_model.bin'
+        full_state_dict, _ = consolidate_sharded_model_checkpoints(
+            ckpt_prefix=os.path.join(output_dir, ''), ckpt_suffix=ckpt_suffix, save_model=False)
+
+        if isinstance(unwrapped_model, supported_classes):
+            unwrapped_model.save_pretrained(
+                output_dir,
+                state_dict=full_state_dict,
                 save_function=xm.save,
                 safe_serialization=args.save_safetensors,
             )
         else:
             logger.info('Trainer.model is not a `PreTrainedModel`, only saving its state dict.')
-            state_dict = xm._maybe_convert_to_cpu(model.state_dict())
-            if save_safetensors:
-                safetensors.torch.save_file(state_dict, os.path.join(out_dir, 'model.safetensors'))
+            if args.save_safetensors:
+                safetensors.torch.save_file(full_state_dict, os.path.join(output_dir, 'model.safetensors'))
             else:
-                torch.save(state_dict, os.path.join(out_dir, 'pytorch_model.bin'))
-    else:
-        model.save_pretrained(
-            out_dir,
-            save_function=xm.save,
-            safe_serialization=args.save_safetensors,
-            state_dict=xm._maybe_convert_to_cpu(model.state_dict()))
-    # save shard_metadata for consolidation.
-    shard_meta = self_model._get_underlay_model().get_shard_metadata()
-    xm.save(shard_meta, os.path.join(out_dir, 'shard_meta.pth'))
-    xm.rendezvous('saving_checkpoint_done')
+                torch.save(full_state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
 
-    if tokenizer is not None and args.should_save:
-        tokenizer.save_pretrained(output_dir, is_main_process=xm.is_master_ordinal(local=False), save_function=xm.save)
-
-    if isinstance(model, PeftModel):
-        consolidate_checkpoint(output_dir, 'adapter_model')
-    else:
-        consolidate_checkpoint(output_dir, 'model')
+    xm.rendezvous('ckpt_consolidation')
 
 
 def ta_trim_graph():
