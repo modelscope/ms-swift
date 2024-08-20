@@ -58,8 +58,8 @@ print(f'template_type: {template_type}')  # template_type: qwen
 
 kwargs = {}
 # kwargs['use_flash_attn'] = True  # use flash_attn
-
-model, tokenizer = get_model_tokenizer(model_type, torch.float16,
+model_id_or_path = None
+model, tokenizer = get_model_tokenizer(model_type, torch.float16, model_id_or_path=model_id_or_path,
                                        model_kwargs={'device_map': 'auto'}, **kwargs)
 # modify max_new_tokens
 model.generation_config.max_new_tokens = 128
@@ -107,7 +107,8 @@ from swift.llm import (
 import torch
 
 model_type = ModelType.qwen1half_7b_chat_awq
-llm_engine = get_vllm_engine(model_type, torch.float16, max_model_len=4096)
+model_id_or_path = None
+llm_engine = get_vllm_engine(model_type, torch.float16, model_id_or_path=model_id_or_path, max_model_len=4096)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, llm_engine.hf_tokenizer)
 # Interface similar to `transformers.GenerationConfig`
@@ -265,8 +266,8 @@ seed_everything(42)
 ckpt_dir = 'output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx'
 model_type = ModelType.qwen1half_7b_chat
 template_type = get_default_template_type(model_type)
-
-model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
+model_id_or_path = None
+model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
 model.generation_config.max_new_tokens = 128
 
 model = Swift.from_pretrained(model, ckpt_dir, inference_mode=True)
