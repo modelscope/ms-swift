@@ -120,3 +120,6 @@ class LoReft(SwiftAdapter):
     @staticmethod
     def has_additional_modules():
         return True
+
+    def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
+        pass
