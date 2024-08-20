@@ -5833,7 +5833,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     TemplateType.llava_onevision_qwen,
     support_flash_attn=True,
     requires=['transformers>=4.45.0.dev0'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     placeholder_tokens=['<image>'],
     hf_model_id='llava-hf/llava-onevision-qwen2-0_5b-ov-hf')
 @register_model(
@@ -5843,7 +5843,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     TemplateType.llava_onevision_qwen,
     support_flash_attn=True,
     requires=['transformers>=4.45.0.dev0'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     placeholder_tokens=['<image>'],
     hf_model_id='llava-hf/llava-onevision-qwen2-7b-ov-hf')
 @register_model(
@@ -5853,7 +5853,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     TemplateType.llava_onevision_qwen,
     support_flash_attn=True,
     requires=['transformers>=4.45.0.dev0'],
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     placeholder_tokens=['<image>'],
     hf_model_id='llava-hf/llava-onevision-qwen2-72b-ov-hf')
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
