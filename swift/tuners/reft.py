@@ -114,7 +114,11 @@ class LoReft(SwiftAdapter):
             }
             return args, kwargs
 
+        def _post_forward_hook(module, inputs, outputs):
+            return outputs[1]
+
         reft_model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+        reft_model.register_forward_hook(_post_forward_hook, with_kwargs=True)
 
         def save_callback(swift_model, model_dir, adapter_name):
             reft_model.save_intervention(save_directory=model_dir)
