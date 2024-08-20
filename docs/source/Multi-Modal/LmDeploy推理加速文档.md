@@ -42,7 +42,8 @@ from swift.llm import (
 )
 
 model_type = ModelType.internvl2_2b
-lmdeploy_engine = get_lmdeploy_engine(model_type)
+model_id_or_path = None
+lmdeploy_engine = get_lmdeploy_engine(model_type, model_id_or_path=model_id_or_path)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
 lmdeploy_engine.generation_config.max_new_tokens = 256
@@ -123,7 +124,8 @@ from swift.llm import (
 
 # ModelType.qwen_vl_chat, ModelType.deepseek_vl_1_3b_chat, ModelType.minicpm_v_v2_5_chat
 model_type = ModelType.internlm_xcomposer2_5_7b_chat
-lmdeploy_engine = get_lmdeploy_engine(model_type)
+model_id_or_path = None
+lmdeploy_engine = get_lmdeploy_engine(model_type, model_id_or_path=model_id_or_path)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
@@ -180,7 +182,8 @@ from swift.llm import (
 
 if __name__ == '__main__':
     model_type = ModelType.glm4v_9b_chat
-    lmdeploy_engine = get_lmdeploy_engine(model_type, tp=2)
+    model_id_or_path = None
+    lmdeploy_engine = get_lmdeploy_engine(model_type, model_id_or_path=model_id_or_path, tp=2)
     template_type = get_default_template_type(model_type)
     template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
     # 与`transformers.GenerationConfig`类似的接口
