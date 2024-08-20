@@ -711,6 +711,11 @@ class SftArguments(ArgumentsBase):
     lisa_activated_layers: int = 0
     lisa_step_interval: int = 20
 
+    # reft
+    use_reft: bool = False
+    reft_layers: Optional[List[int]] = None
+    reft_rank: int = 4
+
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
     deepspeed: Optional[str] = None

@@ -945,6 +945,10 @@ def is_unsloth_available() -> bool:
     return importlib.util.find_spec('unsloth') is not None
 
 
+def is_pyreft_available() -> bool:
+    return importlib.util.find_spec('pyreft') is not None
+
+
 def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
     time_info = None
     try:
