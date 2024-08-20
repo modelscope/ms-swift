@@ -77,7 +77,28 @@ class LoReft(SwiftAdapter):
         reft_model.config = reft_model.model.config
 
         def _pre_forward_hook(module, args, kwargs):
-            
+            # run intervened forward pass
+            unit_locations = None
+            if "intervention_locations" in kwargs:
+                if kwargs["intervention_locations"].dim() == 3:
+                    unit_locations = {"sources->base": (
+                        None,
+                        kwargs["intervention_locations"].permute(1, 0, 2).tolist()
+                    )}
+                else:
+                    # this is dummy for lora only baseline
+                    unit_locations = {"sources->base": (None, 0)}
+            kwargs = {
+                'base': {
+                    "input_ids": kwargs["input_ids"],
+                    "attention_mask": kwargs["attention_mask"]
+                },
+                'unit_locations': unit_locations,
+                'labels': kwargs["labels"],
+                'subspaces': kwargs["subspaces"].permute(1, 0, 2).tolist() if "subspaces" in kwargs else None
+            }
+            return args, kwargs
+
         reft_model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
 
         def save_callback(swift_model, model_dir, adapter_name):
