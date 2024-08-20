@@ -5828,14 +5828,15 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
 
 @register_model(
     ModelType.llava_onevision_qwen2_0_5b_ov,
-    'AI-ModelScope/llava-onevision-qwen2-0_5b-ov-hf',
+    'AI-ModelScope/llava-onevision-qwen2-0.5b-ov-hf',
     LoRATM.llava,
     TemplateType.llava_onevision_qwen,
     support_flash_attn=True,
     requires=['transformers>=4.45.0.dev0'],
     tags=['multi-modal', 'vision', 'video'],
+    ignore_file_pattern=[r'onnx'],
     placeholder_tokens=['<image>'],
-    hf_model_id='llava-hf/llava-onevision-qwen2-0_5b-ov-hf')
+    hf_model_id='llava-hf/llava-onevision-qwen2-0.5b-ov-hf')
 @register_model(
     ModelType.llava_onevision_qwen2_7b_ov,
     'AI-ModelScope/llava-onevision-qwen2-7b-ov-hf',
