@@ -47,7 +47,7 @@ class LoReft(SwiftAdapter):
 
         import pyreft
         from pyreft import ReftModel
-        from pyreft.interventions import LowRankRotateLayer
+        from pyreft.interventions import LowRankRotateLayer, LoreftIntervention
 
         def __getattr__(self, name: str):
             try:
@@ -60,10 +60,16 @@ class LoReft(SwiftAdapter):
         def forward(self, x):
             self.to(x.device)
             return self.forward_origin(x)
+        
+        def forward2(self, base, source=None, subspaces=None):
+            self.to(base.device)
+            return self.forward_origin(base, source, subspaces)
 
         if not hasattr(LowRankRotateLayer, 'forward_origin'):
             LowRankRotateLayer.forward_origin = LowRankRotateLayer.forward
             LowRankRotateLayer.forward = forward
+            LoreftIntervention.forward_origin = LoreftIntervention.forward
+            LoreftIntervention.forward = forward2
 
         model_key_mapping = LoReft._get_model_key_mapping(config.model_type, config)
         logger.info(f'Applying LoReft to module: {model_key_mapping.module_list}')
