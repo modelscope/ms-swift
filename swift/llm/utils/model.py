@@ -834,6 +834,16 @@ def get_model_tokenizer_from_repo(model_dir: str,
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    # multimodal
+    llm_config = None
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(model_config, k, None)
+        if llm_config:
+            break
+    if llm_config and hasattr(llm_config, 'hidden_size') and not hasattr(model_config, 'hidden_size'):
+        model_config.hidden_size = llm_config.hidden_size
+
+    # quant
     is_awq = kwargs.pop('is_awq', False)
     is_aqlm = kwargs.pop('is_aqlm', False)
     gptq_bits = kwargs.pop('gptq_bits', 0)
@@ -5783,15 +5793,7 @@ def _patch_llava(model):
 def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    if not hasattr(model_config, 'hidden_size'):
-        # Currently all models without hidden_size config is 4096
-        if hasattr(model_config, 'text_config'):
-            model_config.hidden_size = getattr(model_config.text_config, 'hidden_size', 4096)
-        else:
-            model_config.hidden_size = 4096
-
-    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, model_config=model_config, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 
