@@ -40,8 +40,9 @@ print(f'template_type: {template_type}')  # template_type: qwen
 
 kwargs = {}
 # kwargs['use_flash_attn'] = True  # use flash_attn
-
-model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'}, **kwargs)
+model_id_or_path = None
+model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path,
+                                       model_kwargs={'device_map': 'auto'}, **kwargs)
 # modify max_new_tokens
 model.generation_config.max_new_tokens = 128
 
@@ -176,8 +177,8 @@ from swift.utils import seed_everything
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: qwen
-
-model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
+model_id_or_path = None
+model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
 
 template = get_template(template_type, tokenizer)
 seed_everything(42)

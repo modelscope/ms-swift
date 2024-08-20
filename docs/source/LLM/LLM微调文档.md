@@ -211,8 +211,8 @@ from swift.tuners import Swift
 ckpt_dir = 'vx-xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
-
-model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
+model_id_or_path = None
+model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
 
 model = Swift.from_pretrained(model, ckpt_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
