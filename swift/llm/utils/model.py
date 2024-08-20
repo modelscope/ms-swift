@@ -678,22 +678,6 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
 
 
 @register_model(
-    ModelType.atom_7b,
-    'FlagAlpha/Atom-7B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='FlagAlpha/Atom-7B')
-@register_model(
-    ModelType.atom_7b_chat,
-    'FlagAlpha/Atom-7B-Chat',
-    LoRATM.llama,
-    TemplateType.atom,
-    support_flash_attn=True,
-    support_vllm=True,
-    hf_model_id='FlagAlpha/Atom-7B-Chat')
-@register_model(
     ModelType.internlm_20b,
     'Shanghai_AI_Laboratory/internlm-20b',
     LoRATM.llama,
@@ -822,14 +806,6 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan-7B')
 @register_model(
-    ModelType.mengzi3_13b_base,
-    'langboat/Mengzi3-13B-Base',
-    LoRATM.llama,
-    TemplateType.mengzi,
-    support_vllm=True,
-    support_flash_attn=True,
-    hf_model_id='Langboat/Mengzi3-13B-Base')
-@register_model(
     ModelType.c4ai_command_r_v01,
     'AI-ModelScope/c4ai-command-r-v01',
     LoRATM.llama,
@@ -847,114 +823,6 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     support_vllm=False,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
-@register_model(
-    ModelType.chinese_llama_2_1_3b,
-    'AI-ModelScope/chinese-llama-2-1.3b',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-llama-2-1.3b')
-@register_model(
-    ModelType.chinese_llama_2_7b,
-    'AI-ModelScope/chinese-llama-2-7b',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-llama-2-7b')
-@register_model(
-    ModelType.chinese_llama_2_7b_16k,
-    'AI-ModelScope/chinese-llama-2-7b-16k',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-llama-2-7b-16k')
-@register_model(
-    ModelType.chinese_llama_2_7b_64k,
-    'AI-ModelScope/chinese-llama-2-7b-64k',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-llama-2-7b-64k')
-@register_model(
-    ModelType.chinese_llama_2_13b,
-    'AI-ModelScope/chinese-llama-2-13b',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-llama-2-13b')
-@register_model(
-    ModelType.chinese_llama_2_13b_16k,
-    'AI-ModelScope/chinese-llama-2-13b-16k',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-llama-2-13b-16k')
-@register_model(
-    ModelType.chinese_alpaca_2_1_3b,
-    'AI-ModelScope/chinese-alpaca-2-1.3b',
-    LoRATM.llama,
-    TemplateType.llama,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-alpaca-2-1.3b')
-@register_model(
-    ModelType.chinese_alpaca_2_7b,
-    'AI-ModelScope/chinese-alpaca-2-7b',
-    LoRATM.llama,
-    TemplateType.llama,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-alpaca-2-7b')
-@register_model(
-    ModelType.chinese_alpaca_2_7b_16k,
-    'AI-ModelScope/chinese-alpaca-2-7b-16k',
-    LoRATM.llama,
-    TemplateType.llama,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-alpaca-2-7b-16k')
-@register_model(
-    ModelType.chinese_alpaca_2_7b_64k,
-    'AI-ModelScope/chinese-alpaca-2-7b-64k',
-    LoRATM.llama,
-    TemplateType.llama,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-alpaca-2-7b-64k')
-@register_model(
-    ModelType.chinese_alpaca_2_13b,
-    'AI-ModelScope/chinese-alpaca-2-13b',
-    LoRATM.llama,
-    TemplateType.llama,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-alpaca-2-13b')
-@register_model(
-    ModelType.chinese_alpaca_2_13b_16k,
-    'AI-ModelScope/chinese-alpaca-2-13b-16k',
-    LoRATM.llama,
-    TemplateType.llama,
-    support_vllm=True,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    hf_model_id='hfl/chinese-alpaca-2-13b-16k')
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[Dtype],
                                   model_kwargs: Dict[str, Any],
@@ -4860,6 +4728,138 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='meta-llama/Llama-2-70b-chat-hf')
+@register_model(
+    ModelType.chinese_llama_2_1_3b,
+    'AI-ModelScope/chinese-llama-2-1.3b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-llama-2-1.3b')
+@register_model(
+    ModelType.chinese_llama_2_7b,
+    'AI-ModelScope/chinese-llama-2-7b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-llama-2-7b')
+@register_model(
+    ModelType.chinese_llama_2_7b_16k,
+    'AI-ModelScope/chinese-llama-2-7b-16k',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-llama-2-7b-16k')
+@register_model(
+    ModelType.chinese_llama_2_7b_64k,
+    'AI-ModelScope/chinese-llama-2-7b-64k',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-llama-2-7b-64k')
+@register_model(
+    ModelType.chinese_llama_2_13b,
+    'AI-ModelScope/chinese-llama-2-13b',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-llama-2-13b')
+@register_model(
+    ModelType.chinese_llama_2_13b_16k,
+    'AI-ModelScope/chinese-llama-2-13b-16k',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-llama-2-13b-16k')
+@register_model(
+    ModelType.chinese_alpaca_2_1_3b,
+    'AI-ModelScope/chinese-alpaca-2-1.3b',
+    LoRATM.llama,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-alpaca-2-1.3b')
+@register_model(
+    ModelType.chinese_alpaca_2_7b,
+    'AI-ModelScope/chinese-alpaca-2-7b',
+    LoRATM.llama,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-alpaca-2-7b')
+@register_model(
+    ModelType.chinese_alpaca_2_7b_16k,
+    'AI-ModelScope/chinese-alpaca-2-7b-16k',
+    LoRATM.llama,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-alpaca-2-7b-16k')
+@register_model(
+    ModelType.chinese_alpaca_2_7b_64k,
+    'AI-ModelScope/chinese-alpaca-2-7b-64k',
+    LoRATM.llama,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-alpaca-2-7b-64k')
+@register_model(
+    ModelType.chinese_alpaca_2_13b,
+    'AI-ModelScope/chinese-alpaca-2-13b',
+    LoRATM.llama,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-alpaca-2-13b')
+@register_model(
+    ModelType.chinese_alpaca_2_13b_16k,
+    'AI-ModelScope/chinese-alpaca-2-13b-16k',
+    LoRATM.llama,
+    TemplateType.llama,
+    support_vllm=True,
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    hf_model_id='hfl/chinese-alpaca-2-13b-16k')
+@register_model(
+    ModelType.atom_7b,
+    'FlagAlpha/Atom-7B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='FlagAlpha/Atom-7B')
+@register_model(
+    ModelType.atom_7b_chat,
+    'FlagAlpha/Atom-7B-Chat',
+    LoRATM.llama,
+    TemplateType.atom,
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='FlagAlpha/Atom-7B-Chat')
+@register_model(
+    ModelType.mengzi3_13b_base,
+    'langboat/Mengzi3-13B-Base',
+    LoRATM.llama,
+    TemplateType.mengzi,
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='Langboat/Mengzi3-13B-Base')
 @register_model(
     ModelType.longwriter_llama3_1_8b,
     'ZhipuAI/LongWriter-llama3.1-8b',
