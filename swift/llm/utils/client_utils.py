@@ -234,12 +234,9 @@ def _pre_inference_client(model_type: str,
         url = f'{url}/completions'
     data['model'] = model_type
     for media_key, medias in zip(['images', 'audios', 'videos'], [images, kwargs.get('audios'), kwargs.get('videos')]):
-        medias = medias or []
         if medias:
-            break
-    medias = convert_to_base64(images=medias)['images']
-    if len(medias) > 0:
-        data[media_key] = medias
+            medias = convert_to_base64(images=medias)['images']
+            data[media_key] = medias
     if tools and len(tools) > 0:
         data['tools'] = tools
     if tool_choice:

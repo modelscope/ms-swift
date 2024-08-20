@@ -272,6 +272,12 @@ GLM4V_KEYS = MultiModelKeys(
     vision_tower='transformer.vision',
 )
 
+IDEFICS3_KEYS = MultiModelKeys(
+    language_model='model.text_model',
+    projector='model.connector',
+    vision_tower='model.vision_model',
+)
+
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
     ('qwen_audio', QWEN_AUDIO_KEYS),
@@ -279,21 +285,17 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('qwen2_audio', QWEN2_AUDIO_KEYS),
     ('glm4v', GLM4V_KEYS),
     ('llava_next_video', LLAVA_NEXT_VIDEO_KEYS),
-    ('llava_next', LLAVA_KEYS),
     ('llava_llama', LLAVA_LLAMA_KEYS),
     ('llava', LLAVA_KEYS),
-    ('yi_vl', LLAVA_LLAMA_KEYS),
     ('internlm_xcomposer', INTERNLM_XCOMPOSER_KEYS),
     ('internvl', INTERNVL_KEYS),
     ('internvideo', INTERNVIDEO_KEYS), 
     ('deepseek_vl', DEEPSEEK_VL_KEYS),
-    ('paligemma', LLAVA_KEYS),
     ('minicpm_v', MINICPM_V_KEYS),
     ('phi3v', PHI3V_KEYS),
-    ('cogvlm2', COGVLM_KEYS),
     ('cogvlm', COGVLM_KEYS),
-    ('cogagent', COGVLM_KEYS),
     ('florence', FLORENCE_KEYS),
+    ('idefics3', IDEFICS3_KEYS),
     # LLM begins here
     ('llama', LLAMA_KEYS),
     ('mistral', LLAMA_KEYS),

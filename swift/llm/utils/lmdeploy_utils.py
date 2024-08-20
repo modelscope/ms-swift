@@ -28,6 +28,28 @@ from .utils import get_max_model_len
 logger = get_logger()
 
 
+@contextmanager
+def _patch_pipeline(tokenizer):
+    _old_from_pretrained = AutoTokenizer.from_pretrained
+
+    @wraps(_old_from_pretrained)
+    def _from_pretrained(self, *args, **kwargs):
+        return tokenizer
+
+    AutoTokenizer.from_pretrained = _from_pretrained
+
+    from lmdeploy.serve import async_engine
+    _old_best_match_model = async_engine.best_match_model
+
+    def _best_match_model(query: str) -> Optional[str]:
+        return tokenizer.model_type
+
+    async_engine.best_match_model = _best_match_model
+    yield
+    AutoTokenizer.from_pretrained = _old_from_pretrained
+    async_engine.best_match_model = _old_best_match_model
+
+
 def get_lmdeploy_engine(
         model_type: str,
         # TODO: https://github.com/InternLM/lmdeploy/issues/1846
@@ -70,15 +92,8 @@ def get_lmdeploy_engine(
         pipeline_kwargs['vision_config'] = vision_config
         logger.info(f'vision_config: {vision_config}')
 
-    _old_from_pretrained = AutoTokenizer.from_pretrained
-
-    @wraps(_old_from_pretrained)
-    def _from_pretrained(self, *args, **kwargs):
-        return tokenizer
-
-    AutoTokenizer.from_pretrained = _from_pretrained
-    lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
-    AutoTokenizer.from_pretrained = _old_from_pretrained  # recover
+    with _patch_pipeline(tokenizer):
+        lmdeploy_engine = pipeline(model_dir, backend_config=backend_config, **pipeline_kwargs)
 
     lmdeploy_engine.model_dir = model_dir
     lmdeploy_engine.model_type = model_type
@@ -102,13 +117,6 @@ def get_lmdeploy_engine(
     return lmdeploy_engine
 
 
-@contextmanager
-def lmdeploy_context(self: Template):
-    self._is_lmdeploy = True
-    yield
-    self._is_lmdeploy = False
-
-
 class LmdeployGenerationConfig(_LmdeployGenerationConfig):
 
     def __init__(
@@ -121,6 +129,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
         *,
         n: int = 1,
         stop_words: Optional[List[int]] = None,
+        random_seed: Optional[int] = None,
         skip_special_tokens: bool = False,
         **kwargs,
     ) -> None:
@@ -134,6 +143,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             repetition_penalty=repetition_penalty,
             n=n,
             stop_words=stop_words,
+            random_seed=random_seed,
             skip_special_tokens=skip_special_tokens,
             **kwargs)
 
@@ -188,7 +198,7 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         prog_bar.update()
         return inputs
 
-    with lmdeploy_context(template), concurrent.futures.ThreadPoolExecutor(
+    with template.lmdeploy_context(), concurrent.futures.ThreadPoolExecutor(
             max_workers=min(max_workers, len(request_list))) as executor:
         futures = [executor.submit(_prepare_inputs, request) for request in request_list]
         concurrent.futures.wait(futures)

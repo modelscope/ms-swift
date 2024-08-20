@@ -39,11 +39,12 @@ from swift.llm import (
     get_template, inference_lmdeploy, inference_stream_lmdeploy
 )
 
+# ModelType.qwen_vl_chat, ModelType.deepseek_vl_1_3b_chat
+# ModelType.internlm_xcomposer2_5_7b_chat, ModelType.minicpm_v_v2_5_chat
 model_type = ModelType.internvl2_2b
 lmdeploy_engine = get_lmdeploy_engine(model_type)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
-# An interface similar to transformers.GenerationConfig
 lmdeploy_engine.generation_config.max_new_tokens = 256
 generation_info = {}
 
@@ -61,8 +62,7 @@ for request, resp in zip(request_list, resp_list):
 print(generation_info)
 
 # stream
-history0 = resp_list[0]['history']
-request_list = [{'query': 'How many sheep are there?', 'history': history0, 'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']}]
+request_list = [{'query': '<video>Describe the video.', 'videos': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']}]
 gen = inference_stream_lmdeploy(lmdeploy_engine, template, request_list, generation_info=generation_info)
 query = request_list[0]['query']
 print_idx = 0
@@ -74,22 +74,25 @@ for resp_list in gen:
     print(delta, end='', flush=True)
     print_idx = len(response)
 print()
-
-history = resp_list[0]['history']
-print(f'history: {history}')
 print(generation_info)
+
 """
 query: <image>Describe the image.
-response: The image features four sheep standing in a grassy meadow against a backdrop of mountains. The animals are lined up straight, with their large, floppy ears, white, woolly coats, and big, expressive black eyes. The background includes a sky with some fluffy clouds and subtle shades of green and blue. Each sheep has a different facial expression and hat, adding a playful and friendly touch to the overall scene.
+response: The image depicts four sheep standing in a grassy field against a backdrop of a gentle mountain and a slightly clouded sky. The sheep appear cute and friendly, with sheep faces that have large, friendly eyes and rosy cheeks. Each sheep has a unique coloration pattern; for instance, the sheep on the far left is predominantly white with brown wool around the snout and horns, while the other three have primarily white wool but with different color patterns on their snouts, tails, and horns. The overall mood of the image seems calm and serene.
 query: who are you?
 response: I am an AI assistant whose name is InternVL, developed jointly by Shanghai AI Lab and SenseTime.
 query: <img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png</img><img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png</img>What is the difference bewteen the two images?
-response: In the first image, the sheep are standing in front of lush green mountains. In the second image, some of their wool is dyed green instead of white.
-{'num_prompt_tokens': 8090, 'num_generated_tokens': 140, 'num_samples': 3, 'runtime': 1.55301758996211, 'samples/s': 1.9317231301116127, 'tokens/s': 90.14707940520859}
-query: How many sheep are there?
-response: There are four sheep in the image.
-history: [['<image>Describe the image.', 'The image features four sheep standing in a grassy meadow against a backdrop of mountains. The animals are lined up straight, with their large, floppy ears, white, woolly coats, and big, expressive black eyes. The background includes a sky with some fluffy clouds and subtle shades of green and blue. Each sheep has a different facial expression and hat, adding a playful and friendly touch to the overall scene.'], ['How many sheep are there?', 'There are four sheep in the image.']]
-{'num_prompt_tokens': 3479, 'num_generated_tokens': 8, 'num_samples': 1, 'runtime': 0.6162854079157114, 'samples/s': 1.6226248214800645, 'tokens/s': 12.980998571840516}
+response: I'm unable to identify or compare images. However, if this image were to be classified based on its design or layout, it might demonstrate:
+
+- A change in the display order or arrangement of elements within the image.
+- An evolution in artistic style or technique.
+- Different elements added or cut out to create a variation.
+
+I'd need more specific details to make an accurate comparison.
+{'num_prompt_tokens': 8099, 'num_generated_tokens': 212, 'num_samples': 3, 'runtime': 4.134621603996493, 'samples/s': 0.7255803039146855, 'tokens/s': 51.27434147663778}
+query: <video>Describe the video.
+response: The video features a young child sitting on a bed wearing a tank top and glasses. The child looks at some papers which are spread out in front of them. The child plays with the papers, taking off the glasses one eye at a time, and then puts them back on. After removing, reinserting, and replacing them, the child looks down and moves them around. The child continues to play with the papers and moves around them. The child seems to enjoy playing with the documents as they engage in this activity with the papers spread before them. The video portrays a sense of the child's curiosity and enthusiasm as they explore the objects around them. The child's interactions with the papers, with one eye and then one hand, show a playful yet methodical approach to engaging with the setting and materials.
+{'num_prompt_tokens': 6250, 'num_generated_tokens': 164, 'num_samples': 1, 'runtime': 2.783833138004411, 'samples/s': 0.3592169323470477, 'tokens/s': 58.91157690491582}
 """
 ```
 
@@ -179,6 +182,9 @@ CUDA_VISIBLE_DEVICES=0,1 swift infer --model_type internlm-xcomposer2_5-7b-chat 
 ```
 
 ## Deployment
+
+**Server**:
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 swift deploy --model_type deepseek-vl-1_3b-chat --infer_backend lmdeploy
 
@@ -192,4 +198,76 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type internlm-xcomposer2_5-7b-chat
     --infer_backend lmdeploy --tp 2
 ```
 
-The method for client invocation can be found in: [MLLM Deployment Documentation](mutlimodal-deployment.md), [vLLM Inference Acceleration Documentation](vllm-inference-acceleration.md#deployment).
+**Client**:
+
+This section introduces a demonstration of client calls to internvl2-2b:
+
+```python
+from openai import OpenAI
+client = OpenAI(
+    api_key='EMPTY',
+    base_url='http://localhost:8000/v1',
+)
+model_type = client.models.list().data[0].id
+print(f'model_type: {model_type}')
+
+# use base64
+# import base64
+# with open('baby.mp4', 'rb') as f:
+#     vid_base64 = base64.b64encode(f.read()).decode('utf-8')
+# video_url = f'data:video/mp4;base64,{vid_base64}'
+
+# use local_path
+# from swift.llm import convert_to_base64
+# video_url = convert_to_base64(images=['baby.mp4'])['images'][0]
+# video_url = f'data:video/mp4;base64,{video_url}'
+
+# use url
+video_url = 'https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4'
+
+query = 'Describe this video.'
+messages = [{
+    'role': 'user',
+    'content': [
+        {'type': 'video_url', 'video_url': {'url': video_url}},
+        {'type': 'text', 'text': query},
+    ]
+}]
+resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    temperature=0)
+response = resp.choices[0].message.content
+print(f'query: {query}')
+print(f'response: {response}')
+
+# Streaming
+query = 'How many sheep are in the picture?'
+image_url = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png'
+messages = [{
+    'role': 'user',
+    'content': [
+        {'type': 'image_url', 'image_url': {'url': image_url}},
+        {'type': 'text', 'text': query},
+    ]
+}]
+stream_resp = client.chat.completions.create(
+    model=model_type,
+    messages=messages,
+    stream=True,
+    temperature=0)
+
+print(f'query: {query}')
+print('response: ', end='')
+for chunk in stream_resp:
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+"""
+model_type: internvl2-2b
+query: Describe this video.
+response: The video features a young child, who appears to be a toddler, sitting on a bed and reading a book. The child is wearing a light blue shirt and dark glasses, and is engrossed in the book. The bed has a floral-patterned bedspread, and there is a white blanket on the bed. In the background, there is a wooden crib with a pink blanket and a white blanket on the bed. The room appears to be a bedroom, and there is a television on the wall, which is turned off. The child is holding the book with both hands and appears to be reading it with great interest. The child's face is illuminated by the light from the book, and the glasses reflect the light, making the child's eyes visible. The child's hair is light-colored, and it is neatly pulled back. The video captures the child's concentration and the peacefulness of the moment, as the child is absorbed in the book. The overall atmosphere of the video is calm and serene, with the child's focus on the book and the peacefulness of the room.
+query: How many sheep are in the picture?
+response: There are four sheep in the picture.
+"""
+```
+The method for client invocation can be found in: [MLLM Deployment Documentation](mutlimodal-deployment.md).

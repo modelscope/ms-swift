@@ -2321,7 +2321,6 @@ def _preprocess_toolbench(dataset: DATASET_TYPE) -> DATASET_TYPE:
 
     def reorganize_row(row):
         convs = row['conversations']
-        sys = convs[0]['value']
         history = []
         history_roles = []
         for idx in range(1, len(convs) - 2, 2):
@@ -2329,7 +2328,6 @@ def _preprocess_toolbench(dataset: DATASET_TYPE) -> DATASET_TYPE:
             history_roles.append((convs[idx]['from'], convs[idx + 1]['from']))
 
         return {
-            'system': sys,
             'history': history,
             'history_roles': history_roles,
             'query': convs[-2]['value'],
@@ -2415,7 +2413,8 @@ register_dataset(
     'swift/RLAIF-V-Dataset', ['default'],
     process_rlaif_v,
     get_dataset_from_repo,
-    tags=['rlhf', 'dpo', 'multi-modal', 'en'])
+    tags=['rlhf', 'dpo', 'multi-modal', 'en'],
+    hf_dataset_id='openbmb/RLAIF-V-Dataset')
 
 
 def _check_dataset(dataset: Optional[HfDataset], check_dataset_strategy: Literal['none', 'discard', 'error',
