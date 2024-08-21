@@ -22,7 +22,7 @@ from peft.utils import _get_submodules
 
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
-from swift.utils.module_mapping import ModelKeys
+from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 
 logger = get_logger()
 
@@ -114,6 +114,7 @@ class SwiftOutput:
     """The output class returned by all tuners.
 
     Args:
+        model (`torch.nn.Module`): The model wrapped
         config (`SwiftConfig`): The swift config instance.
         state_dict_callback (`FunctionType`): A callback returned by the tuner
             which is used to get the tuner's state dict among the model's state dict.
@@ -124,6 +125,7 @@ class SwiftOutput:
                 >>>         key: value
                 >>>         for key, value in state_dict.items() if adapter_name in key
                 >>>     }
+        save_callback (`FunctionType`): A callback used to save trained model.
         mark_trainable_callback (`FunctionType`): A callback returned by the tuner
             which is used to mark the tuner's adapter's parameters to trainable.
             This callback should receive a model instance, and returns nothing.
@@ -132,13 +134,16 @@ class SwiftOutput:
                 >>>     mark_lora_as_trainable(model, config.bias)
         optimizer_group_callback (`FunctionType`): A callback returned the param group cared by the tuner.
         load_state_dict_callback (`FunctionType`): A callback called before load_state_dict of the tuner.
+        load_callback (`FunctionType`): A callback used to load trained model.
     """
-
+    model: torch.nn.Module = None
     config: SwiftConfig = None
     state_dict_callback: FunctionType = None
+    save_callback: FunctionType = None
     mark_trainable_callback: FunctionType = None
     optimizer_group_callback: FunctionType = None
     load_state_dict_callback: FunctionType = None
+    load_callback: FunctionType = None
 
 
 class ActivationMixin:
@@ -325,6 +330,24 @@ class SwiftAdapter:
             SwiftAdapter.offload_helper.load_disk(module, adapter_name=adapter_name, module_key=module_key)
             module.to(module.origin_device)
             delattr(module, 'origin_device')
+
+    @staticmethod
+    def _get_model_key_mapping(model_type, config) -> ModelKeys:
+        if model_type in MODEL_KEYS_MAPPING.keys():
+            model_key_mapping = MODEL_KEYS_MAPPING[model_type]
+        else:
+            model_key_mapping = config.model_key_mapping
+
+        if model_key_mapping is None:
+            raise ValueError(f'{model_type} is not defined in MODEL_KEYS_MAPPING, '
+                             f'please consider pass the information through the config.model_key_mapping')
+
+        if isinstance(model_key_mapping, dict):
+            model_key_mapping: ModelKeys = ModelKeys(**model_key_mapping)
+
+        assert model_key_mapping.o_proj is not None and model_key_mapping.down_proj is not None, \
+            'LLaMAPro only support models with o_proj and down_proj components.'
+        return model_key_mapping
 
     @staticmethod
     def state_dict_load_hook(model: torch.nn.Module, state_dict: Dict[str, torch.Tensor]):

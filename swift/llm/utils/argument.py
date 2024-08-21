@@ -39,7 +39,9 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'}
+    return sft_type in {
+        'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
+    }
 
 
 class ArgumentsBase:
@@ -564,8 +566,8 @@ class SftArguments(ArgumentsBase):
 
     full_determinism: bool = False
 
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
-                      'fourierft'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
+                      'reft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
@@ -710,6 +712,14 @@ class SftArguments(ArgumentsBase):
     # lisa
     lisa_activated_layers: int = 0
     lisa_step_interval: int = 20
+
+    # reft
+    reft_layers: Optional[List[int]] = None
+    reft_rank: int = 4
+    reft_intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
+                                    'LobireftIntervention', 'DireftIntervention',
+                                    'NodireftIntervention'] = 'LoreftIntervention'
+    reft_args: Optional[str] = None
 
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'

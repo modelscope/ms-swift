@@ -72,7 +72,8 @@ class LongLoRA(LoRA):
             # only support code base from transformers
             model.config.group_size_ratio = config.group_size_ratio
 
-        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
+        return SwiftOutput(
+            config=config, state_dict_callback=state_dict_callback, mark_trainable_callback=mark_trainable_callback)
 
 
 def mark_embedding_normalizer_as_trainable(model: nn.Module, extra_parameters: Union[str, List[str],
