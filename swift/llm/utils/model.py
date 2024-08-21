@@ -1295,7 +1295,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
     if 'num_crops' in kwargs:
         processor_kwargs['num_crops'] = kwargs['num_crops']
     from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
 
