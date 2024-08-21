@@ -20,7 +20,7 @@
   - DeepSeek-VL model: `https://github.com/deepseek-ai/DeepSeek-VL`
   - YI-VL model: `https://github.com/01-ai/Yi`
   - LLAVA model: `https://github.com/haotian-liu/LLaVA.git`
-- `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
+- `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
 - `--packing`: pack the dataset length to `max-length`, default `False`.
 - `--full_determinism`: Fix all the values in training, default `False`.
 - `--auto_find_batch_size`: Auto find batch size according to the GPU memory, default `False`.
@@ -247,6 +247,14 @@ Vera uses `target_modules`, `target_regex`, `modules_to_save`.
 The following parameters take effect when `sft_type` is set to `ia3`.
 
 - `--ia3_feedforward_modules`: Specify the Linear name of IA3's MLP, this name must be in `ia3_target_modules`.
+
+### ReFT Fine-tuning Parameters
+
+The following parameters take effect when the `sft_type` is set to `reft`.
+- `--reft_layers`: Specifies which layers ReFT is applied to; defaults to `None`, meaning all layers. You can input a list of layer numbers, for example: `--reft_layers 1 2 3 4`.
+- `--reft_rank`: The rank of the ReFT matrix; defaults to `4`.
+- `--reft_intervention_type`: The type of ReFT intervention, supporting 'NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention', 'LobireftIntervention', 'DireftIntervention', and 'NodireftIntervention'; defaults to `LoreftIntervention`.
+- `--reft_args`: Other supporting parameters in the ReFT intervention, provided in JSON string format.
 
 ## PT Parameters
 
