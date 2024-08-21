@@ -1830,11 +1830,7 @@ class Internvl2Template(InternvlTemplate):
         inputs.pop('loss_scale', None)
         return inputs, {}
 
-
 class Internvl2TemplateWithAngles(Internvl2Template):
-    """
-        支持角度输入
-    """
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super(InternvlTemplate, self)._encode(example)
         if len(inputs) == 0:
@@ -1844,55 +1840,37 @@ class Internvl2TemplateWithAngles(Internvl2Template):
         labels = inputs.get('labels')
         images = example.get('images')
         angles = example.get('angles')
-        videos_path = example.get('videos')
         if images:
+            has_video = bool(example.get('videos'))
             if angles:
-                pixel_values = []
-                assert len(images) == len(angles), "len(images) must be equal to len(angles)!"
-                for image, angle in zip(images, angles):
-                    if angle != 0:
-                        image = image.rotate(360 - angle, expand=True)
-                    pixel_values.append(transform_image(image))
-            else:
-                pixel_values = [transform_image(image) for image in images]
-            assert len(pixel_values) == len(
-                idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
-            added_tokens_len = 0
-            patches = 0
-            for idx, pv in zip(idx_list, pixel_values):
-                patches += pv.shape[0]
-                img_tokens: List[int] = self.tokenizer.encode(
-                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n',
-                    add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-                if labels is not None:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
-                added_tokens_len += len(img_tokens) - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
-            inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(patches)
-        elif videos_path:
-            assert len(videos_path) == 1, f'videos_path: {videos_path}'
-            pixel_values, num_patches = load_video_internvl(videos_path[0], num_segments=self.video_segments)
-            assert len(num_patches) == len(
-                idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
-            added_tokens_len = 0
-            for idx, num_patch in zip(idx_list, num_patches):
-                img_tokens: List[int] = self.tokenizer.encode(
-                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
-                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
-                if labels is not None:
-                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
-                                                                                                 + 1:]
-                added_tokens_len += len(img_tokens) - 1
-            inputs['input_ids'] = input_ids
-            inputs['labels'] = labels
-            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
-            inputs['image_flags'] = torch.ones(sum(num_patches))
+                assert len(images) == len(angles), "len(angles) must be equal to len(images)!"
+                images = [
+                    image.rotate(360-int(angle), expand=True) if int(angle) != 0 else image
+                    for image, angle in zip(images, angles)
+                ]
+            pixel_values = [transform_image(image, max_num=1 if has_video else 12) for image in images]
+            num_patches = [pv.shape[0] for pv in pixel_values]
+            pixel_values = torch.cat(pixel_values).to(self.model.dtype)
+        else:
+            pixel_values = None
+            num_patches = []
+        assert len(num_patches) == len(
+            idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+        added_tokens_len = 0
+        for idx, num_patch in zip(idx_list, num_patches):
+            img_tokens: List[int] = self.tokenizer.encode(
+                '<IMG_CONTEXT>', add_special_tokens=False) * self.num_image_token * num_patch
+            input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+            if labels is not None:
+                labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                             + 1:]
+            added_tokens_len += len(img_tokens) - 1
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids), 'pixel_values': pixel_values}
         inputs.pop('loss_scale', None)
         return inputs, {}
+
 
 
 class InternvlPhi3TemplateMixin:
