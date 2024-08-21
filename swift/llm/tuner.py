@@ -11,10 +11,10 @@ from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift, VeraConfig)
 from swift.tuners.llamapro import LLaMAProConfig
+from swift.tuners.reft import ReftConfig
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
-from ..tuners.reft import LoReftConfig
 
 logger = get_logger()
 
@@ -204,14 +204,16 @@ def prepare_model(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, fourier_config)
                 logger.info(f'fourier_config: {fourier_config}')
-            elif args.sft_type == 'loreft':
-                reft_config = LoReftConfig(
+            elif args.sft_type == 'reft':
+                reft_config = ReftConfig(
                     model_type=model_type,
                     r=args.reft_rank,
                     layers=args.reft_layers,
+                    intervention_type=args.reft_intervention_type,
+                    args=args.reft_args,
                 )
-                logger.info(f'loreft config: {reft_config}')
-                model = Swift.prepare_model(model, {'loreft': reft_config})
+                logger.info(f'reft config: {reft_config}')
+                model = Swift.prepare_model(model, {'reft': reft_config})
         else:
             if use_torchacc():
                 model = Swift.from_pretrained(

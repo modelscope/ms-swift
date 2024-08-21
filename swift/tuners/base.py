@@ -590,11 +590,11 @@ class SwiftModel(nn.Module):
                 config.save_pretrained(output_dir)
             else:
                 output.config.save_pretrained(output_dir)
-            
+
             if output.save_callback:
                 output.save_callback(self, output_dir, adapter_name)
                 continue
-            
+
             # save only the trainable weights
             output_state_dict = self.state_dict(
                 adapter_name=adapter_name, save_extra_states=False, peft_format=save_to_peft, **state_dict_kwargs)

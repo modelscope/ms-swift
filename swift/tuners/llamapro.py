@@ -93,9 +93,8 @@ class LLaMAPro(SwiftAdapter):
                 if any([m_part in name for m_part in new_module_list]):
                     parameter.requires_grad = True
 
-        return SwiftOutput(config=config,
-                           state_dict_callback=state_dict_callback,
-                           mark_trainable_callback=mark_trainable_callback)
+        return SwiftOutput(
+            config=config, state_dict_callback=state_dict_callback, mark_trainable_callback=mark_trainable_callback)
 
     @staticmethod
     def _update_module_attr(config: LLaMAProConfig, module_list):
