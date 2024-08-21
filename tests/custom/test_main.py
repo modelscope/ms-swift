@@ -40,7 +40,8 @@ def test_llm_sft():
 
     output = sft_main(SftArguments(model_type=model_type, dataset=dataset))
     last_model_checkpoint = output['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True, infer_backend='pt'))
+    infer_main(
+        InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True, infer_backend='pt'))
 
 
 if __name__ == '__main__':
