@@ -48,7 +48,7 @@ datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
-    'videos', 'audios', 'tools', 'label'
+    'videos', 'audios', 'tools', 'label', 'angles'
 }
 
 

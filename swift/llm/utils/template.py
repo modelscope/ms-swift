@@ -69,6 +69,7 @@ class TemplateType:
     internlm_xcomposer2_5 = 'internlm-xcomposer2_5'
     internvl = 'internvl'
     internvl2 = 'internvl2'
+    internvl2_angle = 'internvl2-angle'
     internvl_phi3 = 'internvl-phi3'
     internvl2_phi3 = 'internvl2-phi3'
     florence = 'florence'
@@ -1720,6 +1721,70 @@ class Internvl2Template(InternvlTemplate):
         return inputs, {}
 
 
+class Internvl2TemplateWithAngles(Internvl2Template):
+    """
+        支持角度输入
+    """
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super(InternvlTemplate, self)._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        input_ids = inputs['input_ids']
+        idx_list = _findall(input_ids, -100)
+        labels = inputs.get('labels')
+        images = example.get('images')
+        angles = example.get('angles')
+        videos_path = example.get('videos')
+        if images:
+            if angles:
+                pixel_values = []
+                assert len(images) == len(angles), "len(images) must be equal to len(angles)!"
+                for image, angle in zip(images, angles):
+                    if angle != 0:
+                        image = image.rotate(360 - angle, expand=True)
+                    pixel_values.append(transform_image(image))
+            else:
+                pixel_values = [transform_image(image) for image in images]
+            assert len(pixel_values) == len(
+                idx_list), f'len(pixel_values): {len(pixel_values)}, len(idx_list): {len(idx_list)}'
+            added_tokens_len = 0
+            patches = 0
+            for idx, pv in zip(idx_list, pixel_values):
+                patches += pv.shape[0]
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * pv.shape[0] + '</img>\n',
+                    add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = torch.cat(pixel_values).to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(patches)
+        elif videos_path:
+            assert len(videos_path) == 1, f'videos_path: {videos_path}'
+            pixel_values, num_patches = load_video_internvl(videos_path[0], num_segments=self.video_segments)
+            assert len(num_patches) == len(
+                idx_list), f'len(num_patches): {len(num_patches)}, len(idx_list): {len(idx_list)}'
+            added_tokens_len = 0
+            for idx, num_patch in zip(idx_list, num_patches):
+                img_tokens: List[int] = self.tokenizer.encode(
+                    '<img>' + '<IMG_CONTEXT>' * self.num_image_token * num_patch + '</img>\n', add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = pixel_values.to(self.model.dtype)
+            inputs['image_flags'] = torch.ones(sum(num_patches))
+        inputs.pop('loss_scale', None)
+        return inputs, {}
+
+
 class InternvlPhi3Template(InternvlTemplate):
     system = 'You are an AI assistant whose name is Phi-3.'
 
@@ -1748,6 +1813,9 @@ register_template(
     TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
+
+# 支持图片角度输入
+register_template(TemplateType.internvl2_angle, Internvl2TemplateWithAngles(), use_model=True, lazy_tokenize=True)
 
 register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
 
