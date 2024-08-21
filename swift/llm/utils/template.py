@@ -2382,7 +2382,7 @@ register_template(TemplateType.phi3, Phi3Template())
 
 
 class Phi3VisionTemplate(Phi3Template):
-    image_placeholder = [[32044], '\n']  # <|image|>\n
+    image_placeholder = ['<|image|><s>\n']  # <|image|>\n
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if self._is_vllm:
@@ -2408,10 +2408,10 @@ class Phi3VisionTemplate(Phi3Template):
             num_img_tokens = inputs.pop('num_img_tokens').tolist()
             idx_list.insert(0, -1)
             for i in range(len(idx_list) - 1):
-                image_token_id = -1
-                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [image_token_id] * num_img_tokens[i] + [1]
+                image_token_id = -i - 1
+                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [image_token_id] * num_img_tokens[i]
                 if labels is not None:
-                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
+                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * num_img_tokens[i]
             res_input_ids += input_ids[idx_list[-1] + 1:]
             input_ids = res_input_ids
             if labels is not None:
