@@ -145,8 +145,7 @@
           "ddp": "1"
         },
         "args": {
-          "sft_type": "full",
-          "use_reft": "true",
+          "sft_type": "reft",
           "train_dataset_mix_ratio": 0.0,
           "gradient_checkpointing": "false",
           "use_loss_scale": false
