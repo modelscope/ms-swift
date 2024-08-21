@@ -485,6 +485,7 @@ class ModelType:
     phi3_5_moe_instruct = 'phi3_5-moe-instruct'
 
     phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
+    phi3_5_vision_instruct = 'phi3_5-vision-instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
@@ -1274,13 +1275,27 @@ def _clone_hook(module, input, output):
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='microsoft/Phi-3-vision-128k-instruct')
+@register_model(
+    ModelType.phi3_5_vision_instruct,
+    'LLM-Research/Phi-3.5-vision-instruct',
+    LoRATM.phi3v,
+    TemplateType.phi3_vl,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.36'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'num_crops': 4},
+    hf_model_id='microsoft/Phi-3.5-vision-instruct')
 def get_model_tokenizer_phi3_vision(model_dir: str,
                                     torch_dtype: Dtype,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
+    processor_kwargs = {}
+    if 'num_crops' in kwargs:
+        processor_kwargs['num_crops'] = kwargs['num_crops']
     from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
 

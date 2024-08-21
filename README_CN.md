@@ -56,6 +56,8 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.08.21: 支持phi3_5-mini-instruct, phi3_5-moe-instruct, phi3_5-vision-instruct.
+- 2024.08.21: 支持idefics3-8b-llama3, llava-onevision-qwen2-0_5b-ov, llava-onevision-qwen2-7b-ov, llava-onevision-qwen2-72b-ov.
 - 🔥2024.08.20: 支持使用deepspeed-zero3对多模态大模型进行微调.
 - 2024.08.20: 支持模型: longwriter-glm4-9b, longwriter-llama3_1-8b. 支持数据集: longwriter-6k.
 - 🔥2024.08.12: 🎉 SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
@@ -614,6 +616,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | DeepSeek-VL                                             | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2.5<br>MiniCPM-V-2.6               | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM)                  | 中文<br>英文 | 3B-9B            | chat模型           |
 | CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)                         | 中文<br>英文 | 9B-19B           | chat模型           |
+| Llava-HF               | [Llava-HF系列模型](https://huggingface.co/llava-hf)                          | 英文       | 0.5B-110B           | chat模型           |
 | Llava1.5<br>Llava1.6                                    | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文       | 7B-34B           | chat模型           |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 7B-110B          | chat模型           |
 | mPLUG-Owl                                               | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 11B              | chat模型           |

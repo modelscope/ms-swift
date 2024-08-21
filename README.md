@@ -55,6 +55,8 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.08.21: Support for phi3_5-mini-instruct, phi3_5-moe-instruct, and phi3_5-vision-instruct.
+- 2024.08.21: Support for idefics3-8b-llama3, llava-onevision-qwen2-0_5b-ov, llava-onevision-qwen2-7b-ov, and llava-onevision-qwen2-72b-ov.
 - 🔥2024.08.20: Support fine-tuning of multimodal large models using DeepSpeed-Zero3.
 - 2024.08.20: Supported models: longwriter-glm4-9b, longwriter-llama3_1-8b. Supported dataset: longwriter-6k.
 - 🔥2024.08.12: 🎉 SWIFT paper has been published to arXiv. Check [this link](https://arxiv.org/abs/2408.05517) to read.
@@ -621,6 +623,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | DeepSeek-VL                                             | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2.5<br>MiniCPM-V-2.6               | [OpenBmB MiniCPM vision model](https://github.com/OpenBMB/MiniCPM)                     | Chinese<br>English | 3B-9B                                 | chat model               |
 | CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [Zhipu ChatGLM visual QA and Agent model](https://github.com/THUDM/)                   | Chinese<br>English | 9B-19B                                | chat model               |
+| Llava-HF               | [Llava-HF series models](https://huggingface.co/llava-hf)                          | English       | 0.5B-110B           | chat model           |
 | Llava1.5<br>Llava1.6                                    | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
 | mPLUG-Owl                                               | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
