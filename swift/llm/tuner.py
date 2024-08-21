@@ -204,6 +204,14 @@ def prepare_model(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, fourier_config)
                 logger.info(f'fourier_config: {fourier_config}')
+            elif args.sft_type == 'loreft':
+                reft_config = LoReftConfig(
+                    model_type=model_type,
+                    r=args.reft_rank,
+                    layers=args.reft_layers,
+                )
+                logger.info(f'loreft config: {reft_config}')
+                model = Swift.prepare_model(model, {'loreft': reft_config})
         else:
             if use_torchacc():
                 model = Swift.from_pretrained(
@@ -286,16 +294,6 @@ def prepare_model(model, args: SftArguments):
             gamma_proj=args.galore_gamma_proj,
             queue_size=args.galore_queue_size,
         )
-
-    if args.use_reft:
-        reft_config = LoReftConfig(
-            model_type=model_type,
-            r=args.reft_rank,
-            layers=args.reft_layers,
-        )
-
-        logger.info(f'loreft config: {reft_config}')
-        model = Swift.prepare_model(model, {'loreft': reft_config})
 
     callbacks = []
     if args.lisa_activated_layers > 0:

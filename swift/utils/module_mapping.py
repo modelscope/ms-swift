@@ -312,7 +312,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('yuan', LLAMA_KEYS),
     ('codefuse', LLAMA_KEYS),
     ('phi2', LLAMA_KEYS),
-    ('qwen', LLAMA_KEYS),
+    ('qwen', QWEN_KEYS),
     ('phi3-small', LLAMA_KEYS),
     ('phi3', LLAMA_KEYS),
     ('minicpm', LLAMA_KEYS),

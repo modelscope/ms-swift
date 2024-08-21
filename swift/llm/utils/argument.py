@@ -39,7 +39,7 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'}
+    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'loreft'}
 
 
 class ArgumentsBase:
@@ -565,7 +565,7 @@ class SftArguments(ArgumentsBase):
     full_determinism: bool = False
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
-                      'fourierft'] = 'lora'
+                      'fourierft', 'loreft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
@@ -712,7 +712,6 @@ class SftArguments(ArgumentsBase):
     lisa_step_interval: int = 20
 
     # reft
-    use_reft: bool = False
     reft_layers: Optional[List[int]] = None
     reft_rank: int = 4
 

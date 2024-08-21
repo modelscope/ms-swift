@@ -92,6 +92,8 @@ class LoReft(SwiftAdapter):
         reft_model.config = reft_model.model.config
 
         def _pre_forward_hook(module, args, kwargs):
+            if 'base' in kwargs:
+                return args, kwargs
             # run intervened forward pass
             unit_locations = None
             if "intervention_locations" in kwargs:
@@ -114,20 +116,46 @@ class LoReft(SwiftAdapter):
             }
             return args, kwargs
 
-        def _post_forward_hook(module, inputs, outputs):
+        def _post_forward_hook(module, args, kwargs, outputs):
             return outputs[1]
+        
+        def _generate(self, **kwargs):
+            # run intervened forward pass
+            unit_locations = None
+            if "intervention_locations" in kwargs:
+                if kwargs["intervention_locations"].dim() == 3:
+                    unit_locations = {"sources->base": (
+                        None,
+                        kwargs["intervention_locations"].permute(1, 0, 2).tolist()
+                    )}
+                else:
+                    # this is dummy for lora only baseline
+                    unit_locations = {"sources->base": (None, 0)}
+            
+            _kwargs = {
+                'base': {
+                    "input_ids": kwargs.pop('input_ids'),
+                    "attention_mask": kwargs.pop('attention_mask')
+                },
+                'unit_locations': unit_locations,
+                'subspaces': kwargs.pop('subspaces').permute(1, 0, 2).tolist() if "subspaces" in kwargs else None
+            }
+            _kwargs = {**_kwargs, **kwargs}
+            return self.generate_origin(**_kwargs)[1]
 
+        reft_model.generate_origin = reft_model.generate
+        reft_model.generate = MethodType(_generate, reft_model)
         reft_model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
         reft_model.register_forward_hook(_post_forward_hook, with_kwargs=True)
 
         def save_callback(swift_model, model_dir, adapter_name):
-            reft_model.save_intervention(save_directory=model_dir)
+            reft_model.save_intervention(save_directory=model_dir, include_model=False)
         
         def mark_trainable_callback(model):
             return
 
         def load_callback(swift_model, model_dir, adapter_name):
-            reft_model.load_intervention(model_dir)
+            reft_model.load_intervention(model_dir, include_model=False)
 
         return SwiftOutput(
             model=reft_model,

@@ -584,20 +584,23 @@ class SwiftModel(nn.Module):
                              'which is unable to save to peft format.')
             output_dir = os.path.join(save_directory,
                                       adapter_name) if adapter_name != 'default' or not save_to_peft else save_directory
+
+            if save_to_peft:
+                config = output.config.to_peft_config()
+                config.save_pretrained(output_dir)
+            else:
+                output.config.save_pretrained(output_dir)
+            
             if output.save_callback:
                 output.save_callback(self, output_dir, adapter_name)
                 continue
+            
             # save only the trainable weights
             output_state_dict = self.state_dict(
                 adapter_name=adapter_name, save_extra_states=False, peft_format=save_to_peft, **state_dict_kwargs)
             os.makedirs(output_dir, exist_ok=True)
             if output_state_dict and output.config.has_additional_modules:
                 self._save_state_dict(output_state_dict, output_dir, safe_serialization)
-            if save_to_peft:
-                config = output.config.to_peft_config()
-                config.save_pretrained(output_dir)
-            else:
-                output.config.save_pretrained(output_dir)
 
         output_state_dict = self.state_dict(save_extra_states=True, save_adapter=False, **state_dict_kwargs)
         if len(output_state_dict) > 0:
