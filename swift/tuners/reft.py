@@ -21,14 +21,14 @@ class ReftConfig(SwiftConfig):
     Paper: https://arxiv.org/pdf/2404.03592
 
     Args:
-        model_type(`str`): The model_type to find down_proj/layers.
-        layers (`layer numbers`): The layer number to inject.
+        model_type(`Optional[str]`): The model_type to find down_proj/layers.
+        layers (`Optional[List[int]]`): The layer number to inject.
         r(`int`): The rank of Reft.
         intervention_type (`Literal['NoreftIntervention', 'LoreftIntervention',
                         'ConsreftIntervention', 'LobireftIntervention',
                         'DireftIntervention', 'NodireftIntervention']`): The intervention type,
                         default LoreftIntervention
-        args (`str`): Other reft_args in json-string format
+        args (`Optional[str]`): Other reft_args in json-string format
     """
 
     model_type: Optional[str] = None
@@ -96,8 +96,18 @@ class Reft(SwiftAdapter):
         if not hasattr(LowRankRotateLayer, 'forward_origin'):
             LowRankRotateLayer.forward_origin = LowRankRotateLayer.forward
             LowRankRotateLayer.forward = forward
+            NoreftIntervention.forward_origin = NoreftIntervention.forward
+            NoreftIntervention.forward = forward2
             LoreftIntervention.forward_origin = LoreftIntervention.forward
             LoreftIntervention.forward = forward2
+            ConsreftIntervention.forward_origin = ConsreftIntervention.forward
+            ConsreftIntervention.forward = forward2
+            LobireftIntervention.forward_origin = LobireftIntervention.forward
+            LobireftIntervention.forward = forward2
+            DireftIntervention.forward_origin = DireftIntervention.forward
+            DireftIntervention.forward = forward2
+            NodireftIntervention.forward_origin = NodireftIntervention.forward
+            NodireftIntervention.forward = forward2
 
         model_key_mapping = Reft._get_model_key_mapping(config.model_type, config)
         logger.info(f'Applying Reft to module: {model_key_mapping.module_list}')
@@ -199,5 +209,6 @@ class Reft(SwiftAdapter):
     def has_additional_modules():
         return True
 
+    @staticmethod
     def activate_adapter(module: torch.nn.Module, adapter_name: str, activate: bool, offload: str = None):
-        pass
+        assert activate, 'ReFT does not support deactivate'
