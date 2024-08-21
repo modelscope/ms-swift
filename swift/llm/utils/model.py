@@ -481,6 +481,9 @@ class ModelType:
     phi3_small_128k_instruct = 'phi3-small-128k-instruct'
     phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
 
+    phi3_5_mini_instruct = 'phi3_5-mini-instruct'
+    phi3_5_moe_instruct = 'phi3_5-moe-instruct'
+
     phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
@@ -786,6 +789,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     'xverse/XVERSE-MoE-A4.2B',
     LoRATM.llama,
     TemplateType.default_generation,
+    tags=['moe'],
     hf_model_id='xverse/XVERSE-MoE-A4.2B')
 @register_model(
     ModelType.baichuan_13b_chat,
@@ -811,7 +815,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     LoRATM.llama,
     TemplateType.c4ai,
     requires=['transformers>=4.39.1'],
-    support_vllm=False,
+    support_vllm=True,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-v01')
 @register_model(
@@ -820,7 +824,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     LoRATM.llama,
     TemplateType.c4ai,
     requires=['transformers>4.39'],
-    support_vllm=False,
+    support_vllm=True,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
 def get_model_tokenizer_from_repo(model_dir: str,
@@ -1678,7 +1682,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B')
 @register_model(
@@ -1767,7 +1771,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
-    tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-128k-instruct')
 @register_model(
     ModelType.phi3_medium_4k_instruct,
@@ -1777,7 +1780,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
-    tags=['general'],
     hf_model_id='microsoft/Phi-3-medium-4k-instruct')
 @register_model(
     ModelType.phi3_medium_128k_instruct,
@@ -1787,7 +1789,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
-    tags=['general'],
     hf_model_id='microsoft/Phi-3-medium-128k-instruct')
 @register_model(
     ModelType.phi3_4b_4k_instruct,
@@ -1796,9 +1797,27 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.phi3,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=False,
-    tags=['general'],
+    support_vllm=True,
     hf_model_id='microsoft/Phi-3-mini-4k-instruct')
+@register_model(
+    ModelType.phi3_5_moe_instruct,
+    'LLM-Research/Phi-3.5-MoE-instruct',
+    LoRATM.llama,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=False,
+    tags=['moe'],
+    hf_model_id='microsoft/Phi-3.5-MoE-instruct')
+@register_model(
+    ModelType.phi3_5_mini_instruct,
+    'LLM-Research/Phi-3.5-mini-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='microsoft/Phi-3.5-mini-instruct')
 @register_model(
     ModelType.wizardlm2_8x22b,
     'AI-ModelScope/WizardLM-2-8x22B',
@@ -2003,6 +2022,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B')
 @register_model(
@@ -2292,7 +2312,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     hf_model_id='OpenBuddy/openbuddy-mixtral-7bx8-v18.1-32k')
 @register_model(
     ModelType.openbuddy_mistral_7b_chat,
@@ -2419,7 +2439,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     ignore_file_pattern=[r'.+\.pt$'],
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     hf_model_id='mistralai/Mixtral-8x7B-v0.1')
 @register_model(
     ModelType.mixtral_moe_7b_instruct,
@@ -2430,7 +2450,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     ignore_file_pattern=[r'.+\.pt$'],
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     hf_model_id='mistralai/Mixtral-8x7B-Instruct-v0.1')
 @register_model(
     ModelType.mixtral_moe_8x22b_v1,
@@ -2440,6 +2460,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     hf_model_id='mistral-community/Mixtral-8x22B-v0.1')
 @register_model(
     ModelType.mistral_large_instruct_2407,
@@ -2478,7 +2499,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     hf_model_id='databricks/dbrx-base')
 @register_model(
     ModelType.dbrx_instruct,
@@ -2488,7 +2509,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     hf_model_id='databricks/dbrx-instruct')
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: Dtype,
@@ -2846,7 +2867,6 @@ def get_model_tokenizer_florence(model_dir: str,
     support_flash_attn=True,
     support_gradient_checkpointing=False,
     support_vllm=True,
-    tags=['general'],
     hf_model_id='microsoft/Phi-3-small-8k-instruct')
 @register_model(
     ModelType.phi3_small_128k_instruct,
@@ -2857,7 +2877,6 @@ def get_model_tokenizer_florence(model_dir: str,
     support_flash_attn=True,
     support_gradient_checkpointing=False,
     support_vllm=True,
-    tags=['general'],
     hf_model_id='microsoft/Phi-3-small-128k-instruct')
 def get_model_tokenizer_phi3_small(model_dir: str,
                                    torch_dtype: Dtype,
@@ -2964,9 +2983,9 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
-    support_gradient_checkpointing=False,
     function_kwargs={'gptq_bits': 4},
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4')
 @register_model(
@@ -2976,7 +2995,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     requires=['transformers>=4.40'],
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct')
 @register_model(
@@ -3361,6 +3380,7 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.40'],
+    tags=['moe'],
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B-Chat')
 @register_model(
     ModelType.codeqwen1half_7b_chat,
@@ -3576,6 +3596,7 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     torch_dtype=torch.float16,
     function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
+    tags=['moe'],
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4')
 def get_model_tokenizer_qwen2_intx(model_dir: str,
                                    torch_dtype: Dtype,
@@ -3850,10 +3871,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-Coder-V2-Base',
     LoRATM.deepseek2,
     TemplateType.default_generation,
-    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
-    tags=['coding'],
+    tags=['coding', 'moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Base')
 @register_model(
@@ -3861,10 +3881,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-Coder-V2-Lite-Base',
     LoRATM.deepseek2,
     TemplateType.default_generation,
-    support_gradient_checkpointing=False,
+    tags=['coding', 'moe'],
     support_flash_attn=True,
     support_vllm=True,
-    tags=['coding'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Base')
 @register_model(
@@ -3872,10 +3891,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-Coder-V2-Instruct',
     LoRATM.deepseek2,
     TemplateType.deepseek2,
-    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
-    tags=['coding'],
+    tags=['coding', 'moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Instruct')
 @register_model(
@@ -3883,10 +3901,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct',
     LoRATM.deepseek2,
     TemplateType.deepseek2,
-    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
-    tags=['coding'],
+    tags=['coding', 'moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct')
 @register_model(
@@ -3894,9 +3911,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-V2-Lite',
     LoRATM.deepseek2,
     TemplateType.default_generation,
-    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-V2-Lite')
 @register_model(
@@ -3904,9 +3921,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-V2-Lite-Chat',
     LoRATM.deepseek2,
     TemplateType.deepseek2,
-    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-V2-Lite-Chat')
 @register_model(
@@ -3914,9 +3931,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-V2',
     LoRATM.deepseek2,
     TemplateType.default_generation,
-    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-V2')
 @register_model(
@@ -3924,9 +3941,9 @@ def get_model_tokenizer_internlm2(model_dir: str,
     'deepseek-ai/DeepSeek-V2-Chat',
     LoRATM.deepseek2,
     TemplateType.deepseek2,
-    support_gradient_checkpointing=False,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-V2-Chat')
 def get_model_tokenizer_deepseek2(model_dir: str,
@@ -4656,7 +4673,7 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
     support_flash_attn=True,
     support_vllm=False,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     function_kwargs={'is_aqlm': True},
     hf_model_id='ISTA-DASLab/Mixtral-8x7b-AQLM-2Bit-1x16-hf')
 @register_model(
@@ -5450,6 +5467,7 @@ def get_model_tokenizer_telechat(model_dir: str,
     TemplateType.deepseek,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     hf_model_id='deepseek-ai/deepseek-moe-16b-chat')
 @register_model(
     ModelType.deepseek_moe_16b,
@@ -5458,6 +5476,7 @@ def get_model_tokenizer_telechat(model_dir: str,
     TemplateType.default_generation,
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     hf_model_id='deepseek-ai/deepseek-moe-16b-base')
 @register_model(
     ModelType.minicpm_moe_8x2b,
@@ -5467,6 +5486,7 @@ def get_model_tokenizer_telechat(model_dir: str,
     requires=['transformers>=4.36.0'],
     support_flash_attn=True,
     support_vllm=True,
+    tags=['moe'],
     hf_model_id='openbmb/MiniCPM-MoE-8x2B')
 def get_model_tokenizer_deepseek_moe(model_dir: str,
                                      torch_dtype: Dtype,
@@ -5528,7 +5548,7 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     'YuanLLM/Yuan2-M32-hf',
     LoRATM.llama,
     TemplateType.yuan,
-    support_gradient_checkpointing=False,
+    tags=['moe'],
     support_flash_attn=True,
     hf_model_id='IEITYuan/Yuan2-M32-hf')
 def get_model_tokenizer_yuan(model_dir: str,
@@ -6150,7 +6170,7 @@ def fix_transformers_upgrade(module: PreTrainedModel) -> None:
             module._set_gradient_checkpointing = MethodType(PreTrainedModel._set_gradient_checkpointing, module)
 
 
-def fix_gradient_checkpointing_warning() -> None:
+def fix_gradient_checkpointing_warning(is_moe: bool = False) -> None:
     torch_version = version.parse(torch.__version__)
     if torch_version < version.parse('2'):
         return
@@ -6158,7 +6178,7 @@ def fix_gradient_checkpointing_warning() -> None:
         # fix https://github.com/Dao-AILab/flash-attention/issues/341
         _use_reentrant = True
     else:
-        _use_reentrant = False
+        _use_reentrant = is_moe
     _old_checkpoint = torch.utils.checkpoint.checkpoint
     if not hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
 
@@ -6306,7 +6326,9 @@ def get_model_tokenizer(model_type: str,
         model.model_dir = model_dir
         model.is_multimodal = is_multimodal
         fix_transformers_upgrade(model)
-    fix_gradient_checkpointing_warning()
+
+    is_moe = '-moe' in model_type or 'moe' in model_info.get('tags', [])
+    fix_gradient_checkpointing_warning(is_moe)
     tokenizer.model_type = model_type
     tokenizer.model_dir = model_dir
     tokenizer.is_multimodal = is_multimodal
