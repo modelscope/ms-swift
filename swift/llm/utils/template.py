@@ -2370,12 +2370,19 @@ register_template(
     TemplateType.paligemma, PaliGemmaTemplate(), infer_media_type='dialogue', lazy_tokenize=True, is_generation=True)
 
 
-class Phi3VisionTemplate(Template):
-    image_placeholder = [[32044], '\n']  # <|image|>\n
+class Phi3Template(Template):
 
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+        super().__init__([], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+                         None, ['<|system|>\n{{SYSTEM}}<|end|>\n'],
+                         auto_add_bos=True)
+
+
+register_template(TemplateType.phi3, Phi3Template())
+
+
+class Phi3VisionTemplate(Phi3Template):
+    image_placeholder = [[32044], '\n']  # <|image|>\n
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if self._is_vllm:
@@ -2936,14 +2943,6 @@ _wizardlm2_system = ('A chat between a curious user and an artificial intelligen
                      'The assistant gives helpful, detailed, and polite answers to the user\'s questions. ')
 register_template(TemplateType.wizardlm2,
                   Template(['{{SYSTEM}}'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'], _wizardlm2_system))
-
-_default_phi3_system = ('You are a helpful digital assistant. '
-                        'Please provide safe, ethical and accurate information to the user.')
-
-register_template(
-    TemplateType.phi3,
-    Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'], _default_phi3_system,
-             ['<s><|system|>\n{{SYSTEM}}<|end|>\n']))
 
 register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))
