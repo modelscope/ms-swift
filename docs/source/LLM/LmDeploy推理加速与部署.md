@@ -37,7 +37,8 @@ from swift.llm import (
 )
 
 model_type = ModelType.qwen_7b_chat
-lmdeploy_engine = get_lmdeploy_engine(model_type)
+model_id_or_path = None
+lmdeploy_engine = get_lmdeploy_engine(model_type, model_id_or_path=model_id_or_path)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
 # 与`transformers.GenerationConfig`类似的接口
@@ -95,7 +96,8 @@ from swift.llm import (
 
 if __name__ == '__main__':
     model_type = ModelType.qwen2_7b_instruct
-    lmdeploy_engine = get_lmdeploy_engine(model_type, tp=2)
+    model_id_or_path = None
+    lmdeploy_engine = get_lmdeploy_engine(model_type, model_id_or_path=model_id_or_path, tp=2)
     template_type = get_default_template_type(model_type)
     template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
     # 与`transformers.GenerationConfig`类似的接口

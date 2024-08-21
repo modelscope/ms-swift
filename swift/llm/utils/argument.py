@@ -541,8 +541,8 @@ class ArgumentsBase:
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {
-                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
-                    'custom_dataset_info', 'dataset_seed'
+                    'system', 'quant_method', 'model_id_or_path', 'custom_register_path', 'custom_dataset_info',
+                    'dataset_seed'
             } and value is not None:
                 continue
             if key in {'template_type', 'dtype'} and value != 'AUTO':
@@ -561,6 +561,8 @@ class SftArguments(ArgumentsBase):
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
+
+    full_determinism: bool = False
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
                       'fourierft'] = 'lora'
@@ -714,6 +716,7 @@ class SftArguments(ArgumentsBase):
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
+    auto_find_batch_size: bool = False
     num_train_epochs: int = 1
     # if max_steps >= 0, override num_train_epochs
     max_steps: int = -1
@@ -985,6 +988,10 @@ class SftArguments(ArgumentsBase):
                 self.learning_rate = 1e-5
             if self.save_only_model is None:
                 self.save_only_model = True
+                logger.warning(
+                    'Due to the adoption of full-parameter training, '
+                    'in order to avoid saving excessive weights, we set save_only_model to True. '
+                    'If you want to resume training from a checkpoint, please manually pass `--save_only_model false`.')
             if self.eval_steps is None:
                 self.eval_steps = 200
         else:
@@ -1103,7 +1110,7 @@ class SftArguments(ArgumentsBase):
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
-        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen']:
+        for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size']:
             if k in parameters:
                 kwargs[k] = getattr(self, k)
         if 'eval_strategy' in parameters:
@@ -1140,6 +1147,7 @@ class SftArguments(ArgumentsBase):
             dataloader_pin_memory=self.dataloader_pin_memory,
             metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
             greater_is_better=self.predict_with_generate,
+            full_determinism=self.full_determinism,
             sortish_sampler=True,
             optim=self.optim,
             adam_beta1=self.adam_beta1,
@@ -1326,8 +1334,6 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
-    image_input_shape: Optional[str] = None
-    image_feature_size: Optional[int] = None
 
     # lmdeploy
     tp: int = 1
@@ -1523,6 +1529,9 @@ class EvalArguments(InferArguments):
     eval_backend: Literal['Native', 'OpenCompass'] = 'OpenCompass'
     eval_batch_size: int = 8
     deploy_timeout: int = 60
+
+    do_sample: bool = False  # Note: for evaluation default is False
+    temperature: float = 0.0
 
     def __post_init__(self):
         super().__post_init__()

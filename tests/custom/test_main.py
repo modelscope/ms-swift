@@ -8,9 +8,9 @@ def test_eval_llm():
 
 
 def test_eval_vlm():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     from swift.llm import eval_main, EvalArguments
-    eval_main(EvalArguments(model_type='internvl2-2b', eval_dataset='COCO_VAL', infer_backend='lmdeploy'))
+    eval_main(EvalArguments(model_type='internvl2-4b', eval_dataset='RealWorldQA', infer_backend='lmdeploy'))
 
 
 def test_pt():
@@ -19,7 +19,33 @@ def test_pt():
     pt_main(PtArguments(model_type='qwen-1_8b-chat', dataset='alpaca-zh', sft_type='lora', tuner_backend='swift'))
 
 
+def test_vlm_sft():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    from swift.llm import sft_main, SftArguments, infer_main, InferArguments
+    model_type = 'llava-onevision-qwen2-7b-ov'
+    dataset = 'coco-en-mini#100'
+    infer_main(InferArguments(model_type=model_type, val_dataset=dataset))
+
+    output = sft_main(SftArguments(model_type=model_type, dataset=dataset))
+    last_model_checkpoint = output['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+
+
+def test_llm_sft():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    from swift.llm import sft_main, SftArguments, infer_main, InferArguments
+    model_type = 'longwriter-glm4-9b'
+    dataset = 'alpaca-zh#100'
+    infer_main(InferArguments(model_type=model_type, val_dataset=dataset))
+
+    output = sft_main(SftArguments(model_type=model_type, dataset=dataset))
+    last_model_checkpoint = output['last_model_checkpoint']
+    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_dataset_config=True, merge_lora=True))
+
+
 if __name__ == '__main__':
     # test_eval_llm()
     # test_eval_vlm()
-    test_pt()
+    # test_pt()
+    # test_vlm_sft()
+    test_llm_sft()

@@ -42,7 +42,7 @@ To facilitate use by users unfamiliar with deep learning, we provide a Gradio we
 
 SWIFT has rich documentations for users, please feel free to check our documentation website:
 <p align="center">
-        <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
+        <a href="https://arxiv.org/abs/2408.05517">Paper</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
 </p>
 
 ## ☎ Groups
@@ -55,6 +55,10 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.08.20: Support fine-tuning of multimodal large models using DeepSpeed-Zero3.
+- 2024.08.20: Supported models: longwriter-glm4-9b, longwriter-llama3_1-8b. Supported dataset: longwriter-6k.
+- 🔥2024.08.12: 🎉 SWIFT paper has been published to arXiv. Check [this link](https://arxiv.org/abs/2408.05517) to read.
+- 🔥2024.08.12: Support packing with flash-attention without the contamination of attention_mask, use `--packing` to begin. Check[PR](https://github.com/huggingface/transformers/pull/31629/files).
 - 🔥2024.08.09: Support for inference and fine-tuning of the qwen2-audio model. Best practice can be found [here](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.08: Supports the qwen2-math series models: 1.5B, 7B, 72B. Use `swift infer --model_type qwen2-math-1_5b-instruct` for an experience.
 - 🔥2024.08.07: Support for using vLLM for accelerating inference and deployment of multimodal large models such as the llava series and phi3-vision models. You can refer to the [Multimodal & vLLM Inference Acceleration Documentation](docs/source_en/Multi-Modal/vllm-inference-acceleration.md) for more information.
@@ -99,7 +103,7 @@ You can contact us and communicate with us by adding our group:
 - 🔥2024.05.17: Support peft=0.11.0. Meanwhile support 3 new tuners: `BOFT`, `Vera` and `Pissa`. use `--sft_type boft/vera` to use BOFT or Vera, use `--init_lora_weights pissa` with `--sft_type lora` to use Pissa.
 - 2024.05.16: Supports Llava-Next (Stronger) series models. For best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/llava-best-practice.md).
 - 🔥2024.05.13: Support Yi-1.5 series models，use `--model_type yi-1_5-9b-chat` to begin!
-- 2024.05.11: Support for qlora training and quantized inference using [hqq](https://github.com/mobiusml/hqq) and [eetq](https://github.com/NetEase-FuXi/EETQ). For more information, see the [LLM Quantization Documentation](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/LLM-quantization.md).
+- 2024.05.11: Support for qlora training and quantized inference using [hqq](https://github.com/mobiusml/hqq) and [eetq](https://github.com/NetEase-FuXi/EETQ). For more information, see the [LLM Quantization Documentation](https://github.com/modelscope/swift/tree/main/docs/source_en/LLM/LLM-quantization-and-export.md).
 - 2024.05.10: Support split a sequence to multiple GPUs to reduce memory usage. Use this feature by `pip install .[seq_parallel]`, then add `--sequence_parallel_size n` to your DDP script to begin!
 - 2024.05.08: Support DeepSeek-V2-Chat model, you can refer to [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/deepseek-v2-chat/lora_ddp_ds3/sft.sh).Support InternVL-Chat-V1.5-Int8 model, for best practice, you can refer to [here](https://github.com/modelscope/swift/tree/main/docs/source_en/Multi-Modal/internvl-best-practice.md).
 - 🔥2024.05.07: Supoprts **ORPO** training! See [document](https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/ORPO.md) to start training!
@@ -141,7 +145,7 @@ You can contact us and communicate with us by adding our group:
 - 2024.03.06: Support training and inference of AWQ quantized model, use [this Qwen1.5-AWQ model script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_awq/lora/sft.sh) to start training, and support training and inference of [yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3).
 - 🔥2024.02.29: Support [LLaMA PRO](https://arxiv.org/pdf/2401.02415.pdf), simply use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/llamapro/sft.sh) to start training.
 - 🔥2024.02.29: Support [LoRA+](https://arxiv.org/pdf/2402.12354.pdf), simply use [this script](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/lorap/sft.sh) to start training.
-- 2024.02.25: Support `swift export` to quantize models using **AWQ/GPTQ** and push to ModelScope Hub. See documentation: [LLM Quantization](docs/source_en/LLM/LLM-quantization.md).
+- 2024.02.25: Support `swift export` to quantize models using **AWQ/GPTQ** and push to ModelScope Hub. See documentation: [LLM Quantization](docs/source_en/LLM/LLM-quantization-and-export.md).
 - 2024.02.22: Support gemma series: gemma-2b, [gemma-2b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/gemma_2b_instruct), gemma-7b, gemma-7b-instruct.
 - 2024.02.16: Support deepseek-math series: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
 - 🔥2024.02.05: Support **Qwen1.5** series models, see [model list](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B) for all supported Qwen1.5 models. Provide fine-tuning scripts for [qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat), [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8).
@@ -624,6 +628,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Phi3-Vision                                             | Microsoft                                                                              | English            | 4B                                    | chat model               |
 | PaliGemma                                               | Google                                                                                 | English            | 3B                                    | chat model               |
 | Florence                                                | Microsoft                                                                              | English            | 0.23B-0.77B                           | chat model               |
+| Idefics3                                | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | English       | 8B      | chat model       |
 
 
 #### Diffusion Models
@@ -717,11 +722,14 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 ## 📎 Citation
 
 ```bibtex
-@Misc{swift,
-  title = {SWIFT:Scalable lightWeight Infrastructure for Fine-Tuning},
-  author = {The ModelScope Team},
-  howpublished = {\url{https://github.com/modelscope/swift}},
-  year = {2024}
+@misc{zhao2024swiftascalablelightweightinfrastructure,
+      title={SWIFT:A Scalable lightWeight Infrastructure for Fine-Tuning},
+      author={Yuze Zhao and Jintao Huang and Jinghan Hu and Daoze Zhang and Zeyinzi Jiang and Zhikai Wu and Baole Ai and Ang Wang and Wenmeng Zhou and Yingda Chen},
+      year={2024},
+      eprint={2408.05517},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2408.05517},
 }
 ```
 

@@ -183,7 +183,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 
 ## 量化
 
-对微调后模型进行量化可以查看[LLM量化文档](LLM量化文档.md#微调后模型)
+对微调后模型进行量化可以查看[LLM量化与导出文档](LLM量化与导出文档.md#微调后模型)
 
 ## 推理
 如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#微调后的模型)
@@ -211,8 +211,8 @@ from swift.tuners import Swift
 ckpt_dir = 'vx-xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat
 template_type = get_default_template_type(model_type)
-
-model, tokenizer = get_model_tokenizer(model_type, model_kwargs={'device_map': 'auto'})
+model_id_or_path = None
+model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
 
 model = Swift.from_pretrained(model, ckpt_dir, inference_mode=True)
 template = get_template(template_type, tokenizer)
@@ -299,4 +299,4 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 ```
 
 ## 推送模型
-如果你想推送模型到ModelScope，可以参考[模型推送文档](LLM量化文档.md#推送模型)
+如果你想推送模型到ModelScope，可以参考[模型推送文档](LLM量化与导出文档.md#推送模型)

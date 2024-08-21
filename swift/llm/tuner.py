@@ -7,7 +7,6 @@ import torch
 import transformers
 from packaging import version
 
-from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LongLoRAModelType, LoraConfig,
                           LoRAConfig, NEFTuneConfig, Swift, VeraConfig)
@@ -31,7 +30,8 @@ def handle_target_modules(model, args: SftArguments) -> None:
         target_modules.remove('ALL')
         target_modules += find_all_linears(model, args.quantization_bit, args.model_type, args.quant_method)
     args.target_modules = target_modules
-    logger.info(f'target_modules: {args.target_modules}')
+    if not args.target_regex:
+        logger.info(f'target_modules: {args.target_modules}')
 
 
 def handle_same_dim_target_modules(model: torch.nn.Module, config: VeraConfig):
@@ -72,8 +72,8 @@ def prepare_model(model, args: SftArguments):
             if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
             if args.target_regex:
-                logger.info(f'Value of target_modules: {args.target_modules} will have no effect '
-                            f'because target_regex value: {args.target_regex} exists.')
+                logger.info(f'Value of target_modules: `{args.target_modules}` will have no effect '
+                            f'because target_regex value: `{args.target_regex}` exists.')
             lora_kwargs = {
                 'r': args.lora_rank,
                 'target_modules': args.target_regex or args.target_modules,
@@ -209,8 +209,6 @@ def prepare_model(model, args: SftArguments):
                 logger.info(f'fourier_config: {fourier_config}')
         else:
             if use_torchacc():
-                if args.fsdp_num > 1:
-                    consolidate_checkpoint(args.resume_from_checkpoint, 'adapter_model')
                 model = Swift.from_pretrained(
                     model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
             else:
@@ -234,13 +232,31 @@ def prepare_model(model, args: SftArguments):
         if len(args.additional_trainable_parameters) > 0:
             activate_model_parameters(model, args.additional_trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint is not None:
-            if args.fsdp_num > 1:
-                consolidate_checkpoint(args.resume_from_checkpoint, 'model')
-            weights_file = os.path.join(args.resume_from_checkpoint, 'model.bin')
-            state_dict = torch.load(weights_file, map_location='cpu')
-            model.load_state_dict(state_dict, False)
-            # release memory
-            del state_dict
+            import safetensors
+            weights_file = os.path.join(args.resume_from_checkpoint, 'pytorch_model.bin')
+            safe_weights_file = os.path.join(args.resume_from_checkpoint, 'model.safetensors')
+            if os.path.isfile(weights_file) or os.path.isfile(safe_weights_file):
+                if args.save_safetensors and os.path.isfile(safe_weights_file):
+                    state_dict = safetensors.torch.load_file(safe_weights_file, device='cpu')
+                else:
+                    state_dict = torch.load(weights_file, map_location='cpu')
+                model.load_state_dict(state_dict, False)
+                del state_dict
+            else:
+                from transformers.modeling_utils import load_sharded_checkpoint
+                # We load the sharded checkpoint
+                load_result = load_sharded_checkpoint(
+                    model, args.resume_from_checkpoint, strict=False, prefer_safe=args.save_safetensors)
+                if len(load_result.missing_keys) != 0:
+                    if model._keys_to_ignore_on_save is not None and set(load_result.missing_keys) == set(
+                            model._keys_to_ignore_on_save):
+                        model.tie_weights()
+                    else:
+                        logger.warning(
+                            f'There were missing keys in the checkpoint model loaded: {load_result.missing_keys}.')
+                if len(load_result.unexpected_keys) != 0:
+                    logger.warning(
+                        f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 

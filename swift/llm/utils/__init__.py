@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from swift.utils import get_logger
 from .argument import (AppUIArguments, DeployArguments, EvalArguments, ExportArguments, InferArguments, PtArguments,
                        RLHFArguments, RomeArguments, SftArguments, WebuiArguments, is_adapter, swift_to_peft_format)
 from .client_utils import (compat_openai, convert_to_base64, decode_base64, get_model_list_client,
@@ -27,29 +28,38 @@ from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, f
                     limit_history_length, messages_join_observation, messages_to_history, print_example,
                     safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset, to_device)
 
+logger = get_logger()
+
 try:
     if is_vllm_available():
         from .vllm_utils import (VllmGenerationConfig, get_vllm_engine, inference_stream_vllm, inference_vllm,
-                                 prepare_vllm_engine_template, vllm_context)
+                                 prepare_vllm_engine_template)
         try:
             from .vllm_utils import LoRARequest
         except ImportError:
+            # Earlier vLLM version has no `LoRARequest`
+            logger.info('LoRARequest cannot be imported due to a early vLLM version, '
+                        'if you are using vLLM+LoRA, please install a latest version.')
             pass
+    else:
+        logger.info('No vLLM installed, if you are using vLLM, '
+                    'you will get `ImportError: cannot import name \'get_vllm_engine\' from \'swift.llm\'`')
 except Exception as e:
-    from swift.utils import get_logger
-    logger = get_logger()
     logger.error(f'import vllm_utils error: {e}')
 
 try:
     if is_lmdeploy_available():
         from .lmdeploy_utils import (
             prepare_lmdeploy_engine_template,
-            lmdeploy_context,
             LmdeployGenerationConfig,
             get_lmdeploy_engine,
             inference_stream_lmdeploy,
             inference_lmdeploy,
         )
+    else:
+        logger.info('No LMDeploy installed, if you are using LMDeploy, '
+                    'you will get `ImportError: cannot import name '
+                    '\'prepare_lmdeploy_engine_template\' from \'swift.llm\'`')
 except Exception as e:
     from swift.utils import get_logger
     logger = get_logger()

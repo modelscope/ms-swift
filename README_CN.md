@@ -43,7 +43,7 @@ SWIFT支持**300+ LLM和50+ MLLM**（多模态大模型）的训练(预训练、
 
 SWIFT具有丰富全面的文档，请查看我们的文档网站:
 <p align="center">
-        <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
+        <a href="https://arxiv.org/abs/2408.05517">论文</a> &nbsp ｜ <a href="https://swift.readthedocs.io/en/latest/">English Documentation</a> &nbsp ｜ &nbsp <a href="https://swift.readthedocs.io/zh-cn/latest/">中文文档</a> &nbsp
 </p>
 
 ## ☎ 用户群
@@ -56,6 +56,10 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.08.20: 支持使用deepspeed-zero3对多模态大模型进行微调.
+- 2024.08.20: 支持模型: longwriter-glm4-9b, longwriter-llama3_1-8b. 支持数据集: longwriter-6k.
+- 🔥2024.08.12: 🎉 SWIFT论文已经发布到arXiv上，可以点击[这个链接](https://arxiv.org/abs/2408.05517)阅读.
+- 🔥2024.08.12: 支持packing和flash-attention时不污染attention_mask, 使用`--packing`开启。详情见[PR](https://github.com/huggingface/transformers/pull/31629/files).
 - 🔥2024.08.09: 支持qwen2-audio模型的推理与微调. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1653).
 - 🔥2024.08.08: 支持qwen2-math系列模型, 1.5B, 7B, 72B. 使用`swift infer --model_type qwen2-math-1_5b-instruct`进行体验.
 - 🔥2024.08.07: 支持使用vllm对多模态大模型: llava系列, internvl2系列, phi3-vision, minicpm-v2.5进行推理加速和部署. 可以查看[多模态&vLLM推理加速文档](docs/source/Multi-Modal/vLLM推理加速文档.md)获取更多信息.
@@ -100,7 +104,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 🔥2024.05.17: 支持peft=0.11.0. 同时支持了三个新的tuner方法： `BOFT`, `Vera` 和 `Pissa`. 使用 `--sft_type boft/vera` 开启BOFT或者Vera, 使用 `--init_lora_weights pissa` 以及 `--sft_type lora` 来使用 Pissa.
 - 2024.05.16: 支持Llava-Next (Stronger)系列模型，最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/llava最佳实践.md).
 - 🔥2024.05.13: 支持Yi-1.5系列模型，使用`--model_type yi-1_5-9b-chat`等开始体验
-- 2024.05.11: 支持使用[hqq](https://github.com/mobiusml/hqq)和[eetq](https://github.com/NetEase-FuXi/EETQ)进行qlora训练和量化推理，可以查看[LLM量化文档](https://github.com/modelscope/swift/tree/main/docs/source/LLM/LLM量化文档.md)
+- 2024.05.11: 支持使用[hqq](https://github.com/mobiusml/hqq)和[eetq](https://github.com/NetEase-FuXi/EETQ)进行qlora训练和量化推理，可以查看[LLM量化与导出文档](https://github.com/modelscope/swift/tree/main/docs/source/LLM/LLM量化与导出文档.md)
 - 2024.05.10: 支持序列并行. 先安装`pip install .[seq_parallel]`, 之后在DDP环境中添加`--sequence_parallel_size n`即可使用!
 - 2024.05.08: 支持DeepSeek-V2-Chat模型, 训练参考[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/deepseek-v2-chat/lora_ddp_ds3/sft.sh)。支持InternVL-Chat-V1.5-Int8模型，最佳实践参考[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/internvl最佳实践.md).
 - 🔥2024.05.07: 支持**ORPO**训练，使用`swift orpo`来开始训练， 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/LLM/ORPO算法最佳实践.md)
@@ -142,7 +146,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 2024.03.06: 支持AWQ量化模型的训练和推理, 使用[这个Qwen1.5-AWQ模型脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_awq/lora/sft.sh)开始训练, 并支持[yi-9b](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_9b/lora_zero3)的训练和推理.
 - 🔥2024.02.29: 支持[LLaMA PRO](https://arxiv.org/pdf/2401.02415.pdf), 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/llamapro/sft.sh)即可开始训练.
 - 🔥2024.02.29: 支持[LoRA+](https://arxiv.org/pdf/2402.12354.pdf), 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/yi_6b_chat/lorap/sft.sh)即可开始训练.
-- 2024.02.25: 支持`swift export`, 对模型进行**AWQ/GPTQ**量化导出, 以及推送ModelScope Hub. 具体可以查看文档: [LLM量化文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM%E9%87%8F%E5%8C%96%E6%96%87%E6%A1%A3.md).
+- 2024.02.25: 支持`swift export`, 对模型进行**AWQ/GPTQ**量化导出, 以及推送ModelScope Hub. 具体可以查看: [LLM量化与导出文档](https://github.com/modelscope/swift/blob/main/docs/source/LLM/LLM量化与导出文档.md).
 - 2024.02.22: 支持gemma系列: gemma-2b, [gemma-2b-instruct](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/gemma_2b_instruct), gemma-7b, gemma-7b-instruct.
 - 2024.02.16: 支持deepseek-math系列: deepseek-math-7b, deepseek-math-7b-instruct, deepseek-math-7b-chat.
 - 🔥2024.02.05: 支持**Qwen1.5**系列模型, 支持的所有Qwen1.5系列模型请查看[模型列表](https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.md#%E6%A8%A1%E5%9E%8B). 提供了[qwen1half-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat), [qwen1half-7b-chat-int8](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen1half_7b_chat_int8)微调的脚本.
@@ -614,10 +618,13 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 7B-110B          | chat模型           |
 | mPLUG-Owl                                               | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 11B              | chat模型           |
 | InternVL<br>Mini-InternVL<br>InternVL2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 1B-40B<br>包含量化版本 | chat模型           |
-| Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文       | 8B               | chat model       |
-| Phi3-Vision                                             | 微软                                                                         | 英文       | 4B               | chat model       |
-| PaliGemma                                               | Google                                                                     | 英文       | 3B               | chat model       |
-| Florence                                                | 微软                                                                         | 英文       | 0.23B-0.77B      | chat model       |
+| Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文       | 8B               | chat模型       |
+| Phi3-Vision                                             | 微软                                                                         | 英文       | 4B               | chat模型       |
+| PaliGemma                                               | Google                                                                     | 英文       | 3B               | chat模型       |
+| Florence                                                | 微软                                                                         | 英文       | 0.23B-0.77B      | chat模型       |
+| Idefics3                                | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | 英文       | 8B      | chat模型       |
+
+
 
 #### 扩散模型
 
@@ -710,11 +717,14 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ## 📎 引用
 
 ```bibtex
-@Misc{swift,
-  title = {SWIFT:Scalable lightWeight Infrastructure for Fine-Tuning},
-  author = {The ModelScope Team},
-  howpublished = {\url{https://github.com/modelscope/swift}},
-  year = {2024}
+@misc{zhao2024swiftascalablelightweightinfrastructure,
+      title={SWIFT:A Scalable lightWeight Infrastructure for Fine-Tuning},
+      author={Yuze Zhao and Jintao Huang and Jinghan Hu and Daoze Zhang and Zeyinzi Jiang and Zhikai Wu and Baole Ai and Ang Wang and Wenmeng Zhou and Yingda Chen},
+      year={2024},
+      eprint={2408.05517},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2408.05517},
 }
 ```
 
