@@ -481,7 +481,11 @@ class ModelType:
     phi3_small_128k_instruct = 'phi3-small-128k-instruct'
     phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
 
+    phi3_5_mini_instruct = 'phi3_5-mini-instruct'
+    phi3_5_moe_instruct = 'phi3_5-mini-instruct'
+
     phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
+    phi3_5_vision_instruct = 'phi3_5-vision-instruct'
     # cogagent
     cogvlm_17b_chat = 'cogvlm-17b-chat'
     cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
@@ -811,7 +815,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     LoRATM.llama,
     TemplateType.c4ai,
     requires=['transformers>=4.39.1'],
-    support_vllm=False,
+    support_vllm=True,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-v01')
 @register_model(
@@ -820,7 +824,7 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     LoRATM.llama,
     TemplateType.c4ai,
     requires=['transformers>4.39'],
-    support_vllm=False,
+    support_vllm=True,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
 def get_model_tokenizer_from_repo(model_dir: str,
@@ -1796,9 +1800,29 @@ def get_model_tokenizer_glm4v(model_dir: str,
     TemplateType.phi3,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
-    support_vllm=False,
+    support_vllm=True,
     tags=['general'],
     hf_model_id='microsoft/Phi-3-mini-4k-instruct')
+@register_model(
+    ModelType.phi3_5_moe_instruct,
+    'LLM-Research/Phi-3.5-MoE-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3.5-MoE-instruct')
+@register_model(
+    ModelType.phi3_5_mini_instruct,
+    'LLM-Research/Phi-3.5-mini-instruct',
+    LoRATM.phi3,
+    TemplateType.phi3,
+    requires=['transformers>=4.36'],
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['general'],
+    hf_model_id='microsoft/Phi-3.5-mini-instruct')
 @register_model(
     ModelType.wizardlm2_8x22b,
     'AI-ModelScope/WizardLM-2-8x22B',
