@@ -1603,17 +1603,17 @@ def get_model_tokenizer_glm4v(model_dir: str,
     model, tokenizer = get_model_tokenizer_glm4(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     # fix merge-lora
     tokenizer.init_kwargs['image_size'] = 1120
-    # fix device_map 4
-    n_gpu = torch.cuda.device_count()
-    local_world_size = get_dist_setting()[3]
-
-    if n_gpu // local_world_size >= 4:
-        for layer in model.transformer.vision.transformer.layers:
-            layer.mlp.register_forward_hook(_output_device_map_hook)
-            layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
-        device = next(model.transformer.vision.linear_proj.parameters()).device
-        model.transformer.vision.boi.data = model.transformer.vision.boi.to(device)
-        model.transformer.vision.eoi.data = model.transformer.vision.eoi.to(device)
+    if load_model:
+        # fix device_map 4
+        n_gpu = torch.cuda.device_count()
+        local_world_size = get_dist_setting()[3]
+        if n_gpu // local_world_size >= 4:
+            for layer in model.transformer.vision.transformer.layers:
+                layer.mlp.register_forward_hook(_output_device_map_hook)
+                layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
+            device = next(model.transformer.vision.linear_proj.parameters()).device
+            model.transformer.vision.boi.data = model.transformer.vision.boi.to(device)
+            model.transformer.vision.eoi.data = model.transformer.vision.eoi.to(device)
     return model, tokenizer
 
 

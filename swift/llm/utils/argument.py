@@ -541,8 +541,8 @@ class ArgumentsBase:
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {
-                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
-                    'custom_dataset_info', 'dataset_seed'
+                    'system', 'quant_method', 'model_id_or_path', 'custom_register_path', 'custom_dataset_info',
+                    'dataset_seed'
             } and value is not None:
                 continue
             if key in {'template_type', 'dtype'} and value != 'AUTO':
