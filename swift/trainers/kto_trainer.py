@@ -130,7 +130,6 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
     @staticmethod
     def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
         _token_len = []
-        from datasets import Dataset as HfDataset
         from swift.utils.np_utils import stat_array
         if isinstance(llm_dataset, HfDataset):
             prompt_input_ids = llm_dataset['prompt_input_ids']
