@@ -58,16 +58,26 @@ def _parse_stream_data(data: bytes) -> Optional[str]:
     return data[5:].strip()
 
 
-def _to_base64(img_path: str) -> str:
-    if not os.path.isfile(img_path):
+def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
+    if isinstance(img_path, str) and not os.path.isfile(img_path):
+        # base64
         return img_path
-    with open(img_path, 'rb') as f:
-        img_base64: str = base64.b64encode(f.read()).decode('utf-8')
+    if isinstance(img_path, str):
+        # local_path
+        with open(img_path, 'rb') as f:
+            _bytes = f.read()
+    elif not isinstance(img_path, bytes):  # PIL.Image.Image
+        bytes_io = BytesIO()
+        img_path.save(bytes_io, format='png')
+        _bytes = bytes_io.getvalue()
+    else:
+        _bytes = img_path
+    img_base64: str = base64.b64encode(_bytes).decode('utf-8')
     return img_base64
 
 
 def _encode_prompt(prompt: str) -> str:
-    pattern = r'<(?:img|audio)>(.+?)</(?:img|audio)>'
+    pattern = r'<(?:img|audio|video)>(.+?)</(?:img|audio|video)>'
     match_iter = re.finditer(pattern, prompt)
     new_prompt = ''
     idx = 0
@@ -81,20 +91,21 @@ def _encode_prompt(prompt: str) -> str:
     return new_prompt
 
 
-def _from_base64(img_base64: str, tmp_dir: str) -> str:
+def _from_base64(img_base64: Union[str, 'PIL.Image.Image'], tmp_dir: str = 'tmp') -> str:
     from PIL import Image
+    if not isinstance(img_base64, str):  # PIL.Image.Image
+        img_base64 = _to_base64(img_base64)
     if os.path.isfile(img_base64) or img_base64.startswith('http'):
         return img_base64
-    img_base64: bytes = img_base64.encode('utf-8')
-    sha256_hash = hashlib.sha256(img_base64).hexdigest()
+    sha256_hash = hashlib.sha256(img_base64.encode('utf-8')).hexdigest()
     img_path = os.path.join(tmp_dir, f'{sha256_hash}.png')
     image = Image.open(BytesIO(base64.b64decode(img_base64)))
     image.save(img_path)
     return img_path
 
 
-def _decode_prompt(prompt: str, tmp_dir: str) -> str:
-    pattern = r'<(?:img|audio)>(.+?)</(?:img|audio)>'
+def _decode_prompt(prompt: str, tmp_dir: str = 'tmp') -> str:
+    pattern = r'<(?:img|audio|video)>(.+?)</(?:img|audio|video)>'
     match_iter = re.finditer(pattern, prompt)
     new_content = ''
     idx = 0
