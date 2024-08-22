@@ -8,7 +8,6 @@ import torch
 from torch import nn
 
 from swift import get_logger
-from ..llm.utils.utils import is_pyreft_available
 from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
@@ -52,6 +51,7 @@ class Reft(SwiftAdapter):
 
     @staticmethod
     def prepare_model(model: nn.Module, config: ReftConfig, adapter_name: str):
+        from swift.llm.utils.utils import is_pyreft_available
         if not is_pyreft_available():
             raise ImportError('Please install pyreft before using ReFT: '
                               '`pip install git+https://github.com/stanfordnlp/pyreft.git`')
