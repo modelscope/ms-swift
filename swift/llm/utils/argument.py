@@ -46,6 +46,10 @@ def is_adapter(sft_type: str) -> bool:
 
 class ArgumentsBase:
 
+    def __post_init__(self) -> None:
+        if self.max_length == -1:
+            self.max_length = None
+
     @classmethod
     def _check_path(cls,
                     value: Union[str, List[str]],
@@ -592,6 +596,9 @@ class SftArguments(ArgumentsBase):
     min_lr: Optional[float] = None
     sequence_parallel: bool = False
 
+    # multimodal
+    hd_num: Optional[int] = None
+
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
@@ -889,6 +896,7 @@ class SftArguments(ArgumentsBase):
         return modules_to_save
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         self.handle_compatibility()
         if len(self.val_dataset) > 0:
             self.dataset_test_ratio = 0.0
@@ -1040,8 +1048,6 @@ class SftArguments(ArgumentsBase):
                 self.eval_batch_size = self.batch_size
         if self.save_total_limit == -1:
             self.save_total_limit = None
-        if self.max_length == -1:
-            self.max_length = None
 
         if self.deepspeed is not None:
             if is_mp():
@@ -1276,6 +1282,9 @@ class InferArguments(ArgumentsBase):
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
+    # multimodal
+    hd_num: Optional[int] = None
+
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
@@ -1363,6 +1372,7 @@ class InferArguments(ArgumentsBase):
     vllm_lora_modules: List[str] = None
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
             logger.warning(f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                            'the dir contains a `configuration.json` file.')
@@ -1419,8 +1429,6 @@ class InferArguments(ArgumentsBase):
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
-        if self.max_length == -1:
-            self.max_length = None
         if self.overwrite_generation_config is None:
             if self.ckpt_dir is None:
                 self.overwrite_generation_config = False
@@ -1517,9 +1525,6 @@ class DeployArguments(InferArguments):
     owned_by: str = 'swift'
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 10  # Interval for printing global statistics
-
-    def __post_init__(self):
-        super().__post_init__()
 
 
 @dataclass
