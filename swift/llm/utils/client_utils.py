@@ -70,7 +70,8 @@ def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
         bytes_io = BytesIO()
         img_path.save(bytes_io, format='png')
         _bytes = bytes_io.getvalue()
-
+    else:
+        _bytes = img_path
     img_base64: str = base64.b64encode(_bytes).decode('utf-8')
     return img_base64
 
