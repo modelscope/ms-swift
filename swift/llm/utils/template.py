@@ -335,7 +335,8 @@ class Template:
                 def _initialize(*args, **kwargs):
                     res = _old_initialize(*args, **kwargs)
                     self.model._forward_pre_hooks.move_to_end(handle.id)
-                    self.ref_model._forward_pre_hooks.move_to_end(handle2.id)
+                    if self.ref_model:
+                        self.ref_model._forward_pre_hooks.move_to_end(handle2.id)
                     return res
 
                 deepspeed.initialize = _initialize
