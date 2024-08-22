@@ -145,7 +145,7 @@ def logger_request(request_info: Dict[str, Any]) -> None:
     for match_ in match_iter:
         base64_str = match_.group(1)
         if len(base64_str) >= 1000:
-            base64_str = f'<<<base64:{base64_str[:50]}...>>>'
+            base64_str = f'<<<base64:{base64_str[:50]}..>>>'
         request_info = f'{request_info[:match_.start(1)]}{base64_str}{request_info[match_.end(1):]}'
     logger.info(request_info)
 
