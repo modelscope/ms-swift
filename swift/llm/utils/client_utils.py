@@ -67,7 +67,9 @@ def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
         with open(img_path, 'rb') as f:
             _bytes = f.read()
     elif not isinstance(img_path, bytes):
-        _bytes = img_path.tobytes()
+        bytes_io = BytesIO()
+        img_path.save(bytes_io, format='png')
+        _bytes = bytes_io.getvalue()
 
     img_base64: str = base64.b64encode(_bytes).decode('utf-8')
     return img_base64
@@ -94,8 +96,7 @@ def _from_base64(img_base64: Union[str, 'PIL.Image.Image'], tmp_dir: str = 'tmp'
         img_base64 = _to_base64(img_base64)
     if os.path.isfile(img_base64) or img_base64.startswith('http'):
         return img_base64
-    img_base64: bytes = img_base64.encode('utf-8')
-    sha256_hash = hashlib.sha256(img_base64).hexdigest()
+    sha256_hash = hashlib.sha256(img_base64.encode('utf-8')).hexdigest()
     img_path = os.path.join(tmp_dir, f'{sha256_hash}.png')
     image = Image.open(BytesIO(base64.b64decode(img_base64)))
     image.save(img_path)
