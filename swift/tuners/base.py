@@ -351,13 +351,13 @@ class SwiftModel(nn.Module):
         for _name in adapter_name if isinstance(adapter_name,
                                                 list) else [adapter_name] \
                 if isinstance(adapter_name, str) else adapter_name.keys():
-            output: SwiftOutput = self.adapters[_name]
+            _adapter = _name if not isinstance(adapter_name, dict) else adapter_name[_name]
+            output: SwiftOutput = self.adapters[_adapter]
             sub_folder = os.path.join(model_dir, _name)
             if output.load_callback:
-                output.load_callback(self, sub_folder, _name)
+                output.load_callback(self, sub_folder, _adapter)
                 continue
             state_dict = cls.load_state_file(sub_folder)
-            _adapter = _name if not isinstance(adapter_name, dict) else adapter_name[_name]
             if state_dict is not None:
                 model_is_qlora = len([
                     k for k in self.state_dict().keys()
