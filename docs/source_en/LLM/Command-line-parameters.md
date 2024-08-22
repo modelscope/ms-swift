@@ -251,6 +251,11 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 ### ReFT Fine-tuning Parameters
 
 The following parameters take effect when the `sft_type` is set to `reft`.
+
+> 1. ReFT tuner cannot be merged
+> 2. ReFT and gradient_checkpointing are not compatible
+> 3. If error happens when using ReFT and DeepSpeed, please uninstall DeepSpeed
+
 - `--reft_layers`: Specifies which layers ReFT is applied to; defaults to `None`, meaning all layers. You can input a list of layer numbers, for example: `--reft_layers 1 2 3 4`.
 - `--reft_rank`: The rank of the ReFT matrix; defaults to `4`.
 - `--reft_intervention_type`: The type of ReFT intervention, supporting 'NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention', 'LobireftIntervention', 'DireftIntervention', and 'NodireftIntervention'; defaults to `LoreftIntervention`.
