@@ -281,6 +281,7 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = model
+        self.ref_model = kwargs.get('ref_model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
         self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
         self.query_loss_scale_map = None
@@ -324,6 +325,8 @@ class Template:
         deepspeed = None
         if 'with_kwargs' in parameters:
             handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+            if self.ref_model:
+                handle2 = self.ref_model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
             if is_deepspeed_zero3_enabled():
                 import deepspeed
                 _old_initialize = deepspeed.initialize
@@ -332,6 +335,8 @@ class Template:
                 def _initialize(*args, **kwargs):
                     res = _old_initialize(*args, **kwargs)
                     self.model._forward_pre_hooks.move_to_end(handle.id)
+                    if self.ref_model:
+                        self.ref_model._forward_pre_hooks.move_to_end(handle2.id)
                     return res
 
                 deepspeed.initialize = _initialize

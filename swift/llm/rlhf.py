@@ -8,14 +8,14 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
+from trl.models import create_reference_model
 
 from swift.trainers import RLHFTrainerFactory
 from swift.utils import (append_to_jsonl, check_json_format, get_dist_setting, get_logger, get_main, get_model_info,
                          is_ddp_plus_mp, is_dist, is_master, plot_images, seed_everything, show_layers)
 from .sft import _get_train_val_dataset
 from .tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, RLHFArguments, Template, get_model_tokenizer, get_template, get_time_info,
-                    set_generation_config)
+from .utils import RLHFArguments, Template, get_model_tokenizer, get_template, get_time_info, set_generation_config
 
 logger = get_logger()
 
@@ -160,6 +160,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
                 revision=args.model_revision,
                 quant_method=args.quant_method,
                 **kwargs)
+    elif not args.ref_model_free and args.sft_type == 'full':
+        ref_model = create_reference_model(model)
     else:
         ref_model = None
 
@@ -173,18 +175,17 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         training_args.eval_strategy = IntervalStrategy.NO
 
     template_kwargs = {}
-    template_info = TEMPLATE_MAPPING[args.template_type]
-    use_model = template_info.get('use_model', False)
-    if use_model:
-        template_kwargs['model'] = model
+    template_kwargs['model'] = model
+    if ref_model:
+        template_kwargs['ref_model'] = ref_model
 
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
 
     template_kwargs['rescale_image'] = args.rescale_image
 
-    template: Template = get_template(
-        args.template_type, tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
+    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
+                                      args.truncation_strategy, **template_kwargs)
     if not template.support_multi_round and 'history' in next(iter(train_dataset)):
         logger.info(
             'The current template does not support multi-turn dialogue. The chatml template is used by default. \
