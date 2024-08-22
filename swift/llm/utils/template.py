@@ -400,14 +400,7 @@ class Template:
         example['query'] = query
         example['history'] = history
 
-    def _preprocess_media(self, example):
-        from .media import MediaTag
-        # Format media_keys to list
-        for media_key in MediaTag.media_keys.values():
-            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
-                # change images field to list
-                example[media_key] = [example[media_key]]
-
+    def replace_media_tags(self, example) -> None:
         # Parse <img></img> format images and merged into images key
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
@@ -428,6 +421,16 @@ class Template:
 
                 example[k] = example.get(k) or [] + medias_path
 
+    def _preprocess_media(self, example):
+        from .media import MediaTag
+        from .client_utils import decode_base64
+        # Format media_keys to list
+        for media_key in MediaTag.media_keys.values():
+            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
+                # change images field to list
+                example[media_key] = [example[media_key]]
+
+        self.replace_media_tags(example)
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
 
@@ -453,6 +456,8 @@ class Template:
         if images:
             if example.get('objects') or self.load_medias or self._is_lmdeploy or self._is_vllm:
                 images = load_batch(images, load_image)
+            if not self.load_medias:
+                images = decode_base64(images=images)['images']
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)

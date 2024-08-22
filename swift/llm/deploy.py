@@ -2,12 +2,13 @@
 import asyncio
 import inspect
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from http import HTTPStatus
 from threading import Thread
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import json
 import torch
@@ -137,6 +138,17 @@ def is_generation_template(template_type: str) -> bool:
     return is_generation
 
 
+def logger_request(request_info: Dict[str, Any]) -> None:
+    request_info = str(request_info)
+    for pattern in [r'<img>(.+?)</img>', r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']:
+        match_iter = re.finditer(pattern, request_info)
+        for match_ in match_iter:
+            base64_str = match_.group(1)
+            request_info = (
+                f'{request_info[:match_.start(1)]}<<<base64:{base64_str[:50]}...>>>{request_info[match_.end(1):]}')
+    logger.info(request_info)
+
+
 async def _prepare_request(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global template, model, llm_engine, _args
     if _args.api_key is not None:
@@ -166,7 +178,6 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         messages = request.messages
         if _args.is_multimodal:
             compat_openai(messages, request)
-            messages = decode_base64(messages=messages)['messages']
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)
         example = messages_to_history(messages)
@@ -188,8 +199,6 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in chat format. '
                 'Please use the `chat.completions` API.')
         prompt = request.prompt
-        if _args.is_multimodal:
-            prompt = decode_base64(prompt=prompt)['prompt']
         example = {'query': prompt}
         request_id = f'cmpl-{random_uuid()}'
         _request['prompt'] = prompt
@@ -254,7 +263,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     request_info['generation_config'] = generation_config
     request_info.update({'stream': request.stream})
     if _args.verbose:
-        logger.info(request_info)
+        logger_request(request_info)
 
     generate_kwargs = {}
     if _args.vllm_enable_lora and request.model != _args.model_type:
@@ -425,7 +434,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     request_info['generation_config'] = generation_config
     request_info.update({'stream': request.stream})
     if _args.verbose:
-        logger.info(request_info)
+        logger_request(request_info)
 
     session_id = time.time_ns()
     generator = await llm_engine.get_generator(False, session_id)
@@ -609,7 +618,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
     stop = (_args.stop_words or []) + (getattr(request, 'stop') or [])
     request_info.update({'seed': request.seed, 'stop': stop, 'stream': request.stream})
     if _args.verbose:
-        logger.info(request_info)
+        logger_request(request_info)
 
     adapter_kwargs = {}
     if _args.lora_request_list is not None:
