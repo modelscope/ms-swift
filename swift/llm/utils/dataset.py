@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import datasets.fingerprint
 import json
 import numpy as np
-import pandas as pd
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
@@ -20,7 +19,7 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import get_logger, get_seed, is_dist, is_local_master, read_from_jsonl, transform_jsonl_to_df
+from swift.utils import get_logger, get_seed, is_dist, is_local_master
 from swift.utils.torch_utils import _find_local_mac
 from .media import MediaCache, MediaTag
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
@@ -316,9 +315,6 @@ def load_ms_dataset(dataset_id: str,
                     use_hf: bool = False,
                     streaming: bool = False,
                     revision: Optional[str] = None) -> Optional[DATASET_TYPE]:
-    if not use_hf:
-        from modelscope import MsDataset
-
     if subset_split_list is None or len(subset_split_list) == 0:
         return None
     dataset_list = []
@@ -338,6 +334,7 @@ def load_ms_dataset(dataset_id: str,
             except Exception:
                 raise
         else:
+            from modelscope import MsDataset
             if is_dist() and not is_local_master():
                 force_redownload = False
             else:
@@ -429,8 +426,8 @@ def _post_preprocess(
             streaming_buffer_size = kwargs.get('streaming_buffer_size', 16384)
             if streaming_val_size > 0:
                 train_dataset = train_dataset.shuffle(seed=get_seed(random_state), buffer_size=streaming_buffer_size)
-                val_dataset = dataset.take(int(streaming_val_size))
-                train_dataset = dataset.skip(int(streaming_val_size))
+                val_dataset = train_dataset.take(int(streaming_val_size))
+                train_dataset = train_dataset.skip(int(streaming_val_size))
 
     res = []
     for dataset in [train_dataset, val_dataset]:
@@ -2556,10 +2553,10 @@ def _preprocess_self_cognition_dataset(
                         model_n, model_a = model_name[0], model_author[0]
                     else:
                         model_n, model_a = model_name[1], model_author[1]
-                        yield {
-                            'query': d['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a),
-                            'response': d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                        }
+                    yield {
+                        'query': d['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a),
+                        'response': d['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                    }
 
             dataset = HfIterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
         else:

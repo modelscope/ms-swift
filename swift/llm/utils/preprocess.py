@@ -12,10 +12,10 @@ from swift.utils import get_logger
 from .media import MediaTag
 from .template import History
 
-PreprocessFunc = Callable[[HfDataset], HfDataset]
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
+PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 
 logger = get_logger()
 

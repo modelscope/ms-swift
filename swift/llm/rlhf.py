@@ -14,8 +14,8 @@ from swift.utils import (append_to_jsonl, check_json_format, get_dist_setting, g
                          is_ddp_plus_mp, is_dist, is_master, plot_images, seed_everything, show_layers)
 from .sft import _get_train_val_dataset
 from .tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, RLHFArguments, Template, get_dataset, get_model_tokenizer, get_template,
-                    get_time_info, set_generation_config)
+from .utils import (TEMPLATE_MAPPING, RLHFArguments, Template, get_model_tokenizer, get_template, get_time_info,
+                    set_generation_config)
 
 logger = get_logger()
 
