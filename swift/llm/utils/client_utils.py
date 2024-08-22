@@ -66,7 +66,7 @@ def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
         # local_path
         with open(img_path, 'rb') as f:
             _bytes = f.read()
-    elif not isinstance(img_path, bytes):
+    elif not isinstance(img_path, bytes):  # PIL.Image.Image
         bytes_io = BytesIO()
         img_path.save(bytes_io, format='png')
         _bytes = bytes_io.getvalue()
