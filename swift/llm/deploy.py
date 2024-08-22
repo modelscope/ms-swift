@@ -143,8 +143,11 @@ def logger_request(request_info: Dict[str, Any]) -> None:
     for pattern in [r'<img>(.+?)</img>', r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']:
         match_iter = re.finditer(pattern, request_info)
         for match_ in match_iter:
+            base64_str = match_.group(1)
+            if len(base64_str) >= 1000:
+                base64_str = f'<<<base64:{base64_str[:50]}...>>>'
             request_info = (
-                f'{request_info[:match_.start(1)]}<<<base64:{match_.group(1)[:50]}...>>>{request_info[match_.end(1):]}')
+                f'{request_info[:match_.start(1)]}{base64_str}{request_info[match_.end(1):]}')
     logger.info(request_info)
 
 
