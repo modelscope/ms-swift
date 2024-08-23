@@ -16,7 +16,7 @@
 4. [InternVL系列最佳实践](internvl最佳实践.md)
 5. [Deepseek-VL最佳实践](deepseek-vl最佳实践.md)
 6. [Internlm2-Xcomposers最佳实践](internlm-xcomposer2最佳实践.md)
-7. [Phi3-Vision最佳实践](phi3-vision最佳实践.md)
+7. [Phi3-Vision最佳实践](phi3-vision最佳实践.md), [Phi3.5-Vision最佳实践](https://github.com/modelscope/ms-swift/issues/1809).
 
 
 一轮对话只能包含一张图片（可能可以不含图片）:
