@@ -4298,8 +4298,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
         return _new_func
 
     for key in func_list:
-        value = MethodType(_get_new_func(key), model)
-        setattr(model, key, value)
+        setattr(model, key, MethodType(_get_new_func(key), model))
         if key == 'generate' and model.device != submodel.device:
             submodel.__class__.device = model.device
 
