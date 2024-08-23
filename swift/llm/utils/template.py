@@ -1560,7 +1560,7 @@ def get_env_args(args_name: str,
     if log_info not in _log_set:
         _log_set.add(log_info)
         logger.info(log_info)
-    return default_value if value is None else type_func(value)
+    return value
 
 
 class Internlm2Template(ChatmlTemplate):
