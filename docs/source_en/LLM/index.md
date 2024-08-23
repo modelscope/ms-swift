@@ -1,5 +1,7 @@
 ## LLM Documentation
 
+[中文文档](https://swift.readthedocs.io/zh-cn/latest/LLM/index.html)
+
 ### 📚Tutorials!
 
 1. [LLM Inference](LLM-inference.md)
