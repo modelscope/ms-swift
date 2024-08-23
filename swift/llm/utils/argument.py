@@ -80,16 +80,14 @@ class ArgumentsBase:
             value = res
         return value
 
-    @staticmethod
-    def _is_multimodal(model_type: Optional[str] = None) -> bool:
+    def _is_multimodal(self, model_type: Optional[str] = None) -> bool:
         if model_type is None:
             return False
         model_info = MODEL_MAPPING[model_type]
         tags = model_info.get('tags') or []
         return 'multi-modal' in tags
 
-    @staticmethod
-    def _is_vision(model_type: Optional[str] = None) -> bool:
+    def _is_vision(self, model_type: Optional[str] = None) -> bool:
         if model_type is None:
             return False
         model_info = MODEL_MAPPING[model_type]
@@ -1589,6 +1587,12 @@ class EvalArguments(InferArguments):
     def handle_infer_backend(self) -> None:
         if self.eval_url is None:
             super().handle_infer_backend()
+
+    def _is_multimodal(self, model_type: Optional[str] = None) -> bool:
+        return False
+
+    def _is_vision(self, model_type: Optional[str] = None) -> bool:
+        return False
 
 
 @dataclass
