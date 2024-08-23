@@ -1545,7 +1545,9 @@ _T = TypeVar('_T')
 _log_set = set()  # log once
 
 
-def get_env_args(args_name: str, type_func: Callable[[str], _T] = int, default_value: Optional[_T] = None) -> _T:
+def get_env_args(args_name: str,
+                 type_func: Callable[[str], _T] = int,
+                 default_value: Optional[_T] = None) -> Optional[_T]:
     args_name_upper = args_name.upper()
     value = os.getenv(args_name_upper)
     if value is None:

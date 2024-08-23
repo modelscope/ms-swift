@@ -13,6 +13,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+from accelerate.utils import find_device
 from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                         GenerationConfig, GPTQConfig, snapshot_download)
 from modelscope.hub.utils.utils import get_cache_dir
@@ -29,7 +30,7 @@ from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from swift.utils.module_mapping import get_regex_for_mm_default_lora
 from .template import TemplateType, get_env_args
-from .utils import get_max_model_len, get_rope_scaling, is_unsloth_available, set_rope_scaling
+from .utils import get_max_model_len, get_rope_scaling, is_unsloth_available, set_rope_scaling, to_device
 
 logger = get_logger()
 
@@ -4282,19 +4283,25 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
-        _old_func = getattr(submodel, func_name)
+        _old_func = getattr(submodel.__class__, func_name)
 
         @wraps(_old_func)
-        def _new_func(*args, **kwargs):
-            return _old_func(*args, **kwargs)
+        def _new_func(self, *args, **kwargs):
+            res = _old_func(self, *args, **kwargs)
+            if func_name == 'forward':
+                device = find_device(args)
+                if device is None:
+                    device = find_device(kwargs)
+                res = res.__class__(**to_device(res, device))
+            return res
 
         return _new_func
 
     for key in func_list:
-        model_key = key
-        if key == 'forward' and hasattr(model, '_old_forward'):  # device_map
-            model_key = '_old_forward'
-        setattr(model, model_key, _get_new_func(key))
+        value = MethodType(_get_new_func(key), submodel)
+        setattr(model, key, value)
+        if key == 'forward' and 'generate' in func_list:
+            setattr(submodel, key, value)
 
 
 @register_model(
