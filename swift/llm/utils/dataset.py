@@ -2066,6 +2066,7 @@ register_dataset(
     hf_dataset_id='linxy/LaTeX_OCR',
     tags=['chat', 'ocr', 'multi-modal', 'vision'])
 
+
 def _preprocess_capcha_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     from datasets import Image
     query = 'recognize the content.'
