@@ -1595,12 +1595,14 @@ class InternLMXComposer2Template(Template):
 
         if self.version == 'v2.5':
             hd_num = 24
-            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
             if len(images) > 1:
                 hd_num = 6
+            hd_num = get_env_args('hd_num', int, hd_num)
+            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
             images = [Image_transform(image, hd_num=hd_num) for image in images]
         elif self.version == 'v2-4khd':
             hd_num = 55
+            hd_num = get_env_args('hd_num', int, hd_num)
             HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.tokenizer.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
         images = [self.model.vis_processor(image).to(dtype) for image in images]
@@ -1723,7 +1725,9 @@ class InternvlTemplate(Template):
         images = example.get('images')
         if images:
             labels = inputs.get('labels')
-            pixel_values_images = [transform_image(image) for image in images]
+            input_size = get_env_args('input_size', int, 448)
+            max_num = get_env_args('max_num', int, 1 if has_video else 12)
+            pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model.dtype)
             image_bs = pixel_values.shape[0]
 
@@ -1784,7 +1788,8 @@ class Internvl2Template(InternvlTemplate):
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            load_video = partial(load_video_internvl, num_segments=self.video_segments)
+            video_segments = get_env_args('video_segments', int, self.video_segments)
+            load_video = partial(load_video_internvl, num_segments=video_segments)
             return _replace_video2image(load_video, example, lambda i: [f'Frame{i + 1}: '] + image_context)
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
@@ -1816,7 +1821,9 @@ class Internvl2Template(InternvlTemplate):
         images = example.get('images')
         if images:
             has_video = bool(example.get('videos'))
-            pixel_values = [transform_image(image, max_num=1 if has_video else 12) for image in images]
+            input_size = get_env_args('input_size', int, 448)
+            max_num = get_env_args('max_num', int, 1 if has_video else 12)
+            pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
             pixel_values = torch.cat(pixel_values).to(self.model.dtype)
         else:
@@ -1924,7 +1931,9 @@ class FlorenceTemplate(Template):
         processor = self.tokenizer.processor
         images = example.get('images') or []
         assert len(images) == 1, 'Florence series models only supports input with a single image.'
-        image_tensors = transform_image(images[0])
+        input_size = get_env_args('input_size', int, 448)
+        max_num = get_env_args('max_num', int, 1 if has_video else 12)
+        image_tensors = transform_image(images[0], input_size, max_num)
         example['_image'] = image_tensors
 
         # process bbox
@@ -2789,6 +2798,7 @@ class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
             use_image_id = False
             max_slice_nums = 1  # or 2
 
+        max_slice_nums = get_env_args('max_slice_nums', int, max_slice_nums)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -100)

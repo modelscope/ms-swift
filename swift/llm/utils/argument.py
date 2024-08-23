@@ -49,6 +49,13 @@ class ArgumentsBase:
     def __post_init__(self) -> None:
         if self.max_length == -1:
             self.max_length = None
+        if model_kwargs is None:
+            model_kwargs = {}
+        if isinstance(model_kwargs, str):
+            model_kwargs = json.loads(model_kwargs)
+        for k, v in model_kwargs.items():
+            k = k.upper()
+            os.environ[k] = str(v)
 
     @classmethod
     def _check_path(cls,
@@ -597,7 +604,7 @@ class SftArguments(ArgumentsBase):
     sequence_parallel: bool = False
 
     # multimodal
-    hd_num: Optional[int] = None
+    model_kwargs: Optional[str] = None
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
@@ -1283,7 +1290,7 @@ class InferArguments(ArgumentsBase):
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
     # multimodal
-    hd_num: Optional[int] = None
+    model_kwargs: Optional[str] = None
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(

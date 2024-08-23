@@ -29,7 +29,7 @@ from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from swift.utils.module_mapping import get_regex_for_mm_default_lora
 from .template import TemplateType
-from .utils import get_max_model_len, get_rope_scaling, is_unsloth_available, set_rope_scaling
+from .utils import get_max_model_len, get_rope_scaling, is_unsloth_available, set_rope_scaling, get_env_args
 
 logger = get_logger()
 
@@ -1293,7 +1293,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
                                     **kwargs):
     processor_kwargs = {}
     if 'num_crops' in kwargs:
-        processor_kwargs['num_crops'] = kwargs['num_crops']
+        processor_kwargs['num_crops'] = get_env_args('num_crops', int, kwargs['num_crops'])
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True, **processor_kwargs)
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
