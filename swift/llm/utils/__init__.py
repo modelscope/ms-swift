@@ -21,10 +21,10 @@ from .protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, Cha
                        CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, Function, Model,
                        ModelList, UsageInfo, XRequestConfig, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, Prompt, StopWords, Template, TemplateType,
-                       get_template, register_template)
+                       get_env_args, get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
-                    find_ln, get_env_args, get_max_model_len, get_time_info, history_to_messages, inference,
-                    inference_stream, is_lmdeploy_available, is_megatron_available, is_quant_model, is_vllm_available,
+                    find_ln, get_max_model_len, get_time_info, history_to_messages, inference, inference_stream,
+                    is_lmdeploy_available, is_megatron_available, is_quant_model, is_vllm_available,
                     limit_history_length, messages_join_observation, messages_to_history, print_example,
                     safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset, to_device)
 

@@ -49,6 +49,7 @@ class ArgumentsBase:
     def __post_init__(self) -> None:
         if self.max_length == -1:
             self.max_length = None
+        model_kwargs = self.model_kwargs
         if model_kwargs is None:
             model_kwargs = {}
         if isinstance(model_kwargs, str):

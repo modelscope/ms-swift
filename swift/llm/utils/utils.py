@@ -1049,15 +1049,6 @@ def get_rope_scaling(config: PretrainedConfig):
     return getattr(config, 'rope_scaling')
 
 
-_T = TypeVar('_T')
-
-
-def get_env_args(args_name: str, type_func: Callable[[str], _T] = int, default_value: Optional[_T] = None) -> _T:
-    args_name = args_name.upper()
-    value = os.getenv(args_name)
-    return default_value if value is None else type_func(value)
-
-
 if is_ddp_plus_mp():
     from accelerate.utils.modeling import (get_balanced_memory, infer_auto_device_map)
 

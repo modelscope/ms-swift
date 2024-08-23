@@ -28,8 +28,8 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from swift.utils.module_mapping import get_regex_for_mm_default_lora
-from .template import TemplateType
-from .utils import get_env_args, get_max_model_len, get_rope_scaling, is_unsloth_available, set_rope_scaling
+from .template import TemplateType, get_env_args
+from .utils import get_max_model_len, get_rope_scaling, is_unsloth_available, set_rope_scaling
 
 logger = get_logger()
 

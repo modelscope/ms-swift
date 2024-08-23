@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import os
 import re
 from contextlib import contextmanager
 from copy import deepcopy
 from functools import partial, wraps
 from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import torch
@@ -1538,6 +1539,26 @@ register_template(
     TemplateType.internlm,
     Template(['<s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'], ['<eoa>'], INTERNLM_SYSTEM,
              ['<s><|System|>:{{SYSTEM}}\n']))
+
+_T = TypeVar('_T')
+
+_log_set = set()  # log once
+
+
+def get_env_args(args_name: str, type_func: Callable[[str], _T] = int, default_value: Optional[_T] = None) -> _T:
+    args_name_upper = args_name.upper()
+    value = os.getenv(args_name_upper)
+    if value is None:
+        value = default_value
+        log_info = (f'Setting {args_name}: {default_value}. '
+                    f'You can adjust this hyperparameter through the environment variable: `{args_name_upper}`.')
+    else:
+        value = type_func(value)
+        log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
+    if log_info not in _log_set:
+        _log_set.add(log_info)
+        logger.info(log_info)
+    return default_value if value is None else type_func(value)
 
 
 class Internlm2Template(ChatmlTemplate):
