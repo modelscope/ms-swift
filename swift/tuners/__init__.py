@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from .neftune import NEFTune, NEFTuneConfig
     from .longlora.longlora import LongLoRAModelType, LongLoRAConfig, LongLoRA
     from .restuning import ResTuning, ResTuningConfig, ResTuningBypassModule
+    from .reft import Reft, ReftConfig
+    from .llamapro import LLaMAPro, LLaMAProConfig
     from .peft import (AdaLoraConfig, IA3Config, LoftQConfig, LoHaConfig, LoKrConfig, LoraConfig, VeraConfig,
                        BOFTConfig, OFTConfig, PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
                        PeftModelForSequenceClassification, PeftModelForTokenClassification, PrefixTuningConfig,
@@ -28,6 +30,8 @@ else:
         'longlora.longlora': ['LongLoRAModelType', 'LongLoRAConfig', 'LongLoRA'],
         'mapping': ['SWIFT_MAPPING', 'SwiftTuners'],
         'side': ['Side', 'SideConfig', 'SideModule'],
+        'reft': ['Reft', 'ReftConfig'],
+        'llamapro': ['LLaMAPro', 'LLaMAProConfig'],
         'neftune': ['NEFTune', 'NEFTuneConfig'],
         'restuning': ['ResTuning', 'ResTuningConfig', 'ResTuningBypassModule'],
         'peft': [

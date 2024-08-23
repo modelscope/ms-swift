@@ -37,7 +37,8 @@ from swift.llm import (
 )
 
 model_type = ModelType.qwen_7b_chat
-lmdeploy_engine = get_lmdeploy_engine(model_type)
+model_id_or_path = None
+lmdeploy_engine = get_lmdeploy_engine(model_type, model_id_or_path=model_id_or_path)
 template_type = get_default_template_type(model_type)
 template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
 # Similar to `transformers.GenerationConfig` interface

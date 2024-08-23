@@ -1,11 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
+import os
 import re
 from contextlib import contextmanager
 from copy import deepcopy
-from functools import partial
+from functools import partial, wraps
 from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import torch
@@ -16,6 +17,7 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
@@ -50,9 +52,11 @@ class TemplateType:
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
+    chatglm4 = 'chatglm4'
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
     llava1_5 = 'llava1_5'
     llava_mistral = 'llava-mistral'
@@ -60,6 +64,7 @@ class TemplateType:
     llava_yi = 'llava-yi'
     llama3_llava_next_hf = 'llama-llava-next-hf'
     llava_qwen_hf = 'llama-qwen-hf'
+    llava_onevision_qwen = 'llava-onevision-qwen'
     # llava-video
     llava_next_video = 'llava-next-video'
     llava_next_video_yi = 'llava-next-video-yi'
@@ -277,6 +282,7 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         self.model = model
+        self.ref_model = kwargs.get('ref_model', None)
         self.use_loss_scale = kwargs.get('use_loss_scale', False)
         self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
         self.query_loss_scale_map = None
@@ -315,10 +321,32 @@ class Template:
                 kwargs.pop('position_ids', None)
             return args, kwargs
 
-        handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+        parameters = inspect.signature(self.model.register_forward_pre_hook).parameters
+        handle = None
+        deepspeed = None
+        if 'with_kwargs' in parameters:
+            handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+            if self.ref_model:
+                handle2 = self.ref_model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+            if is_deepspeed_zero3_enabled():
+                import deepspeed
+                _old_initialize = deepspeed.initialize
+
+                @wraps(_old_initialize)
+                def _initialize(*args, **kwargs):
+                    res = _old_initialize(*args, **kwargs)
+                    self.model._forward_pre_hooks.move_to_end(handle.id)
+                    if self.ref_model:
+                        self.ref_model._forward_pre_hooks.move_to_end(handle2.id)
+                    return res
+
+                deepspeed.initialize = _initialize
         yield
         self._is_training = False
-        handle.remove()
+        if handle:
+            handle.remove()
+        if deepspeed:
+            deepspeed.initialize = _old_initialize
 
     @contextmanager
     def vllm_context(self):
@@ -369,7 +397,7 @@ class Template:
                     example[media_key] = [m for m in example[media_key] if m]
                     num_media = len(example[media_key])
                     num_new_tags = num_media - num_media_tags
-                    assert num_new_tags >= 0, (f'Number of media: {num_media}, number of media_tags: {num_media_tags}')
+                    assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
                     if history:
                         history[0][0] = media_tag * num_new_tags + history[0][0]
                     else:
@@ -378,14 +406,7 @@ class Template:
         example['query'] = query
         example['history'] = history
 
-    def _preprocess_media(self, example):
-        from .media import MediaTag
-        # Format media_keys to list
-        for media_key in MediaTag.media_keys.values():
-            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
-                # change images field to list
-                example[media_key] = [example[media_key]]
-
+    def replace_media_tags(self, example) -> None:
         # Parse <img></img> format images and merged into images key
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
@@ -406,6 +427,16 @@ class Template:
 
                 example[k] = example.get(k) or [] + medias_path
 
+    def _preprocess_media(self, example):
+        from .media import MediaTag
+        from .client_utils import decode_base64
+        # Format media_keys to list
+        for media_key in MediaTag.media_keys.values():
+            if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
+                # change images field to list
+                example[media_key] = [example[media_key]]
+
+        self.replace_media_tags(example)
         # Add default tags to examples to note where to put the medias into the sequence
         self.add_default_tags(example)
 
@@ -431,6 +462,8 @@ class Template:
         if images:
             if example.get('objects') or self.load_medias or self._is_lmdeploy or self._is_vllm:
                 images = load_batch(images, load_image)
+            if not self.load_medias:
+                images = decode_base64(images=images)['images']
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
@@ -1374,7 +1407,7 @@ register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogu
 
 register_template(
     TemplateType.yi_vl,
-    YiVLTemplate([], ['### Human: {{QUERY}}\n### Assistant:'], ['\n'], ['\n###'], yi_vl_default_system,
+    YiVLTemplate([], [[8308], 'Human: {{QUERY}}\n', [8308], 'Assistant:'], ['\n'], ['\n', [8308]], yi_vl_default_system,
                  ['{{SYSTEM}}\n\n']),
     use_model=True,
     infer_media_type='round',
@@ -1392,6 +1425,13 @@ register_template(
 register_template(
     TemplateType.chatglm3,
     GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None, ['<|system|>\n{{SYSTEM}}']))
+
+register_template(
+    TemplateType.chatglm4,
+    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'],
+                None, ['<|system|>\n{{SYSTEM}}'],
+                tools_prompt='glm4',
+                tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
@@ -1425,6 +1465,11 @@ register_template(
     TemplateType.llama,
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+
+register_template(
+    TemplateType.longwriter_llama3,
+    Template(['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'], None,
+             ['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 register_template(TemplateType.mistral_nemo,
                   Template(['<s>[INST] '], ['{{SYSTEM}}\n\n', '{{QUERY}}[/INST]'], ['</s>[INST] '], ['</s>']))
@@ -1495,6 +1540,28 @@ register_template(
     Template(['<s>'], ['<|User|>:{{QUERY}}\n<|Bot|>:'], ['<eoa>\n'], ['<eoa>'], INTERNLM_SYSTEM,
              ['<s><|System|>:{{SYSTEM}}\n']))
 
+_T = TypeVar('_T')
+
+_log_set = set()  # log once
+
+
+def get_env_args(args_name: str,
+                 type_func: Callable[[str], _T] = int,
+                 default_value: Optional[_T] = None) -> Optional[_T]:
+    args_name_upper = args_name.upper()
+    value = os.getenv(args_name_upper)
+    if value is None:
+        value = default_value
+        log_info = (f'Setting {args_name}: {default_value}. '
+                    f'You can adjust this hyperparameter through the environment variable: `{args_name_upper}`.')
+    else:
+        value = type_func(value)
+        log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
+    if log_info not in _log_set:
+        _log_set.add(log_info)
+        logger.info(log_info)
+    return value
+
 
 class Internlm2Template(ChatmlTemplate):
     system = INTERNLM_SYSTEM
@@ -1551,12 +1618,14 @@ class InternLMXComposer2Template(Template):
 
         if self.version == 'v2.5':
             hd_num = 24
-            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
             if len(images) > 1:
                 hd_num = 6
+            hd_num = get_env_args('hd_num', int, hd_num)
+            Image_transform = get_class_from_dynamic_module('ixc_utils.Image_transform', self.tokenizer.model_dir)
             images = [Image_transform(image, hd_num=hd_num) for image in images]
         elif self.version == 'v2-4khd':
             hd_num = 55
+            hd_num = get_env_args('hd_num', int, hd_num)
             HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.tokenizer.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
         images = [self.model.vis_processor(image).to(dtype) for image in images]
@@ -1679,7 +1748,9 @@ class InternvlTemplate(Template):
         images = example.get('images')
         if images:
             labels = inputs.get('labels')
-            pixel_values_images = [transform_image(image) for image in images]
+            input_size = get_env_args('input_size', int, 448)
+            max_num = get_env_args('max_num', int, 12)
+            pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model.dtype)
             image_bs = pixel_values.shape[0]
 
@@ -1706,6 +1777,10 @@ class InternvlTemplate(Template):
             vit_embeds = self.model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
+        elif is_deepspeed_zero3_enabled():
+            dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
+            vit_embeds = self.model.extract_feature(dummy_pixel_values).to(device=device)
+            inputs_embeds += vit_embeds.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
 
     @staticmethod
@@ -1736,7 +1811,8 @@ class Internvl2Template(InternvlTemplate):
         if media_type == 'image':
             return image_context
         elif media_type == 'video':
-            load_video = partial(load_video_internvl, num_segments=self.video_segments)
+            video_segments = get_env_args('video_segments', int, self.video_segments)
+            load_video = partial(load_video_internvl, num_segments=video_segments)
             return _replace_video2image(load_video, example, lambda i: [f'Frame{i + 1}: '] + image_context)
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
@@ -1768,7 +1844,9 @@ class Internvl2Template(InternvlTemplate):
         images = example.get('images')
         if images:
             has_video = bool(example.get('videos'))
-            pixel_values = [transform_image(image, max_num=1 if has_video else 12) for image in images]
+            input_size = get_env_args('input_size', int, 448)
+            max_num = get_env_args('max_num', int, 1 if has_video else 12)
+            pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
             pixel_values = torch.cat(pixel_values).to(self.model.dtype)
         else:
@@ -1876,7 +1954,9 @@ class FlorenceTemplate(Template):
         processor = self.tokenizer.processor
         images = example.get('images') or []
         assert len(images) == 1, 'Florence series models only supports input with a single image.'
-        image_tensors = transform_image(images[0])
+        input_size = get_env_args('input_size', int, 448)
+        max_num = get_env_args('max_num', int, 12)
+        image_tensors = transform_image(images[0], input_size, max_num)
         example['_image'] = image_tensors
 
         # process bbox
@@ -2229,6 +2309,43 @@ class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
 register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=True, lazy_tokenize=True)
 
 
+class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
+    system = None
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = Template._encode(self, example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example.get('images')
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 151646)  # <image>
+        processor = self.tokenizer.processor
+        if images:
+            image_processor = processor.image_processor
+            image_inputs = image_processor(images, return_tensors='pt').to(self.model.dtype)
+            height, width = image_inputs['pixel_values'][0].shape[-2:]
+            added_tokens_len = 0
+            for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
+                orig_height, orig_width = image_size
+                num_image_tokens = processor._get_number_of_features(orig_height, orig_width, height, width)
+                input_ids = input_ids[:added_tokens_len
+                                      + idx] + [151646] * num_image_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels is not None:
+                    labels = labels[:added_tokens_len + idx] + [-100] * num_image_tokens + labels[added_tokens_len + idx
+                                                                                                  + 1:]
+                added_tokens_len += num_image_tokens - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+            inputs['pixel_values'] = image_inputs['pixel_values']
+            if 'image_sizes' in image_inputs:
+                inputs['image_sizes'] = image_inputs['image_sizes']
+        return inputs, {}
+
+
+register_template(TemplateType.llava_onevision_qwen, LlavaOneVisonTemplate(), use_model=True, lazy_tokenize=True)
+
+
 class LLavaLlamaTemplate(Llama3Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example):
@@ -2295,12 +2412,19 @@ register_template(
     TemplateType.paligemma, PaliGemmaTemplate(), infer_media_type='dialogue', lazy_tokenize=True, is_generation=True)
 
 
-class Phi3VisionTemplate(Template):
-    image_placeholder = [[32044], '\n']  # <|image|>\n
+class Phi3Template(Template):
 
     def __init__(self):
-        Template.__init__(self, ['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
-                          None, ['<s><|system|>\n{{SYSTEM}}<|end|>\n'])
+        super().__init__([], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'],
+                         None, ['<|system|>\n{{SYSTEM}}<|end|>\n'],
+                         auto_add_bos=True)
+
+
+register_template(TemplateType.phi3, Phi3Template())
+
+
+class Phi3VisionTemplate(Phi3Template):
+    image_placeholder = ['<|image|><s>\n']  # <|image|>\n
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         if self._is_vllm:
@@ -2326,10 +2450,10 @@ class Phi3VisionTemplate(Template):
             num_img_tokens = inputs.pop('num_img_tokens').tolist()
             idx_list.insert(0, -1)
             for i in range(len(idx_list) - 1):
-                image_token_id = -1
-                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [image_token_id] * num_img_tokens[i] + [1]
+                image_token_id = -i - 1
+                res_input_ids += input_ids[idx_list[i] + 1:idx_list[i + 1]] + [image_token_id] * num_img_tokens[i]
                 if labels is not None:
-                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * (num_img_tokens[i] + 1)
+                    res_labels += labels[idx_list[i] + 1:idx_list[i + 1]] + [-100] * num_img_tokens[i]
             res_input_ids += input_ids[idx_list[-1] + 1:]
             input_ids = res_input_ids
             if labels is not None:
@@ -2697,6 +2821,7 @@ class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
             use_image_id = False
             max_slice_nums = 1  # or 2
 
+        max_slice_nums = get_env_args('max_slice_nums', int, max_slice_nums)
         input_ids = inputs['input_ids']
         labels = inputs['labels']
         idx_list = _findall(input_ids, -100)
@@ -2861,14 +2986,6 @@ _wizardlm2_system = ('A chat between a curious user and an artificial intelligen
                      'The assistant gives helpful, detailed, and polite answers to the user\'s questions. ')
 register_template(TemplateType.wizardlm2,
                   Template(['{{SYSTEM}}'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'], _wizardlm2_system))
-
-_default_phi3_system = ('You are a helpful digital assistant. '
-                        'Please provide safe, ethical and accurate information to the user.')
-
-register_template(
-    TemplateType.phi3,
-    Template(['<s>'], ['<|user|>\n{{QUERY}}<|end|>\n<|assistant|>\n'], ['<|end|>\n'], ['<|end|>'], _default_phi3_system,
-             ['<s><|system|>\n{{SYSTEM}}<|end|>\n']))
 
 register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))

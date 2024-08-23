@@ -18,7 +18,6 @@ def init_megatron_env() -> None:
     if 'MEGATRON_LM_PATH' not in os.environ:
         megatron_path = git_clone_github(
             'https://github.com/NVIDIA/Megatron-LM', commit_hash='6dbe4cf699880038b1e5cd90b23ee71053c7f2ee')
-        os.environ['MEGATRON_LM_PATH'] = megatron_path
     else:
         megatron_path = os.environ['MEGATRON_LM_PATH']
     if not is_megatron_available():
@@ -28,8 +27,9 @@ def init_megatron_env() -> None:
     if 'PAI_MEGATRON_PATCH_PATH' not in os.environ:
         megatron_patch_path = git_clone_github(
             'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='6fd5d050b240fd959f0ba69f1e9cd9a053e5a81d')
-        os.environ['PAI_MEGATRON_PATCH_PATH'] = megatron_patch_path
-    sys.path.append(os.environ['PAI_MEGATRON_PATCH_PATH'])
+    else:
+        megatron_patch_path = os.environ['PAI_MEGATRON_PATCH_PATH']
+    sys.path.append(megatron_patch_path)
 
     # rename qwen1.5->qwen1_5 files
     qwen1_5_folders = ['toolkits/model_checkpoints_convertor/qwen']

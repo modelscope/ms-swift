@@ -20,7 +20,7 @@
   - DeepSeek-VL model: `https://github.com/deepseek-ai/DeepSeek-VL`
   - YI-VL model: `https://github.com/01-ai/Yi`
   - LLAVA model: `https://github.com/haotian-liu/LLaVA.git`
-- `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
+- `--sft_type`: Fine-tuning method, default is `'lora'`. Options include: 'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'. If using qlora, you need to set `--sft_type lora --quantization_bit 4`.
 - `--packing`: pack the dataset length to `max-length`, default `False`.
 - `--full_determinism`: Fix all the values in training, default `False`.
 - `--auto_find_batch_size`: Auto find batch size according to the GPU memory, default `False`.
@@ -36,9 +36,10 @@
 - `--resume_from_checkpoint`: Used for resuming training from a checkpoint, default is `None`. You can set it to the path of the checkpoint, for example: `--resume_from_checkpoint output/qwen-7b-chat/vx-xxx/checkpoint-xxx`, to resume training from that point. Supports adjusting `--resume_only_model` to only read the model file during checkpoint continuation.
 - `--resume_only_model`: Default is `False`, which means strict checkpoint continuation, this will read the weights of the model, optimizer, lr_scheduler, and the random seeds stored on each device, and continue training from the last paused steps. If set to `True`, it will only read the weights of the model.
 - `--dtype`: torch_dtype when loading base model, default is `'AUTO'`, i.e. intelligently select dtype: if machine does not support bf16, use fp16; if `MODEL_MAPPING` specifies torch_dtype for corresponding model, use its dtype; otherwise use bf16. Options include: 'bf16', 'fp16', 'fp32'.
+- `--model_kwargs`: Used for passing additional parameters to the multimodal model, for example: `'{"hd_num": 16}'`. You can either pass a JSON string or directly pass a dictionary. The default is `None`. In addition to using this parameter, you can also pass it through environment variables, for example: `HD_NUM=16`.
 - `--dataset`: Used to select the training dataset, default is `[]`. You can see the list of available datasets [here](Supported-models-datasets.md#Datasets). If you need to train with multiple datasets, you can use ',' or ' ' to separate them, for example: `--dataset alpaca-en,alpaca-zh` or `--dataset alpaca-en alpaca-zh`. It supports Modelscope Hub/HuggingFace Hub/local paths, subset selection, and dataset sampling. The specified format for each dataset is as follows: `[HF or MS::]{dataset_name} or {dataset_id} or {dataset_path}[:subset1/subset2/...][#dataset_sample]`. The simplest case requires specifying only dataset_name, dataset_id, or dataset_path. Customizing datasets can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset)
   - Supports MS and HF hub, as well as dataset_sample. For example, 'MS::alpaca-zh#2000', 'HF::jd-sentiment-zh#2000' (the default hub used is controlled by the `USE_UF` environment variable, default is MS).
-  - More fine-grained control over subsets: It uses the subsets specified during registration by default (if not specified during registration, it uses 'default'). For example, 'sharegpt-gpt4'. If subsets are specified, it uses the corresponding subset of the dataset. For example, 'sharegpt-gpt4:default/V3_format#2000'. Separated by '/'.
+  - More fine-grained control over subsets: It uses the subsets specified during registration by default (if not specified during registration, it uses 'default'). For example, 'sharegpt-gpt4'. If subsets are specified, it uses the corresponding subset of the dataset. For example, 'sharegpt-gpt4:default/V3_format#2000'. Here, the `default` and `V3_format` sub-datasets are used, separated by '/', and 2000 entries are selected.
   - Support for dataset_id. For example, 'AI-ModelScope/alpaca-gpt4-data-zh#2000', 'HF::llm-wizard/alpaca-gpt4-data-zh#2000', 'hurner/alpaca-gpt4-data-zh#2000', 'HF::shibing624/alpaca-zh#2000'. If the dataset_id has been registered, it will use the preprocessing function, subsets, split, etc. specified during registration. Otherwise, it will use `SmartPreprocessor`, support 5 dataset formats, and use 'default' subsets, with split set to 'train'. The supported dataset formats can be found in the [Customizing and Extending Datasets document](Customization.md#custom-dataset).
   - Support for dataset_path. For example, '1.jsonl#5000' (if it is a relative path, it is relative to the running directory).
 - `--val_dataset`: Specify separate validation datasets with the same format of the `dataset` argument, default is `[]`. If using `val_dataset`, the `dataset_test_ratio` will be ignored.
@@ -248,6 +249,19 @@ The following parameters take effect when `sft_type` is set to `ia3`.
 
 - `--ia3_feedforward_modules`: Specify the Linear name of IA3's MLP, this name must be in `ia3_target_modules`.
 
+### ReFT Fine-tuning Parameters
+
+The following parameters take effect when the `sft_type` is set to `reft`.
+
+> 1. ReFT tuner cannot be merged
+> 2. ReFT and gradient_checkpointing are not compatible
+> 3. If error happens when using ReFT and DeepSpeed, please uninstall DeepSpeed
+
+- `--reft_layers`: Specifies which layers ReFT is applied to; defaults to `None`, meaning all layers. You can input a list of layer numbers, for example: `--reft_layers 1 2 3 4`.
+- `--reft_rank`: The rank of the ReFT matrix; defaults to `4`.
+- `--reft_intervention_type`: The type of ReFT intervention, supporting 'NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention', 'LobireftIntervention', 'DireftIntervention', and 'NodireftIntervention'; defaults to `LoreftIntervention`.
+- `--reft_args`: Other supporting parameters in the ReFT intervention, provided in JSON string format.
+
 ## PT Parameters
 
 PT parameters inherit from the SFT parameters with some modifications to the default values:
@@ -288,6 +302,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--device_max_memory`: The max memory of each device can use for `device_map`, `List`, default is `[]`, The number of values must equal to the device count. Like `10GB 10GB`.
 - `--seed`: Default is `42`, see `sft command line arguments` for parameter details.
 - `--dtype`: Default is `'AUTO`, see `sft command line arguments` for parameter details.
+- `--model_kwargs`: Default is `None`, see `sft command line arguments` for parameter details.
 - `--dataset`: Default is `[]`, see `sft command line arguments` for parameter details.
 - `--val_dataset`: Default is `[]`, see `sft command line arguments` for parameter details.
 - `--dataset_seed`: Default is `None`, see `sft command line arguments` for parameter details.

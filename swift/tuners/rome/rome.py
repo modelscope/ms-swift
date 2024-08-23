@@ -82,7 +82,8 @@ class Rome(SwiftAdapter):
         def mark_trainable_callback(model):
             pass
 
-        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
+        return SwiftOutput(
+            config=config, state_dict_callback=state_dict_callback, mark_trainable_callback=mark_trainable_callback)
 
     @staticmethod
     def has_additional_modules():

@@ -139,6 +139,19 @@
         }
       },
       {
+        "name": "reft",
+        "requirements":{
+          "gpu": "1",
+          "ddp": "1"
+        },
+        "args": {
+          "sft_type": "reft",
+          "train_dataset_mix_ratio": 0.0,
+          "gradient_checkpointing": "false",
+          "use_loss_scale": false
+        }
+      },
+      {
         "name": "full+galore128+quantize",
         "requirements":{
           "gpu": "1",

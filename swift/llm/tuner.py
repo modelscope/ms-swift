@@ -7,11 +7,9 @@ import torch
 import transformers
 from packaging import version
 
-from swift.torchacc_utils import consolidate_checkpoint
 from swift.trainers import TrainerCallback
-from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LongLoRAModelType, LoraConfig,
-                          LoRAConfig, NEFTuneConfig, Swift, VeraConfig)
-from swift.tuners.llamapro import LLaMAProConfig
+from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
+                          LoraConfig, LoRAConfig, NEFTuneConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
@@ -65,6 +63,13 @@ def handle_modules_to_save(model, args: SftArguments) -> None:
 
 
 def prepare_model(model, args: SftArguments):
+    # This model_type is used to map the model structure
+    model_type = args.model_type or args.model_id_or_path
+    for key in MODEL_KEYS_MAPPING.keys():
+        if key in model_type.lower():
+            model_type = key
+            break
+
     # Preparing LoRA
     if is_adapter(args.sft_type):
         if args.resume_from_checkpoint is None:
@@ -87,6 +92,7 @@ def prepare_model(model, args: SftArguments):
                 'lorap_lr_ratio': args.lora_lr_ratio,
                 'init_lora_weights': args.init_lora_weights,
             }
+
             if args.sft_type in ('lora', 'longlora'):
                 # Fix the name of the layer in xcomposer that contains Plora.
                 if any(['lora_' in n for n, p in model.named_parameters()]):
@@ -145,12 +151,6 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, ia3_config)
                 logger.info(f'ia3_config: {ia3_config}')
             elif args.sft_type == 'llamapro':
-                model_type = args.model_type or args.model_id_or_path
-                for key in MODEL_KEYS_MAPPING.keys():
-                    if key in model_type.lower():
-                        model_type = key
-                        break
-
                 llamapro_config = LLaMAProConfig(
                     model_type=model_type,
                     num_new_blocks=args.llamapro_num_new_blocks,
@@ -158,12 +158,6 @@ def prepare_model(model, args: SftArguments):
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
             elif args.sft_type == 'adapter':
-                model_type = args.model_type or args.model_id_or_path
-                for key in MODEL_KEYS_MAPPING.keys():
-                    if key in model_type.lower():
-                        model_type = key
-                        break
-
                 assert model_type in MODEL_KEYS_MAPPING
                 mlp_key = MODEL_KEYS_MAPPING[model_type].mlp
                 mlp_key = mlp_key.split('.{}.')[1]
@@ -208,6 +202,16 @@ def prepare_model(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, fourier_config)
                 logger.info(f'fourier_config: {fourier_config}')
+            elif args.sft_type == 'reft':
+                reft_config = ReftConfig(
+                    model_type=model_type,
+                    r=args.reft_rank,
+                    layers=args.reft_layers,
+                    intervention_type=args.reft_intervention_type,
+                    args=args.reft_args,
+                )
+                logger.info(f'reft config: {reft_config}')
+                model = Swift.prepare_model(model, {'reft': reft_config})
         else:
             if use_torchacc():
                 model = Swift.from_pretrained(
@@ -233,11 +237,31 @@ def prepare_model(model, args: SftArguments):
         if len(args.additional_trainable_parameters) > 0:
             activate_model_parameters(model, args.additional_trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint is not None:
-            weights_file = os.path.join(args.resume_from_checkpoint, 'model.bin')
-            state_dict = torch.load(weights_file, map_location='cpu')
-            model.load_state_dict(state_dict, False)
-            # release memory
-            del state_dict
+            import safetensors
+            weights_file = os.path.join(args.resume_from_checkpoint, 'pytorch_model.bin')
+            safe_weights_file = os.path.join(args.resume_from_checkpoint, 'model.safetensors')
+            if os.path.isfile(weights_file) or os.path.isfile(safe_weights_file):
+                if args.save_safetensors and os.path.isfile(safe_weights_file):
+                    state_dict = safetensors.torch.load_file(safe_weights_file, device='cpu')
+                else:
+                    state_dict = torch.load(weights_file, map_location='cpu')
+                model.load_state_dict(state_dict, False)
+                del state_dict
+            else:
+                from transformers.modeling_utils import load_sharded_checkpoint
+                # We load the sharded checkpoint
+                load_result = load_sharded_checkpoint(
+                    model, args.resume_from_checkpoint, strict=False, prefer_safe=args.save_safetensors)
+                if len(load_result.missing_keys) != 0:
+                    if model._keys_to_ignore_on_save is not None and set(load_result.missing_keys) == set(
+                            model._keys_to_ignore_on_save):
+                        model.tie_weights()
+                    else:
+                        logger.warning(
+                            f'There were missing keys in the checkpoint model loaded: {load_result.missing_keys}.')
+                if len(load_result.unexpected_keys) != 0:
+                    logger.warning(
+                        f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
     else:
         raise ValueError(f'args.sft_type: {args.sft_type}')
 

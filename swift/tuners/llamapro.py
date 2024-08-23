@@ -93,25 +93,8 @@ class LLaMAPro(SwiftAdapter):
                 if any([m_part in name for m_part in new_module_list]):
                     parameter.requires_grad = True
 
-        return SwiftOutput(config, state_dict_callback, mark_trainable_callback)
-
-    @staticmethod
-    def _get_model_key_mapping(model_type, config) -> ModelKeys:
-        if model_type in MODEL_KEYS_MAPPING.keys():
-            model_key_mapping = MODEL_KEYS_MAPPING[model_type]
-        else:
-            model_key_mapping = config.model_key_mapping
-
-        if model_key_mapping is None:
-            raise ValueError(f'{model_type} is not defined in MODEL_KEYS_MAPPING, '
-                             f'please consider pass the information through the config.model_key_mapping')
-
-        if isinstance(model_key_mapping, dict):
-            model_key_mapping: ModelKeys = ModelKeys(**model_key_mapping)
-
-        assert model_key_mapping.o_proj is not None and model_key_mapping.down_proj is not None, \
-            'LLaMAPro only support models with o_proj and down_proj components.'
-        return model_key_mapping
+        return SwiftOutput(
+            config=config, state_dict_callback=state_dict_callback, mark_trainable_callback=mark_trainable_callback)
 
     @staticmethod
     def _update_module_attr(config: LLaMAProConfig, module_list):

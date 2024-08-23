@@ -39,10 +39,24 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 def is_adapter(sft_type: str) -> bool:
-    return sft_type in {'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft'}
+    return sft_type in {
+        'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
+    }
 
 
 class ArgumentsBase:
+
+    def __post_init__(self) -> None:
+        if self.max_length == -1:
+            self.max_length = None
+        model_kwargs = self.model_kwargs
+        if model_kwargs is None:
+            model_kwargs = {}
+        if isinstance(model_kwargs, str):
+            model_kwargs = json.loads(model_kwargs)
+        for k, v in model_kwargs.items():
+            k = k.upper()
+            os.environ[k] = str(v)
 
     @classmethod
     def _check_path(cls,
@@ -541,8 +555,8 @@ class ArgumentsBase:
             if key in {'dataset', 'val_dataset'} and len(value) > 0:
                 continue
             if key in {
-                    'dataset_test_ratio', 'system', 'quant_method', 'model_id_or_path', 'custom_register_path',
-                    'custom_dataset_info', 'dataset_seed'
+                    'system', 'quant_method', 'model_id_or_path', 'custom_register_path', 'custom_dataset_info',
+                    'dataset_seed'
             } and value is not None:
                 continue
             if key in {'template_type', 'dtype'} and value != 'AUTO':
@@ -564,8 +578,8 @@ class SftArguments(ArgumentsBase):
 
     full_determinism: bool = False
 
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
-                      'fourierft'] = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
+                      'reft'] = 'lora'
     freeze_parameters: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
@@ -589,6 +603,9 @@ class SftArguments(ArgumentsBase):
     pp: int = 1
     min_lr: Optional[float] = None
     sequence_parallel: bool = False
+
+    # multimodal
+    model_kwargs: Optional[str] = None
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
@@ -710,6 +727,14 @@ class SftArguments(ArgumentsBase):
     # lisa
     lisa_activated_layers: int = 0
     lisa_step_interval: int = 20
+
+    # reft
+    reft_layers: Optional[List[int]] = None
+    reft_rank: int = 4
+    reft_intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
+                                    'LobireftIntervention', 'DireftIntervention',
+                                    'NodireftIntervention'] = 'LoreftIntervention'
+    reft_args: Optional[str] = None
 
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
@@ -879,6 +904,7 @@ class SftArguments(ArgumentsBase):
         return modules_to_save
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         self.handle_compatibility()
         if len(self.val_dataset) > 0:
             self.dataset_test_ratio = 0.0
@@ -1030,8 +1056,6 @@ class SftArguments(ArgumentsBase):
                 self.eval_batch_size = self.batch_size
         if self.save_total_limit == -1:
             self.save_total_limit = None
-        if self.max_length == -1:
-            self.max_length = None
 
         if self.deepspeed is not None:
             if is_mp():
@@ -1266,6 +1290,9 @@ class InferArguments(ArgumentsBase):
     seed: int = 42
     dtype: Literal['bf16', 'fp16', 'fp32', 'AUTO'] = 'AUTO'
 
+    # multimodal
+    model_kwargs: Optional[str] = None
+
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
@@ -1353,6 +1380,7 @@ class InferArguments(ArgumentsBase):
     vllm_lora_modules: List[str] = None
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
             logger.warning(f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
                            'the dir contains a `configuration.json` file.')
@@ -1409,8 +1437,6 @@ class InferArguments(ArgumentsBase):
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
-        if self.max_length == -1:
-            self.max_length = None
         if self.overwrite_generation_config is None:
             if self.ckpt_dir is None:
                 self.overwrite_generation_config = False
@@ -1507,9 +1533,6 @@ class DeployArguments(InferArguments):
     owned_by: str = 'swift'
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 10  # Interval for printing global statistics
-
-    def __post_init__(self):
-        super().__post_init__()
 
 
 @dataclass

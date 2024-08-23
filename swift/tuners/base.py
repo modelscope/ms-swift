@@ -64,6 +64,8 @@ class SwiftModel(nn.Module):
                 for part in all_parts:
                     self.activate_adapter(part)
                 new_adapters.append(DEFAULT_ADAPTER)
+                if self.adapters[DEFAULT_ADAPTER].model is not None:
+                    self.base_model = self.adapters[DEFAULT_ADAPTER].model
             else:
                 logger.warn(f'Adapter {DEFAULT_ADAPTER} has been patched, skip.')
         elif isinstance(config, dict):
@@ -75,6 +77,8 @@ class SwiftModel(nn.Module):
                     for part in all_parts:
                         self.activate_adapter(part)
                     new_adapters.append(adapter_name)
+                    if self.adapters[adapter_name].model is not None:
+                        self.base_model = self.adapters[adapter_name].model
                 else:
                     logger.warn(f'Adapter {adapter_name} has been patched, skip.')
 
@@ -347,9 +351,13 @@ class SwiftModel(nn.Module):
         for _name in adapter_name if isinstance(adapter_name,
                                                 list) else [adapter_name] \
                 if isinstance(adapter_name, str) else adapter_name.keys():
-            sub_folder = os.path.join(model_dir, _name)
-            state_dict = cls.load_state_file(sub_folder)
             _adapter = _name if not isinstance(adapter_name, dict) else adapter_name[_name]
+            output: SwiftOutput = self.adapters[_adapter]
+            sub_folder = os.path.join(model_dir, _name)
+            if output.load_callback:
+                output.load_callback(self, sub_folder, _adapter)
+                continue
+            state_dict = cls.load_state_file(sub_folder)
             if state_dict is not None:
                 model_is_qlora = len([
                     k for k in self.state_dict().keys()
@@ -568,24 +576,31 @@ class SwiftModel(nn.Module):
         for adapter_name, output in self.adapters.items():
             if adapter_names is not None and adapter_name not in adapter_names:
                 continue
+
             save_to_peft = peft_format and output.config.swift_type == SwiftTuners.LORA
             save_to_peft = save_to_peft and output.config.can_be_saved_to_peft()
             if peft_format and not save_to_peft:
                 logger.error('You are using additional lora parameters, which is not compatible with peft,'
                              'which is unable to save to peft format.')
-            # save only the trainable weights
-            output_state_dict = self.state_dict(
-                adapter_name=adapter_name, save_extra_states=False, peft_format=save_to_peft, **state_dict_kwargs)
             output_dir = os.path.join(save_directory,
                                       adapter_name) if adapter_name != 'default' or not save_to_peft else save_directory
-            os.makedirs(output_dir, exist_ok=True)
-            if output_state_dict and output.config.has_additional_modules:
-                self._save_state_dict(output_state_dict, output_dir, safe_serialization)
+
             if save_to_peft:
                 config = output.config.to_peft_config()
                 config.save_pretrained(output_dir)
             else:
                 output.config.save_pretrained(output_dir)
+
+            if output.save_callback:
+                output.save_callback(self, output_dir, adapter_name)
+                continue
+
+            # save only the trainable weights
+            output_state_dict = self.state_dict(
+                adapter_name=adapter_name, save_extra_states=False, peft_format=save_to_peft, **state_dict_kwargs)
+            os.makedirs(output_dir, exist_ok=True)
+            if output_state_dict and output.config.has_additional_modules:
+                self._save_state_dict(output_state_dict, output_dir, safe_serialization)
 
         output_state_dict = self.state_dict(save_extra_states=True, save_adapter=False, **state_dict_kwargs)
         if len(output_state_dict) > 0:

@@ -12,10 +12,10 @@ from swift.utils import get_logger
 from .media import MediaTag
 from .template import History
 
-PreprocessFunc = Callable[[HfDataset], HfDataset]
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
+PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 
 logger = get_logger()
 
@@ -250,7 +250,11 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 assert q[self.from_key] in [self.user_role, self.tool_role]
                 assert r[self.from_key] == self.assistant_role
                 h.append([q[self.value_key], r[self.value_key]])
-                hr.append([q[self.from_key], r[self.from_key]])
+                _q_role = q[self.from_key]
+                _r_role = r[self.from_key]
+                _q_role = _q_role if _q_role == 'tool' else 'user'
+                _r_role = _r_role if _r_role == 'tool' else 'assistant'
+                hr.append([_q_role, _r_role])
             query = conversations[-2][self.value_key]
             query_role = conversations[-2][self.from_key]
             query_role = query_role if query_role == 'tool' else 'user'
