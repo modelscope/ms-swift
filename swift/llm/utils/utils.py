@@ -236,6 +236,8 @@ class ConstantLengthDataset(IterableDataset):
             sequences = []
             for example in buffer:
                 input, _ = self.template.encode(example)
+                if not input:
+                    continue
                 sequences.append((input, len(input['input_ids'])))
 
             packed_sequences = self.calculate_matched_group(sequences)
