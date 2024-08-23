@@ -156,9 +156,8 @@ class DatasetName:
     coco_en_2 = 'coco-en-2'
     coco_en_2_mini = 'coco-en-2-mini'
     capcha_images = 'capcha-images'
-    latex_ocr_print_mini = 'latex-ocr-print-mini'
+    latex_ocr_print = 'latex-ocr-print'
     latex_ocr_handwrite = 'latex-ocr-handwrite'
-    latex_ocr_handwrite_mini = 'latex-ocr-handwrite-mini'
     # for qwen-audio
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
@@ -2049,7 +2048,7 @@ def _preprocess_latex_ocr_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
 
 
 register_dataset(
-    DatasetName.latex_ocr_print_mini,
+    DatasetName.latex_ocr_print,
     'AI-ModelScope/LaTeX_OCR',
     ['full'],
     _preprocess_latex_ocr_dataset,
@@ -2066,16 +2065,6 @@ register_dataset(
     split=['train', 'validation', 'test'],
     hf_dataset_id='linxy/LaTeX_OCR',
     tags=['chat', 'ocr', 'multi-modal', 'vision'])
-
-register_dataset(
-    DatasetName.latex_ocr_handwrite_mini,
-    'AI-ModelScope/LaTeX_OCR', ['synthetic_handwrite'],
-    _preprocess_latex_ocr_dataset,
-    get_dataset_from_repo,
-    split=['validation', 'test'],
-    hf_dataset_id='linxy/LaTeX_OCR',
-    tags=['chat', 'ocr', 'multi-modal', 'vision'])
-
 
 def _preprocess_capcha_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     from datasets import Image
