@@ -29,6 +29,8 @@ def init_megatron_env() -> None:
         megatron_patch_path = git_clone_github(
             'https://github.com/alibaba/Pai-Megatron-Patch', commit_hash='6fd5d050b240fd959f0ba69f1e9cd9a053e5a81d')
         os.environ['PAI_MEGATRON_PATCH_PATH'] = megatron_patch_path
+    else:
+        megatron_patch_path = os.environ['PAI_MEGATRON_PATCH_PATH']
     sys.path.append(os.environ['PAI_MEGATRON_PATCH_PATH'])
 
     # rename qwen1.5->qwen1_5 files
