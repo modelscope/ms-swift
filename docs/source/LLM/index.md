@@ -1,6 +1,6 @@
 ## LLM文档
 
-[English Documentation](https://swift.readthedocs.io/en/latest/)
+[English Documentation](https://swift.readthedocs.io/en/latest/LLM/index.html)
 
 ### 📚教程
 
