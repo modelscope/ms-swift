@@ -1747,7 +1747,7 @@ class InternvlTemplate(Template):
         if images:
             labels = inputs.get('labels')
             input_size = get_env_args('input_size', int, 448)
-            max_num = get_env_args('max_num', int, 1 if has_video else 12)
+            max_num = get_env_args('max_num', int, 12)
             pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
             pixel_values = torch.cat(pixel_values_images, dim=0).to(self.model.dtype)
             image_bs = pixel_values.shape[0]
@@ -1953,7 +1953,7 @@ class FlorenceTemplate(Template):
         images = example.get('images') or []
         assert len(images) == 1, 'Florence series models only supports input with a single image.'
         input_size = get_env_args('input_size', int, 448)
-        max_num = get_env_args('max_num', int, 1 if has_video else 12)
+        max_num = get_env_args('max_num', int, 12)
         image_tensors = transform_image(images[0], input_size, max_num)
         example['_image'] = image_tensors
 
