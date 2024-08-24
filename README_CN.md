@@ -57,7 +57,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 ## 🎉 新闻
 - 🔥2024.08.22: 支持[ReFT](https://github.com/stanfordnlp/pyreft), 该tuner可以以LoRA的1/15~1/65的参数量达到和LoRA匹配或更好的效果, 使用`--sft_type reft`开始训练!
-- 2024.08.21: 支持phi3_5-mini-instruct, phi3_5-moe-instruct, phi3_5-vision-instruct.
+- 🔥2024.08.21: 支持phi3_5-mini-instruct, phi3_5-moe-instruct, phi3_5-vision-instruct. 使用phi3_5-vision-instruct进行Latex OCR微调的最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1809).
 - 2024.08.21: 支持idefics3-8b-llama3, llava-onevision-qwen2-0_5b-ov, llava-onevision-qwen2-7b-ov, llava-onevision-qwen2-72b-ov.
 - 🔥2024.08.20: 支持使用deepspeed-zero3对多模态大模型进行微调.
 - 2024.08.20: 支持模型: longwriter-glm4-9b, longwriter-llama3_1-8b. 支持数据集: longwriter-6k.

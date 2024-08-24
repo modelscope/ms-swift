@@ -156,6 +156,8 @@ class DatasetName:
     coco_en_2 = 'coco-en-2'
     coco_en_2_mini = 'coco-en-2-mini'
     capcha_images = 'capcha-images'
+    latex_ocr_print = 'latex-ocr-print'
+    latex_ocr_handwrite = 'latex-ocr-handwrite'
     # for qwen-audio
     aishell1_zh = 'aishell1-zh'
     aishell1_zh_mini = 'aishell1-zh-mini'
@@ -747,7 +749,10 @@ def _preprocess_vision_dataset2(dataset: DATASET_TYPE) -> DATASET_TYPE:
         response = d[response_key]
         return {'query': query * len(response), 'response': response, 'images': images}
 
-    return dataset.map(_process)
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(_process, **kwargs)
 
 
 register_dataset(
@@ -861,6 +866,7 @@ register_dataset(
     _preprocess_video_chatgpt,
     get_dataset_from_repo,
     split=['test'],
+    hf_dataset_id='lmms-lab/VideoChatGPT',
     tags=['chat', 'multi-modal', 'video', '🔥'])
 
 
@@ -1784,7 +1790,7 @@ def preprocess_science_qa(dataset: DATASET_TYPE):
         query = row['question']
         response = row['choices'][row['answer']]
         solution = row['solution']
-        return {'query': query, 'response': f'{solution}\nSo the final answer is:{response}'}
+        return {'query': query, 'response': f'{solution}\nSo the final answer is: {response}'}
 
     kwargs = {}
     if not isinstance(dataset, HfIterableDataset):
@@ -2028,16 +2034,48 @@ register_dataset(
     tags=['chat', 'general', 'multi-round'])
 
 
+def _preprocess_latex_ocr_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    from datasets import Image
+    prompt = 'Using LaTeX to perform OCR on the image.'
+
+    def _process(d):
+        return {'query': prompt, 'response': d['text']}
+
+    kwargs = {}
+    if not isinstance(dataset, HfIterableDataset):
+        kwargs['load_from_cache_file'] = dataset_enable_cache
+    return dataset.map(_process, **kwargs).rename_column('image', 'images')
+
+
+register_dataset(
+    DatasetName.latex_ocr_print,
+    'AI-ModelScope/LaTeX_OCR',
+    ['full'],
+    _preprocess_latex_ocr_dataset,
+    get_dataset_from_repo,
+    split=['validation', 'test'],  # There are some problems in the training dataset.
+    hf_dataset_id='linxy/LaTeX_OCR',
+    tags=['chat', 'ocr', 'multi-modal', 'vision'])
+
+register_dataset(
+    DatasetName.latex_ocr_handwrite,
+    'AI-ModelScope/LaTeX_OCR', ['synthetic_handwrite'],
+    _preprocess_latex_ocr_dataset,
+    get_dataset_from_repo,
+    split=['train', 'validation', 'test'],
+    hf_dataset_id='linxy/LaTeX_OCR',
+    tags=['chat', 'ocr', 'multi-modal', 'vision'])
+
+
 def _preprocess_capcha_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     from datasets import Image
     query = 'recognize the content.'
-    image_key = 'image'
     response_key = 'solution'
 
     def _process(d):
-        return {'query': query * len(d[response_key]), 'response': d[response_key], 'images': [d[image_key]]}
+        return {'query': query * len(d[response_key]), 'response': d[response_key]}
 
-    return dataset.map(_process).cast_column('image', Image(decode=True))
+    return dataset.map(_process).rename_column('image', 'images')
 
 
 register_dataset(

@@ -4287,7 +4287,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
         @wraps(_old_func)
         def _new_func(self, *args, **kwargs):
-            res = _old_func(self, *args, **kwargs)
+            res = _old_func(getattr(self, submodel_name), *args, **kwargs)
             if func_name == 'forward':
                 device = find_device(args)
                 if device is None:
@@ -4298,12 +4298,9 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
         return _new_func
 
     for key in func_list:
-        value = MethodType(_get_new_func(key), submodel)
-        setattr(model, key, value)
+        setattr(model, key, MethodType(_get_new_func(key), model))
         if key == 'generate' and model.device != submodel.device:
             submodel.__class__.device = model.device
-        if key == 'forward' and 'generate' in func_list:
-            setattr(submodel, key, value)
 
 
 @register_model(

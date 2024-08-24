@@ -100,7 +100,8 @@ def _from_base64(img_base64: Union[str, 'PIL.Image.Image'], tmp_dir: str = 'tmp'
     sha256_hash = hashlib.sha256(img_base64.encode('utf-8')).hexdigest()
     img_path = os.path.join(tmp_dir, f'{sha256_hash}.png')
     image = Image.open(BytesIO(base64.b64decode(img_base64)))
-    image.save(img_path)
+    if not os.path.exists(img_path):
+        image.save(img_path)
     return img_path
 
 
