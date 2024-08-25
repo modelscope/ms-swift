@@ -16,7 +16,7 @@ def test_eval_vlm():
 def test_pt():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     from swift.llm import pt_main, PtArguments
-    pt_main(PtArguments(model_type='qwen-1_8b-chat', dataset='alpaca-zh', sft_type='lora', tuner_backend='swift'))
+    pt_main(PtArguments(model_type='qwen-1_8b-chat', dataset='alpaca-zh#100', sft_type='lora', tuner_backend='swift'))
 
 
 def test_vlm_sft():
