@@ -1024,7 +1024,7 @@ class SftArguments(ArgumentsBase):
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
             if self.use_loss_scale:
-                logger.warn(f'use_liger is not compatible with `use_loss_scale`, setting to False...')
+                logger.warn('use_liger is not compatible with `use_loss_scale`, setting to False...')
                 self.use_loss_scale = False
 
         # compatibility
