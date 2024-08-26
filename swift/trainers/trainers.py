@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from peft import PeftModel
 from torch import Tensor, nn
-from torch.nn import CrossEntropyLoss
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
@@ -18,6 +17,7 @@ from transformers.utils import is_peft_available
 from swift.torchacc_utils import ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader, ta_trim_graph
 from swift.utils import use_torchacc
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
+from .loss import get_loss_func
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 
@@ -147,20 +147,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     @staticmethod
     def compute_scaled_loss(labels: torch.Tensor, lm_logits: torch.Tensor, loss_scale: torch.Tensor) -> torch.Tensor:
-        device = lm_logits.device
-        # Shift so that tokens < n predict n
-        shift_logits = lm_logits[..., :-1, :]
-        shift_labels = labels[..., 1:]
-        shift_scale = loss_scale[..., 1:]
-        # Save memory
-        masks = shift_labels != -100
-        shift_logits = shift_logits[masks]
-        shift_labels = shift_labels[masks].to(device)
-        shift_scale = shift_scale[masks].to(device)
-        # Flatten the tokens
-        loss_fct = CrossEntropyLoss(reduction='none')
-        loss = loss_fct(shift_logits, shift_labels)
-        loss = shift_scale * loss
+
         return loss.mean()
 
     def compute_loss(self, model, inputs, return_outputs=None):
@@ -168,17 +155,21 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self._custom_metrics = {}
 
         labels = None
-        loss_scale = None
-        if 'loss_scale' in inputs:
-            labels = inputs.pop('labels')
-            loss_scale = inputs.pop('loss_scale')
+        loss_func = get_loss_func(self.args.loss_name)
+        if loss_func is None and 'loss_scale' in inputs:
+            loss_func = 'loss-scale'
 
-        if self.label_smoother is not None and 'labels' in inputs:
+        loss_kwargs = {}
+        if loss_func == 'loss-scale':
+            loss_kwargs['loss_scale'] = inputs.pop('loss_scale')
+
+        if loss_func is not None or self.label_smoother is not None and 'labels' in inputs:
             labels = inputs.pop('labels')
 
+        loss_kwargs['labels'] = labels
         outputs = model(**inputs)
-        if loss_scale is not None:
-            outputs['loss'] = self.compute_scaled_loss(labels, outputs.logits, loss_scale)
+        if loss_func is not None:
+            outputs['loss'] = loss_func(outputs, **loss_kwargs)
 
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
