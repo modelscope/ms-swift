@@ -46,8 +46,11 @@ def ce_loss_func(outputs, labels):
 
 @register_loss_func(LossName.long_ce)
 def long_ce_loss_func(outputs, labels) -> torch.Tensor:
+    # The weight of long texts is higher.
+    beta = 2048
+
     loss = ce_loss_func(outputs, labels)
-    loss = loss.sum() / 2048
+    loss = loss.sum() / beta
     return loss
 
 
