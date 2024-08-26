@@ -307,7 +307,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--val_dataset`: Default is `[]`, see `sft command line arguments` for parameter details.
 - `--dataset_seed`: Default is `None`, see `sft command line arguments` for parameter details.
 `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft command line arguments`.
-- `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
+- `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `-1`.
 - `--system`: Default is `None`. See `sft command line arguments` for parameter details.
 - `--tools_prompt`: Default is `react_en`. See `sft command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft command line arguments` for parameter details.

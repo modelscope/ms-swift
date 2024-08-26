@@ -1288,7 +1288,7 @@ class InferArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
-    show_dataset_sample: int = 10
+    show_dataset_sample: int = -1
     save_result: bool = True
     system: Optional[str] = None
     tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'

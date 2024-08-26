@@ -247,7 +247,6 @@ print(f'history: {history}')
 
 使用**数据集**评估:
 ```bash
-# 如果要推理所有数据集样本, 请额外指定`--show_dataset_sample -1`
 # 直接推理
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \
