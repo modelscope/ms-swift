@@ -604,8 +604,7 @@ class SftArguments(ArgumentsBase):
 
     # multimodal
     model_kwargs: Optional[str] = None
-    loss_name: str = field(
-        default='AUTO', metadata={'help': f"loss_func choices: {list(LOSS_MAPPING.keys()) + ['AUTO']}"})
+    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(

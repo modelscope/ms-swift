@@ -150,20 +150,21 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             self._custom_metrics = {}
 
         labels = None
-        loss_func = get_loss_func(self.args.loss_name)
-        if loss_func is None and 'loss_scale' in inputs:
-            loss_func = 'loss-scale'
+        loss_name = self.args.loss_name
+        if loss_name is None and 'loss_scale' in inputs:
+            loss_name = 'loss-scale'
 
         loss_kwargs = {}
-        if loss_func == 'loss-scale':
+        if loss_name == 'loss-scale':
             loss_kwargs['loss_scale'] = inputs.pop('loss_scale')
 
-        if loss_func is not None or self.label_smoother is not None and 'labels' in inputs:
+        if loss_name is not None or self.label_smoother is not None and 'labels' in inputs:
             labels = inputs.pop('labels')
 
         loss_kwargs['labels'] = labels
         outputs = model(**inputs)
-        if loss_func is not None:
+        if loss_name is not None:
+            loss_func = get_loss_func(loss_name)
             outputs['loss'] = loss_func(outputs, **loss_kwargs)
 
         # Save past state if it exists
@@ -171,7 +172,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
 
-        if labels is not None and loss_func is None:
+        if labels is not None and loss_name is None:
             unwrapped_model = unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.base_model.model._get_name()

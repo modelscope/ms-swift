@@ -76,7 +76,7 @@ def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
     return loss
 
 
-def get_loss_func(loss_name: str) -> Optional[Callable]:
-    if loss_name.lower() == 'auto':
+def get_loss_func(loss_name: Optional[str]) -> Optional[Callable]:
+    if loss_name is None:
         return None
     return LOSS_MAPPING[loss_name]['loss_func']

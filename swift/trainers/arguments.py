@@ -21,8 +21,7 @@ class SwiftArgumentsMixin:
     push_hub_strategy: str = field(
         default='push_best', metadata={'choices': {'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'}})
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
-    loss_name: str = field(
-        default='AUTO', metadata={'help': f"loss_func choices: {list(LOSS_MAPPING.keys()) + ['AUTO']}"})
+    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     additional_saved_files: Optional[List[str]] = None
     # torchacc
     metric_warmup_step: Optional[float] = 0
