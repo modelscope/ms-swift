@@ -633,7 +633,6 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             adapter_kwargs['adapter_names'] = [adapter_names]
         elif _args.use_dora:
             assert request.model == 'default-lora', 'Dora only support default-lora'
-            pass
         elif isinstance(model, PeftModel):
             adapter_kwargs['adapter_names'] = ['-']  # use base model
 
