@@ -759,7 +759,7 @@ class SftArguments(ArgumentsBase):
 
     eval_steps: Optional[int] = None  # full: 200, other: 50
     save_steps: Optional[int] = None
-    save_only_model: Optional[bool] = None
+    save_only_model: bool = False
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
     acc_steps: int = 1
@@ -995,11 +995,6 @@ class SftArguments(ArgumentsBase):
                     f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
-            if self.save_only_model is None:
-                if self.deepspeed is not None and version.parse(transformers.__version__) < version.parse('4.37'):
-                    self.save_only_model = True
-                else:
-                    self.save_only_model = False
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
@@ -1011,12 +1006,6 @@ class SftArguments(ArgumentsBase):
                 self.additional_trainable_parameters = [self.additional_trainable_parameters]
             if self.learning_rate is None:
                 self.learning_rate = 1e-5
-            if self.save_only_model is None:
-                self.save_only_model = True
-                logger.warning(
-                    'Due to the adoption of full-parameter training, '
-                    'in order to avoid saving excessive weights, we set save_only_model to True. '
-                    'If you want to resume training from a checkpoint, please manually pass `--save_only_model false`.')
             if self.eval_steps is None:
                 self.eval_steps = 200
         else:

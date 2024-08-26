@@ -100,7 +100,7 @@
 - `--warmup_steps`: The number of warmup steps, default is `0`. If warmup_steps > 0 is set, it overrides warmup_ratio.
 - `--eval_steps`: Evaluate every this many steps, default is `50`.
 - `--save_steps`: Save every this many steps, default is `None`, i.e. set to `eval_steps`.
-- `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `None`, i.e. if `sft_type` is 'lora' and not using deepspeed (`deepspeed` is `None`), set to False, otherwise set to True (e.g. using full fine-tuning or deepspeed).
+- `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `False`.
 - `--save_total_limit`: Number of checkpoints to save, default is `2`, i.e. save best and last checkpoint. If set to -1, save all checkpoints.
 - `--logging_steps`: Print training information (e.g. loss, learning_rate, etc.) every this many steps, default is `5`.
 - `--dataloader_num_workers`: Default value is `None`. If running on a Windows machine, set it to `0`; otherwise, set it to `1`.
