@@ -62,7 +62,29 @@ def handle_modules_to_save(model, args: SftArguments) -> None:
     logger.info(f'modules_to_save: {args.modules_to_save}')
 
 
+def apply_liger(model_type: str):
+    from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
+                                           apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
+                                           apply_liger_kernel_to_qwen2)
+    if 'llama3' in model_type:
+        apply_liger_kernel_to_llama()
+    elif 'mistral' in model_type:
+        apply_liger_kernel_to_mistral()
+    elif 'mixtral' in model_type:
+        apply_liger_kernel_to_mixtral()
+    elif 'gemma' in model_type:
+        apply_liger_kernel_to_gemma()
+    elif 'qwen2' in model_type:
+        apply_liger_kernel_to_qwen2()
+    else:
+        raise ValueError(f'Unsupported liger model_type: {model_type}')
+
+
 def prepare_model(model, args: SftArguments):
+    if args.use_liger:
+        # Apply liger
+        apply_liger(args.model_type)
+
     # This model_type is used to map the model structure
     model_type = args.model_type or args.model_id_or_path
     for key in MODEL_KEYS_MAPPING.keys():

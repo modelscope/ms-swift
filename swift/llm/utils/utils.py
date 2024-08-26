@@ -935,6 +935,10 @@ def is_lmdeploy_available():
     return importlib.util.find_spec('lmdeploy') is not None
 
 
+def is_liger_available():
+    return importlib.util.find_spec('liger_kernel') is not None
+
+
 def is_xtuner_available():
     return importlib.util.find_spec('xtuner') is not None
 
