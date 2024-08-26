@@ -319,6 +319,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     elif not args.lazy_tokenize:
         dataset_info = {}
         if not streaming:
+            if args.preprocess_num_proc > 1:
+                use_model = TEMPLATE_MAPPING[args.template_type].get('use_model', False)
+                if use_model:
+                    args.preprocess_num_proc = 1
+                    logger.warning('The current Template does not support num_proc. '
+                                   f'Setting args.preprocess_num_proc to: {args.preprocess_num_proc}')
+                else:
+                    template.model = None
             logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
         if val_dataset is not None:
