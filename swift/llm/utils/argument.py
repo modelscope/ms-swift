@@ -32,7 +32,7 @@ from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
-from .utils import is_lmdeploy_available, is_quant_model, is_vllm_available
+from .utils import is_liger_available, is_lmdeploy_available, is_quant_model, is_vllm_available
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -734,6 +734,9 @@ class SftArguments(ArgumentsBase):
                                     'NodireftIntervention'] = 'LoreftIntervention'
     reft_args: Optional[str] = None
 
+    # use_liger
+    use_liger: bool = False
+
     gradient_checkpointing: Optional[bool] = None
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero2-offload', 'zero3-offload'
     deepspeed: Optional[str] = None
@@ -1017,6 +1020,12 @@ class SftArguments(ArgumentsBase):
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
+
+        if self.use_liger:
+            assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
+            if self.use_loss_scale:
+                logger.warn('use_liger is not compatible with `use_loss_scale`, setting to False...')
+                self.use_loss_scale = False
 
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:

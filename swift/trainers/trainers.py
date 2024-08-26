@@ -206,10 +206,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
         if self.is_encoder_decoder:
-            preds = outputs.logits.argmax(dim=2)[..., :]
+            preds = outputs.logits.argmax(dim=2)[..., :] if outputs.logits is not None else None
             labels = labels[..., :]
         else:
-            preds = outputs.logits.argmax(dim=2)[..., :-1]
+            preds = outputs.logits.argmax(dim=2)[..., :-1] if outputs.logits is not None else None
             labels = labels[..., 1:]
 
         masks = labels != -100
@@ -217,7 +217,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         acc: Optional[Tensor] = None
         sft_args = getattr(self, 'sft_args', None)
         acc_steps = 1 if sft_args is None else sft_args.acc_steps
-        if self.state.global_step % acc_steps == 0:
+        if self.state.global_step % acc_steps == 0 and preds is not None:
             if preds.shape != labels.shape:
                 pass
             elif acc_strategy == 'sentence':

@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 🔥2024.08.26: Support [Liger](https://github.com/linkedin/Liger-Kernel), which supports models like LLaMA、Qwen、Mistral and so on, and reduce memory usage by 10%~60%, use `--use_liger true` to begin.
 - 🔥2024.08.22: Support `reft` tuner from [ReFT](https://github.com/stanfordnlp/pyreft) to achieve 15×–65× more parameter-efficient than LoRA, use `--sft_type reft` to begin!
 - 🔥2024.08.21: Support for phi3_5-mini-instruct, phi3_5-moe-instruct, and phi3_5-vision-instruct. The best practices for fine-tuning Latex OCR using phi3_5-vision-instruct can be found [here](https://github.com/modelscope/ms-swift/issues/1809).
 - 2024.08.21: Support for idefics3-8b-llama3, llava-onevision-qwen2-0_5b-ov, llava-onevision-qwen2-7b-ov, and llava-onevision-qwen2-72b-ov.
