@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .orpo_trainer import ORPOTrainer
     from .rlhf_trainers import RLHFTrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
+    from .loss import LOSS_MAPPING, LossName, register_loss_func, get_loss_func
     from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
                         ShardedDDPOption, TrainerCallback, build_tokenized_answer, concat_template, sort_by_max_length)
 else:
@@ -18,6 +19,7 @@ else:
         'orpo_trainer': ['ORPOTrainer'],
         'rlhf_trainers': ['RLHFTrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
+        'loss': ['LOSS_MAPPING', 'LossName', 'register_loss_func', 'get_loss_func'],
         'utils': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
             'ShardedDDPOption', 'TrainerCallback', 'build_tokenized_answer', 'concat_template'

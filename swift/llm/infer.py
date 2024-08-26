@@ -465,7 +465,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
         logger.info(f'val_dataset: {val_dataset}')
 
         if args.verbose is None:
-            if len(val_dataset) >= 100:
+            if len(val_dataset) >= 20:
                 args.verbose = False
             else:
                 args.verbose = True

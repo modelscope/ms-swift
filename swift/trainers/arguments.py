@@ -10,6 +10,7 @@ from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq
 from transformers.utils import is_accelerate_available
 
 from swift.utils import is_dist, use_torchacc
+from .loss import LOSS_MAPPING
 
 
 @dataclass
@@ -20,7 +21,9 @@ class SwiftArgumentsMixin:
     push_hub_strategy: str = field(
         default='push_best', metadata={'choices': {'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'}})
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
+    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     additional_saved_files: Optional[List[str]] = None
+    # torchacc
     metric_warmup_step: Optional[float] = 0
     train_dataset_sample: Optional[int] = -1
 

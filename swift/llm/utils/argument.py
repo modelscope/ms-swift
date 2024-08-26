@@ -21,7 +21,7 @@ from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_availa
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
-from swift.trainers import Seq2SeqTrainingArguments
+from swift.trainers import LOSS_MAPPING, Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
@@ -604,6 +604,7 @@ class SftArguments(ArgumentsBase):
 
     # multimodal
     model_kwargs: Optional[str] = None
+    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
@@ -1200,6 +1201,7 @@ class SftArguments(ArgumentsBase):
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
             seed=self.seed,
+            loss_name=self.loss_name,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
