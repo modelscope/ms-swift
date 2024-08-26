@@ -44,14 +44,24 @@ def ce_loss_func(outputs, labels):
     return loss
 
 
-@register_loss_func(LossName.long_ce)
-def long_ce_loss_func(outputs, labels) -> torch.Tensor:
-    # The weight of long texts is higher.
-    beta = 2048
+class LongCrossEntropy:
+    """Assign higher weight to long text."""
 
-    loss = ce_loss_func(outputs, labels)
-    loss = loss.sum() / beta
-    return loss
+    def __init__(self, length_smooth: float = 0.9):
+        self._s_length = 0
+        self._norm_factor = 0
+        self._smoothing = length_smooth
+
+    def __call__(self, outputs, labels) -> torch.Tensor:
+        # moving average
+        loss = ce_loss_func(outputs, labels)
+        self._s_length = self._s_length * self._smoothing + loss.shape[0]
+        self._norm_factor = self._norm_factor * self._smoothing + 1
+        loss = loss.sum() / (self._s_length / self._norm_factor)
+        return loss
+
+
+register_loss_func(LossName.long_ce, LongCE())
 
 
 @register_loss_func(LossName.loss_scale)
