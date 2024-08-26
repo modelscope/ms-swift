@@ -586,8 +586,6 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
 
     if jsonl_path is not None:
         logger.info(f'save_result_path: {jsonl_path}')
-    if not args.eval_human and args.show_dataset_sample == 10:  # is default
-        logger.info('You can set `--show_dataset_sample -1` to perform inference on the entire dataset.')
     return {'result': result}
 
 

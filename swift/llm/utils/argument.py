@@ -735,7 +735,7 @@ class SftArguments(ArgumentsBase):
     reft_args: Optional[str] = None
 
     gradient_checkpointing: Optional[bool] = None
-    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero2-offload', 'zero3-offload'
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -759,7 +759,7 @@ class SftArguments(ArgumentsBase):
 
     eval_steps: Optional[int] = None  # full: 200, other: 50
     save_steps: Optional[int] = None
-    save_only_model: Optional[bool] = None
+    save_only_model: bool = False
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
     acc_steps: int = 1
@@ -913,7 +913,8 @@ class SftArguments(ArgumentsBase):
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
             'default-zero3': 'zero3.json',
-            'zero3-offload': 'zero3_offload.json'
+            'zero2-offload': 'zero2_offload.json',
+            'zero3-offload': 'zero3_offload.json',
         }
         for ds_name, ds_config in deepspeed_mapping.items():
             if self.deepspeed == ds_name:
@@ -994,11 +995,6 @@ class SftArguments(ArgumentsBase):
                     f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
-            if self.save_only_model is None:
-                if self.deepspeed is not None and version.parse(transformers.__version__) < version.parse('4.37'):
-                    self.save_only_model = True
-                else:
-                    self.save_only_model = False
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
@@ -1010,12 +1006,6 @@ class SftArguments(ArgumentsBase):
                 self.additional_trainable_parameters = [self.additional_trainable_parameters]
             if self.learning_rate is None:
                 self.learning_rate = 1e-5
-            if self.save_only_model is None:
-                self.save_only_model = True
-                logger.warning(
-                    'Due to the adoption of full-parameter training, '
-                    'in order to avoid saving excessive weights, we set save_only_model to True. '
-                    'If you want to resume training from a checkpoint, please manually pass `--save_only_model false`.')
             if self.eval_steps is None:
                 self.eval_steps = 200
         else:
@@ -1298,7 +1288,7 @@ class InferArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
-    show_dataset_sample: int = 10
+    show_dataset_sample: int = -1
     save_result: bool = True
     system: Optional[str] = None
     tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'

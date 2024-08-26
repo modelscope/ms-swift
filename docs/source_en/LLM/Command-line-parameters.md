@@ -81,7 +81,7 @@
 - `--neftune_noise_alpha`: The noise coefficient added by `NEFTune` can improve performance of instruction fine-tuning, default is `None`. Usually can be set to 5, 10, 15. See [related paper](https://arxiv.org/abs/2310.05914).
 - `--neftune_backend`: The backend of `NEFTune`, default uses `transformers` library, may encounter incompatibility when training VL models, in which case it's recommended to specify as `swift`.
 - `--gradient_checkpointing`: Whether to enable gradient checkpointing, default is `True`. This can be used to save memory, although it slightly reduces training speed. Has significant effect when max_length and batch_size are large.
-- `--deepspeed`: Specifies the path to the deepspeed configuration file or directly passes in configuration information in json format, default is `None`, i.e. deepspeed is not enabled. Deepspeed can save memory. We have written a default [ZeRO-2 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero2.json), [ZeRO-3 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero3.json). You only need to specify 'default-zero2' to use the default zero2 config file; specify 'default-zero3' to use the default zero3 config file.
+- `--deepspeed`: Used to specify the path to the deepspeed configuration file or directly pass JSON formatted configuration information. By default, it is set to `None`, which means deepspeed is not enabled. Deepspeed can save GPU memory. We have written default [ZeRO-2 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero2_offload.json), [ZeRO-3 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero3.json), [ZeRO-2 Offload configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero2_offload.json ), and [ZeRO-3 Offload configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero3_offload.json). You only need to specify 'default-zero2', 'default-zero3', 'zero2-offload', 'zero3-offload'.
 - `--batch_size`: Batch_size during training, default is `1`. Increasing batch_size can improve GPU utilization, but won't necessarily improve training speed, because within a batch, shorter sentences need to be padded to the length of the longest sentence in the batch, introducing invalid computations.
 - `--eval_batch_size`: Batch_size during evaluation, default is `None`, i.e. set to 1 when `predict_with_generate` is True, set to `batch_size` when False.
 - `--num_train_epochs`: Number of epochs to train, default is `1`. If `max_steps >= 0`, this overrides `num_train_epochs`. Usually set to 3 ~ 5.
@@ -100,7 +100,7 @@
 - `--warmup_steps`: The number of warmup steps, default is `0`. If warmup_steps > 0 is set, it overrides warmup_ratio.
 - `--eval_steps`: Evaluate every this many steps, default is `50`.
 - `--save_steps`: Save every this many steps, default is `None`, i.e. set to `eval_steps`.
-- `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `None`, i.e. if `sft_type` is 'lora' and not using deepspeed (`deepspeed` is `None`), set to False, otherwise set to True (e.g. using full fine-tuning or deepspeed).
+- `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `False`.
 - `--save_total_limit`: Number of checkpoints to save, default is `2`, i.e. save best and last checkpoint. If set to -1, save all checkpoints.
 - `--logging_steps`: Print training information (e.g. loss, learning_rate, etc.) every this many steps, default is `5`.
 - `--dataloader_num_workers`: Default value is `None`. If running on a Windows machine, set it to `0`; otherwise, set it to `1`.
@@ -307,7 +307,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--val_dataset`: Default is `[]`, see `sft command line arguments` for parameter details.
 - `--dataset_seed`: Default is `None`, see `sft command line arguments` for parameter details.
 `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft command line arguments`.
-- `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
+- `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `-1`.
 - `--system`: Default is `None`. See `sft command line arguments` for parameter details.
 - `--tools_prompt`: Default is `react_en`. See `sft command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft command line arguments` for parameter details.
