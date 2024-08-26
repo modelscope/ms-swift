@@ -338,7 +338,18 @@ class SwiftMixin:
                 return
             else:
                 # Check if saved optimizer or scheduler states exist
-                return super()._load_optimizer_and_scheduler(checkpoint)
+                super()._load_optimizer_and_scheduler(checkpoint)
+                try:
+                    # fix mp+ddp adamw
+                    for v in self.optimizer.state.values():
+                        if 'step' in v:
+                            # not on the same device
+                            device_set = set([t.device for t in v.values()]) - {v['step'].device, torch.device('cpu')}
+                            if len(device_set) >= 1:
+                                v['step'] = v['step'].to('cpu')
+                except Exception:
+                    pass
+                return
 
         if checkpoint is None or self.args.save_only_model:
             return
