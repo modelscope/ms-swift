@@ -735,7 +735,7 @@ class SftArguments(ArgumentsBase):
     reft_args: Optional[str] = None
 
     gradient_checkpointing: Optional[bool] = None
-    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero2-offload', 'zero3-offload'
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -913,7 +913,8 @@ class SftArguments(ArgumentsBase):
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
             'default-zero3': 'zero3.json',
-            'zero3-offload': 'zero3_offload.json'
+            'zero2-offload': 'zero2_offload.json',
+            'zero3-offload': 'zero3_offload.json',
         }
         for ds_name, ds_config in deepspeed_mapping.items():
             if self.deepspeed == ds_name:

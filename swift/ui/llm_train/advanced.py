@@ -191,7 +191,7 @@ class Advanced(BaseUI):
                         elem_id='deepspeed',
                         scale=4,
                         allow_custom_value=True,
-                        choices=['default-zero2', 'default-zero3', 'zero3-offload'])
+                        choices=['default-zero2', 'default-zero3', 'zero2-offload', 'zero3-offload'])
                     gr.Textbox(elem_id='gpu_memory_fraction', scale=4)
                 with gr.Row():
                     gr.Textbox(elem_id='more_params', lines=4, scale=20)
