@@ -537,7 +537,7 @@ class ArgumentsBase:
                 or isinstance(self, ExportArguments) and self.to_hf is True):
             imported_keys += ['tp', 'pp']
         if not is_sft:
-            imported_keys += ['sft_type', 'rope_scaling', 'system', 'use_dora']
+            imported_keys += ['sft_type', 'rope_scaling', 'system']
             if getattr(self, 'load_dataset_config', False) and from_sft_args:
                 imported_keys += [
                     'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
