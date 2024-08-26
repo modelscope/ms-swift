@@ -1,6 +1,8 @@
-from torch.nn import CrossEntropyLoss
-import torch
 from typing import Callable, Optional
+
+import torch
+from torch.nn import CrossEntropyLoss
+
 
 class LossName:
     long_ce = 'long-ce'
@@ -9,9 +11,8 @@ class LossName:
 
 LOSS_MAPPING = {}
 
-def register_loss_func(
-        loss_name: str,
-        loss_func: Optional[Callable] = None):
+
+def register_loss_func(loss_name: str, loss_func: Optional[Callable] = None):
     loss_info = {}
 
     if loss_func is not None:
@@ -27,9 +28,7 @@ def register_loss_func(
     return _register_loss_func
 
 
-
-@register_loss_func(LossName.loss_scale)
-def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
+def ce_loss_func(outputs, labels):
     logits = outputs.logits
     device = logits.device
     # Shift so that tokens < n predict n
@@ -42,6 +41,19 @@ def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
     # Flatten the tokens
     loss_fct = CrossEntropyLoss(reduction='none')
     loss = loss_fct(shift_logits, shift_labels)
+    return loss
+
+
+@register_loss_func(LossName.long_ce)
+def long_ce_loss_func(outputs, labels) -> torch.Tensor:
+    loss = ce_loss_func(outputs, labels)
+    loss = loss.sum() / 2048
+    return loss
+
+
+@register_loss_func(LossName.loss_scale)
+def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
+    loss = ce_loss_func(outputs, labels)
     if loss_scale is None:
         loss = loss.mean()
     else:
