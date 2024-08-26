@@ -41,7 +41,7 @@ def ce_loss_func(outputs, labels):
     # Flatten the tokens
     loss_fct = CrossEntropyLoss(reduction='none')
     loss = loss_fct(shift_logits, shift_labels)
-    return loss
+    return loss, masks
 
 
 class LongCrossEntropy:
@@ -54,7 +54,7 @@ class LongCrossEntropy:
 
     def __call__(self, outputs, labels) -> torch.Tensor:
         # moving average
-        loss = ce_loss_func(outputs, labels)
+        loss, masks = ce_loss_func(outputs, labels)
         self._s_length = self._s_length * self._smoothing + loss.shape[0]
         self._norm_factor = self._norm_factor * self._smoothing + 1
         loss = loss.sum() / (self._s_length / self._norm_factor)
@@ -66,11 +66,11 @@ register_loss_func(LossName.long_ce, LongCrossEntropy())
 
 @register_loss_func(LossName.loss_scale)
 def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
-    loss = ce_loss_func(outputs, labels)
+    loss, masks = ce_loss_func(outputs, labels)
     if loss_scale is None:
         loss = loss.mean()
     else:
-        shift_scale = loss_scale[..., 1:].to(device)
+        shift_scale = loss_scale[..., 1:].to(masks.device)
         shift_scale = shift_scale[masks]
         loss = (shift_scale * loss).mean()
     return loss
