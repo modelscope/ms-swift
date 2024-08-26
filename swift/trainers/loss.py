@@ -61,7 +61,7 @@ class LongCrossEntropy:
         return loss
 
 
-register_loss_func(LossName.long_ce, LongCE())
+register_loss_func(LossName.long_ce, LongCrossEntropy())
 
 
 @register_loss_func(LossName.loss_scale)
