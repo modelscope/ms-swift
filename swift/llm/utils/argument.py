@@ -1482,7 +1482,7 @@ class InferArguments(ArgumentsBase):
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
-            self.lora_request_list = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
+            self.lora_request_list, self.use_dora = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
@@ -1816,7 +1816,7 @@ def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     return lora_checkpoint_path
 
 
-def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List[Any]:
+def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> Tuple[List[Any], bool]:
     VllmLoRARequest = None
     if use_vllm:
         try:
@@ -1833,8 +1833,18 @@ def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List[Any]:
 
     LoRARequest = VllmLoRARequest if use_vllm else PtLoRARequest
     lora_request_list = []
+    use_dora_list = []
     for i, lora_module in enumerate(lora_modules):
         lora_name, lora_local_path = lora_module.split('=')
         lora_local_path = swift_to_peft_format(lora_local_path)
+        with open(os.path.join(lora_local_path, 'adapter_config.json'), 'r') as f:
+            _json = json.load(f)
+            use_dora_list.append(_json.get('use_dora', False))
         lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
-    return lora_request_list
+    if any(use_dora_list) and len(lora_modules) > 1:
+        raise ValueError('Dora does not support inference with other loras')
+    elif not any(use_dora_list):
+        use_dora = False
+    else:
+        use_dora = True
+    return lora_request_list, use_dora

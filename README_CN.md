@@ -240,14 +240,7 @@ pip install -e '.[llm]'
 
 SWIFT依赖torch>=1.13，建议torch>=2.0.0。
 
-- 方法3：在我们的Docker镜像中使用SWIFT
-
-```shell
-# China-Hangzhou image
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
-# US-west image
-docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
-```
+- 方法3：在我们的[Docker镜像](https://www.modelscope.cn/docs/%E7%8E%AF%E5%A2%83%E5%AE%89%E8%A3%85)中使用SWIFT
 
 ## 🚀 快速开始
 
