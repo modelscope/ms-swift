@@ -262,6 +262,10 @@ The following parameters take effect when the `sft_type` is set to `reft`.
 - `--reft_intervention_type`: The type of ReFT intervention, supporting 'NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention', 'LobireftIntervention', 'DireftIntervention', and 'NodireftIntervention'; defaults to `LoreftIntervention`.
 - `--reft_args`: Other supporting parameters in the ReFT intervention, provided in JSON string format.
 
+### Liger Parameters
+
+- `--use_liger`: Use liger-kernel to train.
+-
 ## PT Parameters
 
 PT parameters inherit from the SFT parameters with some modifications to the default values:
