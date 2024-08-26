@@ -343,10 +343,10 @@ class SwiftMixin:
                     # fix mp+ddp adamw
                     for v in self.optimizer.state.values():
                         if 'step' in v:
+                            # not on the same device
                             device_set = set([t.device for t in v.values()]) - {v['step'].device, torch.device('cpu')}
-                            if len(device_set) == 1:
-                                device = list(device_set)[0]
-                                v['step'] = v['step'].to(device)
+                            if len(device_set) >= 1:
+                                v['step'] = v['step'].to('cpu')
                 except Exception:
                     pass
                 return
