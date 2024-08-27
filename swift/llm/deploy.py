@@ -118,7 +118,7 @@ async def check_length(request: Union[ChatCompletionRequest, CompletionRequest],
     max_new_tokens = max_model_len - num_tokens
     if max_tokens is None:
         request.max_tokens = max_new_tokens
-    if max_new_tokens < max_tokens:
+    elif max_new_tokens < max_tokens:
         if strict:
             error_msg = (f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
                          f'but the maximum model length supported is {max_model_len}. '
