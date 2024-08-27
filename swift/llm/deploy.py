@@ -115,14 +115,19 @@ async def check_length(request: Union[ChatCompletionRequest, CompletionRequest],
         max_model_len = 8192
         logger.warning(
             'The current model is unable to retrieve `max_model_len`. It is set to the default value of 8192.')
-    new_max_tokens = max_model_len - num_tokens
-    if max_tokens is None or (not strict and new_max_tokens < max_tokens):
-        request.max_tokens = new_max_tokens
-    elif strict and new_max_tokens < max_tokens:
-        error_msg = (f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
-                     f'but the maximum model length supported is {max_model_len}. '
-                     'Please reduce the number of tokens in the prompt or the `max_tokens`.')
-        return error_msg
+    max_new_tokens = max_model_len - num_tokens
+    if max_tokens is None:
+        request.max_tokens = max_new_tokens
+    if max_new_tokens < max_tokens:
+        if strict:
+            error_msg = (f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
+                         f'but the maximum model length supported is {max_model_len}. '
+                         'Please reduce the number of tokens in the prompt or the `max_tokens`.')
+            return error_msg
+        else:
+            logger.warning(f'max_model_len({max_model_len}) - num_tokens({num_tokens}) < max_tokens({max_tokens}). '
+                           f'Setting max_tokens: {max_model_len - num_tokens}')
+            request.max_tokens = max_new_tokens
 
 
 async def check_model(request: Union[ChatCompletionRequest, CompletionRequest]) -> Optional[str]:
