@@ -88,7 +88,7 @@ def create_error_response(status_code: Union[int, str, HTTPStatus], message: str
 @app.get('/v1/models')
 async def get_available_models():
     global _args
-    model_list = [_args.model_type]
+    model_list = [_args.served_model_name or _args.model_type]
     if _args.lora_request_list is not None:
         model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
     data = [
@@ -229,6 +229,19 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
 
     return request_info, inputs, example
 
+def _get_logprobs(logprobs: Optional[List[Dict[int, Any]]], top_logprobs: Optional[int] = None) -> Dict[str, Any]:
+    if logprobs is None:
+        return None
+    res = []
+    for log_ps in logprobs:
+        lps = list(log_ps.values())
+        res.append({'token': lps[0].decoded_token, 'logprob': lps[0].logprob, 'bytes': list(lps[0].decoded_token.encode('utf8'))})
+        if top_logprobs is not None:
+            res_top_lps = []
+            for i in range(top_logprobs):
+                res_top_lps.append({'token': lps[i].decoded_token, 'logprob': lps[i].logprob, 'bytes': list(lps[i].decoded_token.encode('utf8'))})
+            res[-1]['top_logprobs'] = res_top_lps
+    return {'content': res}
 
 @torch.inference_mode()
 async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
@@ -254,6 +267,11 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             kwargs[key] = new_value
     kwargs['stop'] = (llm_engine.generation_config.stop or []) + (getattr(request, 'stop') or [])
     kwargs['seed'] = request.seed
+
+    if request.logprobs:
+        kwargs['logprobs'] = 1
+        if request.top_logprobs is not None:
+            kwargs['logprobs'] = max(1, request.top_logprobs)
 
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search and request.stream:
@@ -314,6 +332,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             choices = []
             for output in result.outputs:
                 response = template.generate_ids_to_response(output.token_ids)
+                logprobs = _get_logprobs(output.logprobs, request.top_logprobs)
                 action, action_input = split_action_action_input(response)
                 toolcall = None
                 if action is not None:
@@ -335,6 +354,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             choices = []
             for output in result.outputs:
                 response = template.generate_ids_to_response(output.token_ids)
+                logprobs = _get_logprobs(output.logprobs, request.top_logprobs)
                 choice = CompletionResponseChoice(
                     index=output.index,
                     text=response,
