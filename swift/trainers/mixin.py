@@ -18,7 +18,7 @@ from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, TrainerState
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
@@ -546,6 +546,7 @@ class SwiftMixin:
         if self._resume_only_model:
             # Control the behavior of "resume_from_checkpoint" by swift.
             self._resume_from_checkpoint = resume_from_checkpoint
+            self.state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
             resume_from_checkpoint = None
         if self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled:
             self._load_from_checkpoint(self._resume_from_checkpoint)

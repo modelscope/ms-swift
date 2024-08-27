@@ -4,18 +4,6 @@ from typing import Optional, Union
 
 
 @dataclasses.dataclass
-class MultiModelKeys:
-
-    language_model: str = None
-
-    projector: Optional[str] = None
-
-    vision_tower: str = None
-
-    vision_resampler: str = None
-
-
-@dataclasses.dataclass
 class ModelKeys:
 
     model_type: str = None
@@ -51,6 +39,18 @@ class ModelKeys:
     kvb_proj: str = None
 
     output: str = None
+
+
+@dataclasses.dataclass
+class MultiModelKeys(ModelKeys):
+
+    language_model: str = None
+
+    projector: Optional[str] = None
+
+    vision_tower: str = None
+
+    vision_resampler: str = None
 
 
 LLAMA_KEYS = ModelKeys(
