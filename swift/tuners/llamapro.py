@@ -78,7 +78,7 @@ class LLaMAPro(SwiftAdapter):
         LLaMAPro._set_module_list(config, model, new_module_list)
 
         def state_dict_callback(state_dict, adapter_name):
-            model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
+            model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             return {
                 key: value
@@ -86,7 +86,7 @@ class LLaMAPro(SwiftAdapter):
             }
 
         def mark_trainable_callback(model):
-            model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
+            model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
             new_module_list = [model_key_mapping.module_list + f'.{i}' for i in new_module_idx]
             for name, parameter in model.named_parameters():
                 parameter: nn.Parameter
@@ -99,7 +99,7 @@ class LLaMAPro(SwiftAdapter):
     @staticmethod
     def _update_module_attr(config: LLaMAProConfig, module_list):
         model_type = config.model_type
-        model_key_mapping = LLaMAPro._get_model_key_mapping(model_type, config)
+        model_key_mapping = LLaMAPro.get_model_key_mapping(model_type, config)
         attention = model_key_mapping.attention
         attention = attention.split('{}.')[1]
         if model_type == 'phi3-small':
@@ -127,9 +127,16 @@ class LLaMAPro(SwiftAdapter):
                     logger.warn(f'model_type: {model_type} seems has no layer_idx, if you encountered anything wrong,'
                                 f'please give us a feedback.')
 
+    @classmethod
+    def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
+        model_key_mapping = SwiftAdapter.get_model_key_mapping(model_type, config)
+        assert model_key_mapping.o_proj is not None and model_key_mapping.down_proj is not None, \
+            'LLaMAPro only support models with o_proj and down_proj components.'
+        return model_key_mapping
+
     @staticmethod
     def _update_module_weight(config: LLaMAProConfig, module_list, new_module_idx):
-        model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
+        model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
         o_proj = model_key_mapping.o_proj.split('{}.')[1]
         down_proj = model_key_mapping.down_proj.split('{}.')[1]
 
@@ -147,14 +154,14 @@ class LLaMAPro(SwiftAdapter):
 
     @staticmethod
     def _set_module_list(config, module: nn.Module, module_list: nn.ModuleList):
-        model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
+        model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
         idx = model_key_mapping.module_list.rfind('.')
         parent = module.get_submodule(model_key_mapping.module_list[:idx])
         setattr(parent, model_key_mapping.module_list[idx + 1:], module_list)
 
     @staticmethod
     def _find_module_list(config, module: nn.Module) -> nn.ModuleList:
-        model_key_mapping = LLaMAPro._get_model_key_mapping(config.model_type, config)
+        model_key_mapping = LLaMAPro.get_model_key_mapping(config.model_type, config)
         return module.get_submodule(model_key_mapping.module_list)
 
     @staticmethod

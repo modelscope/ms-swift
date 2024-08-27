@@ -166,7 +166,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         ref_model = None
 
     if hasattr(model, 'hf_device_map'):
-        logger.info(f'model device_map {model.hf_device_map}')
+        logger.info(f'model.hf_device_map {model.hf_device_map}')
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     if val_dataset is None:

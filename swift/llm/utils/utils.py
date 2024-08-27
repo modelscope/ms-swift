@@ -1054,7 +1054,7 @@ def get_rope_scaling(config: PretrainedConfig):
 
 
 if is_ddp_plus_mp():
-    from accelerate.utils.modeling import (get_balanced_memory, infer_auto_device_map)
+    from accelerate.utils.modeling import get_balanced_memory, infer_auto_device_map
 
     @wraps(infer_auto_device_map)
     def _infer_auto_device_map_patch(model: Module,

@@ -702,5 +702,44 @@
         "dataset_id": "ZhipuAI/LongWriter-6k",
         "tags": ["long", "chat", "sft", "🔥"],
         "hf_dataset_id": "THUDM/LongWriter-6k"
+    },
+    "qwen2-pro-filtered": {
+        "dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-300K-Filtered",
+        "tags": ["chat", "sft", "🔥"],
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "hf_dataset_id": "Magpie-Align/Magpie-Qwen2-Pro-300K-Filtered"
+    },
+    "qwen2-pro-zh": {
+        "dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-200K-Chinese",
+        "tags": ["chat", "sft", "🔥", "zh"],
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "hf_dataset_id": "Magpie-Align/Magpie-Qwen2-Pro-200K-Chinese"
+    },
+    "qwen2-pro-en": {
+        "dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-200K-English",
+        "tags": ["chat", "sft", "🔥", "en"],
+        "conversations": {
+            "user_role": "human",
+            "assistant_role": "gpt",
+            "conversations_key": "conversations",
+            "from_key": "from",
+            "value_key": "value",
+            "error_strategy": "delete"
+        },
+        "hf_dataset_id": "Magpie-Align/Magpie-Qwen2-Pro-200K-English"
     }
 }
