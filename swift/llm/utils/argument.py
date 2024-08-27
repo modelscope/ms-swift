@@ -588,6 +588,7 @@ class SftArguments(ArgumentsBase):
     ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl', 'hccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
+    ddp_timeout: int = 1800
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
@@ -1207,6 +1208,7 @@ class SftArguments(ArgumentsBase):
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
         training_args.ddp_broadcast_buffers = self.ddp_broadcast_buffers
+        training_args.ddp_timeout = self.ddp_timeout
         if is_dist() and training_args.ddp_find_unused_parameters is None:
             if self.gradient_checkpointing:
                 training_args.ddp_find_unused_parameters = False
