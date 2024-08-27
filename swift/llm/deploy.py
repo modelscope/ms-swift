@@ -25,7 +25,7 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, compat_openai, inference, inference_stream,
+                    Model, ModelList, Template, UsageInfo, compat_openai, inference, inference_stream, is_quant_model,
                     messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
@@ -101,7 +101,9 @@ async def get_available_models():
     return ModelList(data=data)
 
 
-async def check_length(request: Union[ChatCompletionRequest, CompletionRequest], input_ids: List[int]) -> Optional[str]:
+async def check_length(request: Union[ChatCompletionRequest, CompletionRequest],
+                       input_ids: List[int],
+                       strict: bool = False) -> Optional[str]:
     global llm_engine, model, _args
     if _args.infer_backend in {'vllm', 'lmdeploy'}:
         max_model_len = llm_engine.max_model_len
@@ -113,14 +115,19 @@ async def check_length(request: Union[ChatCompletionRequest, CompletionRequest],
         max_model_len = 8192
         logger.warning(
             'The current model is unable to retrieve `max_model_len`. It is set to the default value of 8192.')
+    max_new_tokens = max_model_len - num_tokens
     if max_tokens is None:
-        max_tokens = max_model_len - num_tokens
-        request.max_tokens = max_tokens
-    if max_tokens + num_tokens > max_model_len:
-        error_msg = (f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
-                     f'but the maximum model length supported is {max_model_len}. '
-                     'Please reduce the number of tokens in the prompt or the `max_tokens`.')
-        return error_msg
+        request.max_tokens = max_new_tokens
+    elif max_new_tokens < max_tokens:
+        if strict:
+            error_msg = (f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
+                         f'but the maximum model length supported is {max_model_len}. '
+                         'Please reduce the number of tokens in the prompt or the `max_tokens`.')
+            return error_msg
+        else:
+            logger.warning(f'max_model_len({max_model_len}) - num_tokens({num_tokens}) < max_tokens({max_tokens}). '
+                           f'Setting max_tokens: {max_model_len - num_tokens}')
+            request.max_tokens = max_new_tokens
 
 
 async def check_model(request: Union[ChatCompletionRequest, CompletionRequest]) -> Optional[str]:
@@ -623,7 +630,15 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     adapter_kwargs = {}
     if _args.lora_request_list is not None:
-        if request.model != _args.model_type and not _args.use_dora:
+        if _args.use_dora or is_quant_model(_args.model_type, model) or _args.is_multimodal:
+            if _args.use_dora:
+                error_msg = 'Dora'
+            elif is_quant_model(_args.model_type, model):
+                error_msg = 'GPTQ/AWQ/AQLM model'
+            else:
+                error_msg = 'Multimodal model'
+            assert request.model == 'default-lora', f'{error_msg} only support default-lora'
+        elif request.model != _args.model_type:
             adapter_names = None
             for lora_req in _args.lora_request_list:
                 if lora_req.lora_name == request.model:
@@ -631,8 +646,6 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                     break
             assert adapter_names is not None
             adapter_kwargs['adapter_names'] = [adapter_names]
-        elif _args.use_dora:
-            assert request.model == 'default-lora', 'Dora only support default-lora'
         elif isinstance(model, PeftModel):
             adapter_kwargs['adapter_names'] = ['-']  # use base model
 
