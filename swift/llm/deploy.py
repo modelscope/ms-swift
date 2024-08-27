@@ -637,7 +637,8 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 error_msg = 'GPTQ/AWQ/AQLM model'
             else:
                 error_msg = 'Multimodal model'
-            assert request.model == 'default-lora', f'{error_msg} only support default-lora'
+            if request.model != 'default-lora':
+                return create_error_response(HTTPStatus.BAD_REQUEST, f'{error_msg} only support `default-lora`')
         elif request.model != _args.model_type:
             adapter_names = None
             for lora_req in _args.lora_request_list:

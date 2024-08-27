@@ -4139,7 +4139,10 @@ def get_model_tokenizer_internvl(model_dir: str,
                                  **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False)
     if kwargs.get('eos_token') is None and tokenizer.eos_token != '<|im_end|>':
-        del tokenizer.__class__.eos_token_id
+        try:
+            del tokenizer.__class__.eos_token_id
+        except AttributeError:
+            pass
         tokenizer.eos_token = '<|im_end|>'
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
@@ -4280,6 +4283,9 @@ def git_clone_github(github_url: str,
 
 
 def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
+    if hasattr(model, '_is_patching'):
+        return
+    model._is_patching = True
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
@@ -4287,7 +4293,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
         @wraps(_old_func)
         def _new_func(self, *args, **kwargs):
-            res = _old_func(getattr(self, submodel_name), *args, **kwargs)
+            res = _old_func(submodel, *args, **kwargs)
             if func_name == 'forward':
                 device = find_device(args)
                 if device is None:
@@ -4301,6 +4307,8 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
         setattr(model, key, MethodType(_get_new_func(key), model))
         if key == 'generate' and model.device != submodel.device:
             submodel.__class__.device = model.device
+        if key == 'forward' and 'generate' in func_list:
+            setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
 
 
 @register_model(
