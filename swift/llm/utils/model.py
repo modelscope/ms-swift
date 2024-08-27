@@ -4308,7 +4308,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
         if key == 'generate' and model.device != submodel.device:
             submodel.__class__.device = model.device
         if key == 'forward' and 'generate' in func_list:
-            setattr(submodel, key, MethodType(_get_new_func(key), submodel))
+            setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
 
 
 @register_model(
