@@ -227,6 +227,7 @@ def prepare_model(model, args: SftArguments):
             elif args.sft_type == 'reft':
                 reft_config = ReftConfig(
                     model_type=model_type,
+                    layer_key=args.reft_layer_key,
                     r=args.reft_rank,
                     layers=args.reft_layers,
                     intervention_type=args.reft_intervention_type,

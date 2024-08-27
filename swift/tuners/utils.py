@@ -331,8 +331,8 @@ class SwiftAdapter:
             module.to(module.origin_device)
             delattr(module, 'origin_device')
 
-    @staticmethod
-    def _get_model_key_mapping(model_type, config) -> ModelKeys:
+    @classmethod
+    def get_model_key_mapping(cls, model_type, config) -> ModelKeys:
         if model_type in MODEL_KEYS_MAPPING.keys():
             model_key_mapping = MODEL_KEYS_MAPPING[model_type]
         else:
@@ -344,9 +344,6 @@ class SwiftAdapter:
 
         if isinstance(model_key_mapping, dict):
             model_key_mapping: ModelKeys = ModelKeys(**model_key_mapping)
-
-        assert model_key_mapping.o_proj is not None and model_key_mapping.down_proj is not None, \
-            'LLaMAPro only support models with o_proj and down_proj components.'
         return model_key_mapping
 
     @staticmethod

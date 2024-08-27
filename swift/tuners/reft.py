@@ -21,6 +21,7 @@ class ReftConfig(SwiftConfig):
 
     Args:
         model_type(`Optional[str]`): The model_type to find down_proj/layers.
+        layer_key(`Optional[str]`): Manually specify the layer key, for example `language_model.layers`.
         layers (`Optional[List[int]]`): The layer number to inject.
         r(`int`): The rank of Reft.
         intervention_type (`Literal['NoreftIntervention', 'LoreftIntervention',
@@ -31,6 +32,7 @@ class ReftConfig(SwiftConfig):
     """
 
     model_type: Optional[str] = None
+    layer_key: Optional[str] = None
     layers: Optional[List[int]] = None
     r: int = 4
     intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
@@ -109,9 +111,12 @@ class Reft(SwiftAdapter):
             NodireftIntervention.forward_origin = NodireftIntervention.forward
             NodireftIntervention.forward = forward2
 
-        model_key_mapping = Reft._get_model_key_mapping(config.model_type, config)
-        logger.info(f'Applying Reft to module: {model_key_mapping.module_list}')
-        module_list: nn.ModuleList = model.get_submodule(model_key_mapping.module_list)
+        module_list_key = config.layer_key
+        if module_list_key is None:
+            model_key_mapping = Reft.get_model_key_mapping(config.model_type, config)
+            module_list_key = model_key_mapping.module_list
+        logger.info(f'Applying Reft to module: {module_list_key}')
+        module_list: nn.ModuleList = model.get_submodule(module_list_key)
         representations = []
         for idx, layer in enumerate(module_list):
             if config.layers and idx not in config.layers:
@@ -120,7 +125,7 @@ class Reft(SwiftAdapter):
                 'layer':
                 idx,
                 'component':
-                model_key_mapping.module_list + f'[{idx}].output',
+                module_list_key + f'[{idx}].output',
                 'low_rank_dimension':
                 config.r,
                 'intervention':
@@ -137,6 +142,9 @@ class Reft(SwiftAdapter):
         def _pre_forward_hook(module, args, kwargs):
             if 'base' in kwargs:
                 return args, kwargs
+
+            if 'input_ids' not in kwargs:
+                raise ValueError('Input does not contain `input_ids`, maybe the model does not support ReFT.')
             # run intervened forward pass
             unit_locations = None
             if 'intervention_locations' in kwargs:

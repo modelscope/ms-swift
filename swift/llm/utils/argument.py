@@ -728,6 +728,7 @@ class SftArguments(ArgumentsBase):
     lisa_step_interval: int = 20
 
     # reft
+    reft_layer_key: Optional[str] = None
     reft_layers: Optional[List[int]] = None
     reft_rank: int = 4
     reft_intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
