@@ -916,8 +916,6 @@ def get_model_tokenizer_from_repo(model_dir: str,
         model.is_gptq = is_gptq
         model.is_awq = is_awq
         model.is_aqlm = is_aqlm
-        if hasattr(model, 'hf_device_map'):
-            logger.debug(f'Model hf_device_map: {model.hf_device_map}')
     return model, tokenizer
 
 
