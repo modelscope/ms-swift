@@ -517,10 +517,8 @@ def to_device(inputs: Any, device: Device) -> Any:
         res = []
         for b in inputs:
             res.append(to_device(b, device))
-    elif isinstance(inputs, (int, float, str)) or inputs is None:
-        res = inputs
     else:
-        raise TypeError(f'inputs: {inputs}, {type(inputs)}')
+        res = inputs
     return res
 
 
