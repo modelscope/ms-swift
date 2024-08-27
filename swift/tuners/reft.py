@@ -142,6 +142,9 @@ class Reft(SwiftAdapter):
         def _pre_forward_hook(module, args, kwargs):
             if 'base' in kwargs:
                 return args, kwargs
+            
+            if 'input_ids' not in kwargs:
+                raise ValueError('Input does not contain `input_ids`, maybe the model does not support ReFT.')
             # run intervened forward pass
             unit_locations = None
             if 'intervention_locations' in kwargs:
