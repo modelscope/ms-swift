@@ -638,7 +638,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             else:
                 error_msg = 'Multimodal model'
             if request.model != 'default-lora':
-                return create_error_response(f'{error_msg} only support `default-lora`')
+                return create_error_response(HTTPStatus.BAD_REQUEST, f'{error_msg} only support `default-lora`')
         elif request.model != _args.model_type:
             adapter_names = None
             for lora_req in _args.lora_request_list:
