@@ -1360,6 +1360,7 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
+    max_logprobs: int = 20
 
     # lmdeploy
     tp: int = 1
@@ -1530,6 +1531,7 @@ class DeployArguments(InferArguments):
     ssl_certfile: Optional[str] = None
 
     owned_by: str = 'swift'
+    served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 10  # Interval for printing global statistics
 

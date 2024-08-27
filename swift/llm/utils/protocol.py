@@ -44,6 +44,8 @@ class XRequestConfig:
     seed: Optional[int] = None
     stop: Optional[List[str]] = None
     stream: bool = False
+    logprobs: bool = False
+    top_logprobs: Optional[int] = None
 
     best_of: Optional[int] = None
     presence_penalty: float = 0.
