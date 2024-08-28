@@ -242,7 +242,6 @@ print(f'history: {history}')
 
 Using **Dataset** for evaluation:
 ```bash
-# If you want to infer all dataset samples, please additionally specify `--show_dataset_sample -1`.
 # Direct inference
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx' \

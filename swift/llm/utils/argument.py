@@ -21,7 +21,7 @@ from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_availa
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
-from swift.trainers import Seq2SeqTrainingArguments
+from swift.trainers import LOSS_MAPPING, Seq2SeqTrainingArguments
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
@@ -32,7 +32,7 @@ from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
-from .utils import is_lmdeploy_available, is_quant_model, is_vllm_available
+from .utils import is_liger_available, is_lmdeploy_available, is_quant_model, is_vllm_available
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -588,6 +588,7 @@ class SftArguments(ArgumentsBase):
     ddp_backend: Optional[Literal['nccl', 'gloo', 'mpi', 'ccl', 'hccl']] = None
     ddp_find_unused_parameters: Optional[bool] = None
     ddp_broadcast_buffers: Optional[bool] = None
+    ddp_timeout: int = 1800
 
     seed: int = 42
     resume_from_checkpoint: Optional[str] = None
@@ -604,6 +605,7 @@ class SftArguments(ArgumentsBase):
 
     # multimodal
     model_kwargs: Optional[str] = None
+    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     # dataset_id or dataset_name or dataset_path or ...
     dataset: List[str] = field(
@@ -727,6 +729,7 @@ class SftArguments(ArgumentsBase):
     lisa_step_interval: int = 20
 
     # reft
+    reft_layer_key: Optional[str] = None
     reft_layers: Optional[List[int]] = None
     reft_rank: int = 4
     reft_intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
@@ -734,8 +737,11 @@ class SftArguments(ArgumentsBase):
                                     'NodireftIntervention'] = 'LoreftIntervention'
     reft_args: Optional[str] = None
 
+    # use_liger
+    use_liger: bool = False
+
     gradient_checkpointing: Optional[bool] = None
-    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero3-offload'
+    # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero2-offload', 'zero3-offload'
     deepspeed: Optional[str] = None
     batch_size: int = 1
     eval_batch_size: Optional[int] = None
@@ -759,7 +765,7 @@ class SftArguments(ArgumentsBase):
 
     eval_steps: Optional[int] = None  # full: 200, other: 50
     save_steps: Optional[int] = None
-    save_only_model: Optional[bool] = None
+    save_only_model: bool = False
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
     logging_steps: int = 5
     acc_steps: int = 1
@@ -913,7 +919,8 @@ class SftArguments(ArgumentsBase):
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
             'default-zero3': 'zero3.json',
-            'zero3-offload': 'zero3_offload.json'
+            'zero2-offload': 'zero2_offload.json',
+            'zero3-offload': 'zero3_offload.json',
         }
         for ds_name, ds_config in deepspeed_mapping.items():
             if self.deepspeed == ds_name:
@@ -994,11 +1001,6 @@ class SftArguments(ArgumentsBase):
                     f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
                 self.learning_rate = 1e-4
-            if self.save_only_model is None:
-                if self.deepspeed is not None and version.parse(transformers.__version__) < version.parse('4.37'):
-                    self.save_only_model = True
-                else:
-                    self.save_only_model = False
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
@@ -1010,12 +1012,6 @@ class SftArguments(ArgumentsBase):
                 self.additional_trainable_parameters = [self.additional_trainable_parameters]
             if self.learning_rate is None:
                 self.learning_rate = 1e-5
-            if self.save_only_model is None:
-                self.save_only_model = True
-                logger.warning(
-                    'Due to the adoption of full-parameter training, '
-                    'in order to avoid saving excessive weights, we set save_only_model to True. '
-                    'If you want to resume training from a checkpoint, please manually pass `--save_only_model false`.')
             if self.eval_steps is None:
                 self.eval_steps = 200
         else:
@@ -1027,6 +1023,12 @@ class SftArguments(ArgumentsBase):
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps
+
+        if self.use_liger:
+            assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
+            if self.use_loss_scale:
+                logger.warn('use_liger is not compatible with `use_loss_scale`, setting to False...')
+                self.use_loss_scale = False
 
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
@@ -1201,10 +1203,12 @@ class SftArguments(ArgumentsBase):
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
             seed=self.seed,
+            loss_name=self.loss_name,
             **kwargs)
 
         training_args.ddp_find_unused_parameters = self.ddp_find_unused_parameters
         training_args.ddp_broadcast_buffers = self.ddp_broadcast_buffers
+        training_args.ddp_timeout = self.ddp_timeout
         if is_dist() and training_args.ddp_find_unused_parameters is None:
             if self.gradient_checkpointing:
                 training_args.ddp_find_unused_parameters = False
@@ -1298,7 +1302,7 @@ class InferArguments(ArgumentsBase):
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: Optional[int] = None
     dataset_test_ratio: float = 0.01
-    show_dataset_sample: int = 10
+    show_dataset_sample: int = -1
     save_result: bool = True
     system: Optional[str] = None
     tools_prompt: Literal['react_en', 'react_zh', 'toolbench'] = 'react_en'
@@ -1483,7 +1487,7 @@ class InferArguments(ArgumentsBase):
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
-            self.lora_request_list = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
+            self.lora_request_list, self.use_dora = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1:
@@ -1817,7 +1821,7 @@ def swift_to_peft_format(lora_checkpoint_path: str) -> str:
     return lora_checkpoint_path
 
 
-def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List[Any]:
+def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> Tuple[List[Any], bool]:
     VllmLoRARequest = None
     if use_vllm:
         try:
@@ -1834,8 +1838,18 @@ def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> List[Any]:
 
     LoRARequest = VllmLoRARequest if use_vllm else PtLoRARequest
     lora_request_list = []
+    use_dora_list = []
     for i, lora_module in enumerate(lora_modules):
         lora_name, lora_local_path = lora_module.split('=')
         lora_local_path = swift_to_peft_format(lora_local_path)
+        with open(os.path.join(lora_local_path, 'adapter_config.json'), 'r') as f:
+            _json = json.load(f)
+            use_dora_list.append(_json.get('use_dora', False))
         lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
-    return lora_request_list
+    if any(use_dora_list) and len(lora_modules) > 1:
+        raise ValueError('Dora does not support inference with other loras')
+    elif not any(use_dora_list):
+        use_dora = False
+    else:
+        use_dora = True
+    return lora_request_list, use_dora

@@ -288,7 +288,10 @@ def llm_export(args: ExportArguments) -> None:
         else:
             from swift.llm.megatron import MegatronArguments, convert_hf_to_megatron, patch_megatron
             model, tokenizer = get_model_tokenizer(
-                args.model_type, torch.float32, {'device_map': 'auto'}, model_id_or_path=args.model_id_or_path)
+                args.model_type,
+                torch.float32, {'device_map': 'auto'},
+                model_id_or_path=args.model_id_or_path,
+                revision=args.model_revision)
             res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
             res['model_type'] = args.model_type
             res['target_tensor_model_parallel_size'] = args.tp
@@ -313,7 +316,10 @@ def llm_export(args: ExportArguments) -> None:
         else:
             from swift.llm.megatron import MegatronArguments, convert_megatron_to_hf, patch_megatron
             hf_model, tokenizer = get_model_tokenizer(
-                args.model_type, torch.float32, {'device_map': 'auto'}, model_id_or_path=args.model_id_or_path)
+                args.model_type,
+                torch.float32, {'device_map': 'auto'},
+                model_id_or_path=args.model_id_or_path,
+                revision=args.model_revision)
             res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
             res['model_type'] = args.model_type
             res['target_tensor_model_parallel_size'] = args.tp

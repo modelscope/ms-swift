@@ -32,6 +32,7 @@
 - `--output_dir`: Directory to store ckpt, default is `'output'`. We will append `model_type` and fine-tuning version number to this directory, allowing users to do multiple comparative experiments on different models without changing the `output_dir` command line argument. If you don't want to append this content, specify `--add_output_dir_suffix false`.
 - `--add_output_dir_suffix`: Default is `True`, indicating that a suffix of `model_type` and fine-tuning version number will be appended to the `output_dir` directory. Set to `False` to avoid this behavior.
 - `--ddp_backend`: Backend support for distributed training, default is `None`. Options include: 'nccl', 'gloo', 'mpi', 'ccl'.
+- `--ddp_timeout`: DDP timeout. Default `1800` seconds.
 - `--seed`: Global seed, default is `42`. Used to reproduce training results.
 - `--resume_from_checkpoint`: Used for resuming training from a checkpoint, default is `None`. You can set it to the path of the checkpoint, for example: `--resume_from_checkpoint output/qwen-7b-chat/vx-xxx/checkpoint-xxx`, to resume training from that point. Supports adjusting `--resume_only_model` to only read the model file during checkpoint continuation.
 - `--resume_only_model`: Default is `False`, which means strict checkpoint continuation, this will read the weights of the model, optimizer, lr_scheduler, and the random seeds stored on each device, and continue training from the last paused steps. If set to `True`, it will only read the weights of the model.
@@ -81,7 +82,7 @@
 - `--neftune_noise_alpha`: The noise coefficient added by `NEFTune` can improve performance of instruction fine-tuning, default is `None`. Usually can be set to 5, 10, 15. See [related paper](https://arxiv.org/abs/2310.05914).
 - `--neftune_backend`: The backend of `NEFTune`, default uses `transformers` library, may encounter incompatibility when training VL models, in which case it's recommended to specify as `swift`.
 - `--gradient_checkpointing`: Whether to enable gradient checkpointing, default is `True`. This can be used to save memory, although it slightly reduces training speed. Has significant effect when max_length and batch_size are large.
-- `--deepspeed`: Specifies the path to the deepspeed configuration file or directly passes in configuration information in json format, default is `None`, i.e. deepspeed is not enabled. Deepspeed can save memory. We have written a default [ZeRO-2 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero2.json), [ZeRO-3 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero3.json). You only need to specify 'default-zero2' to use the default zero2 config file; specify 'default-zero3' to use the default zero3 config file.
+- `--deepspeed`: Used to specify the path to the deepspeed configuration file or directly pass JSON formatted configuration information. By default, it is set to `None`, which means deepspeed is not enabled. Deepspeed can save GPU memory. We have written default [ZeRO-2 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero2_offload.json), [ZeRO-3 configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero3.json), [ZeRO-2 Offload configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero2_offload.json ), and [ZeRO-3 Offload configuration file](https://github.com/modelscope/swift/blob/main/swift/llm/ds_config/zero3_offload.json). You only need to specify 'default-zero2', 'default-zero3', 'zero2-offload', 'zero3-offload'.
 - `--batch_size`: Batch_size during training, default is `1`. Increasing batch_size can improve GPU utilization, but won't necessarily improve training speed, because within a batch, shorter sentences need to be padded to the length of the longest sentence in the batch, introducing invalid computations.
 - `--eval_batch_size`: Batch_size during evaluation, default is `None`, i.e. set to 1 when `predict_with_generate` is True, set to `batch_size` when False.
 - `--num_train_epochs`: Number of epochs to train, default is `1`. If `max_steps >= 0`, this overrides `num_train_epochs`. Usually set to 3 ~ 5.
@@ -100,7 +101,7 @@
 - `--warmup_steps`: The number of warmup steps, default is `0`. If warmup_steps > 0 is set, it overrides warmup_ratio.
 - `--eval_steps`: Evaluate every this many steps, default is `50`.
 - `--save_steps`: Save every this many steps, default is `None`, i.e. set to `eval_steps`.
-- `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `None`, i.e. if `sft_type` is 'lora' and not using deepspeed (`deepspeed` is `None`), set to False, otherwise set to True (e.g. using full fine-tuning or deepspeed).
+- `--save_only_model`: Whether to save only model parameters, without saving intermediate states needed for checkpoint resuming, default is `False`.
 - `--save_total_limit`: Number of checkpoints to save, default is `2`, i.e. save best and last checkpoint. If set to -1, save all checkpoints.
 - `--logging_steps`: Print training information (e.g. loss, learning_rate, etc.) every this many steps, default is `5`.
 - `--dataloader_num_workers`: Default value is `None`. If running on a Windows machine, set it to `0`; otherwise, set it to `1`.
@@ -262,6 +263,10 @@ The following parameters take effect when the `sft_type` is set to `reft`.
 - `--reft_intervention_type`: The type of ReFT intervention, supporting 'NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention', 'LobireftIntervention', 'DireftIntervention', and 'NodireftIntervention'; defaults to `LoreftIntervention`.
 - `--reft_args`: Other supporting parameters in the ReFT intervention, provided in JSON string format.
 
+### Liger Parameters
+
+- `--use_liger`: Use liger-kernel to train.
+-
 ## PT Parameters
 
 PT parameters inherit from the SFT parameters with some modifications to the default values:
@@ -307,7 +312,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--val_dataset`: Default is `[]`, see `sft command line arguments` for parameter details.
 - `--dataset_seed`: Default is `None`, see `sft command line arguments` for parameter details.
 `--dataset_test_ratio`: Default value is `0.01`. For specific parameter details, refer to the `sft command line arguments`.
-- `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `10`.
+- `--show_dataset_sample`: Represents number of validation set samples to evaluate and display, default is `-1`.
 - `--system`: Default is `None`. See `sft command line arguments` for parameter details.
 - `--tools_prompt`: Default is `react_en`. See `sft command line arguments` for parameter details.
 - `--max_length`: Default is `-1`. See `sft command line arguments` for parameter details.

@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 🔥2024.08.26: 支持[Liger](https://github.com/linkedin/Liger-Kernel), 该内核支持LLaMA、Qwen、Mistral等模型, 并大幅减少显存使用(10%~60%), 使用`--use_liger true`开启训练.
 - 🔥2024.08.22: 支持[ReFT](https://github.com/stanfordnlp/pyreft), 该tuner可以以LoRA的1/15~1/65的参数量达到和LoRA匹配或更好的效果, 使用`--sft_type reft`开始训练!
 - 🔥2024.08.21: 支持phi3_5-mini-instruct, phi3_5-moe-instruct, phi3_5-vision-instruct. 使用phi3_5-vision-instruct进行Latex OCR微调的最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1809).
 - 2024.08.21: 支持idefics3-8b-llama3, llava-onevision-qwen2-0_5b-ov, llava-onevision-qwen2-7b-ov, llava-onevision-qwen2-72b-ov.
@@ -239,14 +240,7 @@ pip install -e '.[llm]'
 
 SWIFT依赖torch>=1.13，建议torch>=2.0.0。
 
-- 方法3：在我们的Docker镜像中使用SWIFT
-
-```shell
-# China-Hangzhou image
-docker pull registry.cn-hangzhou.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
-# US-west image
-docker pull registry.us-west-1.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.1.2-tf2.14.0-1.13.1
-```
+- 方法3：在我们的[Docker镜像](https://www.modelscope.cn/docs/%E7%8E%AF%E5%A2%83%E5%AE%89%E8%A3%85)中使用SWIFT
 
 ## 🚀 快速开始
 

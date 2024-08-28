@@ -27,15 +27,14 @@ def read_tensorboard_file(fpath: str) -> Dict[str, List[Item]]:
 
 
 def tensorboard_smoothing(values: List[float], smooth: float = 0.9) -> List[float]:
-    norm_factor = 1
+    norm_factor = 0
     x = 0
     res: List[float] = []
     for i in range(len(values)):
         x = x * smooth + values[i]  # Exponential decay
-        res.append(x / norm_factor)
-
         norm_factor *= smooth
         norm_factor += 1
+        res.append(x / norm_factor)
     return res
 
 

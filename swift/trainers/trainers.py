@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from peft import PeftModel
 from torch import Tensor, nn
-from torch.nn import CrossEntropyLoss
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers import trainer
@@ -18,6 +17,7 @@ from transformers.utils import is_peft_available
 from swift.torchacc_utils import ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader, ta_trim_graph
 from swift.utils import use_torchacc
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
+from .loss import get_loss_func
 from .mixin import PushToMsHubMixin, SwiftMixin
 
 
@@ -145,47 +145,34 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
-    @staticmethod
-    def compute_scaled_loss(labels: torch.Tensor, lm_logits: torch.Tensor, loss_scale: torch.Tensor) -> torch.Tensor:
-        device = lm_logits.device
-        # Shift so that tokens < n predict n
-        shift_logits = lm_logits[..., :-1, :]
-        shift_labels = labels[..., 1:]
-        shift_scale = loss_scale[..., 1:]
-        # Save memory
-        masks = shift_labels != -100
-        shift_logits = shift_logits[masks]
-        shift_labels = shift_labels[masks].to(device)
-        shift_scale = shift_scale[masks].to(device)
-        # Flatten the tokens
-        loss_fct = CrossEntropyLoss(reduction='none')
-        loss = loss_fct(shift_logits, shift_labels)
-        loss = shift_scale * loss
-        return loss.mean()
-
     def compute_loss(self, model, inputs, return_outputs=None):
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
 
         labels = None
-        loss_scale = None
-        if 'loss_scale' in inputs:
-            labels = inputs.pop('labels')
-            loss_scale = inputs.pop('loss_scale')
+        loss_name = self.args.loss_name
+        if loss_name is None and 'loss_scale' in inputs:
+            loss_name = 'loss-scale'
 
-        if self.label_smoother is not None and 'labels' in inputs:
+        loss_kwargs = {}
+        if loss_name == 'loss-scale':
+            loss_kwargs['loss_scale'] = inputs.pop('loss_scale')
+
+        if loss_name is not None or self.label_smoother is not None and 'labels' in inputs:
             labels = inputs.pop('labels')
 
+        loss_kwargs['labels'] = labels
         outputs = model(**inputs)
-        if loss_scale is not None:
-            outputs['loss'] = self.compute_scaled_loss(labels, outputs.logits, loss_scale)
+        if loss_name is not None:
+            loss_func = get_loss_func(loss_name)
+            outputs['loss'] = loss_func(outputs, **loss_kwargs)
 
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
 
-        if labels is not None and loss_scale is None:
+        if labels is not None and loss_name is None:
             unwrapped_model = unwrap_model(model)
             if is_peft_available() and isinstance(unwrapped_model, PeftModel):
                 model_name = unwrapped_model.base_model.model._get_name()
@@ -206,10 +193,10 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             loss = reduce_xtuner_sequence_parallel_loss(loss, labels)
 
         if self.is_encoder_decoder:
-            preds = outputs.logits.argmax(dim=2)[..., :]
+            preds = outputs.logits.argmax(dim=2)[..., :] if outputs.logits is not None else None
             labels = labels[..., :]
         else:
-            preds = outputs.logits.argmax(dim=2)[..., :-1]
+            preds = outputs.logits.argmax(dim=2)[..., :-1] if outputs.logits is not None else None
             labels = labels[..., 1:]
 
         masks = labels != -100
@@ -217,7 +204,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         acc: Optional[Tensor] = None
         sft_args = getattr(self, 'sft_args', None)
         acc_steps = 1 if sft_args is None else sft_args.acc_steps
-        if self.state.global_step % acc_steps == 0:
+        if self.state.global_step % acc_steps == 0 and preds is not None:
             if preds.shape != labels.shape:
                 pass
             elif acc_strategy == 'sentence':

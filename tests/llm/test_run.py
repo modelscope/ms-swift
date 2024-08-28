@@ -330,6 +330,7 @@ class TestRun(unittest.TestCase):
                         rlhf_type=rlhf_type,
                         model_type=model,
                         dataset=dataset_name,
+                        max_length=4096,
                         train_dataset_sample=100,
                         eval_steps=5))
                 best_model_checkpoint = output['best_model_checkpoint']
