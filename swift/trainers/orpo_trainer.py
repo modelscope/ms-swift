@@ -69,7 +69,6 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
             prompt = feature.copy()
             prompt['response'] = None
             prompt_tokens = self.template.encode(prompt)[0]
-            prompt_tokens.pop('labels', None)
             # Skip examples that have too lengthy prompt to avoid conflict in following processing
             if 'input_ids' not in prompt_tokens:
                 self.need_filter = True
@@ -84,9 +83,14 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
                         prompt_tokens[key] = prompt_tokens['_data'][key]
                 prompt_tokens.pop('_data')
 
+            prompt_tokens.pop('labels', None)
+
             # convert bfloat16 to float32 to avoid conflict in mapping
             if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
                 prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
+
+            if 'images' in prompt_tokens and prompt_tokens['images'].dtype == torch.bfloat16:
+                prompt_tokens['images'] = prompt_tokens['images'].to(torch.float32)
 
             if 'attention_mask' not in prompt_tokens:
                 prompt_tokens['attention_mask'] = [1] * len(prompt_tokens['input_ids'])
@@ -222,10 +226,18 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
                 for k in self._data_keys:
                     if k == 'input_ids':
                         _data = [{**d, k: concatenated_batch['concatenated_input_ids'][i]} for i, d in enumerate(_data)]
+                    elif k == 'labels':
+                        _data = [{**d, k: concatenated_batch['concatenated_labels'][i]} for i, d in enumerate(_data)]
+                    # for vision related data, paired response share the same one
+                    elif k == 'images':
+                        # convert the dtype of the images that may be converted to float32 in tokenize_row
+                        model_dtype = self.accelerator.unwrap_model(model).dtype
+                        _data = [{
+                            **d, k: concatenated_batch[k][i // 2].to(model_dtype).unsqueeze(0)
+                        } for i, d in enumerate(_data)]
                     elif k == 'pixel_values':
                         # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
                         model_dtype = self.accelerator.unwrap_model(model).dtype
-                        # for vision related data, paired response share the same one
                         _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
                     else:
                         _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
