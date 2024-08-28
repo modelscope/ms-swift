@@ -1642,8 +1642,12 @@ class InternLMXComposer2Template(Template):
             input_ids = input_ids[1:]
             if labels is not None:
                 labels = labels[1:]
+        if isinstance(input_ids, torch.Tensor):
+            input_ids = input_ids.tolist()
         input_ids.append(2)  # add dummy </s>
         if labels is not None:
+            if isinstance(labels, torch.Tensor):
+                labels = labels.tolist()
             labels.append(2)
         else:
             labels = []
