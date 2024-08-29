@@ -328,7 +328,7 @@ class SwiftMixin:
             return super()._save_optimizer_and_scheduler(output_dir)
 
         ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
-    
+
     def _save_initial_model(self, output_dir):
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
@@ -336,9 +336,9 @@ class SwiftMixin:
             init_lora_weights = getattr(config, 'init_lora_weights', '')
             if 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
                 config.init_lora_weights = True
-                model.save_pretrained(os.path.join(output_dir, "initial_model"))
+                model.save_pretrained(os.path.join(output_dir, 'initial_model'))
                 config.init_lora_weights = init_lora_weights
-    
+
     def _save_converted_model(self, output_dir):
         model = unwrap_model(self.model)
         if isinstance(model, PeftModel):
@@ -346,8 +346,8 @@ class SwiftMixin:
             init_lora_weights = getattr(config, 'init_lora_weights', '')
             if 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
                 model.save_pretrained(
-                    os.path.join(output_dir, "converted"),
-                    path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), "initial_model"),
+                    os.path.join(output_dir, 'converted'),
+                    path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
                 )
                 config.init_lora_weights = init_lora_weights
 
