@@ -23,7 +23,7 @@ from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, upper_bound, use_torchacc
 from .vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                           load_video_llava, load_video_minicpmv, rescale_image, transform_image)
+                           load_video_llava, load_video_minicpmv, load_video_qwen2, rescale_image, transform_image)
 
 logger = get_logger()
 
@@ -48,6 +48,7 @@ class TemplateType:
     qwen_audio = 'qwen-audio'
     qwen2_audio = 'qwen2-audio'
     qwen2_audio_generation = 'qwen2-audio-generation'
+    qwen2_vl = 'qwen2-vl'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
@@ -1287,6 +1288,66 @@ class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTe
 
 
 register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
+
+
+class Qwen2VLTemplate(QwenTemplate):
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type in {'image', 'video'}
+        if media_type == 'image':
+            return ['<|vision_start|><|image_pad|><|vision_end|>']
+        else:
+            return ['<|vision_start|><|video_pad|><|vision_end|>']
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        processor = self.tokenizer.processor
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        images = example.get('images') or []
+        videos = example.get('videos') or []
+        for media_type in ['images', 'videos']:
+            if locals()[media_type]:
+                if media_type == 'images':
+                    media_token = 151655
+                    media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+                    media_grid_thw = media_inputs['image_grid_thw']
+                else:
+                    videos = load_batch(videos, load_video_qwen2)
+                    media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
+                    media_grid_thw = media_inputs['video_grid_thw']
+                    media_token = 151656
+                idx_list = _findall(input_ids, media_token)
+                added_tokens_len = 0
+                for i, idx in enumerate(idx_list):
+                    merge_length = processor.image_processor.merge_size**2
+                    token_len = (media_grid_thw[i].prod() // merge_length)
+                    input_ids = input_ids[:idx
+                                          + added_tokens_len] + [media_token] * token_len + input_ids[added_tokens_len
+                                                                                                      + idx + 1:]
+                    if labels:
+                        labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
+                                                                                               + 1:]
+                    added_tokens_len += token_len
+                inputs.update(media_inputs)
+
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        for media_type in ['image', 'video']:
+            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
+            if grid_thw:
+                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        return res
+
+
+register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
 register_template(
     TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)

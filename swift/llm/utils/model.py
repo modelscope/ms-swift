@@ -150,6 +150,8 @@ class ModelType:
     qwen_audio_chat = 'qwen-audio-chat'
     qwen2_audio_7b = 'qwen2-audio-7b'
     qwen2_audio_7b_instruct = 'qwen2-audio-7b-instruct'
+    qwen2_vl_2b_instruct = 'qwen2-vl-2b-instruct'
+    qwen2_vl_7b_instruct = 'qwen2-vl-7b-instruct'
     # chatglm
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
@@ -539,6 +541,7 @@ class LoRATM(NamedTuple):
     qwen_audio = f'{get_regex_for_mm_default_lora("qwen_audio")}'
     qwen_vl = f'{get_regex_for_mm_default_lora("qwen_vl")}'
     qwen2_audio = f'{get_regex_for_mm_default_lora("qwen2_audio")}'
+    qwen2_vl = f'{get_regex_for_mm_default_lora("qwen2_vl")}'
     glm4v = f'{get_regex_for_mm_default_lora("glm4v")}'
     llava_next_video = f'{get_regex_for_mm_default_lora("llava_next_video")}'
     llava_llama = f'{get_regex_for_mm_default_lora("llava_llama")}'
@@ -3444,6 +3447,39 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.qwen2_vl_7b_instruct,
+    'qwen/Qwen2-VL-7B-Instruct',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    requires=['pyav', 'transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='Qwen/Qwen2-VL-7B-Instruct')
+@register_model(
+    ModelType.qwen2_vl_2b_instruct,
+    'qwen/Qwen2-VL-2B-Instruct',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    requires=['pyav', 'transformers>=4.45.0.dev0'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='Qwen/Qwen2-VL-2B-Instruct')
+def get_model_tokenizer_qwen2_vl(model_dir: str,
+                                 torch_dtype: Dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+    if model is not None:
+        model.model.embed_tokens.register_forward_hook(_clone_hook)
     return model, tokenizer
 
 

@@ -13,4 +13,4 @@ python llm_infer.py \
     --top_p 0.7 \
     --repetition_penalty 1. \
     --do_sample true \
-    --device_map_config_path scripts/deepseek-v2-chat/lora_ddp_ds3/deepseek2_device_map.json
+    --device_map_config scripts/deepseek-v2-chat/lora_ddp_ds3/deepseek2_device_map.json
