@@ -329,6 +329,28 @@ class SwiftMixin:
 
         ta_save_optimizer_and_scheduler(self.optimizer, self.lr_scheduler, output_dir)
 
+    def _save_initial_model(self, output_dir):
+        model = unwrap_model(self.model)
+        if isinstance(model, PeftModel):
+            config = model.peft_config.get('default', {})
+            init_lora_weights = getattr(config, 'init_lora_weights', '')
+            if 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
+                config.init_lora_weights = True
+                model.save_pretrained(os.path.join(output_dir, 'initial_model'))
+                config.init_lora_weights = init_lora_weights
+
+    def _save_converted_model(self, output_dir):
+        model = unwrap_model(self.model)
+        if isinstance(model, PeftModel):
+            config = model.peft_config.get('default', {})
+            init_lora_weights = getattr(config, 'init_lora_weights', '')
+            if 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
+                model.save_pretrained(
+                    os.path.join(output_dir, 'converted'),
+                    path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
+                )
+                config.init_lora_weights = init_lora_weights
+
     def _load_optimizer_and_scheduler(self, checkpoint):
         if not (use_torchacc() and self.sft_args.fsdp_num > 1):
             if self._resume_only_model:
@@ -428,6 +450,7 @@ class SwiftMixin:
                         shutil.copy(src_path, dst_path)
                     elif os.path.isdir(src_path):
                         shutil.copytree(src_path, dst_path)
+        self._save_converted_model(output_dir)
 
     def _save_checkpoint(self, model, trial, metrics=None):
         self.state.last_model_checkpoint = os.path.join(self.args.output_dir, f'checkpoint-{self.state.global_step}')
@@ -549,6 +572,8 @@ class SwiftMixin:
             resume_from_checkpoint = None
         if self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled:
             self._load_from_checkpoint(self._resume_from_checkpoint)
+
+        self._save_initial_model(self.args.output_dir)
         res = super().train(resume_from_checkpoint, *args, **kwargs)
         self._resume_from_checkpoint = None
         if self.max_memory != 0:
