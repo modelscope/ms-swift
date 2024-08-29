@@ -126,11 +126,11 @@
 - `--save_safetensors`: Default is `True`.
 - `--include_num_input_tokens_seen`: Default is `False`. Tracks the number of input tokens seen throughout training.
 - `--max_new_tokens`: Default is `2048`. This parameter only takes effect when `predict_with_generate` is set to True.
-- `--do_sample`: Default is `True`. This parameter only takes effect when `predict_with_generate` is set to True.
-- `--temperature`: Default is `0.3`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
-- `--top_k`: Default is `20`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
-- `--top_p`: Default is `0.7`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
-- `--repetition_penalty`: Default is `1.`. This parameter will be used as default value in deployment parameters.
+- `--do_sample`: Reference document: [https://huggingface.co/docs/transformers/main_classes/text_generation](https://huggingface.co/docs/transformers/main_classes/text_generation). Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `predict_with_generate` is set to True.
+- `--temperature`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
+- `--top_k`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
+- `--top_p`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
+- `--repetition_penalty`: Default is `None`, inheriting the model's generation_config. This parameter will be used as default value in deployment parameters.
 - `--num_beams`: Default is `1`. This parameter only takes effect when `predict_with_generate` is set to True.
 - `--gpu_memory_fraction`: Default is `None`. This parameter aims to run training under a specified maximum available GPU memory percentage, used for extreme testing.
 - `--train_dataset_mix_ratio`: Default is `0.`. This parameter defines how to mix datasets for training. When this parameter is specified, it will mix the training dataset with a multiple of `train_dataset_mix_ratio` of the general knowledge dataset specified by `train_dataset_mix_ds`. This parameter has been deprecated, please use `--dataset {dataset_name}#{dataset_sample}` to mix datasets.
@@ -329,11 +329,11 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--bnb_4bit_use_double_quant`: Default is `True`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_storage`: Default value `None`.See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--max_new_tokens`: Maximum number of new tokens to generate, default is `2048`.
-- `--do_sample`: Whether to use greedy generation or sampling generation, default is `True`.
-- `--temperature`: Default is `0.3`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
-- `--top_k`: Default is `20`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
-- `--top_p`: Default is `0.7`. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
-- `--repetition_penalty`: Default is `1.`. This parameter will be used as default value in deployment parameters.
+- `--do_sample`: Reference document: [https://huggingface.co/docs/transformers/main_classes/text_generation](https://huggingface.co/docs/transformers/main_classes/text_generation). Default is `None`, inheriting the model's generation_config.
+- `--temperature`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
+- `--top_k`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
+- `--top_p`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
+- `--repetition_penalty`: Default is `None`, inheriting the model's generation_config. This parameter will be used as default value in deployment parameters.
 - `--num_beams`: Default is `1`.
 - `--use_flash_attn`: Default is `None`, i.e. 'auto'. See `sft command line arguments` for parameter details.
 - `--ignore_args_error`: Default is `False`, see `sft command line arguments` for parameter details.
@@ -350,6 +350,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 
 
 ### vLLM Parameters
+Reference document: [https://docs.vllm.ai/en/latest/models/engine_args.html](https://docs.vllm.ai/en/latest/models/engine_args.html)
 
 - `--gpu_memory_utilization`: Parameter for initializing vllm engine `EngineArgs`, default is `0.9`. This parameter only takes effect when using vllm. vLLM inference acceleration and deployment can be found in [vLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md).
 - `--tensor_parallel_size`: Parameter for initializing vllm engine `EngineArgs`, default is `1`. This parameter only takes effect when using vllm.
@@ -363,6 +364,8 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 
 
 ### lmdeploy Parameters
+Reference document: [https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig)
+
 - `--tp`: Tensor parallelism, a parameter for initializing the lmdeploy engine, default value is `1`.
 - `--cache_max_entry_count`: Parameter to initialize the lmdeploy engine, default value is `0.8`.
 - `--quant_policy`: Quantization of Key-Value Cache, parameters for initializing the lmdeploy engine, default value is `0`, you can set it to 4 or 8.

@@ -825,11 +825,11 @@ class SftArguments(ArgumentsBase):
 
     # generation config
     max_new_tokens: int = 2048
-    do_sample: bool = True
-    temperature: float = 0.3
-    top_k: int = 20
-    top_p: float = 0.7
-    repetition_penalty: float = 1.
+    do_sample: Optional[bool] = None
+    temperature: Optional[float] = None
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
     num_beams: int = 1
 
     # fsdp option
@@ -1334,11 +1334,11 @@ class InferArguments(ArgumentsBase):
     bnb_4bit_quant_storage: Optional[str] = None
 
     max_new_tokens: int = 2048
-    do_sample: bool = True
-    temperature: float = 0.3
-    top_k: int = 20
-    top_p: float = 0.7
-    repetition_penalty: float = 1.
+    do_sample: Optional[bool] = None
+    temperature: Optional[float] = None
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
     num_beams: int = 1
     stop_words: List[str] = field(default_factory=list)
 
