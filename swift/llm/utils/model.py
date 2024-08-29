@@ -3481,6 +3481,23 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    try:
+        from torchvision.io import video
+        if not hasattr(video, '_patching'):
+            # not read audio
+            video._patching = True
+            _old_read_from_stream = video._read_from_stream
+
+            def _read_from_stream(container: 'av.container.Container', start_offset: float, end_offset: float,
+                                  pts_unit: str, stream: 'av.stream.Stream', *args, **kwargs) -> List['av.frame.Frame']:
+                if stream.type == 'video':
+                    return _old_read_from_stream(container, start_offset, end_offset, pts_unit, stream, *args, **kwargs)
+                return []
+
+            video._read_from_stream = _read_from_stream
+    except Exception:
+        pass
+
     from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
