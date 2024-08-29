@@ -363,6 +363,8 @@ def load_ms_dataset(dataset_id: str,
             if hasattr(dataset, 'to_hf_dataset'):
                 dataset = dataset.to_hf_dataset()
         dataset_list.append(dataset)
+    if len(dataset_list) == 1:
+        return dataset_list[0]
     if not streaming:
         return concatenate_datasets(dataset_list)
     else:
@@ -633,7 +635,10 @@ def get_mantis_dataset(dataset_id: str,
         dataset = preprocess_mantis_image(dataset, subset=subset[0])
         all_datasets.append(dataset)
         break
-    dataset = concatenate_datasets(all_datasets) if not streaming else interleave_datasets(all_datasets)
+    if len(all_datasets) > 1:
+        dataset = concatenate_datasets(all_datasets) if not streaming else interleave_datasets(all_datasets)
+    else:
+        dataset = all_datasets[0]
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns, **kwargs)
 
@@ -2741,13 +2746,12 @@ def get_dataset(
         if val_d is not None:
             val_dataset_list.append(val_d)
 
-    train_dataset = None
     if len(train_dataset_list) > 1:
         train_dataset = concatenate_datasets(train_dataset_list) if not streaming else interleave_datasets(
             train_dataset_list)
     else:
         train_dataset = train_dataset_list[0] if train_dataset_list else None
-    val_dataset = None
+
     if len(val_dataset_list) > 1:
         val_dataset = concatenate_datasets(val_dataset_list) if not streaming else interleave_datasets(val_dataset_list)
     else:
@@ -2787,6 +2791,8 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
             dataset = dataset.to_iterable_dataset()
         dataset_list.append(preprocess_func(dataset))
 
+    if len(dataset_list) == 1:
+        return dataset_list[0]
     return concatenate_datasets(dataset_list) if not streaming else interleave_datasets(dataset_list)
 
 
