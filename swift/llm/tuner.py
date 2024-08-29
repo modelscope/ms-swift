@@ -13,7 +13,7 @@ from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, L
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
-from .utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback, ConvertWeightsCallback
+from .utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback
 
 logger = get_logger()
 
@@ -328,9 +328,6 @@ def prepare_model(model, args: SftArguments):
             model=model)
         lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
         callbacks.append(lisa_callback)
-
-    if 'pissa' in args.init_lora_weights or 'olora' in args.init_lora_weights:
-        callbacks.append(ConvertWeightsCallback())
 
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))

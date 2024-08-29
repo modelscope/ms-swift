@@ -8,32 +8,6 @@ from transformers import TrainerCallback
 from transformers.modeling_utils import unwrap_model
 
 
-class ConvertWeightsCallback(TrainerCallback):
-
-    def on_train_begin(self, _args, state, control, **kwargs):
-        model = unwrap_model(kwargs['model'])
-        if isinstance(model, PeftModel):
-            config = model.peft_config.get('default', {})
-            init_lora_weights = getattr(config, 'init_lora_weights', '')
-            if 'pissa' in init_lora_weights or 'olora' in init_lora_weights:
-                config.init_lora_weights = True
-                model.save_pretrained(os.path.join(_args.output_dir, "initial_model"))
-                config.init_lora_weights = init_lora_weights
-
-    def on_train_end(self, _args, state, control, **kwargs):
-        model = unwrap_model(kwargs['model'])
-        init_lora_weights = model.peft_config["default"].init_lora_weights
-        model.peft_config["default"].init_lora_weights = True
-        model.save_pretrained(
-            os.path.join(_args.output_dir, "default-unconverted"),
-        )
-        model.peft_config["default"].init_lora_weights = init_lora_weights
-        model.save_pretrained(
-            os.path.join(_args.output_dir, "default"),
-            path_initial_model_for_weight_conversion=os.path.join(_args.output_dir, "initial_model"),
-        )
-
-
 class TrainerAdapterCallback(TrainerCallback):
 
     def __init__(self, args):
