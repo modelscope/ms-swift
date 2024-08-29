@@ -1300,6 +1300,25 @@ class Qwen2VLTemplate(QwenTemplate):
         else:
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
+    def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        objects = example.get('objects')
+        if objects:
+            object_ = objects[index]
+            return ['<|object_ref_start|>', object_['caption'], '<|object_ref_end|>']
+        else:
+            return ['<ref-object>']
+
+    def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        objects = example.get('objects')
+        if objects:
+            object_ = objects[index]
+            return [
+                f'<|box_start|>({object_["bbox"][0]},{object_["bbox"][1]}),'
+                f'({object_["bbox"][2]},{object_["bbox"][3]})<|box_end|>'
+            ]
+        else:
+            return ['<bbox>']
+
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
