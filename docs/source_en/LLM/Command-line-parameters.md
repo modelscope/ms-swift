@@ -407,6 +407,7 @@ The eval parameters inherit from the infer parameters, and additionally include 
 - `--eval_use_cache`: Whether to use already generated evaluation cache, so that previously evaluated results won't be rerun but only the evaluation results regenerated. Default is `False`.
 - `--eval_output_dir`: Output path for evaluation results, default is `eval_outputs` in the current folder.
 - `--eval_batch_size`: Input batch size for evaluation, default is 8.
+- `--eval_nproc`: Concurrent number, a bigger value means a faster evaluation and more cost of GPU memory, default 16. This only takes effects when running multi-modal evaluations.
 - `--deploy_timeout`: The timeout duration for waiting for model deployment before evaluation, default is 60, which means one minute.
 
 ## app-ui Parameters
