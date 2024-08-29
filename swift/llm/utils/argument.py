@@ -60,11 +60,8 @@ class ArgumentsBase:
 
         if isinstance(self.device_map_config, str):
             if os.path.exists(self.device_map_config):  # local path
-                cwd = os.getcwd()
-                config_path = self.device_map_config if os.path.isabs(self.device_map_config) else os.path.join(
-                    cwd, self.device_map_config)
-                with open(config_path, 'r') as json_file:
-                    self.device_map_config = json.load(json_file)
+                with open(self.device_map_config, 'r') as f:
+                    self.device_map_config = json.load(f)
             else:  # json str
                 self.device_map_config = json.loads(self.device_map_config)
 
