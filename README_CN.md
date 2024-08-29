@@ -718,7 +718,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```bibtex
 @misc{zhao2024swiftascalablelightweightinfrastructure,
       title={SWIFT:A Scalable lightWeight Infrastructure for Fine-Tuning},
-      author={Yuze Zhao and Jintao Huang and Jinghan Hu and Daoze Zhang and Zeyinzi Jiang and Zhikai Wu and Baole Ai and Ang Wang and Wenmeng Zhou and Yingda Chen},
+      author={Yuze Zhao and Jintao Huang and Jinghan Hu and Xingjun Wang and Yunlin Mao and Daoze Zhang and Zeyinzi Jiang and Zhikai Wu and Baole Ai and Ang Wang and Wenmeng Zhou and Yingda Chen},
       year={2024},
       eprint={2408.05517},
       archivePrefix={arXiv},
