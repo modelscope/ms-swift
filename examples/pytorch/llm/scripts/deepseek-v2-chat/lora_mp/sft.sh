@@ -28,4 +28,4 @@ swift sft \
     --save_steps 100 \
     --save_total_limit 10 \
     --logging_steps 10 \
-    --device_map_config_path scripts/deepseek-v2-chat/lora_mp/deepseek2_device_map.json
+    --device_map_config scripts/deepseek-v2-chat/lora_mp/deepseek2_device_map.json

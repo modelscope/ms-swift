@@ -58,6 +58,17 @@ class ArgumentsBase:
             k = k.upper()
             os.environ[k] = str(v)
 
+        if isinstance(self.device_map_config, str):
+            if os.path.exists(self.device_map_config):  # local path
+                cwd = os.getcwd()
+                config_path = self.device_map_config if os.path.isabs(self.device_map_config) else os.path.join(
+                    cwd, self.device_map_config)
+                with open(config_path, 'r') as json_file:
+                    self.device_map_config = json.load(json_file)
+            else:  # json str
+                self.device_map_config = json.load(self.device_map_config)
+
+
     @classmethod
     def _check_path(cls,
                     value: Union[str, List[str]],
@@ -286,6 +297,8 @@ class ArgumentsBase:
             self.dataset += self.custom_train_dataset_path
         if len(self.custom_val_dataset_path) > 0:
             self.val_dataset += self.custom_val_dataset_path
+        if self.device_map_config_path is not None:
+            self.device_map_config = self.device_map_config_path
 
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
@@ -811,7 +824,7 @@ class SftArguments(ArgumentsBase):
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
 
-    device_map_config_path: Optional[str] = None
+    device_map_config: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
 
     # generation config
@@ -864,6 +877,7 @@ class SftArguments(ArgumentsBase):
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
+    device_map_config_path: Optional[str] = None
 
     def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
         if isinstance(target_modules, str):
@@ -1347,7 +1361,7 @@ class InferArguments(ArgumentsBase):
     local_repo_path: Optional[str] = None
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
-    device_map_config_path: Optional[str] = None
+    device_map_config: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
@@ -1380,6 +1394,7 @@ class InferArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
     vllm_lora_modules: List[str] = None
+    device_map_config_path: Optional[str] = None
 
     def __post_init__(self) -> None:
         super().__post_init__()

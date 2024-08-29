@@ -31,7 +31,7 @@
 
 transformers的auto device map算法对多模态模型支持不友好, 这可能导致不同 GPU 卡之间的显存分配不均匀。
 - 可以通过参数`--device_max_memory`设置每张卡的显存使用, 比如四卡环境, 可以设置`--device_max_memory 15GB 15GB 15GB 15GB`
-- 或者通过`--device_map_config_path`显式指定device map
+- 或者通过`--device_map_config`显式指定device map
 
 3. **InternVL2模型与前系列(InternVL-V1.5和Mini-InternVL)模型的区别**
 
