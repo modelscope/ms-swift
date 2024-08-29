@@ -278,12 +278,13 @@ def load_video_qwen2(video_io: BytesIO):
         output_format='TCHW',
     )
     nframes = get_env_args('nframes', int, None)
-    fps = get_env_args('fps', int, FPS)
+    fps = get_env_args('fps', int, None)
     size_factor = get_env_args('size_factor', int, FRAME_FACTOR)
     assert not (fps and nframes), 'Only accept either `fps` or `nframes`'
     if nframes is not None:
         nframes = round_by_factor(nframes, size_factor)
     else:
+        fps = FPS
         nframes = video.size(0) / info['video_fps'] * fps
         nframes = round_by_factor(nframes, size_factor)
         min_frames = get_env_args('min_frames', int, FPS_MIN_FRAMES)
