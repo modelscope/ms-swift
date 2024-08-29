@@ -266,26 +266,72 @@ def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
 @load_file_decorator
 def load_video_qwen2(video_io: BytesIO):
     from .template import get_env_args
-    from torchvision import io
-
-    fps = get_env_args('fps', float, 1.)
-    nframe_factor = get_env_args('nframe_factor', int, 2)
-    nframes = get_env_args('nframes', int, None)
-
-    def round_by_factor(number: int, factor: int) -> int:
-        return round(number / factor) * factor
+    from torchvision import io, transforms
+    from qwen_vl_utils.vision_process import (round_by_factor, FPS, FRAME_FACTOR, FPS_MIN_FRAMES, FPS_MAX_FRAMES,
+                                              VIDEO_MIN_PIXELS, VIDEO_MAX_PIXELS, VIDEO_TOTAL_PIXELS, smart_resize,
+                                              ceil_by_factor, floor_by_factor)
+    from torchvision.transforms import InterpolationMode
 
     video, _, info = io.read_video(
         video_io,
         pts_unit='sec',
         output_format='TCHW',
     )
+    nframes = get_env_args('nframes', int, None)
+    fps = get_env_args('fps', int, None)
+    size_factor = get_env_args('size_factor', int, FRAME_FACTOR)
+    assert not (fps and nframes), 'Only accept either `fps` or `nframes`'
     if nframes is not None:
-        nframes = round_by_factor(nframes, nframe_factor)
+        nframes = round_by_factor(nframes, size_factor)
     else:
-        nframes = round_by_factor(video.size(0) / info['video_fps'] * fps, nframe_factor)
-    idx = torch.linspace(0, video.size(0) - 1, nframes, dtype=torch.int64)
-    return video[idx]
+        fps = FPS
+        nframes = video.size(0) / info['video_fps'] * fps
+        nframes = round_by_factor(nframes, size_factor)
+        min_frames = get_env_args('min_frames', int, FPS_MIN_FRAMES)
+        max_frames = get_env_args('max_frames', int, FPS_MAX_FRAMES)
+        if nframes < min_frames:
+            nframes = ceil_by_factor(min_frames, size_factor)
+        if nframes > max_frames:
+            nframes = floor_by_factor(max_frames, size_factor)
+
+    if not (size_factor <= nframes and nframes <= video.size(0)):
+        raise ValueError(f'nframes should in interval [{size_factor}, {video.size(0)}], but got {nframes}.')
+
+    idx = torch.linspace(0, video.size(0) - 1, nframes).round().long()
+    height, width = video.shape[2:]
+    video = video[idx]
+
+    min_pixels = get_env_args('min_pixels', int, VIDEO_MIN_PIXELS)
+    total_pixels = get_env_args('total_pixels', int, VIDEO_TOTAL_PIXELS)
+    max_pixels = get_env_args('max_pixels', int, None)
+    if max_pixels is None:
+        max_pixels = VIDEO_MAX_PIXELS
+        max_pixels = max(min(max_pixels, total_pixels / nframes * size_factor), min_pixels * 1.05)
+    # resize
+    resized_height = get_env_args('resized_height', int, None)
+    resized_width = get_env_args('resized_width', int, None)
+    if resized_height and resized_width:
+        resized_height, resized_width = smart_resize(
+            resized_height,
+            resized_width,
+            factor=size_factor,
+        )
+    else:
+        resized_height, resized_width = smart_resize(
+            height,
+            width,
+            factor=size_factor,
+            min_pixels=min_pixels,
+            max_pixels=max_pixels,
+        )
+
+    video = transforms.functional.resize(
+        video,
+        [resized_height, resized_width],
+        interpolation=InterpolationMode.BICUBIC,
+        antialias=True,
+    ).float()
+    return video
 
 
 if __name__ == '__main__':

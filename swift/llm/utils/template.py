@@ -1290,6 +1290,33 @@ class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTe
 register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
 
 
+def _process_image_qwen(image):
+    from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
+    size_factor = get_env_args('size_factor', int, IMAGE_FACTOR)
+    # resize
+    resized_height = get_env_args('resized_height', int, None)
+    resized_width = get_env_args('resized_width', int, None)
+    if resized_height and resized_width:
+        resized_height, resized_width = smart_resize(
+            resized_height,
+            resized_width,
+            factor=size_factor,
+        )
+    else:
+        width, height = image.size
+        min_pixels = get_env_args('min_pixels', int, MIN_PIXELS)
+        max_pixels = get_env_args('max_pixels', int, MAX_PIXELS)
+        resized_height, resized_width = smart_resize(
+            height,
+            width,
+            factor=size_factor,
+            min_pixels=min_pixels,
+            max_pixels=max_pixels,
+        )
+    image = image.resize((resized_width, resized_height))
+    return image
+
+
 class Qwen2VLTemplate(QwenTemplate):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -1331,6 +1358,7 @@ class Qwen2VLTemplate(QwenTemplate):
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
+                    images = load_batch(images, _process_image_qwen)
                     media_token = 151655
                     media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
                     media_grid_thw = media_inputs['image_grid_thw']
@@ -1350,7 +1378,7 @@ class Qwen2VLTemplate(QwenTemplate):
                     if labels:
                         labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
                                                                                                + 1:]
-                    added_tokens_len += token_len
+                    added_tokens_len += token_len - 1
                 inputs.update(media_inputs)
 
         inputs['input_ids'] = input_ids
@@ -1625,9 +1653,7 @@ _T = TypeVar('_T')
 _log_set = set()  # log once
 
 
-def get_env_args(args_name: str,
-                 type_func: Callable[[str], _T] = int,
-                 default_value: Optional[_T] = None) -> Optional[_T]:
+def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: Optional[_T]) -> Optional[_T]:
     args_name_upper = args_name.upper()
     value = os.getenv(args_name_upper)
     if value is None:
