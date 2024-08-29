@@ -268,7 +268,8 @@ def load_video_qwen2(video_io: BytesIO):
     from .template import get_env_args
     from torchvision import io, transforms
     from qwen_vl_utils.vision_process import (round_by_factor, FPS, FRAME_FACTOR, FPS_MIN_FRAMES, FPS_MAX_FRAMES,
-                                              VIDEO_MIN_PIXELS, VIDEO_MAX_PIXELS, VIDEO_TOTAL_PIXELS, smart_resize)
+                                              VIDEO_MIN_PIXELS, VIDEO_MAX_PIXELS, VIDEO_TOTAL_PIXELS, smart_resize,
+                                              ceil_by_factor, floor_by_factor)
     from torchvision.transforms import InterpolationMode
 
     video, _, info = io.read_video(
