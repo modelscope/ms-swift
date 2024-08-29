@@ -1340,9 +1340,10 @@ class Qwen2VLTemplate(QwenTemplate):
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
-        image_grid_thw = [b['image_grid_thw'] for b in batch if b.get('image_grid_thw') is not None]
-        if image_grid_thw:
-            res['image_grid_thw'] = torch.concat(image_grid_thw)
+        for media_type in ['image', 'video']: 
+            grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
+            if grid_thw:
+                res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
         return res
 
 
