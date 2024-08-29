@@ -269,9 +269,9 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     kwargs['seed'] = request.seed
 
     if request.logprobs:
-        kwargs['logprobs'] = 1
+        kwargs['logprobs'] = 20
         if request.top_logprobs is not None:
-            kwargs['logprobs'] = max(1, request.top_logprobs)
+            kwargs['logprobs'] = max(20, request.top_logprobs)
 
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search and request.stream:
@@ -345,7 +345,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 choice = ChatCompletionResponseChoice(
                     index=output.index,
                     message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=output.finish_reason,
+                    finish_reason=output.finish_reason, logprobs=logprobs
                 )
                 choices.append(choice)
             response = ChatCompletionResponse(
@@ -358,7 +358,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 choice = CompletionResponseChoice(
                     index=output.index,
                     text=response,
-                    finish_reason=output.finish_reason,
+                    finish_reason=output.finish_reason, logprobs=logprobs
                 )
                 choices.append(choice)
             response = CompletionResponse(
@@ -392,6 +392,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             if isinstance(request, ChatCompletionRequest):
                 choices = []
                 for output in result.outputs:
+                    logprobs = _get_logprobs(output.logprobs, request.top_logprobs)
                     toolcall = None
                     if output.finish_reason is not None:
                         action, action_input = split_action_action_input(total_res[output.index])
@@ -405,15 +406,17 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
                         delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
-                        finish_reason=output.finish_reason)
+                        finish_reason=output.finish_reason, logprobs=logprobs)
                     choices.append(choice)
                 response = ChatCompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
             else:
                 choices = []
                 for output in result.outputs:
+                    logprobs = _get_logprobs(output.logprobs, request.top_logprobs)
                     choice = CompletionResponseStreamChoice(
-                        index=output.index, text=output.delta_text, finish_reason=output.finish_reason)
+                        index=output.index, text=output.delta_text, finish_reason=output.finish_reason,
+                        logprobs=logprobs)
                     choices.append(choice)
                 response = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)

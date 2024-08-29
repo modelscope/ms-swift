@@ -2,7 +2,7 @@
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union, Any
 
 
 def random_uuid() -> str:
@@ -122,6 +122,7 @@ class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
     finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
@@ -129,6 +130,7 @@ class CompletionResponseChoice:
     index: int
     text: str
     finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
@@ -163,6 +165,7 @@ class ChatCompletionResponseStreamChoice:
     index: int
     delta: DeltaMessage
     finish_reason: Literal['stop', 'length', None]
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
@@ -180,6 +183,7 @@ class CompletionResponseStreamChoice:
     index: int
     text: str
     finish_reason: Literal['stop', 'length', None]
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
