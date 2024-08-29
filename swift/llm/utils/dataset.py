@@ -665,26 +665,25 @@ def preprocess_llava_data(dataset: DATASET_TYPE) -> DATASET_TYPE:
     all_folders = {}
     for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
         all_folders[media_type] = MediaCache.download(media_type)
-    dataset._image_dir = all_folders
 
-    def preprocess_image(example):
+    def preprocess_image(example, all_folders):
         if not example['images']:
             return {}
         images = [p['path'] for p in example['images']]
         new_images = []
         for image in images:
             if 'coco/' in image:
-                image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+                image = os.path.join(all_folders['coco'], image.replace('coco/', ''))
             elif 'gqa/' in image:
-                image = os.path.join(dataset._image_dir['gqa'], image.replace('gqa/', ''))
+                image = os.path.join(all_folders['gqa'], image.replace('gqa/', ''))
             elif 'ocr_vqa/' in image:
-                image = os.path.join(dataset._image_dir['ocr_vqa'], image)
+                image = os.path.join(all_folders['ocr_vqa'], image)
             elif 'textvqa/' in image:
-                image = os.path.join(dataset._image_dir['textvqa'], image.replace('textvqa/', ''))
+                image = os.path.join(all_folders['textvqa'], image.replace('textvqa/', ''))
             elif 'VG_100K/' in image:
-                image = os.path.join(dataset._image_dir['VG_100K'], image.replace('vg/', ''))
+                image = os.path.join(all_folders['VG_100K'], image.replace('vg/', ''))
             elif 'VG_100K_2/' in image:
-                image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('vg/', ''))
+                image = os.path.join(all_folders['VG_100K_2'], image.replace('vg/', ''))
             new_images.append(image)
         if all(os.path.exists(image) for image in new_images):
             example['images'] = new_images
@@ -695,7 +694,8 @@ def preprocess_llava_data(dataset: DATASET_TYPE) -> DATASET_TYPE:
     kwargs = {}
     if not isinstance(dataset, HfIterableDataset):
         kwargs['load_from_cache_file'] = dataset_enable_cache
-    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda row: row['images'])
+    dataset = dataset.map(partial(preprocess_image, all_folders=all_folders),
+                          **kwargs).filter(lambda row: row['images'])
     return ConversationsPreprocessor(
         user_role='user',
         assistant_role='assistant',
@@ -1224,27 +1224,25 @@ def _preprocess_sharegpt4v(dataset: DATASET_TYPE) -> DATASET_TYPE:
     for sp in split:
         for media_type in IMAGE_DATASET_REQUIREMENTS[sp]:
             all_folders[media_type] = MediaCache.download(media_type)
-    dataset._image_dir = all_folders
 
-    def preprocess_image(example):
+    def preprocess_image(example, all_folders):
         image = example['image']
         if 'coco/' in image:
-            image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+            image = os.path.join(all_folders['coco'], image.replace('coco/', ''))
         elif 'sam/' in image:
-            image = os.path.join(dataset._image_dir['sam'], image.replace('sam/images/', ''))
+            image = os.path.join(all_folders['sam'], image.replace('sam/images/', ''))
         elif 'llava/' in image:
-            image = os.path.join(dataset._image_dir['llava'], image.replace('llava/llava_pretrain/images/', ''))
+            image = os.path.join(all_folders['llava'], image.replace('llava/llava_pretrain/images/', ''))
         elif 'wikiart/' in image:
-            image = os.path.join(dataset._image_dir['wikiart'], image.replace('wikiart/images/',
-                                                                              'data/wikiart/images/'))
+            image = os.path.join(all_folders['wikiart'], image.replace('wikiart/images/', 'data/wikiart/images/'))
         elif 'share_textvqa/' in image:
-            image = os.path.join(dataset._image_dir['share_textvqa'],
+            image = os.path.join(all_folders['share_textvqa'],
                                  image.replace('share_textvqa/images/', 'data/share_textvqa/images/'))
         elif 'web-celebrity/' in image:
-            image = os.path.join(dataset._image_dir['web-celebrity'],
+            image = os.path.join(all_folders['web-celebrity'],
                                  image.replace('web-celebrity/images/', 'data/web-celebrity/images/'))
         elif 'web-landmark/' in image:
-            image = os.path.join(dataset._image_dir['web-landmark'],
+            image = os.path.join(all_folders['web-landmark'],
                                  image.replace('web-landmark/images/', 'data/web-landmark/images/'))
         if os.path.exists(image):
             example['images'] = image
@@ -1255,7 +1253,8 @@ def _preprocess_sharegpt4v(dataset: DATASET_TYPE) -> DATASET_TYPE:
     kwargs = {}
     if not isinstance(dataset, HfIterableDataset):
         kwargs['load_from_cache_file'] = dataset_enable_cache
-    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(partial(preprocess_image, all_folders=all_folders),
+                          **kwargs).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -1435,22 +1434,21 @@ def _preprocess_llava_instruct_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     all_folders = {}
     for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
         all_folders[media_type] = MediaCache.download(media_type)
-    dataset._image_dir = all_folders
 
-    def preprocess_image(example):
+    def preprocess_image(example, all_folders):
         image = example['image']
         if 'coco/' in image:
-            image = os.path.join(dataset._image_dir['coco'], image.replace('coco/', ''))
+            image = os.path.join(all_folders['coco'], image.replace('coco/', ''))
         elif 'gqa/' in image:
-            image = os.path.join(dataset._image_dir['gqa'], image.replace('gqa/', ''))
+            image = os.path.join(all_folders['gqa'], image.replace('gqa/', ''))
         elif 'ocr_vqa/' in image:
-            image = os.path.join(dataset._image_dir['ocr_vqa'], image)
+            image = os.path.join(all_folders['ocr_vqa'], image)
         elif 'textvqa/' in image:
-            image = os.path.join(dataset._image_dir['textvqa'], image.replace('textvqa/', ''))
+            image = os.path.join(all_folders['textvqa'], image.replace('textvqa/', ''))
         elif 'VG_100K/' in image:
-            image = os.path.join(dataset._image_dir['VG_100K'], image.replace('vg/', ''))
+            image = os.path.join(all_folders['VG_100K'], image.replace('vg/', ''))
         elif 'VG_100K_2/' in image:
-            image = os.path.join(dataset._image_dir['VG_100K_2'], image.replace('vg/', ''))
+            image = os.path.join(all_folders['VG_100K_2'], image.replace('vg/', ''))
         if os.path.exists(image):
             example['images'] = image
         else:
@@ -1460,7 +1458,8 @@ def _preprocess_llava_instruct_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     kwargs = {}
     if not isinstance(dataset, HfIterableDataset):
         kwargs['load_from_cache_file'] = dataset_enable_cache
-    dataset = dataset.map(preprocess_image, **kwargs).filter(lambda example: example['images'] is not None)
+    dataset = dataset.map(partial(preprocess_image, all_folders=all_folders),
+                          **kwargs).filter(lambda example: example['images'] is not None)
     processer = ConversationsPreprocessor(
         user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     return processer(dataset)
@@ -2743,12 +2742,16 @@ def get_dataset(
             val_dataset_list.append(val_d)
 
     train_dataset = None
-    if len(train_dataset_list) > 0:
+    if len(train_dataset_list) > 1:
         train_dataset = concatenate_datasets(train_dataset_list) if not streaming else interleave_datasets(
             train_dataset_list)
+    else:
+        train_dataset = train_dataset_list[0] if train_dataset_list else None
     val_dataset = None
-    if len(val_dataset_list) > 0:
+    if len(val_dataset_list) > 1:
         val_dataset = concatenate_datasets(val_dataset_list) if not streaming else interleave_datasets(val_dataset_list)
+    else:
+        val_dataset = val_dataset_list[0] if val_dataset_list else None
     if check_dataset_strategy != 'none':
         logger.info('check dataset...')
         logger.info(f"check_dataset_strategy: '{check_dataset_strategy}'")
