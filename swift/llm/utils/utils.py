@@ -77,6 +77,7 @@ def download_dataset(model_id: str, files: List[str], force_download: bool = Fal
 use_hf = strtobool(os.environ.get('USE_HF', 'False'))
 if not use_hf:
     from modelscope import MsDataset
+
     _old_msdataset_load = MsDataset.load
 
     @wraps(_old_msdataset_load)
@@ -972,6 +973,15 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
 class LLMIterableDataset(HfIterableDataset):
 
     def __init__(self, dataset: HfIterableDataset, max_retries=10):
+        super().__init__(
+            dataset._ex_iterable,
+            dataset._info,
+            dataset._split,
+            dataset._formatting,
+            dataset._shuffling,
+            dataset._distributed,
+            dataset._token_per_repo_id,
+        )
         self.dataset = dataset
         self.max_retries = max_retries
         from .dataset import standard_keys

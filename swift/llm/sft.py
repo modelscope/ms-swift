@@ -218,7 +218,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         is_training=True,
         **kwargs)
     if hasattr(model, 'hf_device_map'):
-        logger.info(f'model.hf_device_map: {json.dumps(model.hf_device_map)}')
+        logger.info(f'model.hf_device_map: {model.hf_device_map}')
     for k in ['gptq', 'awq', 'aqlm']:
         if getattr(model, f'is_{k}', None):
             args.quant_method = k
