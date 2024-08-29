@@ -10,7 +10,7 @@
 ### Multi-Modal Best Practice
 
 A single round of dialogue can contain multiple images (or no images):
-1. [Qwen-VL Best Practice](qwen-vl-best-practice.md)
+1. [Qwen-VL Best Practice](qwen-vl-best-practice.md), [Qwen2-VL Best Practice](qwen2-vl-best-practice.md)
 2. [Qwen-Audio Best Practice](qwen-audio-best-practice.md), [Qwen2-Audio最佳实践](https://github.com/modelscope/ms-swift/issues/1653)
 3. [Llava Best Practice](llava-best-practice.md), [LLava Video Best Practice](llava-video-best-practice.md)
 4. [InternVL Series Best Practice](internvl-best-practice.md)
