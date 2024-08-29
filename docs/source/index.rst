@@ -56,6 +56,7 @@ Swift DOCUMENTATION
    Multi-Modal/vLLM推理加速文档.md
    Multi-Modal/MLLM部署文档.md
    Multi-Modal/qwen-vl最佳实践.md
+   Multi-Modal/qwen2-vl最佳实践.md
    Multi-Modal/qwen-audio最佳实践.md
    Multi-Modal/llava最佳实践.md
    Multi-Modal/llava-video最佳实践.md
