@@ -263,6 +263,31 @@ def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
     return librosa.load(audio_io, sr=sampling_rate)[0]
 
 
+@load_file_decorator
+def load_video_qwen2(video_io: BytesIO):
+    from .template import get_env_args
+    from torchvision import io
+
+    fps = get_env_args('fps', float, 1.)
+    nframe_factor = get_env_args('nframe_factor', int, 2)
+    nframes = get_env_args('nframes', int, None)
+
+    def round_by_factor(number: int, factor: int) -> int:
+        return round(number / factor) * factor
+
+    video, _, info = io.read_video(
+        video_io,
+        pts_unit='sec',
+        output_format='TCHW',
+    )
+    if nframes is not None:
+        nframes = round_by_factor(nframes, nframe_factor)
+    else:
+        nframes = round_by_factor(video.size(0) / info['video_fps'] * fps, nframe_factor)
+    idx = torch.linspace(0, video.size(0) - 1, nframes, dtype=torch.int64)
+    return video[idx]
+
+
 if __name__ == '__main__':
     # A test main to draw bbox
     draw_plot('man.jpg', [354, 462, 580, 738], 'norm_1000', 'man_bbox.jpg')
