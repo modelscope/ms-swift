@@ -1359,7 +1359,7 @@ class Qwen2VLTemplate(QwenTemplate):
                     if labels:
                         labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
                                                                                                + 1:]
-                    added_tokens_len += token_len
+                    added_tokens_len += token_len - 1
                 inputs.update(media_inputs)
 
         inputs['input_ids'] = input_ids
