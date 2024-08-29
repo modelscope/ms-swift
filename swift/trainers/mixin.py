@@ -549,6 +549,7 @@ class SwiftMixin:
             resume_from_checkpoint = None
         if self._resume_from_checkpoint is not None and not is_sagemaker_mp_enabled() and not self.is_fsdp_enabled:
             self._load_from_checkpoint(self._resume_from_checkpoint)
+
         res = super().train(resume_from_checkpoint, *args, **kwargs)
         self._resume_from_checkpoint = None
         if self.max_memory != 0:
