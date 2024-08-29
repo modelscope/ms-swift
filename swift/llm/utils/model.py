@@ -3478,6 +3478,8 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
+    if model is not None:
+        model.model.embed_tokens.register_forward_hook(_clone_hook)
     return model, tokenizer
 
 

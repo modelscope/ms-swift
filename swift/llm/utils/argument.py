@@ -68,7 +68,6 @@ class ArgumentsBase:
             else:  # json str
                 self.device_map_config = json.loads(self.device_map_config)
 
-
     @classmethod
     def _check_path(cls,
                     value: Union[str, List[str]],
