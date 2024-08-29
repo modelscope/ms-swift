@@ -3456,7 +3456,8 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     LoRATM.qwen2_vl,
     TemplateType.qwen2_vl,
     support_flash_attn=True,
-    requires=['pyav', 'transformers>=4.45.0.dev0'],
+    # pip install qwen_vl_utils
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils'],
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-7B-Instruct')
 @register_model(
@@ -3465,7 +3466,7 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     LoRATM.qwen2_vl,
     TemplateType.qwen2_vl,
     support_flash_attn=True,
-    requires=['pyav', 'transformers>=4.45.0.dev0'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils'],
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct')
 def get_model_tokenizer_qwen2_vl(model_dir: str,
