@@ -143,7 +143,7 @@
   - The application priority of matching rules is as follows, from highest to lowest: query fields > specific response fields > regular expression matching rules.
 - `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
 - `--custom_dataset_info`: Default is `None`. Pass in the path to an external `dataset_info.json`, a JSON string, or a dictionary. Used to register custom datasets. The format example: https://github.com/modelscope/swift/blob/main/swift/llm/data/dataset_info.json
-- `--device_map_config`: Manually configure the model's device_map from a local file, defaulting to `None`. You can pass a path, a JSON string, or a dict.
+- `--device_map_config`: Manually configure the model's device_map, default is `None`. You can pass a local path (.json), a JSON string, or a dict.
 - `--device_max_memory`: The max memory of each device can use for `device_map`, `List`, default is `[]`, The number of values must equal to the device count. Like `10GB 10GB`.
 
 ### Long Context
