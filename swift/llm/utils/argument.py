@@ -66,7 +66,7 @@ class ArgumentsBase:
                 with open(config_path, 'r') as json_file:
                     self.device_map_config = json.load(json_file)
             else:  # json str
-                self.device_map_config = json.load(self.device_map_config)
+                self.device_map_config = json.loads(self.device_map_config)
 
 
     @classmethod
