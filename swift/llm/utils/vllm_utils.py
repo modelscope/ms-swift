@@ -161,10 +161,7 @@ class _VllmGenerationConfigMixin:
             self.max_tokens = value
         elif key == 'do_sample':
             assert value in {True, False}
-            if value:
-                self.temperature = self._temperature
-            else:
-                self.temperature = 0.
+            super().__setattr__('temperature', self._temperature if value else 0)
         elif key == 'max_length':
             raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
         else:
@@ -593,9 +590,9 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         val = getattr(args, k, None)
         if val is not None:
             setattr(llm_engine.generation_config, k, val)
-    tokenizer = llm_engine.hf_tokenizer
-
     logger.info(f'llm_engine.generation_config: {llm_engine.generation_config}')
+
+    tokenizer = llm_engine.hf_tokenizer
     template: Template = get_template(
         args.template_type,
         tokenizer,
