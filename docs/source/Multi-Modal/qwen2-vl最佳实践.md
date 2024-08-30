@@ -153,6 +153,19 @@ history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road
 
 ## 微调
 
+### 图像OCR微调
+我们使用 latex-ocr-print 数据集进行微调，该数据集的任务是进行Latex OCR。您可以在 modelscope 上找到该数据集: [https://modelscope.cn/datasets/AI-ModelScope/LaTeX_OCR](https://modelscope.cn/datasets/AI-ModelScope/LaTeX_OCR)
+
+```bash
+# 单卡A10/3090可运行
+# GPU Memory: 20GB
+SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
+  --model_type qwen2-vl-7b-instruct \
+  --model_id_or_path qwen/Qwen2-VL-7B-Instruct \
+  --sft_type lora \
+  --dataset latex-ocr-print#20000
+```
+
 ### 图像描述微调
 
 我们使用 coco-en-mini 数据集进行微调，该数据集的任务是对图片内容进行描述。您可以在 modelscope 上找到该数据集: [https://modelscope.cn/datasets/modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption)
