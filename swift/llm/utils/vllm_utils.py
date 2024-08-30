@@ -141,7 +141,10 @@ def get_vllm_engine(
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)
         kwargs = generation_config.to_dict()
-        parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
+        if version.parse(vllm.__version__) < version.parse('0.5.5'):
+            parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
+        else:
+            parameters = VllmGenerationConfig.__annotations__
         for k in kwargs.copy().keys():
             if k not in parameters:
                 kwargs.pop(k)
@@ -165,6 +168,8 @@ class _VllmGenerationConfigMixin:
         elif key == 'max_length':
             raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
         else:
+            if key == 'temperature':
+                self._temperature = value
             super().__setattr__(key, value)
 
 
@@ -583,20 +588,14 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         enable_lora=args.vllm_enable_lora,
         max_loras=min(len(args.lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
+    setattr(llm_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
+    for k in ['do_sample', 'temperature', 'top_k', 'top_p', 'repetition_penalty']:
+        val = getattr(args, k, None)
+        if val is not None:
+            setattr(llm_engine.generation_config, k, val)
     tokenizer = llm_engine.hf_tokenizer
 
-    if not args.do_sample:
-        args.temperature = 0
-    generation_config = VllmGenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        stop=args.stop_words,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams)
-    logger.info(f'generation_config: {generation_config}')
-    llm_engine.generation_config = generation_config
+    logger.info(f'llm_engine.generation_config: {llm_engine.generation_config}')
     template: Template = get_template(
         args.template_type,
         tokenizer,
