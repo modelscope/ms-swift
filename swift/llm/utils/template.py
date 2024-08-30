@@ -1400,15 +1400,17 @@ class Qwen2VLTemplate(QwenTemplate):
 
     def _post_encode(self, data: Any) -> Dict[str, Any]:
         # zero3 & is_plain_text
-        model = self.model.model
-        if hasattr(model, 'model'):
-            model = model.model
-        device = model.embed_tokens.weight.device
-        input_ids = torch.tensor(data['input_ids'], device=device)
-        inputs_embeds = model.embed_tokens(input_ids)
-        image_embeds = self.model.visual(data['pixel_values'], grid_thw=data['image_grid_thw']).to(inputs_embeds.device)
-        inputs_embeds += image_embeds.mean() * 0.
-        return {'inputs_embeds': inputs_embeds}
+        if is_deepspeed_zero3_enabled():
+            model = self.model.model
+            if hasattr(model, 'model'):
+                model = model.model
+            device = model.embed_tokens.weight.device
+            input_ids = torch.tensor(data['input_ids'], device=device)
+            inputs_embeds = model.embed_tokens(input_ids)
+            image_embeds = self.model.visual(data['pixel_values'], grid_thw=data['image_grid_thw']).to(inputs_embeds.device)
+            inputs_embeds += image_embeds.mean() * 0.
+            return {'inputs_embeds': inputs_embeds}
+        return {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
