@@ -320,7 +320,7 @@ class LLMTrain(BaseUI):
     @classmethod
     def train(cls, *args):
         ignore_elements = ('model_type', 'logging_dir', 'more_params', 'train_type')
-        sft_args = cls.get_default_value_from_dataclass(RLHFArguments)
+        default_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
@@ -330,14 +330,14 @@ class LLMTrain(BaseUI):
         model_type = None
         do_rlhf = False
         for key, value in zip(keys, args):
-            compare_value = sft_args.get(key)
+            compare_value = default_args.get(key)
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                 value = int(value)
             elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                 value = float(value)
             elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
                 value = True if value.lower() == 'true' else False
-            if key not in ignore_elements and key in sft_args and compare_value != value and value:
+            if key not in ignore_elements and key in default_args and compare_value != value and value:
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
@@ -408,8 +408,8 @@ class LLMTrain(BaseUI):
         if model_type:
             record = {}
             for key, value in zip(keys, args):
-                if isinstance(cls.element(key), (Dropdown, Textbox, Checkbox, Slider)):
-                    record[key] = value
+                if key in default_args or key in ('more_params', 'train_type', 'use_ddp', 'ddp_num', 'gpu_id'):
+                    record[key] = value or None
             cls.save_cache(model_type, record)
         return run_command, sft_args, other_kwargs
 
