@@ -306,9 +306,10 @@ class Template:
     def training_context(self):
         if self.model is None:
             self._is_training = True
-ch            yield
+            yield
             self._is_training = False
             return
+
         self._is_training = True
 
         def _pre_forward_hook(module, args, kwargs):
