@@ -350,6 +350,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 
 
 ### vLLM Parameters
+Reference document: [https://docs.vllm.ai/en/latest/models/engine_args.html](https://docs.vllm.ai/en/latest/models/engine_args.html)
 
 - `--gpu_memory_utilization`: Parameter for initializing vllm engine `EngineArgs`, default is `0.9`. This parameter only takes effect when using vllm. vLLM inference acceleration and deployment can be found in [vLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md).
 - `--tensor_parallel_size`: Parameter for initializing vllm engine `EngineArgs`, default is `1`. This parameter only takes effect when using vllm.
@@ -363,6 +364,8 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 
 
 ### lmdeploy Parameters
+Reference document: [https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig](https://lmdeploy.readthedocs.io/en/latest/api/pipeline.html#turbomindengineconfig)
+
 - `--tp`: Tensor parallelism, a parameter for initializing the lmdeploy engine, default value is `1`.
 - `--cache_max_entry_count`: Parameter to initialize the lmdeploy engine, default value is `0.8`.
 - `--quant_policy`: Quantization of Key-Value Cache, parameters for initializing the lmdeploy engine, default value is `0`, you can set it to 4 or 8.

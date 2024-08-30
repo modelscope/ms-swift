@@ -135,6 +135,8 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
     ) -> None:
         if stop_words is None:
             stop_words = []
+        if max_new_tokens is None:
+            max_new_tokens = 64
         super().__init__(
             max_new_tokens=max_new_tokens,
             temperature=temperature,
