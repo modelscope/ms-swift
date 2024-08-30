@@ -44,8 +44,17 @@ def _update_fingerprint_mac(*args, **kwargs):
 datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
-datasets.Dataset.map = partial(datasets.Dataset.map, map_nproc=os.environ.get('DATASET_MAP_NPROC'))
 
+
+def partialed_map(self, *args, **kwargs):
+    if 'map_nproc' not in kwargs:
+        map_nproc = os.environ.get('DATASET_MAP_NPROC')
+        kwargs['num_proc'] = int(map_nproc) if map_nproc else map_nproc
+    return self._origin_map(*args, **kwargs)
+
+
+datasets.Dataset._origin_map = datasets.Dataset.map
+datasets.Dataset.map = partialed_map
 
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',

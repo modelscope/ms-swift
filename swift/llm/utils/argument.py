@@ -920,6 +920,8 @@ class SftArguments(ArgumentsBase):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.handle_compatibility()
+        if self.preprocess_num_proc and self.preprocess_num_proc > 1:
+            os.environ['DATASET_MAP_NPROC'] = str(self.preprocess_num_proc)
         if len(self.val_dataset) > 0:
             self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
