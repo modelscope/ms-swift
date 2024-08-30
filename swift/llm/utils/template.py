@@ -9,6 +9,7 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
+import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
@@ -1383,7 +1384,31 @@ class Qwen2VLTemplate(QwenTemplate):
 
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
+
+        if not images and not videos:  # is_deepspeed_zero3_enabled() and
+            from PIL import Image
+            image = np.zeros((32, 32, 3), dtype=np.uint8)
+            image = Image.fromarray(image)
+            processor = self.tokenizer.processor
+            image_inputs = processor.image_processor(images=[image], videos=None, return_tensors='pt')
+            inputs['_data'] = {
+                'pixel_values': image_inputs['pixel_values'],
+                'image_grid_thw': image_inputs['image_grid_thw'],
+                'input_ids': input_ids
+            }
         return inputs, {}
+
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        # zero3 & is_plain_text
+        model = self.model.model
+        if hasattr(model, 'model'):
+            model = model.model
+        device = model.embed_tokens.weight.device
+        input_ids = torch.tensor(data['input_ids'], device=device)
+        inputs_embeds = model.embed_tokens(input_ids)
+        image_embeds = self.model.visual(data['pixel_values'], grid_thw=data['image_grid_thw']).to(inputs_embeds.device)
+        inputs_embeds += image_embeds.mean() * 0.
+        return {'inputs_embeds': inputs_embeds}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
