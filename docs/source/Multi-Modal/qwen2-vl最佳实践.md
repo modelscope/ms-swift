@@ -157,7 +157,7 @@ history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road
 我们使用 latex-ocr-print 数据集进行微调，该数据集的任务是进行Latex OCR。您可以在 modelscope 上找到该数据集: [https://modelscope.cn/datasets/AI-ModelScope/LaTeX_OCR](https://modelscope.cn/datasets/AI-ModelScope/LaTeX_OCR)
 
 ```bash
-# 单卡A10/3090可运行 (OCR微调)
+# 单卡A10/3090可运行
 # GPU Memory: 20GB
 SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
   --model_type qwen2-vl-7b-instruct \
