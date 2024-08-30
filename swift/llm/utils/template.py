@@ -1384,30 +1384,25 @@ class Qwen2VLTemplate(QwenTemplate):
 
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
+        inputs['_data'] = {'is_plain_text': not images and not videos}
+        return inputs, {}
 
-        if is_deepspeed_zero3_enabled() and not images and not videos:  # 
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        model = self.model.model
+        if hasattr(model, 'model'):
+            model = model.model
+        device = model.embed_tokens.weight.device
+        is_plain_text = data.get('is_plain_text', False)
+        if is_deepspeed_zero3_enabled() and is_plain_text:
             from PIL import Image
             image = np.zeros((32, 32, 3), dtype=np.uint8)
             image = Image.fromarray(image)
             processor = self.tokenizer.processor
             image_inputs = processor.image_processor(images=[image], videos=None, return_tensors='pt')
-            inputs['_data'] = {
-                'pixel_values': image_inputs['pixel_values'],
-                'image_grid_thw': image_inputs['image_grid_thw'],
-                'input_ids': input_ids
-            }
-        return inputs, {}
-
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
-        # zero3 & is_plain_text
-        if is_deepspeed_zero3_enabled():
-            model = self.model.model
-            if hasattr(model, 'model'):
-                model = model.model
-            device = model.embed_tokens.weight.device
             input_ids = torch.tensor(data['input_ids'], device=device)
             inputs_embeds = model.embed_tokens(input_ids)
-            image_embeds = self.model.visual(data['pixel_values'], grid_thw=data['image_grid_thw']).to(inputs_embeds.device)
+            image_embeds = self.model.visual(
+                image_inputs['pixel_values'], grid_thw=image_inputs['image_grid_thw']).to(inputs_embeds.device)
             inputs_embeds += image_embeds.mean() * 0.
             return {'inputs_embeds': inputs_embeds}
         return {}
