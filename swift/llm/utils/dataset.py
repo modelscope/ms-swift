@@ -47,9 +47,9 @@ datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
 def partialed_map(self, *args, **kwargs):
-    if 'map_nproc' not in kwargs:
-        map_nproc = os.environ.get('DATASET_MAP_NPROC')
-        kwargs['num_proc'] = int(map_nproc) if map_nproc else map_nproc
+    if 'num_proc' not in kwargs:
+        num_proc = os.environ.get('DATASET_MAP_NPROC')
+        kwargs['num_proc'] = int(num_proc) if num_proc else num_proc
     return self._origin_map(*args, **kwargs)
 
 
