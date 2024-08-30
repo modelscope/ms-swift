@@ -1385,7 +1385,7 @@ class Qwen2VLTemplate(QwenTemplate):
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
 
-        if not images and not videos:  # is_deepspeed_zero3_enabled() and
+        if is_deepspeed_zero3_enabled() and not images and not videos:  # 
             from PIL import Image
             image = np.zeros((32, 32, 3), dtype=np.uint8)
             image = Image.fromarray(image)
