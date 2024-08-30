@@ -1569,7 +1569,7 @@ class EvalArguments(InferArguments):
     deploy_timeout: int = 60
 
     do_sample: bool = False  # Note: for evaluation default is False
-    temperature: float = 0.0
+    temperature: float = 0.
     eval_nproc: int = 16
 
     def __post_init__(self):

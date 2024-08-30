@@ -141,7 +141,10 @@ def get_vllm_engine(
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)
         kwargs = generation_config.to_dict()
-        parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
+        if version.parse(vllm.__version__) < version.parse('0.5.5'):
+            parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
+        else:
+            parameters = VllmGenerationConfig.__annotations__
         for k in kwargs.copy().keys():
             if k not in parameters:
                 kwargs.pop(k)
