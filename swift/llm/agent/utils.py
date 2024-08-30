@@ -6,7 +6,7 @@ from swift.utils.utils import split_str_parts_by
 
 logger = get_logger()
 
-REACT_PROMPT = """Answer the following questions as best you can. You have access to the following tools:
+REACT_PROMPT = """Answer the following questions as best as you can. You have access to the following tools:
 
 {tool_list}
 

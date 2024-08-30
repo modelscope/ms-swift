@@ -44,6 +44,8 @@ def _update_fingerprint_mac(*args, **kwargs):
 datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
+datasets.Dataset.map = partial(datasets.Dataset.map, map_nproc=os.environ.get('DATASET_MAP_NPROC'))
+
 
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
