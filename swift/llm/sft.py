@@ -11,7 +11,7 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from packaging import version
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_npu_available
+from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import Seq2SeqTrainer
@@ -269,7 +269,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             args.bf16,
             args.fp16,
             gradient_checkpointing=True,
-            fsdp_flatten_parameters=False)
+            fsdp_flatten_parameters=(args.sft_type == 'full'))
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     if use_torchacc():
@@ -448,8 +448,13 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
 
 def get_sft_main(args, llm):
     if use_torchacc():
-        logger.warning('TorchAcc is currently only available internally within Alibaba Cloud.')
         import torchacc as ta
+        import torch_xla.runtime as xr
+        xla_cache_path = os.getenv('TORCHACC_CACHE_PATH')
+        read_only = strtobool(os.getenv('TORCHACC_CACHE_PATH_READ_ONLY', '0'))
+        suffix = f'_rank{xr.global_ordinal()}'
+        if xla_cache_path and not xla_cache_path.endswith(suffix):
+            xr.initialize_cache(xla_cache_path + suffix, readonly=read_only)
         if version.parse(transformers.__version__) < version.parse('4.41.0'):
             # This patch should be called before `llm_sft`.
             ta.accelerate_hf_trainer()
