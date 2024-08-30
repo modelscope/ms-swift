@@ -1,10 +1,15 @@
 import os
+import shutil
+import time
 import typing
 from dataclasses import fields
+from datetime import datetime
 from functools import wraps
 from typing import Any, Dict, List, OrderedDict, Type
 
+import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
+from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.llm.utils.model import MODEL_MAPPING, ModelType
 
@@ -87,6 +92,8 @@ class BaseUI:
     int_regex = r'^[-+]?[0-9]+$'
     float_regex = r'[-+]?(?:\d*\.*\d+)'
     bool_regex = r'^(T|t)rue$|^(F|f)alse$'
+    cache_dir = os.path.join(get_cache_dir(), 'swift-web-ui')
+    os.makedirs(cache_dir, exist_ok=True)
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
@@ -105,6 +112,41 @@ class BaseUI:
     def do_build_ui(cls, base_tab: Type['BaseUI']):
         """Build UI"""
         pass
+
+    @classmethod
+    def save_cache(cls, key, value):
+        timestamp = str(int(time.time()))
+        filename = os.path.join(cls.cache_dir, key + '-' + timestamp)
+        with open(filename, 'w') as f:
+            json.dump(value, f)
+
+    @classmethod
+    def list_cache(cls, key):
+        files = []
+        for _, _, filenames in os.walk(cls.cache_dir):
+            for filename in filenames:
+                if filename.startswith(key):
+                    idx = filename.rfind('-')
+                    key, ts = filename[:idx], filename[idx + 1:]
+                    dt_object = datetime.fromtimestamp(int(ts))
+                    formatted_time = dt_object.strftime('%Y/%m/%d %H:%M:%S')
+                    files.append(formatted_time)
+        return sorted(files, reverse=True)
+
+    @classmethod
+    def load_cache(cls, key, timestamp):
+        dt_object = datetime.strptime(timestamp, '%Y/%m/%d %H:%M:%S')
+        timestamp = int(dt_object.timestamp())
+        filename = key + '-' + str(timestamp)
+        with open(os.path.join(cls.cache_dir, filename), 'r') as f:
+            return json.load(f)
+
+    @classmethod
+    def clear_cache(cls, key):
+        for _, _, filenames in os.walk(cls.cache_dir):
+            for filename in filenames:
+                if filename.startswith(key):
+                    os.remove(os.path.join(cls.cache_dir, filename))
 
     @classmethod
     def choice(cls, elem_id):
