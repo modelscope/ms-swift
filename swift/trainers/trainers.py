@@ -14,7 +14,8 @@ from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.torchacc_utils import ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader, ta_trim_graph
+from swift.torchacc_utils import (patch_clip_grad_norm, ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader,
+                                  ta_trim_graph)
 from swift.utils import use_torchacc
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .loss import get_loss_func
@@ -41,6 +42,9 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import init_sequence_parallel_xtuner
             init_sequence_parallel_xtuner(self.sequence_parallel_size)
+
+        if use_torchacc():
+            patch_clip_grad_norm(self.accelerator)
 
     def prediction_step(
         self,
@@ -223,11 +227,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 if 'acc' not in self._custom_metrics:
                     self._custom_metrics['acc'] = self._acc
                 self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
-
-        if use_torchacc() and self.args.gradient_accumulation_steps > 1:
-            import torchacc as ta
-            ta.mark_step()
-
         return (loss, outputs) if return_outputs else loss
 
     def get_train_dataloader(self):

@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import os
 
 
 def ta_accelerate(model,
@@ -26,6 +27,9 @@ def ta_accelerate(model,
         config.dist.fsdp.wrap_layer_cls = {layer_cls_name}
         config.dist.fsdp.flatten_parameters = fsdp_flatten_parameters
         config.dist.dp.size = 1
+
+        if fsdp_num > 0:
+            os.environ['ACCELERATE_USE_FSDP'] = 'true'
 
         return config
 
