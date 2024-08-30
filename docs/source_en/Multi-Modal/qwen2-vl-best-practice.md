@@ -143,7 +143,7 @@ history: [['<img>http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/road
 We fine-tune using latex-ocr-printdataset, which aims to describe the content of images. You can find this dataset on ModelScope: [https://modelscope.cn/datasets/AI-ModelScope/LaTeX_OCR](https://modelscope.cn/datasets/AI-ModelScope/LaTeX_OCR)
 
 ```bash
-# Single-card A10/3090 can run (OCR fine-tuning).
+# Single-card A10/3090 can run
 # GPU Memory: 20GB
 SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
   --model_type qwen2-vl-7b-instruct \
