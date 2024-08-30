@@ -1384,7 +1384,9 @@ class Qwen2VLTemplate(QwenTemplate):
 
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
-        inputs['_data'] = {'is_plain_text': not images and not videos}
+        inputs['_data'] = {}
+        if not images and not videos:
+            inputs['_data']['input_ids'] = input_ids
         return inputs, {}
 
     def _post_encode(self, data: Any) -> Dict[str, Any]:
@@ -1392,13 +1394,14 @@ class Qwen2VLTemplate(QwenTemplate):
         if hasattr(model, 'model'):
             model = model.model
         device = model.embed_tokens.weight.device
-        is_plain_text = data.get('is_plain_text', False)
-        if is_deepspeed_zero3_enabled() and is_plain_text:
+        if is_deepspeed_zero3_enabled() and len(data) > 0:
+            from .utils import to_device
             from PIL import Image
             image = np.zeros((32, 32, 3), dtype=np.uint8)
             image = Image.fromarray(image)
             processor = self.tokenizer.processor
             image_inputs = processor.image_processor(images=[image], videos=None, return_tensors='pt')
+            image_inputs = to_device(image_inputs, device)
             input_ids = torch.tensor(data['input_ids'], device=device)
             inputs_embeds = model.embed_tokens(input_ids)
             image_embeds = self.model.visual(
