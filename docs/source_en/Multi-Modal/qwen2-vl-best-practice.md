@@ -13,7 +13,7 @@ git clone https://github.com/modelscope/swift.git
 cd swift
 pip install -e .[llm]
 
-# Please pay attention to this PR: https://github.com/huggingface/transformers/pull/33177
+# Please pay attention to this ISSUE: https://github.com/QwenLM/Qwen2-VL/issues/12
 # pip install torch>=2.4
 pip install git+https://github.com/huggingface/transformers.git
 pip install pyav qwen_vl_utils
