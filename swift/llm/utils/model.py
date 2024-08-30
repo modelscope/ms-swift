@@ -328,6 +328,11 @@ class ModelType:
     internvl2_26b = 'internvl2-26b'
     internvl2_40b = 'internvl2-40b'
     internvl2_llama3_76b = 'internvl2-llama3-76b'
+    internvl2_2b_awq = 'internvl2-2b-awq'
+    internvl2_8b_awq = 'internvl2-8b-awq'
+    internvl2_26b_awq = 'internvl2-26b-awq'
+    internvl2_40b_awq = 'internvl2-40b-awq'
+    internvl2_llama3_76b_awq = 'internvl2-llama3-76b-awq'
     # deepseek
     deepseek_7b = 'deepseek-7b'
     deepseek_7b_chat = 'deepseek-7b-chat'
@@ -3456,7 +3461,9 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     LoRATM.qwen2_vl,
     TemplateType.qwen2_vl,
     support_flash_attn=True,
-    requires=['pyav', 'transformers>=4.45.0.dev0'],
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    # pip install qwen_vl_utils
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils'],
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-7B-Instruct')
 @register_model(
@@ -3465,7 +3472,8 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     LoRATM.qwen2_vl,
     TemplateType.qwen2_vl,
     support_flash_attn=True,
-    requires=['pyav', 'transformers>=4.45.0.dev0'],
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils'],
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct')
 def get_model_tokenizer_qwen2_vl(model_dir: str,
@@ -3473,6 +3481,23 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
+    try:
+        from torchvision.io import video
+        if not hasattr(video, '_patching'):
+            # not read audio
+            video._patching = True
+            _old_read_from_stream = video._read_from_stream
+
+            def _read_from_stream(container: 'av.container.Container', start_offset: float, end_offset: float,
+                                  pts_unit: str, stream: 'av.stream.Stream', *args, **kwargs) -> List['av.frame.Frame']:
+                if stream.type == 'video':
+                    return _old_read_from_stream(container, start_offset, end_offset, pts_unit, stream, *args, **kwargs)
+                return []
+
+            video._read_from_stream = _read_from_stream
+    except Exception:
+        pass
+
     from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
     kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
@@ -4166,6 +4191,81 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-Llama3-76B')
+@register_model(
+    ModelType.internvl2_2b_awq,
+    'OpenGVLab/InternVL2-2B-AWQ',
+    LoRATM.internvl,
+    TemplateType.internvl2,
+    requires=['transformers>=4.36', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    support_vllm=False,
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='OpenGVLab/InternVL2-2B-AWQ')
+@register_model(
+    ModelType.internvl2_8b_awq,
+    'OpenGVLab/InternVL2-8B-AWQ',
+    LoRATM.internvl,
+    TemplateType.internvl2,
+    requires=['transformers>=4.36', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    support_vllm=False,
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='OpenGVLab/InternVL2-8B-AWQ')
+@register_model(
+    ModelType.internvl2_26b_awq,
+    'OpenGVLab/InternVL2-26B-AWQ',
+    LoRATM.internvl,
+    TemplateType.internvl2,
+    requires=['transformers>=4.36', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    support_vllm=False,
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='OpenGVLab/InternVL2-26B-AWQ')
+@register_model(
+    ModelType.internvl2_40b_awq,
+    'OpenGVLab/InternVL2-40B-AWQ',
+    LoRATM.internvl,
+    TemplateType.internvl2,
+    requires=['transformers>=4.36', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    support_vllm=False,
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='OpenGVLab/InternVL2-40B-AWQ')
+@register_model(
+    ModelType.internvl2_llama3_76b_awq,
+    'OpenGVLab/InternVL2-Llama3-76B-AWQ',
+    LoRATM.internvl,
+    TemplateType.internvl2,
+    requires=['transformers>=4.36', 'timm'],
+    ignore_file_pattern=[r'.+\.zip$'],
+    support_flash_attn=True,
+    support_lmdeploy=True,
+    support_vllm=False,
+    torch_dtype=torch.float16,
+    function_kwargs={'is_awq': True},
+    placeholder_tokens=['<IMG_CONTEXT>'],
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='OpenGVLab/InternVL2-Llama3-76B-AWQ')
 def get_model_tokenizer_internvl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
