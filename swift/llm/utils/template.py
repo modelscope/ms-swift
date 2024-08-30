@@ -1385,7 +1385,7 @@ class Qwen2VLTemplate(QwenTemplate):
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         inputs['_data'] = {}
-        if not images and not videos:
+        if is_deepspeed_zero3_enabled() and not images and not videos:
             inputs['_data']['input_ids'] = input_ids
         return inputs, {}
 
@@ -1403,9 +1403,10 @@ class Qwen2VLTemplate(QwenTemplate):
             image_inputs = processor.image_processor(images=[image], videos=None, return_tensors='pt')
             image_inputs = to_device(image_inputs, device)
             input_ids = torch.tensor(data['input_ids'], device=device)
+
             inputs_embeds = model.embed_tokens(input_ids)
-            image_embeds = self.model.visual(
-                image_inputs['pixel_values'], grid_thw=image_inputs['image_grid_thw']).to(inputs_embeds.device)
+            pixel_values = image_inputs['pixel_values'].type(self.model.visual.get_dtype())
+            image_embeds = self.model.visual(pixel_values, grid_thw=image_inputs['image_grid_thw']).to(device)
             inputs_embeds += image_embeds.mean() * 0.
             return {'inputs_embeds': inputs_embeds}
         return {}
