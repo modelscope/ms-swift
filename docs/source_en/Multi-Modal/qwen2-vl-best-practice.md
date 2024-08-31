@@ -152,7 +152,7 @@ SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
   --dataset latex-ocr-print#20000
 ```
 
-Example of the model performing inference on the validation set after fine-tuning (only 200 steps were trained due to time constraints):
+Example of the model performing inference on the validation set after fine-tuning (only 200 steps were trained):
 
 ![inference result](../../resources/qwen2-vl/ocr_result.png)
 
@@ -200,7 +200,7 @@ GPU Memory Usage:
 ![GPU Memory Usage](../../resources/qwen2-vl/1.png)
 
 
-Training loss (only 200 steps were trained due to time constraints):
+Training loss (only 200 steps were trained):
 
 ![train loss](../../resources/qwen2-vl/loss.png)
 
@@ -267,5 +267,5 @@ NFRAMES=24 MAX_PIXELS=100352 CUDA_VISIBLE_DEVICES=0 swift infer \
     --load_dataset_config true --merge_lora true
 ```
 
-Example of the model performing inference on the validation set after fine-tuning: (only 50 steps were trained due to time constraints)
+Example of the model performing inference on the validation set after fine-tuning: (only 50 steps were trained)
 ![inference result](../../resources/qwen2-vl/4.png)

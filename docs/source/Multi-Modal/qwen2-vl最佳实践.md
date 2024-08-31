@@ -176,7 +176,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
   --dataset latex-ocr-print#20000
 ```
 
-微调后模型对验证集进行推理的示例（时间原因，只训练了200个step）：
+微调后模型对验证集进行推理的示例（只训练了200个step）：
 
 ![推理效果](../../resources/qwen2-vl/ocr_result.png)
 
@@ -212,7 +212,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
 ![显存占用](../../resources/qwen2-vl/1.png)
 
 
-训练损失图（时间原因，只训练了200个step）：
+训练损失图（只训练了200个step）：
 
 ![训练损失](../../resources/qwen2-vl/loss.png)
 
@@ -279,5 +279,5 @@ NFRAMES=24 MAX_PIXELS=100352 CUDA_VISIBLE_DEVICES=0 swift infer \
     --load_dataset_config true --merge_lora true
 ```
 
-微调后模型对验证集进行推理的示例（时间原因，只训练了50个step）：
+微调后模型对验证集进行推理的示例（只训练了50个step）：
 ![推理效果](../../resources/qwen2-vl/4.png)
