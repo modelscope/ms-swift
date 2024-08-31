@@ -305,17 +305,17 @@ class ArgumentsBase:
             if self.server_port is not None:
                 self.port = self.server_port
         if isinstance(self, SftArguments):
-            log_freeze_error = False
+            log_freeze_warning = False
             try:
                 if isinstance(self.freeze_parameters, (int, float)):
-                    log_freeze_error = True
+                    log_freeze_warning = True
                 elif isinstance(self.freeze_parameters, list) and len(self.freeze_parameters) == 1:
                     self.freeze_parameters = float(self.freeze_parameters[0])
-                    log_freeze_error = True
+                    log_freeze_warning = True
             except Exception:
                 pass
-            if log_freeze_error:
-                logger.error(f'please use `--freeze_parameters_ratio {self.freeze_parameters}`')
+            if log_freeze_warning:
+                logger.warning(f'please use `--freeze_parameters_ratio {self.freeze_parameters}`')
                 self.freeze_parameters_ratio = self.freeze_parameters
                 self.freeze_parameters = []
 
