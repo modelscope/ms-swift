@@ -64,6 +64,11 @@ class ArgumentsBase:
                     self.device_map_config = json.load(f)
             else:  # json str
                 self.device_map_config = json.loads(self.device_map_config)
+        _, local_rank, _, local_world_size = get_dist_setting()
+        if local_world_size > 1 and isinstance(self.device_map_config, dict) and local_rank > 0:
+            for k, v in self.device_map_config.items():
+                if isinstance(v, int):
+                    self.device_map_config[k] += local_rank
 
     @classmethod
     def _check_path(cls,
@@ -130,13 +135,6 @@ class ArgumentsBase:
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.temperature == 0:
             self.do_sample = False
-        if self.do_sample is False:
-            # fix warning
-            self.temperature = 1.
-            self.top_p = 1.
-            self.top_k = 50
-            logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
-                        f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
     def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
@@ -825,11 +823,11 @@ class SftArguments(ArgumentsBase):
 
     # generation config
     max_new_tokens: int = 2048
-    do_sample: bool = True
-    temperature: float = 0.3
-    top_k: int = 20
-    top_p: float = 0.7
-    repetition_penalty: float = 1.
+    do_sample: Optional[bool] = None
+    temperature: Optional[float] = None
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
     num_beams: int = 1
 
     # fsdp option
@@ -1336,11 +1334,11 @@ class InferArguments(ArgumentsBase):
     bnb_4bit_quant_storage: Optional[str] = None
 
     max_new_tokens: int = 2048
-    do_sample: bool = True
-    temperature: float = 0.3
-    top_k: int = 20
-    top_p: float = 0.7
-    repetition_penalty: float = 1.
+    do_sample: Optional[bool] = None
+    temperature: Optional[float] = None
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
     num_beams: int = 1
     stop_words: List[str] = field(default_factory=list)
 

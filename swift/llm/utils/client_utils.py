@@ -19,9 +19,12 @@ from .utils import Messages, history_to_messages
 
 
 def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:
+    timeout = float(os.getenv('TIMEOUT', '60'))
+    request_kwargs = {'timeout': timeout}
     if api_key is None:
-        return {}
-    return {'headers': {'Authorization': f'Bearer {api_key}'}}
+        return request_kwargs
+    request_kwargs['headers'] = {'Authorization': f'Bearer {api_key}'}
+    return request_kwargs
 
 
 def get_model_list_client(host: str = '127.0.0.1', port: str = '8000', api_key: str = 'EMPTY', **kwargs) -> ModelList:
