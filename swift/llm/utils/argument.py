@@ -64,6 +64,11 @@ class ArgumentsBase:
                     self.device_map_config = json.load(f)
             else:  # json str
                 self.device_map_config = json.loads(self.device_map_config)
+        _, local_rank, _, local_world_size = get_dist_setting()
+        if local_world_size > 1 and isinstance(self.device_map_config, dict) and local_rank > 0:
+            for k, v in self.device_map_config.items():
+                if isinstance(v, int):
+                    self.device_map_config[k] += local_rank
 
     @classmethod
     def _check_path(cls,

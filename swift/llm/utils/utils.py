@@ -918,15 +918,12 @@ def set_generation_config(model: Module, generation_config: GenerationConfig) ->
     old_generation_config = getattr(model, 'generation_config', None)
     old_generation_priority_config = ['no_repeat_ngram_size']
     if old_generation_config is not None:
-        for k, v in old_generation_config.__dict__.items():
-            if k in ['do_sample', 'temperature', 'top_k', 'top_p', 'repetition_penalty']:
-                if getattr(generation_config, k) is None:
-                    setattr(generation_config, k, v)
+        for k, old_v in old_generation_config.__dict__.items():
+            if k.startswith('_'):
                 continue
-            if k in old_generation_priority_config:
-                setattr(generation_config, k, v)
-            if k not in generation_config.__dict__:
-                setattr(generation_config, k, v)
+            v = getattr(generation_config, k, None)
+            if v != old_v and (k in old_generation_priority_config or old_v is not None and v is None):
+                setattr(generation_config, k, old_v)
     model.generation_config = generation_config
 
 

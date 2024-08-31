@@ -463,7 +463,7 @@ def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncE
         val = getattr(args, k, None)
         if val is not None:
             setattr(lmdeploy_engine.generation_config, k, val)
-    logger.info(f'llm_lmdeploy_engineengine.generation_config: {lmdeploy_engine.generation_config}')
+    logger.info(f'lmdeploy_engine.generation_config: {lmdeploy_engine.generation_config}')
 
     template: Template = get_template(
         args.template_type,
