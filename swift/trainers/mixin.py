@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 import inspect
-import json
 import os
 import re
 import shutil
@@ -10,6 +9,7 @@ from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import json
 import numpy as np
 import safetensors
 import torch
@@ -22,7 +22,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.trainer import (PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trainer, TrainerCallback)
+from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trainer, TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
@@ -520,16 +520,15 @@ class SwiftMixin:
                 optimizer_grouped_parameters = [
                     {
                         'params':
-                            [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
+                        [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
                         'weight_decay':
-                            self.args.weight_decay,
+                        self.args.weight_decay,
                     },
                     {
                         'params':
-                            [p for n, p in opt_model.named_parameters() if
-                             (n not in decay_parameters and p.requires_grad)],
+                        [p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)],
                         'weight_decay':
-                            0.0,
+                        0.0,
                     },
                 ]
 

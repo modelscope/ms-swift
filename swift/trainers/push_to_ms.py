@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from huggingface_hub import RepoUrl
-from huggingface_hub.hf_api import future_compatible, CommitInfo
-from modelscope import push_to_hub, HubApi
+from huggingface_hub.hf_api import CommitInfo, future_compatible
+from modelscope import HubApi, push_to_hub
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.hub.constants import ModelVisibility
 from modelscope.hub.repository import Repository
 from modelscope.hub.utils.utils import get_cache_dir
-from transformers.utils import strtobool, logging
 from requests.exceptions import HTTPError
+from transformers.utils import logging, strtobool
 
 logger = logging.get_logger(__name__)
 
@@ -24,12 +24,7 @@ class PushToMsHubMixin:
     _cache_dir = get_cache_dir()
 
     @staticmethod
-    def create_repo(
-            repo_id: str,
-            *,
-            token: Union[str, bool, None] = None,
-            private: bool = False,
-            **kwargs) -> RepoUrl:
+    def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: bool = False, **kwargs) -> RepoUrl:
         hub_model_id = PushToMsHubMixin._create_ms_repo(repo_id, token, private)
         with tempfile.TemporaryDirectory(dir=PushToMsHubMixin._cache_dir) as temp_cache_dir:
             repo = Repository(temp_cache_dir, hub_model_id)
@@ -39,34 +34,37 @@ class PushToMsHubMixin:
             # Add '*.sagemaker' to .gitignore if using SageMaker
             if os.environ.get('SM_TRAINING_ENV'):
                 PushToMsHubMixin._add_patterns_to_gitignore(repo, ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
-                                                             'Add `*.sagemaker` patterns to .gitignore')
-        return RepoUrl(
-            url=hub_model_id,
-        )
+                                                            'Add `*.sagemaker` patterns to .gitignore')
+        return RepoUrl(url=hub_model_id, )
 
     @staticmethod
     @future_compatible
     def upload_folder(
-            *,
-            repo_id: str,
-            folder_path: Union[str, Path],
-            path_in_repo: Optional[str] = None,
-            commit_message: Optional[str] = None,
-            commit_description: Optional[str] = None,
-            token: Union[str, bool, None] = None,
-            revision: Optional[str] = None,
-            ignore_patterns: Optional[Union[List[str], str]] = None,
-            run_as_future: bool = False,
-            **kwargs,
+        *,
+        repo_id: str,
+        folder_path: Union[str, Path],
+        path_in_repo: Optional[str] = None,
+        commit_message: Optional[str] = None,
+        commit_description: Optional[str] = None,
+        token: Union[str, bool, None] = None,
+        revision: Optional[str] = None,
+        ignore_patterns: Optional[Union[List[str], str]] = None,
+        run_as_future: bool = False,
+        **kwargs,
     ) -> Union[CommitInfo, str, Future[CommitInfo], Future[str]]:
         if path_in_repo is not None:
             # This is a different logic from transformers
             folder_path = os.path.join(folder_path, path_in_repo)
-        commit_message = commit_message or "Upload folder using api"
+        commit_message = commit_message or 'Upload folder using api'
         if commit_description:
             commit_message = commit_message + '\n' + commit_description
-        push_to_hub(repo_id, folder_path, token, commit_message=commit_message,
-                    ignore_file_pattern=ignore_patterns, revision=revision)
+        push_to_hub(
+            repo_id,
+            folder_path,
+            token,
+            commit_message=commit_message,
+            ignore_file_pattern=ignore_patterns,
+            revision=revision)
         return CommitInfo(
             commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
             commit_message=commit_message,
@@ -102,7 +100,9 @@ class PushToMsHubMixin:
         return hub_model_id
 
     @staticmethod
-    def _add_patterns_to_file(repo: Repository, file_name: str, patterns: List[str],
+    def _add_patterns_to_file(repo: Repository,
+                              file_name: str,
+                              patterns: List[str],
                               commit_message: Optional[str] = None) -> None:
         if isinstance(patterns, str):
             patterns = [patterns]
@@ -137,7 +137,8 @@ class PushToMsHubMixin:
         PushToMsHubMixin._add_patterns_to_file(repo, '.gitignore', patterns, commit_message)
 
     @staticmethod
-    def _add_patterns_to_gitattributes(repo: Repository, patterns: List[str],
+    def _add_patterns_to_gitattributes(repo: Repository,
+                                       patterns: List[str],
                                        commit_message: Optional[str] = None) -> None:
         new_patterns = []
         suffix = 'filter=lfs diff=lfs merge=lfs -text'
