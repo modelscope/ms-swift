@@ -587,7 +587,8 @@ class SftArguments(ArgumentsBase):
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
                       'reft'] = 'lora'
-    freeze_parameters: float = 0.  # 0 ~ 1
+    freeze_parameters: List[str] = field(default_factory=list)
+    freeze_parameters_ratio: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     template_type: str = field(
@@ -1003,9 +1004,10 @@ class SftArguments(ArgumentsBase):
             logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
             self.sft_type = 'full'
 
+        assert not isinstance(self.freeze_parameters, (int, float)), 'please use `--freeze_parameters_ratio`'
         if is_adapter(self.sft_type):
-            assert self.freeze_parameters == 0., (
-                'lora does not support `freeze_parameters`, please set `--sft_type full`')
+            assert self.freeze_parameters_ratio == 0., (
+                'lora does not support `freeze_parameters_ratio`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
             if is_quant_model(self.model_type):
@@ -1016,7 +1018,7 @@ class SftArguments(ArgumentsBase):
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
-            assert 0 <= self.freeze_parameters <= 1
+            assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
                                           'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.')

@@ -256,8 +256,7 @@ def prepare_model(model, args: SftArguments):
         model.train()
         model.requires_grad_(True)
 
-        if args.freeze_parameters > 0:
-            freeze_model_parameters(model, args.freeze_parameters)
+        freeze_model_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters)
         if len(args.additional_trainable_parameters) > 0:
             activate_model_parameters(model, args.additional_trainable_parameters)
         if use_torchacc() and args.resume_from_checkpoint is not None:
