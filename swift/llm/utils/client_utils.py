@@ -19,7 +19,7 @@ from .utils import Messages, history_to_messages
 
 
 def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:
-    timeout = os.getenv('TIMEOUT', 60)
+    timeout = float(os.getenv('TIMEOUT', '60'))
     request_kwargs = {'timeout': timeout}
     if api_key is None:
         return request_kwargs

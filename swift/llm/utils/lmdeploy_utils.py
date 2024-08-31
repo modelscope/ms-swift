@@ -459,7 +459,7 @@ def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncE
     for stop_word in args.stop_words:
         _add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
     setattr(lmdeploy_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
-    for k in ['do_sample', 'temperature', 'top_k', 'top_p', 'repetition_penalty']:
+    for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
         val = getattr(args, k, None)
         if val is not None:
             setattr(lmdeploy_engine.generation_config, k, val)

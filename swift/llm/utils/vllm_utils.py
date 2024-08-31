@@ -586,7 +586,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         max_loras=min(len(args.lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
     setattr(llm_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
-    for k in ['do_sample', 'temperature', 'top_k', 'top_p', 'repetition_penalty']:
+    for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
         val = getattr(args, k, None)
         if val is not None:
             setattr(llm_engine.generation_config, k, val)
