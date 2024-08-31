@@ -263,7 +263,7 @@ QWEN2_AUDIO_KEYS = MultiModelKeys(
 QWEN2_VL_KEYS = MultiModelKeys(
     language_model='model',
     projector=None,
-    vision_tower='vision',
+    vision_tower='visual',
 )
 
 GLM4V_KEYS = MultiModelKeys(

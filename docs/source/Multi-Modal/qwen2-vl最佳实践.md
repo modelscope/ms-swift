@@ -164,7 +164,21 @@ SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
   --model_id_or_path qwen/Qwen2-VL-7B-Instruct \
   --sft_type lora \
   --dataset latex-ocr-print#20000
+
+# 全参数训练并freeze vit
+# GPU Memory: 4 * 60GB
+CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
+  --model_type qwen2-vl-7b-instruct \
+  --model_id_or_path qwen/Qwen2-VL-7B-Instruct \
+  --sft_type full \
+  --freeze_vit true \
+  --deepspeed default-zero2 \
+  --dataset latex-ocr-print#20000
 ```
+
+微调后模型对验证集进行推理的示例（只训练了200个step）：
+
+![推理效果](../../resources/qwen2-vl/ocr_result.png)
 
 ### 图像描述微调
 
@@ -198,7 +212,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
 ![显存占用](../../resources/qwen2-vl/1.png)
 
 
-训练损失图（时间原因，只训练了200个step）：
+训练损失图（只训练了200个step）：
 
 ![训练损失](../../resources/qwen2-vl/loss.png)
 
@@ -265,5 +279,5 @@ NFRAMES=24 MAX_PIXELS=100352 CUDA_VISIBLE_DEVICES=0 swift infer \
     --load_dataset_config true --merge_lora true
 ```
 
-微调后模型对验证集进行推理的示例（时间原因，只训练了50个step）：
+微调后模型对验证集进行推理的示例（只训练了50个step）：
 ![推理效果](../../resources/qwen2-vl/4.png)

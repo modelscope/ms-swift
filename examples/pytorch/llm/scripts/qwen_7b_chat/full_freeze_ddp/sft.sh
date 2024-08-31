@@ -14,6 +14,6 @@ swift sft \
     --use_flash_attn true \
     --save_only_model true \
     --dataset codefuse-evol-instruction-zh \
-    --freeze_parameters 0.25 \
+    --freeze_parameters_ratio 0.25 \
     --additional_trainable_parameters transformer.wte \
     --preprocess_num_proc 4 \

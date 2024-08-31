@@ -305,6 +305,20 @@ class ArgumentsBase:
             if self.server_port is not None:
                 self.port = self.server_port
         if isinstance(self, SftArguments):
+            log_freeze_warning = False
+            try:
+                if isinstance(self.freeze_parameters, (int, float)):
+                    log_freeze_warning = True
+                elif isinstance(self.freeze_parameters, list) and len(self.freeze_parameters) == 1:
+                    self.freeze_parameters = float(self.freeze_parameters[0])
+                    log_freeze_warning = True
+            except Exception:
+                pass
+            if log_freeze_warning:
+                logger.warning(f'please use `--freeze_parameters_ratio {self.freeze_parameters}`')
+                self.freeze_parameters_ratio = self.freeze_parameters
+                self.freeze_parameters = []
+
             if isinstance(self.train_dataset_mix_ds, str):
                 self.train_dataset_mix_ds = [self.train_dataset_mix_ds]
             if self.only_save_model is not None:
@@ -585,7 +599,9 @@ class SftArguments(ArgumentsBase):
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
                       'reft'] = 'lora'
-    freeze_parameters: float = 0.  # 0 ~ 1
+    freeze_parameters: List[str] = field(default_factory=list)
+    freeze_vit: bool = False
+    freeze_parameters_ratio: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     template_type: str = field(
@@ -1001,9 +1017,10 @@ class SftArguments(ArgumentsBase):
             logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
             self.sft_type = 'full'
 
+        model_info = MODEL_MAPPING[self.model_type]
         if is_adapter(self.sft_type):
-            assert self.freeze_parameters == 0., (
-                'lora does not support `freeze_parameters`, please set `--sft_type full`')
+            assert self.freeze_parameters_ratio == 0., (
+                'lora does not support `freeze_parameters_ratio`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
             if is_quant_model(self.model_type):
@@ -1014,7 +1031,15 @@ class SftArguments(ArgumentsBase):
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
-            assert 0 <= self.freeze_parameters <= 1
+            if self.freeze_vit:
+                from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+                lora_target_modules = model_info.get('lora_target_modules')
+                vision_tower = None
+                if isinstance(lora_target_modules, str):
+                    vision_tower = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
+                if vision_tower is not None:
+                    self.freeze_parameters.append(vision_tower)
+            assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
                                           'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.')
@@ -1098,7 +1123,6 @@ class SftArguments(ArgumentsBase):
             logger.info(f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}')
         if 'qwen-audio' in self.model_type:
             assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
-        model_info = MODEL_MAPPING[self.model_type]
         support_gradient_checkpointing = model_info.get('support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
