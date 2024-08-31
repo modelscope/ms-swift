@@ -20,7 +20,6 @@ logger = logging.get_logger(__name__)
 class PushToMsHubMixin:
 
     _use_hf_hub = strtobool(os.environ.get('USE_HF', 'False'))
-    repo = None
     _cache_dir = get_cache_dir()
 
     @staticmethod
@@ -73,8 +72,11 @@ class PushToMsHubMixin:
 
     if not _use_hf_hub:
         import huggingface_hub
+        from transformers import trainer
         huggingface_hub.create_repo = create_repo
         huggingface_hub.upload_folder = upload_folder
+        trainer.create_repo = create_repo
+        trainer.upload_folder = upload_folder
 
     @staticmethod
     def _create_ms_repo(hub_model_id: str, hub_token: Optional[str] = None, hub_private_repo: bool = False) -> str:
