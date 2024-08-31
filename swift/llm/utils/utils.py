@@ -925,7 +925,7 @@ def set_generation_config(model: Module, generation_config: GenerationConfig) ->
             if k.startswith('_'):
                 continue
             v = getattr(generation_config, k, None)
-            if v != old_v and (k in old_generation_priority_config or old_v is not None and v is None):
+            if k in old_generation_priority_config or old_v is not None and v is None:
                 setattr(generation_config, k, old_v)
     model.generation_config = generation_config
 
