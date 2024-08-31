@@ -164,6 +164,16 @@ SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
   --model_id_or_path qwen/Qwen2-VL-7B-Instruct \
   --sft_type lora \
   --dataset latex-ocr-print#20000
+
+# 全参数训练并freeze vit
+# GPU Memory: 4 * 60GB
+CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
+  --model_type qwen2-vl-7b-instruct \
+  --model_id_or_path qwen/Qwen2-VL-7B-Instruct \
+  --sft_type full \
+  --freeze_vit true \
+  --deepspeed default-zero2 \
+  --dataset latex-ocr-print#20000
 ```
 
 ### 图像描述微调

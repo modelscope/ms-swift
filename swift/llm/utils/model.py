@@ -543,22 +543,22 @@ class ModelType:
 
 class LoRATM(NamedTuple):
     # default lora target modules for multi-modals
-    qwen_audio = "qwen_audio"
-    qwen_vl = "qwen_vl"
-    qwen2_audio = "qwen2_audio"
-    qwen2_vl = "qwen2_vl"
-    glm4v = "glm4v"
-    llava_next_video = "llava_next_video"
-    llava_llama = "llava_llama"
-    llava = "llava"
+    qwen_audio = 'qwen_audio'
+    qwen_vl = 'qwen_vl'
+    qwen2_audio = 'qwen2_audio'
+    qwen2_vl = 'qwen2_vl'
+    glm4v = 'glm4v'
+    llava_next_video = 'llava_next_video'
+    llava_llama = 'llava_llama'
+    llava = 'llava'
     internlm_xcomposer = ['attention.wqkv', 'attention.wo', 'feed_forward.w1', 'feed_forward.w2', 'feed_forward.w3']
-    internvl = "internvl"
-    deepseek_vl = "deepseek_vl"
-    minicpm_v = "minicpm_v"
-    phi3v = "phi3v"
-    cogvlm = "cogvlm"
-    florence = "florence"
-    idefics3 = "idefics3"
+    internvl = 'internvl'
+    deepseek_vl = 'deepseek_vl'
+    minicpm_v = 'minicpm_v'
+    phi3v = 'phi3v'
+    cogvlm = 'cogvlm'
+    florence = 'florence'
+    idefics3 = 'idefics3'
     # default lora target modules for nlp llms.
     baichuan = ['W_pack']
     chatglm = ['query_key_value']

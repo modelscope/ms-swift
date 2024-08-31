@@ -164,6 +164,16 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
   --sft_type lora \
   --dataset coco-en-mini#20000 \
   --deepspeed default-zero2
+
+# Full parameter training and freezing ViT
+# GPU Memory: 4 * 60GB
+CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
+  --model_type qwen2-vl-7b-instruct \
+  --model_id_or_path qwen/Qwen2-VL-7B-Instruct \
+  --sft_type full \
+  --freeze_vit true \
+  --deepspeed default-zero2 \
+  --dataset latex-ocr-print#20000
 ```
 
 To use a custom dataset, simply specify it as follows:
