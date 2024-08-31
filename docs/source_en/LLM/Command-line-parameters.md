@@ -26,6 +26,7 @@
 - `--auto_find_batch_size`: Auto find batch size according to the GPU memory, default `False`.
 - `--streaming`: Whether to use iterable dataset, Default `False`.
 - `--freeze_parameters`: When sft_type is specified as 'full', the layers prefixed with freeze_parameters will be frozen. The default value is `[]`. For example: `--freeze_parameters visual`.
+- `--freeze_vit`: When sft_type is set to 'full' and a multimodal model is being trained, the parameters of vit can be frozen by setting this parameter to True. The default value is `False`.
 - `--freeze_parameters_ratio`: When sft_type is set to 'full', freeze the bottommost parameters of the model. Range is 0. ~ 1., default is `0.`. This provides a compromise between lora and full fine-tuning.
 - `--additional_trainable_parameters`: In addition to freeze_parameters, only allowed when sft_type is 'full', default is `[]`. For example, if you want to train embedding layer in addition to 50% of parameters, you can set `--freeze_parameters_ratio 0.5 --additional_trainable_parameters transformer.wte`, all parameters starting with `transformer.wte` will be activated. You can also set `--freeze_parameters_ratio 1 --additional_trainable_parameters xxx` to customize the trainable layers.
 - `--tuner_backend`: Backend support for lora, qlora, default is `'peft'`. Options include: 'swift', 'peft', 'unsloth'.
