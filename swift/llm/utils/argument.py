@@ -305,6 +305,18 @@ class ArgumentsBase:
             if self.server_port is not None:
                 self.port = self.server_port
         if isinstance(self, SftArguments):
+            raise_freeze_warning = False
+            try:
+                if isinstance(self.freeze_parameters, (int, float)):
+                    raise_freeze_warning = True
+                elif isinstance(self.freeze_parameters, list) and len(self.freeze_parameters) == 1:
+                    self.freeze_parameters = float(self.freeze_parameters[0])
+                    raise_freeze_warning = True
+            except Exception:
+                pass
+            if raise_freeze_warning:
+                logger.error(f'please use `--freeze_parameters_ratio {self.freeze_parameters}`')
+
             if isinstance(self.train_dataset_mix_ds, str):
                 self.train_dataset_mix_ds = [self.train_dataset_mix_ds]
             if self.only_save_model is not None:
