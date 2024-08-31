@@ -1,9 +1,10 @@
 import os
 import tempfile
 from concurrent.futures import Future
+from functools import partial
 from pathlib import Path
 from typing import List, Optional, Union
-from functools import partial
+
 from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import CommitInfo, future_compatible
 from modelscope import HubApi, push_to_hub
@@ -33,7 +34,10 @@ class PushToMsHubMixin:
                 PushToMsHubMixin._add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
                 # Add 'runs/' to .gitignore, ignore tensorboard files
                 PushToMsHubMixin._add_patterns_to_gitignore(repo, ['runs/'])
-                PushToMsHubMixin._add_patterns_to_file(repo, 'configuration.json', ['{"framework": "pytorch", "task": "text-generation", "allow_remote": true}'], ignore_push_error=True)
+                PushToMsHubMixin._add_patterns_to_file(
+                    repo,
+                    'configuration.json', ['{"framework": "pytorch", "task": "text-generation", "allow_remote": true}'],
+                    ignore_push_error=True)
                 # Add '*.sagemaker' to .gitignore if using SageMaker
                 if os.environ.get('SM_TRAINING_ENV'):
                     PushToMsHubMixin._add_patterns_to_gitignore(repo, ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
