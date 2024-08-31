@@ -1191,7 +1191,7 @@ class SftArguments(ArgumentsBase):
             adam_epsilon=self.adam_epsilon,
             hub_model_id=self.hub_model_id,
             hub_private_repo=self.hub_private_repo,
-            push_hub_strategy=self.push_hub_strategy,
+            hub_strategy=self.push_hub_strategy,
             hub_token=self.hub_token,
             push_to_hub=self.push_to_hub,
             resume_from_checkpoint=self.resume_from_checkpoint,
