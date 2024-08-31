@@ -152,6 +152,10 @@ SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
   --dataset latex-ocr-print#20000
 ```
 
+Example of the model performing inference on the validation set after fine-tuning (only 200 steps were trained due to time constraints):
+
+![inference result](../../resources/qwen2-vl/ocr_result.png)
+
 ### Image Description Fine-tuning
 
 We fine-tune using the coco-en-mini dataset, which aims to describe the content of images. You can find this dataset on ModelScope: [https://modelscope.cn/datasets/modelscope/coco_2014_caption](https://modelscope.cn/datasets/modelscope/coco_2014_caption)
