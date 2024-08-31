@@ -1024,7 +1024,7 @@ class SftArguments(ArgumentsBase):
                 lora_target_modules = model_info.get('lora_target_modules')
                 vision_tower = None
                 if isinstance(lora_target_modules, str):
-                    vision_tower = getattr(MODEL_KEYS_MAPPING[lora_target_modules], 'vision_tower')
+                    vision_tower = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
                 if vision_tower is not None:
                     self.freeze_parameters.append(vision_tower)
             assert 0 <= self.freeze_parameters_ratio <= 1
