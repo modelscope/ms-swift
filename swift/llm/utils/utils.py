@@ -599,7 +599,10 @@ def _prepare_inputs(model: PreTrainedModel,
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()
-
+    if not generation_config.do_sample:
+        generation_config.temperature = 1.
+        generation_config.top_p = 1.
+        generation_config.top_k = 50
     if tokenizer.eos_token_id is not None:
         generation_config.eos_token_id = tokenizer.eos_token_id
     if tokenizer.pad_token_id is not None:

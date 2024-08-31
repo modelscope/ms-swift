@@ -135,13 +135,6 @@ class ArgumentsBase:
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.temperature == 0:
             self.do_sample = False
-        if self.do_sample is False:
-            # fix warning
-            self.temperature = 1.
-            self.top_p = 1.
-            self.top_k = 50
-            logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
-                        f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
     def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
