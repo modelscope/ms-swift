@@ -256,6 +256,15 @@
         "hf_dataset_id": "BelleGroup/generated_chat_0.4M",
         "tags": ["common", "zh"]
     },
+    "duet": {
+        "dataset_id": "AI-ModelScope/Duet-v0.5",
+        "hf_dataset_id": "G-reen/Duet-v0.5",
+        "columns": {
+            "rewritten_question": "query",
+            "rewritten_answer": "response"
+        },
+        "tags": ["CoT", "en"]
+    },
     "belle-math-0.25M": {
         "dataset_id": "AI-ModelScope/school_math_0.25M",
         "hf_dataset_id": "BelleGroup/school_math_0.25M",
