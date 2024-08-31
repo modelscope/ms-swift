@@ -10,7 +10,7 @@ from typing import Dict, Type
 import gradio as gr
 import json
 import torch
-from gradio import Accordion, Tab
+from gradio import Accordion, Checkbox, Dropdown, Slider, Tab, Textbox
 from json import JSONDecodeError
 
 from swift.llm import RLHFArguments
@@ -40,7 +40,6 @@ else:
 
 
 class LLMTrain(BaseUI):
-
     group = 'llm_train'
 
     is_studio = os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
@@ -179,6 +178,16 @@ class LLMTrain(BaseUI):
                 'en': 'The tuner backend, suggest to use peft or unsloth'
             }
         },
+        'use_liger': {
+            'label': {
+                'zh': '使用Liger kernel',
+                'en': 'Use Liger kernel'
+            },
+            'info': {
+                'zh': 'Liger kernel可以有效降低显存使用',
+                'en': 'Liger kernel can reduce memory usage'
+            }
+        },
         'sequence_parallel_size': {
             'label': {
                 'zh': '序列并行分段',
@@ -222,6 +231,7 @@ class LLMTrain(BaseUI):
                     with gr.Row():
                         gr.Textbox(elem_id='seed', scale=4)
                         gr.Dropdown(elem_id='dtype', scale=4)
+                        gr.Checkbox(elem_id='use_liger', scale=4)
                         gr.Checkbox(elem_id='use_ddp', value=False, scale=4)
                         gr.Textbox(elem_id='ddp_num', value='2', scale=4)
                 Hyper.build_ui(base_tab)
@@ -252,6 +262,10 @@ class LLMTrain(BaseUI):
                 cls.element('sft_type').change(
                     Hyper.update_lr, inputs=[base_tab.element('sft_type')], outputs=[cls.element('learning_rate')])
 
+                cls.element('train_record').change(
+                    partial(cls.update_all_settings, base_tab=base_tab),
+                    inputs=[cls.element('model_type'), cls.element('train_record')],
+                    outputs=[value for value in cls.elements().values() if not isinstance(value, (Tab, Accordion))])
                 if cls.is_studio:
                     submit.click(
                         cls.update_runtime, [],
@@ -268,6 +282,7 @@ class LLMTrain(BaseUI):
                             cls.element('logging_dir'),
                             cls.element('runtime_tab'),
                             cls.element('running_tasks'),
+                            cls.element('train_record'),
                         ],
                         queue=True)
                 if not cls.is_studio:
@@ -288,9 +303,24 @@ class LLMTrain(BaseUI):
         return gr.update(open=True), gr.update(visible=True)
 
     @classmethod
+    def update_all_settings(cls, model_type, train_record, base_tab):
+        if not train_record:
+            return [gr.update()] * len(base_tab.elements())
+        cache = cls.load_cache(model_type, train_record)
+        updates = []
+        for key, value in base_tab.elements().items():
+            if isinstance(value, (Tab, Accordion)):
+                continue
+            if (key in cache and isinstance(value, (Textbox, Dropdown, Slider, Checkbox)) and key != 'train_record'):
+                updates.append(gr.update(value=cache[key]))
+            else:
+                updates.append(gr.update())
+        return updates
+
+    @classmethod
     def train(cls, *args):
         ignore_elements = ('model_type', 'logging_dir', 'more_params', 'train_type')
-        sft_args = cls.get_default_value_from_dataclass(RLHFArguments)
+        default_args = cls.get_default_value_from_dataclass(RLHFArguments)
         kwargs = {}
         kwargs_is_list = {}
         other_kwargs = {}
@@ -300,14 +330,14 @@ class LLMTrain(BaseUI):
         model_type = None
         do_rlhf = False
         for key, value in zip(keys, args):
-            compare_value = sft_args.get(key)
+            compare_value = default_args.get(key)
             if isinstance(value, str) and re.fullmatch(cls.int_regex, value):
                 value = int(value)
             elif isinstance(value, str) and re.fullmatch(cls.float_regex, value):
                 value = float(value)
             elif isinstance(value, str) and re.fullmatch(cls.bool_regex, value):
                 value = True if value.lower() == 'true' else False
-            if key not in ignore_elements and key in sft_args and compare_value != value and value:
+            if key not in ignore_elements and key in default_args and compare_value != value and value:
                 kwargs[key] = value if not isinstance(value, list) else ' '.join(value)
                 kwargs_is_list[key] = isinstance(value, list) or getattr(cls.element(key), 'is_list', False)
             else:
@@ -375,6 +405,12 @@ class LLMTrain(BaseUI):
         else:
             run_command = f'{cuda_param} {ddp_param} nohup swift {cmd} {params} > {log_file} 2>&1 &'
         logger.info(f'Run training: {run_command}')
+        if model_type:
+            record = {}
+            for key, value in zip(keys, args):
+                if key in default_args or key in ('more_params', 'train_type', 'use_ddp', 'ddp_num', 'gpu_id'):
+                    record[key] = value or None
+            cls.save_cache(model_type, record)
         return run_command, sft_args, other_kwargs
 
     @classmethod
@@ -402,4 +438,5 @@ class LLMTrain(BaseUI):
             os.system(run_command)
             time.sleep(1)  # to make sure the log file has been created.
             gr.Info(cls.locale('submit_alert', cls.lang)['value'])
-        return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(sft_args.output_dir)
+        return run_command, sft_args.logging_dir, gr.update(open=True), Runtime.refresh_tasks(
+            sft_args.output_dir), gr.update(choices=cls.list_cache(sft_args.model_type))

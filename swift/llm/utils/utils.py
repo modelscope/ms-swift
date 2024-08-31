@@ -1004,7 +1004,8 @@ class LLMIterableDataset(HfIterableDataset):
                     else:
                         raise ValueError
                 except StopIteration:
-                    return
+                    iterator = iter(self.dataset)
+                    break
                 except Exception as e:
                     retries += 1
                     if retries >= self.max_retries:

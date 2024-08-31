@@ -142,7 +142,6 @@ class SwiftPreprocessor:
         return dataset
 
 
-@_reduce_columns
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
@@ -195,7 +194,6 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
-@_reduce_columns
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
