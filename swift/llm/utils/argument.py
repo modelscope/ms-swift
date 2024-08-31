@@ -1006,7 +1006,6 @@ class SftArguments(ArgumentsBase):
             self.sft_type = 'full'
 
         model_info = MODEL_MAPPING[self.model_type]
-        assert not isinstance(self.freeze_parameters, (int, float)), 'please use `--freeze_parameters_ratio`'
         if is_adapter(self.sft_type):
             assert self.freeze_parameters_ratio == 0., (
                 'lora does not support `freeze_parameters_ratio`, please set `--sft_type full`')
