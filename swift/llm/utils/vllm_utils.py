@@ -161,13 +161,12 @@ class _VllmGenerationConfigMixin:
             self.max_tokens = value
         elif key == 'do_sample':
             assert value in {True, False}
-            if value:
-                self.temperature = self._temperature
-            else:
-                self.temperature = 0.
+            super().__setattr__('temperature', self._temperature if value else 0)
         elif key == 'max_length':
             raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
         else:
+            if key == 'temperature':
+                self._temperature = value
             super().__setattr__(key, value)
 
 
@@ -586,20 +585,14 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         enable_lora=args.vllm_enable_lora,
         max_loras=min(len(args.lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
-    tokenizer = llm_engine.hf_tokenizer
+    setattr(llm_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
+    for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
+        val = getattr(args, k, None)
+        if val is not None:
+            setattr(llm_engine.generation_config, k, val)
+    logger.info(f'llm_engine.generation_config: {llm_engine.generation_config}')
 
-    if not args.do_sample:
-        args.temperature = 0
-    generation_config = VllmGenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        stop=args.stop_words,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams)
-    logger.info(f'generation_config: {generation_config}')
-    llm_engine.generation_config = generation_config
+    tokenizer = llm_engine.hf_tokenizer
     template: Template = get_template(
         args.template_type,
         tokenizer,

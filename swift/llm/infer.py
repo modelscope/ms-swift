@@ -203,8 +203,8 @@ def prepare_model_template(args: InferArguments,
         num_beams=args.num_beams,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
-    logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
+    logger.info(f'model.generation_config: {model.generation_config}')
 
     if model.max_model_len is None:
         model.max_model_len = args.max_model_len

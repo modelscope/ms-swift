@@ -137,6 +137,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             stop_words = []
         if max_new_tokens is None:
             max_new_tokens = 64
+        self._temperature = temperature
         super().__init__(
             max_new_tokens=max_new_tokens,
             temperature=temperature,
@@ -148,6 +149,17 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             random_seed=random_seed,
             skip_special_tokens=skip_special_tokens,
             **kwargs)
+
+    def __setattr__(self, key: str, value: str) -> None:
+        if key == 'do_sample':
+            assert value in {True, False}
+            super().__setattr__('temperature', self._temperature if value else 0)
+        elif key == 'max_length':
+            raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
+        else:
+            if key == 'temperature':
+                self._temperature = value
+            super().__setattr__(key, value)
 
 
 def _add_stop_word(stop_words: List[int], token: Union[List[int], int, str, None], tokenizer=None) -> None:
@@ -443,21 +455,16 @@ def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncE
         model_id_or_path=model_id_or_path)
     tokenizer = lmdeploy_engine.hf_tokenizer
 
-    if not args.do_sample:
-        args.temperature = 0
-
     stop_words = []
     for stop_word in args.stop_words:
         _add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
-    generation_config = LmdeployGenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        stop_words=stop_words,
-        repetition_penalty=args.repetition_penalty)
-    logger.info(f'generation_config: {generation_config}')
-    lmdeploy_engine.generation_config = generation_config
+    setattr(lmdeploy_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
+    for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
+        val = getattr(args, k, None)
+        if val is not None:
+            setattr(lmdeploy_engine.generation_config, k, val)
+    logger.info(f'lmdeploy_engine.generation_config: {lmdeploy_engine.generation_config}')
+
     template: Template = get_template(
         args.template_type,
         tokenizer,
