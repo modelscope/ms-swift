@@ -162,14 +162,21 @@ def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
         logger.info(f'[{n}]: requires_grad={p.requires_grad}, dtype={p.dtype}, device={p.device}')
 
 
-def freeze_model_parameters(model: Module, freeze_parameters: float) -> None:
-    n_parameters = get_n_params_grads(model)[0]
-    n_parameters = np.array(n_parameters, dtype=np.int64)
-    n_freeze_parameters = int(np.sum(n_parameters) * freeze_parameters)
-    n_parameters_cs = np.cumsum(n_parameters)
-    idx = bisect_right(n_parameters_cs, n_freeze_parameters)
-    for _, p in zip(range(idx), model.parameters()):
-        p.requires_grad = False
+def freeze_model_parameters(model: Module, freeze_parameters_ratio: float, freeze_parameters: List[str]) -> None:
+    if freeze_parameters_ratio > 0:
+        n_parameters = get_n_params_grads(model)[0]
+        n_parameters = np.array(n_parameters, dtype=np.int64)
+        n_freeze_parameters = int(np.sum(n_parameters) * freeze_parameters_ratio)
+        n_parameters_cs = np.cumsum(n_parameters)
+        idx = bisect_right(n_parameters_cs, n_freeze_parameters)
+        for _, p in zip(range(idx), model.parameters()):
+            p.requires_grad = False
+
+    if len(freeze_parameters) > 0:
+        for n, p in model.named_parameters():
+            for freeze_p in freeze_parameters:
+                if n.startswith(freeze_p):
+                    p.requires_grad = False
 
 
 def activate_model_parameters(model: Module, additional_trainable_parameters: List[str]) -> None:

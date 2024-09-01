@@ -63,6 +63,16 @@ class LoRA(BaseUI):
                 'en': 'The dtype of lora parameters'
             }
         },
+        'init_lora_weights': {
+            'label': {
+                'zh': 'lora初始化方法',
+                'en': 'init lora weights'
+            },
+            'info': {
+                'zh': 'gaussian/pissa/pissa_niter_[n]/olora/loftq/true/false',
+                'en': 'gaussian/pissa/pissa_niter_[n]/olora/loftq/true/false',
+            }
+        },
         'lora_lr_ratio': {
             'label': {
                 'zh': 'Lora+学习率倍率',
@@ -83,12 +93,13 @@ class LoRA(BaseUI):
                     lora_target_modules = gr.Textbox(elem_id='lora_target_modules', lines=1, scale=5, is_list=True)
                     gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8, scale=2)
                     gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8, scale=2)
+                    gr.Textbox(elem_id='lora_dropout', scale=2)
                 with gr.Row():
-                    gr.Dropdown(elem_id='lora_dtype')
-                    gr.Textbox(elem_id='lora_lr_ratio')
-                    gr.Checkbox(elem_id='use_rslora')
-                    gr.Checkbox(elem_id='use_dora')
-                    gr.Textbox(elem_id='lora_dropout')
+                    gr.Dropdown(elem_id='lora_dtype', scale=2)
+                    gr.Textbox(elem_id='lora_lr_ratio', scale=2)
+                    gr.Checkbox(elem_id='use_rslora', scale=2)
+                    gr.Checkbox(elem_id='use_dora', scale=2)
+                    gr.Textbox(elem_id='init_lora_weights', scale=4)
 
             def update_lora(choice):
                 if choice is not None:

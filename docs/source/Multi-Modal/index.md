@@ -10,7 +10,7 @@
 ### ⭐️最佳实践系列
 
 一轮对话可以包含多张图片（或不含图片）:
-1. [Qwen-VL最佳实践](qwen-vl最佳实践.md)
+1. [Qwen-VL最佳实践](qwen-vl最佳实践.md), [Qwen2-VL最佳实践](qwen2-vl最佳实践.md)
 2. [Qwen-Audio最佳实践](qwen-audio最佳实践.md), [Qwen2-Audio最佳实践](https://github.com/modelscope/ms-swift/issues/1653)
 3. [Llava最佳实践](llava最佳实践.md), [LLava Video最佳实践](llava-video最佳实践.md)
 4. [InternVL系列最佳实践](internvl最佳实践.md)

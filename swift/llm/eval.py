@@ -251,6 +251,8 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
                 },
             ],
             **limit_config,
+            'nproc':
+            args.eval_nproc,
         },
     )
     run_task(task_cfg=task_cfg)

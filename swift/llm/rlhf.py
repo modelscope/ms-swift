@@ -41,12 +41,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         model_kwargs = {'device_map': None}
     elif is_torch_npu_available():
         model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
-    elif args.device_map_config_path is not None:
-        cwd = os.getcwd()
-        config_path = args.device_map_config_path if os.path.isabs(args.device_map_config_path) else os.path.join(
-            cwd, args.device_map_config_path)
-        with open(config_path, 'r') as json_file:
-            model_kwargs = {'device_map': json.load(json_file)}
+    elif args.device_map_config is not None:
+        model_kwargs = {'device_map': args.device_map_config}
     else:
         model_kwargs = {'low_cpu_mem_usage': True}
         if is_dist() and not is_ddp_plus_mp():
@@ -130,8 +126,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         num_beams=args.num_beams,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id)
-    logger.info(f'generation_config: {generation_config}')
     set_generation_config(model, generation_config)
+    logger.info(f'model.generation_config: {model.generation_config}')
 
     # Preparing LoRA
     model, _ = prepare_model(model, args)
@@ -166,7 +162,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         ref_model = None
 
     if hasattr(model, 'hf_device_map'):
-        logger.info(f'model.hf_device_map {model.hf_device_map}')
+        logger.info(f'model.hf_device_map: {model.hf_device_map}')
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     if val_dataset is None:

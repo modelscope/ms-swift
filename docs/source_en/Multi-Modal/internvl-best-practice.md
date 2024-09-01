@@ -27,7 +27,7 @@ This issue often arises when attempting to use the mini-internvl or InternVL2 mo
 The auto device map algorithm in transformers is not friendly to multi-modal models, which may result in uneven memory allocation across different GPU cards.
 
 - You can set the memory usage for each card using the `--device_max_memory parameter`, for example, in a four-card environment, you can set `--device_max_memory 15GB 15GB 15GB 15GB`.
-- Alternatively, you can explicitly specify the device map using `--device_map_config_path`.
+- Alternatively, you can explicitly specify the device map using `--device_map_config`.
 
 3. **Differences between the InternVL2 model and its predecessors (InternVL-V1.5 and Mini-InternVL)**
 

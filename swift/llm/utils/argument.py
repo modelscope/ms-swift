@@ -58,6 +58,18 @@ class ArgumentsBase:
             k = k.upper()
             os.environ[k] = str(v)
 
+        if isinstance(self.device_map_config, str):
+            if os.path.exists(self.device_map_config):  # local path
+                with open(self.device_map_config, 'r') as f:
+                    self.device_map_config = json.load(f)
+            else:  # json str
+                self.device_map_config = json.loads(self.device_map_config)
+        _, local_rank, _, local_world_size = get_dist_setting()
+        if local_world_size > 1 and isinstance(self.device_map_config, dict) and local_rank > 0:
+            for k, v in self.device_map_config.items():
+                if isinstance(v, int):
+                    self.device_map_config[k] += local_rank
+
     @classmethod
     def _check_path(cls,
                     value: Union[str, List[str]],
@@ -123,13 +135,6 @@ class ArgumentsBase:
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.temperature == 0:
             self.do_sample = False
-        if self.do_sample is False:
-            # fix warning
-            self.temperature = 1.
-            self.top_p = 1.
-            self.top_k = 50
-            logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
-                        f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
     def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
@@ -286,6 +291,8 @@ class ArgumentsBase:
             self.dataset += self.custom_train_dataset_path
         if len(self.custom_val_dataset_path) > 0:
             self.val_dataset += self.custom_val_dataset_path
+        if self.device_map_config_path is not None:
+            self.device_map_config = self.device_map_config_path
 
         if isinstance(self, InferArguments):
             if self.merge_lora_and_save is not None:
@@ -298,6 +305,20 @@ class ArgumentsBase:
             if self.server_port is not None:
                 self.port = self.server_port
         if isinstance(self, SftArguments):
+            log_freeze_warning = False
+            try:
+                if isinstance(self.freeze_parameters, (int, float)):
+                    log_freeze_warning = True
+                elif isinstance(self.freeze_parameters, list) and len(self.freeze_parameters) == 1:
+                    self.freeze_parameters = float(self.freeze_parameters[0])
+                    log_freeze_warning = True
+            except Exception:
+                pass
+            if log_freeze_warning:
+                logger.warning(f'please use `--freeze_parameters_ratio {self.freeze_parameters}`')
+                self.freeze_parameters_ratio = self.freeze_parameters
+                self.freeze_parameters = []
+
             if isinstance(self.train_dataset_mix_ds, str):
                 self.train_dataset_mix_ds = [self.train_dataset_mix_ds]
             if self.only_save_model is not None:
@@ -578,7 +599,9 @@ class SftArguments(ArgumentsBase):
 
     sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
                       'reft'] = 'lora'
-    freeze_parameters: float = 0.  # 0 ~ 1
+    freeze_parameters: List[str] = field(default_factory=list)
+    freeze_vit: bool = False
+    freeze_parameters_ratio: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     template_type: str = field(
@@ -811,16 +834,16 @@ class SftArguments(ArgumentsBase):
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
 
-    device_map_config_path: Optional[str] = None
+    device_map_config: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
 
     # generation config
     max_new_tokens: int = 2048
-    do_sample: bool = True
-    temperature: float = 0.3
-    top_k: int = 20
-    top_p: float = 0.7
-    repetition_penalty: float = 1.
+    do_sample: Optional[bool] = None
+    temperature: Optional[float] = None
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
     num_beams: int = 1
 
     # fsdp option
@@ -864,6 +887,7 @@ class SftArguments(ArgumentsBase):
 
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
+    device_map_config_path: Optional[str] = None
 
     def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
         if isinstance(target_modules, str):
@@ -910,6 +934,8 @@ class SftArguments(ArgumentsBase):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.handle_compatibility()
+        if self.preprocess_num_proc and self.preprocess_num_proc > 1:
+            os.environ['DATASET_MAP_NPROC'] = str(self.preprocess_num_proc)
         if len(self.val_dataset) > 0:
             self.dataset_test_ratio = 0.0
             logger.info('Using val_dataset, ignoring dataset_test_ratio')
@@ -991,9 +1017,10 @@ class SftArguments(ArgumentsBase):
             logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
             self.sft_type = 'full'
 
+        model_info = MODEL_MAPPING[self.model_type]
         if is_adapter(self.sft_type):
-            assert self.freeze_parameters == 0., (
-                'lora does not support `freeze_parameters`, please set `--sft_type full`')
+            assert self.freeze_parameters_ratio == 0., (
+                'lora does not support `freeze_parameters_ratio`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
             if is_quant_model(self.model_type):
@@ -1004,7 +1031,15 @@ class SftArguments(ArgumentsBase):
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
-            assert 0 <= self.freeze_parameters <= 1
+            if self.freeze_vit:
+                from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+                lora_target_modules = model_info.get('lora_target_modules')
+                vision_tower = None
+                if isinstance(lora_target_modules, str):
+                    vision_tower = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
+                if vision_tower is not None:
+                    self.freeze_parameters.append(vision_tower)
+            assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
                                           'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.')
@@ -1088,7 +1123,6 @@ class SftArguments(ArgumentsBase):
             logger.info(f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}')
         if 'qwen-audio' in self.model_type:
             assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
-        model_info = MODEL_MAPPING[self.model_type]
         support_gradient_checkpointing = model_info.get('support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
@@ -1324,11 +1358,11 @@ class InferArguments(ArgumentsBase):
     bnb_4bit_quant_storage: Optional[str] = None
 
     max_new_tokens: int = 2048
-    do_sample: bool = True
-    temperature: float = 0.3
-    top_k: int = 20
-    top_p: float = 0.7
-    repetition_penalty: float = 1.
+    do_sample: Optional[bool] = None
+    temperature: Optional[float] = None
+    top_k: Optional[int] = None
+    top_p: Optional[float] = None
+    repetition_penalty: Optional[float] = None
     num_beams: int = 1
     stop_words: List[str] = field(default_factory=list)
 
@@ -1347,7 +1381,7 @@ class InferArguments(ArgumentsBase):
     local_repo_path: Optional[str] = None
     custom_register_path: Optional[str] = None  # .py
     custom_dataset_info: Optional[str] = None  # .json
-    device_map_config_path: Optional[str] = None
+    device_map_config: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
@@ -1381,6 +1415,7 @@ class InferArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
     vllm_lora_modules: List[str] = None
+    device_map_config_path: Optional[str] = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -1558,7 +1593,8 @@ class EvalArguments(InferArguments):
     deploy_timeout: int = 60
 
     do_sample: bool = False  # Note: for evaluation default is False
-    temperature: float = 0.0
+    temperature: float = 0.
+    eval_nproc: int = 16
 
     def __post_init__(self):
         super().__post_init__()

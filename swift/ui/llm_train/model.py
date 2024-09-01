@@ -52,8 +52,24 @@ class Model(BaseUI):
         },
         'reset': {
             'value': {
-                'zh': '恢复初始值',
-                'en': 'Reset to default'
+                'zh': '恢复模型初始值',
+                'en': 'Reset model default'
+            },
+        },
+        'train_record': {
+            'label': {
+                'zh': '训练记录',
+                'en': 'Train record'
+            },
+            'info': {
+                'zh': '展示使用web-ui的历史训练及参数',
+                'en': 'Show the training history and parameters'
+            }
+        },
+        'clear_cache': {
+            'value': {
+                'zh': '删除训练记录',
+                'en': 'Delete train records'
             },
         },
         'model_param': {
@@ -75,14 +91,16 @@ class Model(BaseUI):
                 model_id_or_path = gr.Textbox(elem_id='model_id_or_path', lines=1, scale=20, interactive=True)
                 template_type = gr.Dropdown(
                     elem_id='template_type', choices=list(TEMPLATE_MAPPING.keys()) + ['AUTO'], scale=20)
-                reset_btn = gr.Button(elem_id='reset', scale=2)
+                train_record = gr.Dropdown(elem_id='train_record', choices=[], scale=20)
+                clear_cache = gr.Button(elem_id='clear_cache', scale=2)
                 model_state = gr.State({})
             with gr.Row():
                 system = gr.Textbox(elem_id='system', lines=1, scale=20)
+                reset_btn = gr.Button(elem_id='reset', scale=2)
 
         def update_input_model(choice, model_state=None):
             if choice is None:
-                return None, None, None
+                return None, None, None, None
             if model_state and choice in model_state:
                 model_id_or_path = model_state[choice]
             else:
@@ -90,7 +108,8 @@ class Model(BaseUI):
             default_system = getattr(TEMPLATE_MAPPING[MODEL_MAPPING[choice]['template']]['template'], 'default_system',
                                      None)
             template = MODEL_MAPPING[choice]['template']
-            return model_id_or_path, default_system, template
+            all_records = cls.list_cache(choice)
+            return model_id_or_path, default_system, template, gr.update(choices=all_records)
 
         def update_model_id_or_path(model_type, model_id_or_path, model_state):
             if model_type is None or isinstance(model_type, list):
@@ -99,13 +118,23 @@ class Model(BaseUI):
             return model_state
 
         def reset(model_type):
-            model_id_or_path, default_system, template = update_input_model(model_type)
+            model_id_or_path, default_system, template, _ = update_input_model(model_type)
             return model_id_or_path, default_system, template, {}
 
         model_type.change(
-            update_input_model, inputs=[model_type, model_state], outputs=[model_id_or_path, system, template_type])
+            update_input_model,
+            inputs=[model_type, model_state],
+            outputs=[model_id_or_path, system, template_type, train_record])
 
         model_id_or_path.change(
             update_model_id_or_path, inputs=[model_type, model_id_or_path, model_state], outputs=[model_state])
+
+        def clear_record(model_type):
+            if model_type:
+                cls.clear_cache(model_type)
+                return gr.update(choices=[])
+            return gr.update()
+
+        clear_cache.click(clear_record, inputs=[model_type], outputs=[train_record])
 
         reset_btn.click(reset, inputs=[model_type], outputs=[model_id_or_path, system, template_type, model_state])
