@@ -18,7 +18,7 @@ from numpy.random import RandomState
 from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
-
+from transformers import PreTrainedTokenizerBase
 from swift.utils import get_logger, get_seed, is_dist, is_local_master
 from swift.utils.torch_utils import _find_local_mac
 from .media import MediaCache, MediaTag
@@ -26,6 +26,7 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocesso
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, preprocess_sharegpt)
 from .utils import download_dataset
+from .template import Template
 
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 

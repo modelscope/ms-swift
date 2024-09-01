@@ -5,9 +5,9 @@ import heapq
 import inspect
 from functools import partial
 from types import FunctionType, MethodType
-from typing import Dict, List, Optional, Union
-
-from datasets import Dataset as HfDataset
+from typing import Any, Dict, List, Optional, Union, Literal, Tuple
+import torch
+from datasets import Dataset as HfDataset, IterableDataset as HFIterableDataset
 from torch.nn import Module
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
@@ -23,7 +23,7 @@ except ImportError:
     ShardedDDPOption = None
 
 logger = get_logger()
-
+DATASET_TYPE = Union[HfDataset, HFIterableDataset]
 
 def can_return_loss(model: Module) -> bool:
     """Check if a given model can return loss."""
@@ -120,6 +120,99 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder:
         idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
     return dataset.select(idx)
 
+def _convert_bfloat16_to_float32(data):
+    if isinstance(data, torch.Tensor) and data.dtype == torch.bfloat16:
+        return data.to(torch.float32)
+    elif isinstance(data, list):
+        return [_convert_bfloat16_to_float32(item) for item in data]
+    return data
+def get_preprocess_func(template: Template, rlhf_type, vision_keys:list):
+    if rlhf_type == 'kto':
+        # TODO
+        raise NotImplementedError
+    else:
+        return partial(
+            tokenize_paired_dataset,
+            template=template,
+            vision_keys=vision_keys
+            # max_length=max_length,
+        )
+    
+def tokenize_paired_dataset(examples: Dict[str, List[Any]],
+                            template: Template,
+                            vision_keys: Optional[List[str]]=None,
+                            max_length:int=4096,
+                            ):
+    model_inputs = {
+        "chosen_input_ids": [],
+        "chosen_attention_mask": [],
+        "chosen_labels": [],
+        "rejected_input_ids": [],
+        "rejected_attention_mask": [],
+        "rejected_labels": [],
+    }
+    # pop vision related data, TODO: Keep single pixel_values to save on GPU memory usage.
+    if vision_keys is not None:
+        for k in vision_keys:
+            model_inputs[f"chosen_vision_{k}"] = []
+            model_inputs[f"rejected_vision_{k}"] = []
+
+    for i in range(len(examples['query'])):
+        chosen_example = {
+            'query': examples['query'][i],
+            'response': examples['response'][i],
+        }
+        rejected_example = {
+            'query': examples['query'][i],
+            'response': examples['response'][i],
+        }
+        if 'images' in examples:
+            chosen_example['images'] = examples['images'][i]
+            rejected_example['images'] = examples['images'][i]
+        
+        chosen, rejected = template.encode(chosen_example)[0], template.encode(rejected_example)[0]
+        model_inputs["chosen_input_ids"].append(chosen['input_ids'])
+        model_inputs["chosen_attention_mask"].append([1] * len(chosen['input_ids']))
+        model_inputs["chosen_labels"].append(chosen['labels'])
+        model_inputs["rejected_input_ids"].append(rejected['input_ids'])
+        model_inputs["rejected_attention_mask"].append([1] * len(rejected['input_ids']))
+        model_inputs["rejected_labels"].append(rejected['labels'])
+        
+        # vision related data
+        if '_data' in chosen and vision_keys is not None:
+            for k in vision_keys:
+                _data_key = f'vision_{k}'
+                model_inputs[f'chosen_{_data_key}'].append(_convert_bfloat16_to_float32(chosen['_data'][k]))
+                model_inputs[f'rejected_{_data_key}'].append(_convert_bfloat16_to_float32(chosen['_data'][k]))
+    
+    return model_inputs
+
+def get_preprocess_rlhf_dataset(train_dataset: DATASET_TYPE,
+                                val_dataset: Optional[DATASET_TYPE],
+                                template:Template,
+                                rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'],
+                                vision_keys:Optional[list],
+                                **kwargs)-> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]] :
+    """
+    Preprocesses the RLHF datasets using the specified template and RLHF type.
+
+    Args:
+        train_dataset (DATASET_TYPE): The training dataset.
+        val_dataset (Optional[DATASET_TYPE]): The validation dataset.
+        template (Template): The template used for preprocessing.
+        rlhf_type (Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo']): The type of RLHF.
+        dataset_enable_cache (bool, optional): Whether to enable cache. Defaults to True.
+        **kwargs: kwargs for preprocess func.
+
+    Returns:
+        Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]: The preprocessed training and validation datasets.
+    """
+    preprocess_func = get_preprocess_func(template=template, rlhf_type=rlhf_type, vision_keys=vision_keys)
+    column_names = list(next(iter(train_dataset)).keys())
+    train_dataset = train_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
+    if val_dataset is not None:
+        val_dataset = val_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
+    return train_dataset, val_dataset
 
 def patch_trl(is_vision_model: bool = False):
     from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
@@ -139,7 +232,6 @@ def patch_trl(is_vision_model: bool = False):
 
 def patch_datacollator():
     import torch
-    from typing import Any, Dict, List
     from trl.trainer.utils import DPODataCollatorWithPadding, pad
     if not hasattr(DPODataCollatorWithPadding, '_old_call'):  # Avoid double patching
         from torch.nn.utils.rnn import pad_sequence

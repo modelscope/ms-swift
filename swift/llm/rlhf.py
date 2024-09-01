@@ -9,8 +9,9 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 from trl.models import create_reference_model
+from functools import partial
 
-from swift.trainers import RLHFTrainerFactory
+from swift.trainers import RLHFTrainerFactory, get_preprocess_rlhf_dataset
 from swift.utils import (append_to_jsonl, check_json_format, get_dist_setting, get_logger, get_main, get_model_info,
                          is_ddp_plus_mp, is_dist, is_master, plot_images, seed_everything, show_layers)
 from .sft import _get_train_val_dataset
@@ -191,25 +192,43 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     template._is_training = True
     args.system = template.default_system
     logger.info(f'system: {args.system}')
-
+    # TODO: lazy dataset
+    if args.lazy_tokenize:
+        logger.warning('lazy_tokenize is not supported for RLHF training now, it will be supported soon.')
+    
+    vision_keys = []
+    if args.is_vision:
+        # get vision related keys in mllm
+        td0 = template.encode(next(iter(train_dataset)))[0] if streaming else template.encode(train_dataset[0])
+        if '_data' in td0:
+            vision_keys = list(td0['_data'].keys())
+            
+    # tokenize dataset
+    preprocess_kwargs = {}
+    if not streaming:
+        from swift.llm.utils.dataset import dataset_enable_cache
+        preprocess_kwargs = dict(
+            num_proc=args.preprocess_num_proc,
+            load_from_cache_file=dataset_enable_cache,
+            desc="tokenizing paired dataset",
+        )
+    train_dataset, val_dataset = get_preprocess_rlhf_dataset(train_dataset,val_dataset, template=template, rlhf_type=args.rlhf_type, vision_keys=vision_keys, **preprocess_kwargs)    
+    
     # Trainer
     logger.info(f'training_args: {training_args}')
 
     trainer_kwargs = RLHFTrainerFactory.get_training_args(args)
 
-    if ref_model is not None:
-        trainer_kwargs['ref_model'] = ref_model
-
     trainer_kwargs['args'].generation_config = generation_config
     trainer_cls = RLHFTrainerFactory.get_trainer(args.rlhf_type)
 
     trainer_kwargs['is_vision'] = args.is_vision
-    model.config.model_type += '_'  # add suffix to avoid checks in hfDPOTrainer
-
     trainer_kwargs['streaming'] = streaming
-
+    trainer_kwargs['vision_keys'] = vision_keys
+    
     trainer = trainer_cls(
         model=model,
+        ref_model=ref_model,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
