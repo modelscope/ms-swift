@@ -6607,7 +6607,7 @@ def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')
 
 
-def get_default_lora_target_modules(model_type: str) -> Optional[List[str]]:
+def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, None]:
     res = MODEL_MAPPING[model_type].get('lora_target_modules')
     if isinstance(res, str):
         res = get_regex_for_mm_default_lora(res)
