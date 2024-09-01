@@ -33,7 +33,7 @@ class PushToMsHubMixin:
                 repo = Repository(temp_cache_dir, hub_model_id)
                 PushToMsHubMixin._add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
                 # Add 'runs/' to .gitignore, ignore tensorboard files
-                PushToMsHubMixin._add_patterns_to_gitignore(repo, ['runs/'])
+                PushToMsHubMixin._add_patterns_to_gitignore(repo, ['runs/', 'images/'])
                 PushToMsHubMixin._add_patterns_to_file(
                     repo,
                     'configuration.json', ['{"framework": "pytorch", "task": "text-generation", "allow_remote": true}'],
@@ -71,6 +71,9 @@ class PushToMsHubMixin:
         if ignore_patterns:
             ignore_patterns = [p for p in ignore_patterns if p != '_*']
         if path_in_repo:
+            idx = folder_path.rfind(path_in_repo)
+            if idx >= 0:
+                folder_path = folder_path[:idx]
             ignore_patterns = []
         push_to_hub(
             repo_id,
@@ -78,11 +81,13 @@ class PushToMsHubMixin:
             token or PushToMsHubMixin._token,
             commit_message=commit_message,
             ignore_file_pattern=ignore_patterns,
-            revision=revision)
+            revision=revision,
+            tag=path_in_repo)
         return CommitInfo(
             commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
             commit_message=commit_message,
             commit_description=commit_description,
+            oid=None,
         )
 
     if not _use_hf_hub:
