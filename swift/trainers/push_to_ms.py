@@ -7,11 +7,6 @@ from typing import List, Optional, Union
 
 from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import CommitInfo, future_compatible
-from modelscope import HubApi, push_to_hub
-from modelscope.hub.api import ModelScopeConfig
-from modelscope.hub.constants import ModelVisibility
-from modelscope.hub.repository import Repository
-from modelscope.hub.utils.utils import get_cache_dir
 from requests.exceptions import HTTPError
 from transformers.utils import logging, strtobool
 
@@ -21,14 +16,14 @@ logger = logging.get_logger(__name__)
 class PushToMsHubMixin:
 
     _use_hf_hub = strtobool(os.environ.get('USE_HF', 'False'))
-    _cache_dir = get_cache_dir()
     _token = None
 
     @staticmethod
     def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: bool = False, **kwargs) -> RepoUrl:
+        from modelscope.hub.repository import Repository
         hub_model_id = PushToMsHubMixin._create_ms_repo(repo_id, token, private)
         PushToMsHubMixin._token = token
-        with tempfile.TemporaryDirectory(dir=PushToMsHubMixin._cache_dir) as temp_cache_dir:
+        with tempfile.TemporaryDirectory() as temp_cache_dir:
             repo = Repository(temp_cache_dir, hub_model_id)
             PushToMsHubMixin._add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
             # Add 'runs/' to .gitignore, ignore tensorboard files
@@ -59,6 +54,7 @@ class PushToMsHubMixin:
         run_as_future: bool = False,
         **kwargs,
     ) -> Union[CommitInfo, str, Future[CommitInfo], Future[str]]:
+        from modelscope import push_to_hub
         commit_message = commit_message or 'Upload folder using api'
         if commit_description:
             commit_message = commit_message + '\n' + commit_description
@@ -98,6 +94,9 @@ class PushToMsHubMixin:
 
     @staticmethod
     def _create_ms_repo(hub_model_id: str, hub_token: Optional[str] = None, hub_private_repo: bool = False) -> str:
+        from modelscope import HubApi
+        from modelscope.hub.api import ModelScopeConfig
+        from modelscope.hub.constants import ModelVisibility
         assert hub_model_id is not None, 'Please enter a valid hub_model_id'
 
         api = HubApi()
@@ -120,7 +119,7 @@ class PushToMsHubMixin:
         return hub_model_id
 
     @staticmethod
-    def _add_patterns_to_file(repo: Repository,
+    def _add_patterns_to_file(repo,
                               file_name: str,
                               patterns: List[str],
                               commit_message: Optional[str] = None,
@@ -160,13 +159,11 @@ class PushToMsHubMixin:
                 raise e
 
     @staticmethod
-    def _add_patterns_to_gitignore(repo: Repository, patterns: List[str], commit_message: Optional[str] = None) -> None:
+    def _add_patterns_to_gitignore(repo, patterns: List[str], commit_message: Optional[str] = None) -> None:
         PushToMsHubMixin._add_patterns_to_file(repo, '.gitignore', patterns, commit_message, ignore_push_error=True)
 
     @staticmethod
-    def _add_patterns_to_gitattributes(repo: Repository,
-                                       patterns: List[str],
-                                       commit_message: Optional[str] = None) -> None:
+    def _add_patterns_to_gitattributes(repo, patterns: List[str], commit_message: Optional[str] = None) -> None:
         new_patterns = []
         suffix = 'filter=lfs diff=lfs merge=lfs -text'
         for pattern in patterns:
