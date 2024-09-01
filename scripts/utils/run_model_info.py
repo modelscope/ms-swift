@@ -1,6 +1,6 @@
 from typing import Any, List
 
-from swift.llm import MODEL_MAPPING, ModelType
+from swift.llm import MODEL_MAPPING, ModelType, get_default_lora_target_modules
 
 
 def get_model_info_table():
@@ -19,7 +19,7 @@ def get_model_info_table():
     for model_name in model_name_list:
         model_info = MODEL_MAPPING[model_name]
         model_id = model_info['model_id_or_path']
-        lora_target_modules = model_info['lora_target_modules']
+        lora_target_modules = get_default_lora_target_modules(model_name)
         if isinstance(lora_target_modules, list):
             lora_target_modules = ', '.join(lora_target_modules)
         else:
