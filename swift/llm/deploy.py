@@ -229,19 +229,29 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
 
     return request_info, inputs, example
 
+
 def _get_logprobs(logprobs: Optional[List[Dict[int, Any]]], top_logprobs: Optional[int] = None) -> Dict[str, Any]:
     if logprobs is None:
         return None
     res = []
     for log_ps in logprobs:
         lps = list(log_ps.values())
-        res.append({'token': lps[0].decoded_token, 'logprob': lps[0].logprob, 'bytes': list(lps[0].decoded_token.encode('utf8'))})
+        res.append({
+            'token': lps[0].decoded_token,
+            'logprob': lps[0].logprob,
+            'bytes': list(lps[0].decoded_token.encode('utf8'))
+        })
         if top_logprobs is not None:
             res_top_lps = []
             for i in range(top_logprobs):
-                res_top_lps.append({'token': lps[i].decoded_token, 'logprob': lps[i].logprob, 'bytes': list(lps[i].decoded_token.encode('utf8'))})
+                res_top_lps.append({
+                    'token': lps[i].decoded_token,
+                    'logprob': lps[i].logprob,
+                    'bytes': list(lps[i].decoded_token.encode('utf8'))
+                })
             res[-1]['top_logprobs'] = res_top_lps
     return {'content': res}
+
 
 @torch.inference_mode()
 async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
@@ -345,8 +355,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 choice = ChatCompletionResponseChoice(
                     index=output.index,
                     message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=output.finish_reason, logprobs=logprobs
-                )
+                    finish_reason=output.finish_reason,
+                    logprobs=logprobs)
                 choices.append(choice)
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -356,10 +366,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 response = template.generate_ids_to_response(output.token_ids)
                 logprobs = _get_logprobs(output.logprobs, request.top_logprobs)
                 choice = CompletionResponseChoice(
-                    index=output.index,
-                    text=response,
-                    finish_reason=output.finish_reason, logprobs=logprobs
-                )
+                    index=output.index, text=response, finish_reason=output.finish_reason, logprobs=logprobs)
                 choices.append(choice)
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -406,7 +413,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                     choice = ChatCompletionResponseStreamChoice(
                         index=output.index,
                         delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
-                        finish_reason=output.finish_reason, logprobs=logprobs)
+                        finish_reason=output.finish_reason,
+                        logprobs=logprobs)
                     choices.append(choice)
                 response = ChatCompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -415,7 +423,9 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 for output in result.outputs:
                     logprobs = _get_logprobs(output.logprobs, request.top_logprobs)
                     choice = CompletionResponseStreamChoice(
-                        index=output.index, text=output.delta_text, finish_reason=output.finish_reason,
+                        index=output.index,
+                        text=output.delta_text,
+                        finish_reason=output.finish_reason,
                         logprobs=logprobs)
                     choices.append(choice)
                 response = CompletionStreamResponse(
