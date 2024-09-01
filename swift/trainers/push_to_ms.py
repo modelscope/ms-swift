@@ -28,22 +28,19 @@ class PushToMsHubMixin:
     def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: bool = False, **kwargs) -> RepoUrl:
         hub_model_id = PushToMsHubMixin._create_ms_repo(repo_id, token, private)
         PushToMsHubMixin._token = token
-        try:
-            with tempfile.TemporaryDirectory(dir=PushToMsHubMixin._cache_dir) as temp_cache_dir:
-                repo = Repository(temp_cache_dir, hub_model_id)
-                PushToMsHubMixin._add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
-                # Add 'runs/' to .gitignore, ignore tensorboard files
-                PushToMsHubMixin._add_patterns_to_gitignore(repo, ['runs/', 'images/'])
-                PushToMsHubMixin._add_patterns_to_file(
-                    repo,
-                    'configuration.json', ['{"framework": "pytorch", "task": "text-generation", "allow_remote": true}'],
-                    ignore_push_error=True)
-                # Add '*.sagemaker' to .gitignore if using SageMaker
-                if os.environ.get('SM_TRAINING_ENV'):
-                    PushToMsHubMixin._add_patterns_to_gitignore(repo, ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
-                                                                'Add `*.sagemaker` patterns to .gitignore')
-        except Exception:
-            pass
+        with tempfile.TemporaryDirectory(dir=PushToMsHubMixin._cache_dir) as temp_cache_dir:
+            repo = Repository(temp_cache_dir, hub_model_id)
+            PushToMsHubMixin._add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
+            # Add 'runs/' to .gitignore, ignore tensorboard files
+            PushToMsHubMixin._add_patterns_to_gitignore(repo, ['runs/', 'images/'])
+            PushToMsHubMixin._add_patterns_to_file(
+                repo,
+                'configuration.json', ['{"framework": "pytorch", "task": "text-generation", "allow_remote": true}'],
+                ignore_push_error=True)
+            # Add '*.sagemaker' to .gitignore if using SageMaker
+            if os.environ.get('SM_TRAINING_ENV'):
+                PushToMsHubMixin._add_patterns_to_gitignore(repo, ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
+                                                            'Add `*.sagemaker` patterns to .gitignore')
         return RepoUrl(url=hub_model_id, )
 
     @staticmethod
