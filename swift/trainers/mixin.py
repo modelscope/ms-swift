@@ -38,7 +38,6 @@ from swift.utils import check_json_format, create_ms_repo, get_logger, use_torch
 from swift.utils.constants import Invoke
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
-from trl.trainer import DPOConfig, ORPOConfig, CPOConfig
 
 logger = get_logger()
 
@@ -721,9 +720,3 @@ class SwiftMixin:
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
         return self.optimizer
-
-    # def set_rlhf_config(self, args: Union[DPOConfig, ORPOConfig, CPOConfig]):
-    #     self.generate_during_eval = args.generate_during_eval
-    #     self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
-        
-        

@@ -1,18 +1,20 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from collections import defaultdict
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+from peft import PeftModel
 from torch import nn
 from transformers import PreTrainedModel, Trainer
-from trl import DPOConfig, DPOTrainer as HFDPOTrainer
-from trl.trainer.utils import pad_to_length, DPODataCollatorWithPadding
-from trl.trainer import disable_dropout_in_model, FDivergenceConstants
+from transformers.utils import is_peft_available
+from trl import DPOConfig
+from trl import DPOTrainer as HFDPOTrainer
+from trl.trainer import FDivergenceConstants, disable_dropout_in_model
+from trl.trainer.utils import DPODataCollatorWithPadding, pad_to_length
+
 from swift.llm.utils.template import Template
 from swift.utils import get_logger
 from .mixin import PushToMsHubMixin, SwiftMixin
 from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
-from transformers.utils import is_peft_available
-from peft import PeftModel
 
 logger = get_logger()
 
@@ -20,16 +22,16 @@ logger = get_logger()
 class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
     def __init__(self,
-                 model:Union["PreTrainedModel", torch.nn.Module],
-                 ref_model: Optional[Union["PreTrainedModel", torch.nn.Module]],
-                 template: Template, 
-                 args: DPOConfig, 
-                 sft_beta=0., 
-                 test_oom_error=False, 
+                 model: Union['PreTrainedModel', torch.nn.Module],
+                 ref_model: Optional[Union['PreTrainedModel', torch.nn.Module]],
+                 template: Template,
+                 args: DPOConfig,
+                 sft_beta=0.,
+                 test_oom_error=False,
                  **kwargs):
         self.template = template
         template._is_training = True
-        
+
         self.streaming = kwargs.pop('streaming', False)
         self.is_vision_model = kwargs.pop('is_vision', False)
         self.vision_keys = kwargs.pop('vision_keys', None)
@@ -39,7 +41,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
         self.tokenizer = kwargs['tokenizer']
         # TODO: check the need for length, should we truncate it outside?
-        
+
         # if args.max_length is None:
         #     args.max_length = 512
         #     logger.warning("max_length` is not set, it will default to `512` by default")
@@ -48,12 +50,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         #     logger.warning("`max_prompt_length` is not set, it will default to `128` by default")
         #     args.max_prompt_length = 128
         # args.max_target_length
-        
+
         self.sft_beta = sft_beta
         self.beta = args.beta
         self.loss_type = args.loss_type
         self.label_smoothing = args.label_smoothing
-        self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
+        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
 
@@ -62,7 +64,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             label_pad_token_id=args.label_pad_token_id,
             is_encoder_decoder=self.is_encoder_decoder,
         )
-        self.use_dpo_data_collator = True # to disable warning
+        self.use_dpo_data_collator = True  # to disable warning
         if args.disable_dropout:
             disable_dropout_in_model(model)
             if ref_model is not None:
@@ -76,20 +78,19 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         kwargs['super_class'] = Trainer
         SwiftMixin.__init__(self, model, args, **kwargs)
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
-        
+
         self.ref_model = ref_model
         self.ref_adapter_name = args.ref_adapter_name
         self.reference_free = False
         if ref_model is not None:
             if self.is_deepspeed_enabled:
-                if not (
-                    getattr(ref_model, "is_loaded_in_8bit", False) or getattr(ref_model, "is_loaded_in_4bit", False)
-                ):
+                if not (getattr(ref_model, 'is_loaded_in_8bit', False)
+                        or getattr(ref_model, 'is_loaded_in_4bit', False)):
                     self.ref_model = self._prepare_deepspeed(self.ref_model)
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
                 self.ref_model.eval()
-        
+
         if not self.streaming:
             train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
 
@@ -107,7 +108,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             'memory': {},
             'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
         }
-
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
