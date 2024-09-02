@@ -199,7 +199,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     vision_keys = []
     if args.is_vision:
         # get vision related keys in mllm
-        td0 = template.encode(next(iter(train_dataset)))[0] if streaming else template.encode(train_dataset[0])
+        td0 = template.encode(next(iter(train_dataset)))[0] if not streaming else template.encode(train_dataset[0])
         if '_data' in td0:
             vision_keys = list(td0['_data'].keys())
 
