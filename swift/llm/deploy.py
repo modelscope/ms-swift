@@ -334,10 +334,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             choices = []
             for output in result.outputs:
                 response = template.generate_ids_to_response(output.token_ids)
-                choice = CompletionResponseChoice(
-                    index=output.index,
-                    text=response,
-                    finish_reason=output.finish_reason)
+                choice = CompletionResponseChoice(index=output.index, text=response, finish_reason=output.finish_reason)
                 choices.append(choice)
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
