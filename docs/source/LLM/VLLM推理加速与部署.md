@@ -253,7 +253,7 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift deploy --mode
 curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
-"model": "qwen2-7b-instruct",
+"model": "qwen-7b-chat",
 "messages": [{"role": "user", "content": "晚上睡不着觉怎么办？"}],
 "max_tokens": 256,
 "temperature": 0
