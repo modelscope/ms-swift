@@ -174,6 +174,14 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 swift sft \
   --freeze_vit true \
   --deepspeed default-zero2 \
   --dataset latex-ocr-print#20000
+
+# 更少的显存消耗: QLoRA
+# GPU Memory: 10GB
+SIZE_FACTOR=8 MAX_PIXELS=602112 CUDA_VISIBLE_DEVICES=0 swift sft \
+  --model_type qwen2-vl-7b-instruct-gptq-int4 \
+  --model_id_or_path qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4 \
+  --sft_type lora \
+  --dataset latex-ocr-print#20000
 ```
 
 微调后模型对验证集进行推理的示例（只训练了200个step）：

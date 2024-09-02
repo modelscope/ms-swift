@@ -174,6 +174,8 @@ For server deployment command line arguments, refer to: [deploy command line arg
 
 For OpenAI API arguments on the client side, refer to: https://platform.openai.com/docs/api-reference/introduction.
 
+Benchmark testing code: https://github.com/modelscope/ms-swift/blob/main/scripts/benchmark/deploy.py
+
 ### Original Models
 #### qwen-7b-chat
 

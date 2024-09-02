@@ -181,5 +181,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-72b-instruct --infer_ba
 
 客户端调用方式可以查看: [vLLM推理加速与部署文档](VLLM推理加速与部署.md#部署)
 
+benchmark测试代码: https://github.com/modelscope/ms-swift/blob/main/scripts/benchmark/deploy.py
+
 ## 多模态
 查看[这里](../Multi-Modal/LmDeploy推理加速文档.md)

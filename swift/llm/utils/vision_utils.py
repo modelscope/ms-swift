@@ -100,8 +100,11 @@ def load_file(path: Union[str, _T]) -> Union[BytesIO, _T]:
     if isinstance(path, str):
         path = path.strip()
         if path.startswith('http'):
+            request_kwargs = {}
             timeout = float(os.getenv('TIMEOUT', '60'))
-            content = requests.get(path, timeout=timeout).content
+            if timeout > 0:
+                request_kwargs['timeout'] = timeout
+            content = requests.get(path, **request_kwargs).content
             res = BytesIO(content)
         elif os.path.exists(path):
             with open(path, 'rb') as f:

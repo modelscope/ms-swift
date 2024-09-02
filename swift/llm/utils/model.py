@@ -151,7 +151,13 @@ class ModelType:
     qwen2_audio_7b = 'qwen2-audio-7b'
     qwen2_audio_7b_instruct = 'qwen2-audio-7b-instruct'
     qwen2_vl_2b_instruct = 'qwen2-vl-2b-instruct'
+    qwen2_vl_2b_instruct_gptq_int4 = 'qwen2-vl-2b-instruct-gptq-int4'
+    qwen2_vl_2b_instruct_gptq_int8 = 'qwen2-vl-2b-instruct-gptq-int8'
+    qwen2_vl_2b_instruct_awq = 'qwen2-vl-2b-instruct-awq'
     qwen2_vl_7b_instruct = 'qwen2-vl-7b-instruct'
+    qwen2_vl_7b_instruct_gptq_int4 = 'qwen2-vl-7b-instruct-gptq-int4'
+    qwen2_vl_7b_instruct_gptq_int8 = 'qwen2-vl-7b-instruct-gptq-int8'
+    qwen2_vl_7b_instruct_awq = 'qwen2-vl-7b-instruct-awq'
     # chatglm
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
@@ -3467,6 +3473,42 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-7B-Instruct')
 @register_model(
+    ModelType.qwen2_vl_7b_instruct_gptq_int4,
+    'qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_vl_7b_instruct_gptq_int8,
+    'qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_vl_7b_instruct_awq,
+    'qwen/Qwen2-VL-7B-Instruct-AWQ',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-7B-Instruct-AWQ')
+@register_model(
     ModelType.qwen2_vl_2b_instruct,
     'qwen/Qwen2-VL-2B-Instruct',
     LoRATM.qwen2_vl,
@@ -3476,6 +3518,42 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils'],
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct')
+@register_model(
+    ModelType.qwen2_vl_2b_instruct_gptq_int4,
+    'qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_vl_2b_instruct_gptq_int8,
+    'qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_vl_2b_instruct_awq,
+    'qwen/Qwen2-VL-2B-Instruct-AWQ',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-2B-Instruct-AWQ')
 def get_model_tokenizer_qwen2_vl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -6529,7 +6607,7 @@ def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')
 
 
-def get_default_lora_target_modules(model_type: str) -> Optional[List[str]]:
+def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, None]:
     res = MODEL_MAPPING[model_type].get('lora_target_modules')
     if isinstance(res, str):
         res = get_regex_for_mm_default_lora(res)
