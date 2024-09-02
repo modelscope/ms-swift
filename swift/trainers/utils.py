@@ -8,6 +8,7 @@ from types import FunctionType, MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+from accelerate import PartialState
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HFIterableDataset
 from torch.nn import Module
@@ -202,9 +203,9 @@ def tokenize_paired_dataset(
     return model_inputs
 
 
-def get_preprocess_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
-                                rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'], vision_keys: Optional[list],
-                                **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
+                                  rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'], vision_keys: Optional[list],
+                                  **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """
     Preprocesses the RLHF datasets using the specified template and RLHF type.
 
@@ -221,9 +222,10 @@ def get_preprocess_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Option
     """
     preprocess_func = get_preprocess_func(template=template, rlhf_type=rlhf_type, vision_keys=vision_keys)
     column_names = list(next(iter(train_dataset)).keys())
-    train_dataset = train_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
-    if val_dataset is not None:
-        val_dataset = val_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
+    with PartialState().local_main_process_first():
+        train_dataset = train_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
+        if val_dataset is not None:
+            val_dataset = val_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
     return train_dataset, val_dataset
 
 
