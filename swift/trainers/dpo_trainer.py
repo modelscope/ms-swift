@@ -35,7 +35,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.streaming = kwargs.pop('streaming', False)
         self.is_vision_model = kwargs.pop('is_vision', False)
         self.vision_keys = kwargs.pop('vision_keys', None)
-        patch_trl(self.is_vision_model)
+        # patch_trl(self.is_vision_model)
         self.generate_during_eval = args.generate_during_eval
         self.is_encoder_decoder = model.config.is_encoder_decoder
         self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)

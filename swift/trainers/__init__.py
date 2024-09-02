@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .loss import LOSS_MAPPING, LossName, register_loss_func, get_loss_func
     from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
                         ShardedDDPOption, TrainerCallback, build_tokenized_answer, concat_template, sort_by_max_length,
-                        get_preprocess_rlhf_dataset)
+                        get_preprocess_rlhf_dataset, patch_trl)
 else:
     _import_structure = {
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
@@ -24,7 +24,7 @@ else:
         'utils': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
             'ShardedDDPOption', 'TrainerCallback', 'build_tokenized_answer', 'concat_template',
-            'get_preprocess_rlhf_dataset'
+            'get_preprocess_rlhf_dataset', 'patch_trl'
         ]
     }
 
