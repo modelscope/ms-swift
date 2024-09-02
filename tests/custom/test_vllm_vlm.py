@@ -13,6 +13,7 @@ def test_vllm_vlm():
     template = get_template(template_type, llm_engine.hf_tokenizer)
     # 与`transformers.GenerationConfig`类似的接口
     llm_engine.generation_config.max_new_tokens = 256
+    llm_engine.generation_config.logprobs = 2
     generation_info = {}
 
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
@@ -21,6 +22,7 @@ def test_vllm_vlm():
     for request, resp in zip(request_list, resp_list):
         print(f"query: {request['query']}")
         print(f"response: {resp['response']}")
+        print(f"len(logprobs): {len(resp['logprobs'])}")
     print(generation_info)
 
     # stream
@@ -41,6 +43,7 @@ def test_vllm_vlm():
     history = resp_list[0]['history']
     print(f'history: {history}')
     print(generation_info)
+    print(f"len(logprobs): {len(resp_list[0]['logprobs'])}")
 
     # batched
     n_batched = 1000

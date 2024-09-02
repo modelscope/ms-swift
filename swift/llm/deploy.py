@@ -88,7 +88,7 @@ def create_error_response(status_code: Union[int, str, HTTPStatus], message: str
 @app.get('/v1/models')
 async def get_available_models():
     global _args
-    model_list = [_args.model_type]
+    model_list = [_args.served_model_name or _args.model_type]
     if _args.lora_request_list is not None:
         model_list += [lora_request.lora_name for lora_request in _args.lora_request_list]
     data = [
@@ -326,8 +326,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 choice = ChatCompletionResponseChoice(
                     index=output.index,
                     message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=output.finish_reason,
-                )
+                    finish_reason=output.finish_reason)
                 choices.append(choice)
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -335,11 +334,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             choices = []
             for output in result.outputs:
                 response = template.generate_ids_to_response(output.token_ids)
-                choice = CompletionResponseChoice(
-                    index=output.index,
-                    text=response,
-                    finish_reason=output.finish_reason,
-                )
+                choice = CompletionResponseChoice(index=output.index, text=response, finish_reason=output.finish_reason)
                 choices.append(choice)
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)

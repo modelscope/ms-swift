@@ -1007,9 +1007,17 @@ class Template:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         return res
 
+    @classmethod
+    def get_generate_ids(cls, generate_ids: Tensor, input_token_len: int) -> List[int]:
+        if isinstance(generate_ids, Tensor):
+            generate_ids = generate_ids.tolist()
+        if len(generate_ids) >= 1 and isinstance(generate_ids[0], (list, tuple)):
+            generate_ids = generate_ids[0]
+        return cls._get_generate_ids(generate_ids, input_token_len)
+
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0, input_token_len:].tolist()
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids[input_token_len:]
 
     @staticmethod
     def _is_chinese_char(cp: int) -> bool:
@@ -1804,8 +1812,8 @@ class InternLMXComposer2Template(Template):
         return res
 
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0].tolist()
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
 
 register_template(
@@ -1900,8 +1908,8 @@ class InternvlTemplate(Template):
         return {'inputs_embeds': inputs_embeds}
 
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0].tolist()
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
 
 def _replace_video2image(load_video_func, example, replace_tag) -> List[Context]:
@@ -2119,8 +2127,8 @@ class FlorenceTemplate(Template):
         return inputs, {}
 
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0].tolist()
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
     def post_process_generate_response(self, response, example):
         if isinstance(example['images'], list):
@@ -2357,8 +2365,8 @@ class LLavaTemplate(Template):
         return res
 
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0].tolist()
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
 
 class Llava1_6Template(LlavaHfTemplate):
@@ -2663,8 +2671,8 @@ class DeepseekVLTemplate(Template):
         return {'inputs_embeds': inputs_embeds}
 
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0].tolist()
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
 
 register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True)
@@ -2906,8 +2914,8 @@ class MiniCPMVTemplate(Template):
         return {'inputs_embeds': inputs_embeds[0]}
 
     @staticmethod
-    def get_generate_ids(generate_ids: Tensor, input_token_len: int) -> List[int]:
-        return generate_ids[0].tolist()
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
 
 class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):

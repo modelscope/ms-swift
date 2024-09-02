@@ -517,13 +517,13 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 Original model:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen1half-7b-chat \
-    --eval_dataset ARC_e --infer_backend vllm
+    --eval_dataset ARC_c --infer_backend vllm
 ```
 
 LoRA fine-tuned:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir xxx/checkpoint-xxx \
-    --eval_dataset ARC_e --infer_backend vllm \
+    --eval_dataset ARC_c --infer_backend vllm \
     --merge_lora true \
 ```
 

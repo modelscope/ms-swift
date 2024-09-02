@@ -685,13 +685,16 @@ def inference_stream(model: PreTrainedModel,
         raise ValueError(error_msg)
 
     streamer = TokenListIteratorStreamer()
+    return_dict = generation_config.return_dict_in_generate
     generation_kwargs = {'streamer': streamer, 'generation_config': generation_config, **inputs}
-    _model_generate = model.generate
-    if is_torch_npu_available():
+    result_queue = Queue()
 
-        def _model_generate(*args, **kwargs):
+    def _model_generate(*args, **kwargs):
+        if is_torch_npu_available():
             torch.npu.set_device(model.device)
-            return model.generate(*args, **kwargs)
+        res = model.generate(*args, **kwargs)
+        result_queue.put(res)
+        return res
 
     thread = Thread(target=_model_generate, kwargs=generation_kwargs)
     thread.start()
@@ -710,6 +713,13 @@ def inference_stream(model: PreTrainedModel,
             raw_generate_ids += token_list
         except StopIteration:
             is_finished = True
+        res = {}
+        if return_dict and is_finished:
+            thread.join()
+            res = dict(result_queue.get())
+            if res['sequences'][0].tolist() != raw_generate_ids:
+                logger.warning(f"res['sequences'][0].tolist(): {res['sequences'][0].tolist()}\n"
+                               f'raw_generate_ids: {raw_generate_ids}')
         generate_ids = template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
         generation_info['num_generated_tokens'] = len(generate_ids)
         response = template.generate_ids_to_response(
@@ -727,7 +737,11 @@ def inference_stream(model: PreTrainedModel,
         generation_info['runtime'] = runtime
         generation_info['samples/s'] = 1 / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-        yield response, history
+        if return_dict:
+            res.update({'response': response, 'history': history})
+            yield res
+        else:
+            yield response, history
 
 
 @torch.inference_mode()
@@ -799,7 +813,11 @@ def inference(model: PreTrainedModel,
         else:
             print(f'[QUERY]{query}\n{output_prefix}', end='')
 
+    return_dict = generation_config.return_dict_in_generate
     generate_ids = model.generate(streamer=streamer, generation_config=generation_config, **inputs)
+    if return_dict:
+        res = dict(generate_ids)
+        generate_ids = generate_ids['sequences']
     generate_ids = template.get_generate_ids(generate_ids, token_len)
     generation_info['num_generated_tokens'] = len(generate_ids)
     if verbose and stream is False:
@@ -815,7 +833,11 @@ def inference(model: PreTrainedModel,
     generation_info['runtime'] = runtime
     generation_info['samples/s'] = 1 / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-    return response, history
+    if return_dict:
+        res.update({'response': response, 'history': history})
+        return res
+    else:
+        return response, history
 
 
 def limit_history_length(template: Template, query: str, history: Optional[History],
