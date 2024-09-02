@@ -44,6 +44,7 @@ def test_vllm_vlm():
     print(f'history: {history}')
     print(generation_info)
     print(f"len(logprobs): {len(resp_list[0]['logprobs'])}")
+
     # batched
     n_batched = 1000
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
