@@ -110,5 +110,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-72b-instruct --infer_ba
 
 The method for client invocation can be found in: [vLLM Inference Acceleration and Deployment Documentation](VLLM-inference-acceleration-and-deployment.md#deployment).
 
+Benchmark testing code: https://github.com/modelscope/ms-swift/blob/main/scripts/benchmark/deploy.py
+
 ## Multimodal
 Check [here](../Multi-Modal/LmDeploy-inference-acceleration-and-deployment.md)

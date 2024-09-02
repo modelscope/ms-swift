@@ -19,11 +19,12 @@ from .utils import Messages, history_to_messages
 
 
 def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:
-    timeout = float(os.getenv('TIMEOUT', '60'))
-    request_kwargs = {'timeout': timeout}
-    if api_key is None:
-        return request_kwargs
-    request_kwargs['headers'] = {'Authorization': f'Bearer {api_key}'}
+    timeout = float(os.getenv('TIMEOUT', '300'))
+    request_kwargs = {}
+    if timeout > 0:
+        request_kwargs['timeout'] = timeout
+    if api_key is not None:
+        request_kwargs['headers'] = {'Authorization': f'Bearer {api_key}'}
     return request_kwargs
 
 
@@ -280,6 +281,7 @@ def inference_client(
     if request_config is None:
         request_config = XRequestConfig()
     model_list = None
+    is_chat_request = is_chat_request or kwargs.get('is_chat')
     if is_chat_request is None or is_multimodal is None:
         model_list = get_model_list_client(host, port, api_key=api_key, **kwargs)
 
@@ -350,6 +352,7 @@ async def inference_client_async(
     if request_config is None:
         request_config = XRequestConfig()
     model_list = None
+    is_chat_request = is_chat_request or kwargs.get('is_chat')
     if is_chat_request is None or is_multimodal is None:
         model_list = await get_model_list_client_async(host, port, api_key=api_key, **kwargs)
 
