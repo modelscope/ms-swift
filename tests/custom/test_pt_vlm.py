@@ -10,20 +10,21 @@ def test_pt_vlm():
     template = get_template(template_type, tokenizer)
     # 与`transformers.GenerationConfig`类似的接口
     model.generation_config.max_new_tokens = 256
-    model.generation_config.logprobs = 2
+    model.generation_config.return_dict_in_generate = True
     generation_info = {}
     query = 'who are you?'
     resp = inference(model, template, query=query, generation_info=generation_info)
-    print(f"query: {query}")
+    print(f'query: {query}')
     print(f"response: {resp['response']}")
     print(generation_info)
+    print(resp.keys())
 
     # stream
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.png']
     history = resp['history']
     query = '有几只羊'
-    gen = inference_stream(model, template, query=query, history=history, images=images,
-                            generation_info=generation_info)
+    gen = inference_stream(
+        model, template, query=query, history=history, images=images, generation_info=generation_info)
     print_idx = 0
     print(f'query: {query}\nresponse: ', end='')
     for resp in gen:
@@ -36,6 +37,7 @@ def test_pt_vlm():
     history = resp['history']
     print(f'history: {history}')
     print(generation_info)
+    print(resp.keys())
 
 
 if __name__ == '__main__':
