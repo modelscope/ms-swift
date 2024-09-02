@@ -64,9 +64,9 @@ class PushToMsHubMixin:
         if ignore_patterns:
             ignore_patterns = [p for p in ignore_patterns if p != '_*']
         if path_in_repo:
-            idx = folder_path.rfind(path_in_repo)
-            if idx >= 0:
-                folder_path = folder_path[:idx]
+            # We don't support part submit for now
+            path_in_repo = os.path.basename(folder_path)
+            folder_path = os.path.dirname(folder_path)
             ignore_patterns = []
         push_to_hub(
             repo_id,

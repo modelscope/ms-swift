@@ -91,4 +91,9 @@ class Export(BaseUI):
             gr.Textbox(elem_id='quant_seqlen', scale=20)
         with gr.Row():
             gr.Textbox(elem_id='quant_output_dir', scale=20)
-            gr.Dropdown(elem_id='dataset', multiselect=True, choices=list(DATASET_MAPPING.keys()), scale=20)
+            gr.Dropdown(
+                elem_id='dataset',
+                multiselect=True,
+                allow_custom_value=True,
+                choices=list(DATASET_MAPPING.keys()),
+                scale=20)
