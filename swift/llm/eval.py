@@ -296,15 +296,16 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
     nlp_datasets = set(OpenCompassBackendManager.list_datasets()) & set(args.eval_dataset)
     mm_datasets = set(VLMEvalKitBackendManager.list_supported_datasets()) & set(args.eval_dataset)
 
-    final_report = None
+    final_report = []
     for dataset, runner in zip([list(nlp_datasets), list(mm_datasets)], [opencompass_runner, vlmeval_runner]):
         if not dataset:
             continue
 
-        final_report = runner(args, dataset, model_type, is_chat, url)
-        logger.info(f'Final report:{final_report}\n')
-    if final_report is None:
-        raise ValueError(f'Cannot load final report, please check your dataset name: {args.eval_dataset}')
+        report = runner(args, dataset, model_type, is_chat, url)
+        logger.info(f'Final report:{report}\n')
+        final_report.extend(report)
+    if not final_report:
+        raise ValueError(f'Cannot load final report, please check your dataset: {args.eval_dataset} and the eval log')
     if process:
         process.kill()
     return final_report
