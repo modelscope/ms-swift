@@ -18,8 +18,6 @@ class SwiftArgumentsMixin:
     # ckpt only save model
     save_only_model: bool = False
     train_sampler_random: bool = True
-    push_hub_strategy: str = field(
-        default='push_best', metadata={'choices': {'end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'}})
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
     loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     additional_saved_files: Optional[List[str]] = None

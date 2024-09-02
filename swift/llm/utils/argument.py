@@ -358,6 +358,11 @@ class ArgumentsBase:
             if self.lora_target_regex:
                 self.target_regex = self.lora_target_regex
 
+        if getattr(self, 'push_hub_strategy', None):
+            self.hub_strategy = self.push_hub_strategy
+            if self.hub_strategy in ('push_last', 'push_best'):
+                self.hub_strategy = 'every_save'
+
     def handle_custom_dataset_info(self: Union['SftArguments', 'InferArguments']):
         if self.custom_dataset_info is None:
             return
@@ -804,7 +809,7 @@ class SftArguments(ArgumentsBase):
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
     hub_private_repo: bool = False
-    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'] = 'push_best'
+    hub_strategy: Literal['end', 'every_save', 'checkpoint', 'all_checkpoints'] = 'every_save'
 
     # other
     test_oom_error: bool = field(
@@ -888,6 +893,7 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
     device_map_config_path: Optional[str] = None
+    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'] = 'push_best'
 
     def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
         if isinstance(target_modules, str):
@@ -1213,7 +1219,7 @@ class SftArguments(ArgumentsBase):
             adam_epsilon=self.adam_epsilon,
             hub_model_id=self.hub_model_id,
             hub_private_repo=self.hub_private_repo,
-            push_hub_strategy=self.push_hub_strategy,
+            hub_strategy=self.push_hub_strategy,
             hub_token=self.hub_token,
             push_to_hub=self.push_to_hub,
             resume_from_checkpoint=self.resume_from_checkpoint,
