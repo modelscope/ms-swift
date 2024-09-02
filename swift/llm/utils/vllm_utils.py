@@ -419,6 +419,7 @@ def inference_stream_vllm(
             i = int(output.request_id)
             request = request_list[i]
             generate_ids = output.outputs[0].token_ids
+            logprobs = output.outputs[0].logprobs
             safe_response = template.generate_ids_to_response(
                 generate_ids, output.finished, print_idx=print_idx_list[i])
             query = request['query']
@@ -435,6 +436,8 @@ def inference_stream_vllm(
             num_generated_tokens[i] = n_gen_tokens
 
             resp_list[i] = {'response': safe_response, 'history': history}
+            if logprobs is not None:
+                resp_list[i]['logprobs'] = logprobs
             if output.finished:
                 n_finished += 1
                 prog_bar.update()
@@ -541,6 +544,7 @@ def inference_vllm(llm_engine: LLMEngine,
         i = int(output.request_id)
         request = request_list[i]
         generate_ids = output.outputs[0].token_ids
+        logprobs = output.outputs[0].logprobs
         response = template.generate_ids_to_response(generate_ids)
         query = request['query']
         history = request['history']
@@ -551,6 +555,8 @@ def inference_vllm(llm_engine: LLMEngine,
 
         generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
         resp_list[i] = {'response': response, 'history': history}
+        if logprobs is not None:
+            resp_list[i]['logprobs'] = logprobs
         if verbose:
             print(f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}', end='')
             print(tokenizer.decode(output.outputs[0].token_ids, False))
@@ -583,7 +589,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
-        max_loras=min(len(args.lora_modules), 1),
+        max_loras=max(len(args.lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
     setattr(llm_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
     for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:

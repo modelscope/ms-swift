@@ -69,11 +69,11 @@ pip install -e '.[eval]'
 ```shell
 # 原始模型 (单卡A100大约需要半小时)
 CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
-    --eval_dataset ARC_e --infer_backend vllm
+    --eval_dataset ARC_c --infer_backend vllm
 
 # LoRA微调后
 CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint-xxx \
-    --eval_dataset ARC_e --infer_backend vllm \
+    --eval_dataset ARC_c --infer_backend vllm \
     --merge_lora true \
 ```
 
@@ -93,7 +93,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
 
 # 使用API进行评测
 # 如果是非swift部署, 则需要额外传入`--eval_is_chat_model true --model_type qwen2-7b-instruct`
-swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ARC_e
+swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ARC_c
 
 # LoRA微调后的模型同理
 ```

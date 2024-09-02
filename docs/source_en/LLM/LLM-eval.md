@@ -69,11 +69,11 @@ Evaluation supports the use of vLLM for acceleration. Here we demonstrate the ev
 ```shell
 # Original model (approximately half an hour on a single A100)
 CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
-    --eval_dataset ARC_e --infer_backend vllm
+    --eval_dataset ARC_c --infer_backend vllm
 
 # After LoRA fine-tuning
 CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint-xxx \
-    --eval_dataset ARC_e --infer_backend vllm \
+    --eval_dataset ARC_c --infer_backend vllm \
     --merge_lora true \
 ```
 
@@ -93,7 +93,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --model_type qwen2-7b-instruct
 
 # Evaluate using the API
 # If it is not a Swift deployment, you need to additionally pass in `--eval_is_chat_model true --model_type qwen2-7b-instruct`.
-swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ARC_e
+swift eval --eval_url http://127.0.0.1:8000/v1 --eval_dataset ARC_c
 
 # The same applies to the model after LoRA fine-tuning.
 ```

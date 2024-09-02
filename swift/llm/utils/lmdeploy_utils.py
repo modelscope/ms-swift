@@ -304,6 +304,7 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
             output = outputs[i]  # old value
         outputs[i] = output
         request = request_list[i]
+        logprobs = output.logprobs
         safe_response = template.generate_ids_to_response(output.token_ids, is_finished, print_idx=print_idx_list[i])
         query = request['query']
         history = request['history']
@@ -314,6 +315,8 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
         num_generated_tokens[i] = n_gen_tokens
         resp_list[i] = {'response': safe_response, 'history': history}
+        if logprobs is not None:
+            resp_list[i]['logprobs'] = logprobs
 
         runtime = time.perf_counter() - start_runtime
         generation_info['runtime'] = runtime
@@ -410,6 +413,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
                 pass
         request = request_list[i]
         input_ids = inputs['input_ids']
+        logprobs = output.logprobs
         response = template.generate_ids_to_response(output.token_ids)
         query = request['query']
         history = request['history']
@@ -417,6 +421,8 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
 
         generation_info['num_generated_tokens'] += len(output.token_ids)
         resp_list[i] = {'response': response, 'history': history}
+        if logprobs is not None:
+            resp_list[i]['logprobs'] = logprobs
         if verbose:
             print(f'{prompt_prefix}{tokenizer.decode(input_ids, False)}{output_prefix}', end='')
             print(tokenizer.decode(output.token_ids, False))
