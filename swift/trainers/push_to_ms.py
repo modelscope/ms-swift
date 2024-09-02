@@ -1,6 +1,5 @@
 import os
 import tempfile
-from concurrent.futures import Future
 from functools import partial
 from pathlib import Path
 from typing import List, Optional, Union
@@ -47,7 +46,7 @@ def upload_folder(
     ignore_patterns: Optional[Union[List[str], str]] = None,
     run_as_future: bool = False,
     **kwargs,
-) -> Union[CommitInfo, str, Future[CommitInfo], Future[str]]:
+):
     from modelscope import push_to_hub
     commit_message = commit_message or 'Upload folder using api'
     if commit_description:
