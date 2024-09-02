@@ -11,7 +11,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
 from trl.models import create_reference_model
 
-from swift.trainers import RLHFTrainerFactory, get_preprocess_rlhf_dataset, patch_trl
+from swift.trainers import RLHFTrainerFactory, get_preprocessed_rlhf_dataset, patch_trl
 from swift.utils import (append_to_jsonl, check_json_format, get_dist_setting, get_logger, get_main, get_model_info,
                          is_ddp_plus_mp, is_dist, is_master, plot_images, seed_everything, show_layers)
 from .sft import _get_train_val_dataset
@@ -213,7 +213,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             desc='tokenizing paired dataset',
         )
     patch_trl(args.is_vision)
-    train_dataset, val_dataset = get_preprocess_rlhf_dataset(
+    train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
         train_dataset,
         val_dataset,
         template=template,
