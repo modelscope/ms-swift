@@ -68,7 +68,6 @@ class PushToMsHubMixin:
             path_in_repo = os.path.basename(folder_path)
             folder_path = os.path.dirname(folder_path)
             ignore_patterns = []
-        tag = path_in_repo
         push_to_hub(
             repo_id,
             folder_path,
