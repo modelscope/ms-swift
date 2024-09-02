@@ -10,7 +10,8 @@ from trl.trainer import kto_trainer
 from swift.llm.utils.template import Context, History, Template
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
-from .mixin import PushToMsHubMixin, SwiftMixin
+from .mixin import SwiftMixin
+from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 

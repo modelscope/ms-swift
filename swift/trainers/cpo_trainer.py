@@ -7,7 +7,8 @@ from trl import CPOTrainer as HFCPOTrainer
 
 from swift.llm.utils.template import Template
 from swift.utils import get_logger
-from .mixin import PushToMsHubMixin, SwiftMixin
+from .mixin import SwiftMixin
+from .push_to_ms import PushToMsHubMixin
 from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
 
 logger = get_logger()
