@@ -234,6 +234,8 @@ swift使用VLLM作为推理后端, 并兼容openai的API样式.
 
 客户端的openai的API参数可以参考: https://platform.openai.com/docs/api-reference/introduction.
 
+benchmark测试代码: https://github.com/modelscope/ms-swift/blob/main/scripts/benchmark/deploy.py
+
 ### 原始模型
 #### qwen-7b-chat
 
@@ -251,7 +253,7 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift deploy --mode
 curl http://localhost:8000/v1/chat/completions \
 -H "Content-Type: application/json" \
 -d '{
-"model": "qwen-7b-chat",
+"model": "qwen2-7b-instruct",
 "messages": [{"role": "user", "content": "晚上睡不着觉怎么办？"}],
 "max_tokens": 256,
 "temperature": 0
