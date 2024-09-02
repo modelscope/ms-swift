@@ -589,7 +589,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
-        max_loras=min(len(args.lora_modules), 1),
+        max_loras=max(len(args.lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
     setattr(llm_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
     for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
