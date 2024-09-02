@@ -893,7 +893,7 @@ class SftArguments(ArgumentsBase):
     custom_train_dataset_path: List[str] = field(default_factory=list)
     custom_val_dataset_path: List[str] = field(default_factory=list)
     device_map_config_path: Optional[str] = None
-    push_hub_strategy: Literal['end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints'] = 'push_best'
+    push_hub_strategy: Optional[Literal['end', 'push_best', 'push_last', 'checkpoint', 'all_checkpoints']] = None
 
     def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
         if isinstance(target_modules, str):
@@ -1219,7 +1219,7 @@ class SftArguments(ArgumentsBase):
             adam_epsilon=self.adam_epsilon,
             hub_model_id=self.hub_model_id,
             hub_private_repo=self.hub_private_repo,
-            hub_strategy=self.push_hub_strategy,
+            hub_strategy=self.hub_strategy,
             hub_token=self.hub_token,
             push_to_hub=self.push_to_hub,
             resume_from_checkpoint=self.resume_from_checkpoint,
