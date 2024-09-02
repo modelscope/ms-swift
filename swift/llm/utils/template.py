@@ -1011,7 +1011,7 @@ class Template:
     def get_generate_ids(cls, generate_ids: Tensor, input_token_len: int) -> List[int]:
         if isinstance(generate_ids, Tensor):
             generate_ids = generate_ids.tolist()
-        if len(generate_ids) == 1 and isinstance(generate_ids[0], (list, tuple)):
+        if len(generate_ids) >= 1 and isinstance(generate_ids[0], (list, tuple)):
             generate_ids = generate_ids[0]
         return cls._get_generate_ids(generate_ids, input_token_len)
 
