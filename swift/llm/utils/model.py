@@ -3515,7 +3515,7 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     TemplateType.qwen2_vl,
     support_flash_attn=True,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],  # 'pyav'
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct')
 @register_model(
