@@ -28,7 +28,7 @@ def ta_accelerate(model,
         config.dist.fsdp.flatten_parameters = fsdp_flatten_parameters
         config.dist.dp.size = 1
 
-        if fsdp_num > 0:
+        if fsdp_num > 1:
             os.environ['ACCELERATE_USE_FSDP'] = 'true'
 
         return config
