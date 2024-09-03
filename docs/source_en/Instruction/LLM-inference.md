@@ -1,5 +1,5 @@
 # LLM Inference Documentation
-If you want to use vllm for inference acceleration, you can check out [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md#inference-acceleration)
+If you want to use vllm for inference acceleration, you can check out [VLLM Inference Acceleration and Deployment](../LLM/VLLM-inference-acceleration-and-deployment.md#inference-acceleration)
 
 ## Table of Contents
 - [Environment Preparation](#Environment-Preparation)
@@ -465,4 +465,4 @@ app_ui_main(app_ui_args)
 ```
 
 ### Fine-tuned Models
-To use the web-ui with fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM-fine-tuning#fine-tuned-model)
+To use the web-ui with fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM-fine-tuning.md#fine-tuned-model)

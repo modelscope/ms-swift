@@ -25,7 +25,6 @@
 ### 🐔参考文档
 1. [运行速度与显存的Benchmark](Benchmark.md)
 2. [HuggingFace生态兼容](HuggingFace生态兼容.md)
-3. [运行速度与显存的Benchmark](Benchmark.md)
 
 
 ### 🍀Multi-Modal最佳实践系列
