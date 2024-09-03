@@ -303,7 +303,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
 ```
 
 ### Custom Dataset
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../Instruction/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
 Supports multi-turn conversations, Images support for local path or URL input, multiple images separated by commas ','
 

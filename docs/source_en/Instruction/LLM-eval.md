@@ -77,7 +77,7 @@ CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir qwen2-7b-instruct/vx-xxx/checkpoint
     --merge_lora true \
 ```
 
-You can refer to [here](./Command-line-parameters.md#eval-parameters) for the list of evaluation parameters.
+You can refer to [here](Command-line-parameters.mdval-parameters) for the list of evaluation parameters.
 
 Please pay attention: The eval result will be saved in {--eval_output_dir}/{--name}/{some-timestamp}, if you changed nothing, the default dir will be:
 ```text

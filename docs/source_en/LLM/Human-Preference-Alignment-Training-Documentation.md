@@ -34,7 +34,7 @@ For example, ![kto_data](../../resources/kto_data.png)
 **Training Tips**:
 
 - If you are training a base model with history data, you need to specify a template that supports multi-turn dialogue (base models often do not support multi-turn dialogue); for this situation, we have set the default chatml template, but you can also use --model_type to select the template for the training model
-- For training with a custom dataset, please refer to [Customization](Customization.md)
+- For training with a custom dataset, please refer to [Customization](../Instruction/Customization.md)
 - The following training scripts use --lora_target_modules ALL to train all linear layers of the model, but you can set --lora_target_modules DEFAULT to only train the model's QKV matrices
 
 ## DPO

@@ -92,7 +92,7 @@ If you're having trouble sleeping at night, there are several strategies you can
 Remember, it's important to be patient with yourself as it might take some time to find the right combination of strategies that work for you.
 """
 ```
-If you want to perform single-sample inference, you can refer to [LLM Inference Documentation](LLM-inference.md#qwen-7b-chat)
+If you want to perform single-sample inference, you can refer to [LLM Inference Documentation](../Instruction/LLM-inference.md#qwen-7b-chat)
 
 Using CLI:
 ```bash

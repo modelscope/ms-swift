@@ -122,7 +122,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --deepspeed default-zero2
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../Instruction/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
 (Supports multi-turn dialogue, but each conversation can only include one image. Support local file paths or URLs for input)
 
