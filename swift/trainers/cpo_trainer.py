@@ -86,137 +86,6 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
             self.perf['memory'][f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
         return res
 
-    def tokenize_row(self, feature, model: Union[PreTrainedModel, nn.Module] = None) -> Dict:
-
-        batch = {}
-        if not self.is_encoder_decoder:
-            # encode without response
-            prompt = feature.copy()
-            prompt['response'] = None
-            prompt_tokens = self.template.encode(prompt)[0]
-            # Skip examples that have too lengthy prompt to avoid conflict in following processing
-            if 'input_ids' not in prompt_tokens:
-                self.need_filter = True
-                return {k: None for k in self.processed_keys}
-
-            # for MLLM, pop vision related data to process after
-            if '_data' in prompt_tokens:
-                if not self._data_keys:
-                    self._data_keys = prompt_tokens['_data'].keys()
-                for key in prompt_tokens['_data'].keys():
-                    if key not in prompt_tokens:
-                        prompt_tokens[key] = prompt_tokens['_data'][key]
-                prompt_tokens.pop('_data')
-
-            prompt_tokens.pop('labels', None)
-
-            # convert bfloat16 to float32 to avoid conflict in mapping
-            if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
-                prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
-
-            if 'images' in prompt_tokens and prompt_tokens['images'].dtype == torch.bfloat16:
-                prompt_tokens['images'] = prompt_tokens['images'].to(torch.float32)
-
-            if 'attention_mask' not in prompt_tokens:
-                prompt_tokens['attention_mask'] = [1] * len(prompt_tokens['input_ids'])
-
-            prompt_tokens = {f'prompt_{k}': v for k, v in prompt_tokens.items()}
-
-            # encode with response
-            chosen_tokens = build_tokenized_answer(feature['response'], self.template)
-            chosen_tokens.update(prompt_tokens)
-
-            rejected_tokens = build_tokenized_answer(feature['rejected_response'], self.template)
-            rejected_tokens.update(prompt_tokens)
-
-            longer_response_length = max(len(chosen_tokens['input_ids']), len(rejected_tokens['input_ids']))
-
-            # if combined sequence is too long, truncate the prompt
-            for answer_tokens in [chosen_tokens, rejected_tokens, prompt_tokens]:
-                if len(answer_tokens['prompt_input_ids']) + longer_response_length > self.max_length:
-                    if self.truncation_mode == 'keep_start':
-                        for k in ['prompt_input_ids', 'prompt_attention_mask']:
-                            answer_tokens[k] = answer_tokens[k][:self.max_prompt_length]
-                    elif self.truncation_mode == 'keep_end':
-                        for k in ['prompt_input_ids', 'prompt_attention_mask']:
-                            answer_tokens[k] = answer_tokens[k][-self.max_prompt_length:]
-                    else:
-                        raise ValueError(f'Unknown truncation mode: {self.truncation_mode}')
-
-            # if that's still too long, truncate the response
-            for answer_tokens in [chosen_tokens, rejected_tokens]:
-                if len(answer_tokens['prompt_input_ids']) + longer_response_length > self.max_length:
-                    for k in ['input_ids', 'attention_mask']:
-                        answer_tokens[k] = answer_tokens[k][:self.max_length - self.max_prompt_length]
-
-            # Create labels
-            chosen_sequence_tokens = {
-                k: chosen_tokens[f'prompt_{k}'] + chosen_tokens[k]
-                for k in ['input_ids', 'attention_mask']
-            }
-            rejected_sequence_tokens = {
-                k: rejected_tokens[f'prompt_{k}'] + rejected_tokens[k]
-                for k in ['input_ids', 'attention_mask']
-            }
-
-            chosen_sequence_tokens['labels'] = chosen_sequence_tokens['input_ids'][:]
-            _paddings = [self.label_pad_token_id] * len(chosen_tokens['prompt_input_ids'])
-            chosen_sequence_tokens['labels'][:len(chosen_tokens['prompt_input_ids'])] = _paddings
-            rejected_sequence_tokens['labels'] = rejected_sequence_tokens['input_ids'][:]
-            _paddings = [self.label_pad_token_id] * len(rejected_tokens['prompt_input_ids'])
-            rejected_sequence_tokens['labels'][:len(rejected_tokens['prompt_input_ids'])] = _paddings
-
-            for k, toks in {
-                    'chosen_': chosen_sequence_tokens,
-                    'rejected_': rejected_sequence_tokens,
-                    '': prompt_tokens,
-            }.items():
-                for type_key, tokens in toks.items():
-                    if type_key == 'token_type_ids':
-                        continue
-                    batch[f'{k}{type_key}'] = tokens
-
-        else:
-            # encoder-decoder
-            prompt = feature.copy()
-            prompt['response'] = None
-            prompt_tokens = self.template.encode(prompt)[0]
-            prompt_tokens.pop('labels', None)
-
-            if '_data' in prompt_tokens:
-                if not self._data_keys:
-                    self._data_keys = prompt_tokens['_data'].keys()
-                for key in prompt_tokens['_data'].keys():
-                    if key not in prompt_tokens:
-                        prompt_tokens[key] = prompt_tokens['_data'][key]
-                prompt_tokens.pop('_data')
-
-            if 'pixel_values' in prompt_tokens and prompt_tokens['pixel_values'].dtype == torch.bfloat16:
-                # datasets do not accept bfloat16; convert to float32.
-                prompt_tokens['pixel_values'] = prompt_tokens['pixel_values'].to(torch.float32)
-            if 'attention_mask' not in prompt_tokens:
-                prompt_tokens['attention_mask'] = [1] * len(prompt_tokens['input_ids'])
-
-            prompt_tokens = {f'prompt_{k}': v for k, v in prompt_tokens.items()}
-
-            # encode with response
-            chosen_tokens = build_tokenized_answer(feature['response'], self.template)
-            rejected_tokens = build_tokenized_answer(feature['rejected_response'], self.template)
-
-            batch['chosen_labels'] = chosen_tokens['input_ids']
-            batch['rejected_labels'] = rejected_tokens['input_ids']
-
-            if model is not None and hasattr(model, 'prepare_decoder_input_ids_from_labels'):
-                batch['rejected_decoder_input_ids'] = model.prepare_decoder_input_ids_from_labels(
-                    labels=torch.tensor(batch['rejected_labels']))
-                batch['chosen_decoder_input_ids'] = model.prepare_decoder_input_ids_from_labels(
-                    labels=torch.tensor(batch['chosen_labels']))
-
-            batch.update(prompt_tokens)
-        if not self.processed_keys:
-            self.processed_keys = (list(batch.keys()))
-        return batch
-
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
@@ -248,13 +117,11 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         if self.is_vision_model:
             # Here, we restore the _data, processing image information within the forward hook of the model.
             batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
-            if self._data_keys:
+            if self.vision_keys is not None:
                 _data = [dict() for _ in range(batch_size)]
-                for k in self._data_keys:
-                    if k == 'input_ids':
-                        _data = [{**d, k: concatenated_batch['concatenated_input_ids'][i]} for i, d in enumerate(_data)]
-                    elif k == 'labels':
-                        _data = [{**d, k: concatenated_batch['concatenated_labels'][i]} for i, d in enumerate(_data)]
+                for k in self.vision_keys:
+                    if k in ['input_ids', 'labels']:
+                        _data = [{**d, k: concatenated_batch[f'concatenated_{k}'][i]} for i, d in enumerate(_data)]
                     # for vision related data, paired response share the same one
                     elif k == 'images':
                         # convert the dtype of the images that may be converted to float32 in tokenize_row
@@ -268,7 +135,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                         _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
                     else:
                         _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
-                model_kwargs['_data'] = _data
+                    model_kwargs['_data'] = _data
 
             if 'images' in concatenated_batch:
                 model_kwargs['images'] = concatenated_batch['images']

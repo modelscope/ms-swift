@@ -202,7 +202,9 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         td0 = template.encode(next(iter(train_dataset)))[0] if not streaming else template.encode(train_dataset[0])
         if '_data' in td0:
             vision_keys = list(td0['_data'].keys())
-
+        # fix glm4v-chat
+        if 'images' in td0:
+            vision_keys.append('images')
     # tokenize dataset
     preprocess_kwargs = {}
     if not streaming:

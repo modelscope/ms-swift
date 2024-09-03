@@ -204,14 +204,8 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if self.vision_keys is not None:
                 _data = [dict() for _ in range(batch_size)]
                 for k in self.vision_keys:
-                    if k == 'input_ids':
-                        _data = [{
-                            **d, k: concatenated_batch['concatenated_vision_input_ids'][i]
-                        } for i, d in enumerate(_data)]
-                    elif k == 'labels':
-                        _data = [{
-                            **d, k: concatenated_batch['concatenated_vision_labels'][i]
-                        } for i, d in enumerate(_data)]
+                    if k in ['input_ids', 'labels']:
+                        _data = [{**d, k: concatenated_batch[f'concatenated_{k}'][i]} for i, d in enumerate(_data)]
                     # for vision related data, paired response share the same one
                     elif k == 'images':
                         # convert the dtype of the images that may be converted to float32 in tokenize_row
@@ -226,9 +220,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                     else:
                         _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
                     model_kwargs['_data'] = _data
-
-            if 'images' in concatenated_batch:
-                model_kwargs['images'] = concatenated_batch['images']
 
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True
@@ -352,8 +343,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         if is_vision_model:
             # for keys appear in _data, we leave data collector in hook
             if 'vision_pixel_values' in batch:
-                pixel_values = [values for values in batch['vision_pixel_values']]
-                concatenated_batch['pixel_values'] = pixel_values
+                concatenated_batch['pixel_values'] = batch['vision_pixel_values']
 
             if 'vision_image_flags' in batch:
                 image_flags = [torch.tensor(flags) for flags in batch['vision_image_flags']]
@@ -369,6 +359,12 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             if 'vision_images' in batch:
                 # images not in _data, we manually execute data collector here
                 concatenated_batch['images'] = batch['vision_images'].squeeze(1).repeat(2, 1, 1, 1).to(device=device)
+
+            if 'vision_tgt_sizes' in batch:
+                concatenated_batch['tgt_sizes'] = batch['vision_tgt_sizes']
+
+            if 'vision_image_bound' in batch:
+                concatenated_batch['image_bound'] = batch['vision_image_bound']
         return concatenated_batch
 
     @staticmethod

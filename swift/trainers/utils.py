@@ -226,10 +226,7 @@ def tokenize_paired_dataset(examples: Dict[str, List[Any]],
     if vision_keys is not None:
         for k in vision_keys:
             _data_key = f'vision_{k}'
-            if k in ['input_ids', 'labels']:
-                model_inputs[f'chosen_vision_{k}'] = []
-                model_inputs[f'rejected_vision_{k}'] = []
-            else:
+            if k not in ['input_ids', 'labels']:
                 # for vision data, we only keep the one to save on GPU memory usage.
                 model_inputs[_data_key] = []
 
@@ -253,17 +250,20 @@ def tokenize_paired_dataset(examples: Dict[str, List[Any]],
         model_inputs['rejected_input_ids'].append(rejected['input_ids'])
         model_inputs['rejected_attention_mask'].append([1] * len(rejected['input_ids']))
         model_inputs['rejected_labels'].append(rejected['labels'])
-
         # vision related data
         if '_data' in chosen and vision_keys is not None:
             for k in vision_keys:
                 _data_key = f'vision_{k}'
-                if k in ['input_ids', 'labels']:
-                    model_inputs[f'chosen_{_data_key}'].append(_convert_bfloat16_to_float32(chosen['_data'][k]))
-                    model_inputs[f'rejected_{_data_key}'].append(_convert_bfloat16_to_float32(rejected['_data'][k]))
+                if k not in ['input_ids', 'labels']:
+                    if k in chosen['_data']:
+                        model_inputs[_data_key].append(_convert_bfloat16_to_float32(chosen['_data'][k]))
                 else:
                     model_inputs[_data_key].append(_convert_bfloat16_to_float32(chosen['_data'][k]))
-
+        # glm4v
+        elif vision_keys is not None:
+            for k in vision_keys:
+                _data_key = f'vision_{k}'
+                model_inputs[_data_key].append(_convert_bfloat16_to_float32(chosen[k]))
     return model_inputs
 
 
