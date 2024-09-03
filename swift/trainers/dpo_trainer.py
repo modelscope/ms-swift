@@ -11,10 +11,9 @@ from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer import FDivergenceConstants, disable_dropout_in_model
 from trl.trainer.utils import DPODataCollatorWithPadding, pad_to_length
 
-from swift.llm.utils.template import Template
 from swift.utils import get_logger
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
+from .utils import sort_by_max_length
 
 logger = get_logger()
 
@@ -24,33 +23,18 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
     def __init__(self,
                  model: Union['PreTrainedModel', torch.nn.Module],
                  ref_model: Optional[Union['PreTrainedModel', torch.nn.Module]],
-                 template: Template,
                  args: DPOConfig,
                  sft_beta=0.,
                  test_oom_error=False,
                  **kwargs):
-        self.template = template
-        template._is_training = True
-
         self.streaming = kwargs.pop('streaming', False)
         self.is_vision_model = kwargs.pop('is_vision', False)
         self.vision_keys = kwargs.pop('vision_keys', None)
-        # patch_trl(self.is_vision_model)
+        self.max_length = args.max_length
         self.generate_during_eval = args.generate_during_eval
         self.is_encoder_decoder = model.config.is_encoder_decoder
         self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
         self.tokenizer = kwargs['tokenizer']
-        # TODO: check the need for length, should we truncate it outside?
-
-        # if args.max_length is None:
-        #     args.max_length = 512
-        #     logger.warning("max_length` is not set, it will default to `512` by default")
-        # self.max_length = args.max_length
-        # if args.max_prompt_length is None:
-        #     logger.warning("`max_prompt_length` is not set, it will default to `128` by default")
-        #     args.max_prompt_length = 128
-        # args.max_target_length
-
         self.sft_beta = sft_beta
         self.beta = args.beta
         self.loss_type = args.loss_type
@@ -64,7 +48,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             label_pad_token_id=args.label_pad_token_id,
             is_encoder_decoder=self.is_encoder_decoder,
         )
-        self.use_dpo_data_collator = True  # to disable warning
+        self.use_dpo_data_collator = True
         if args.disable_dropout:
             disable_dropout_in_model(model)
             if ref_model is not None:
@@ -74,13 +58,13 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self._precomputed_train_ref_log_probs = False
         self._precomputed_eval_ref_log_probs = False
-        self._peft_has_been_casted_to_bf16 = False
+        self._peft_has_been_casted_to_bf16 = False  # ?
         kwargs['super_class'] = Trainer
         SwiftMixin.__init__(self, model, args, **kwargs)
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
         self.ref_model = ref_model
-        self.ref_adapter_name = args.ref_adapter_name
+        self.ref_adapter_name = None
         self.reference_free = False
         if ref_model is not None:
             if self.is_deepspeed_enabled:

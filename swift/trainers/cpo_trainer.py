@@ -1,40 +1,67 @@
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from peft import PeftModel
 from torch import nn
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, Trainer
+from transformers.utils import is_peft_available
+from trl import CPOConfig
 from trl import CPOTrainer as HFCPOTrainer
+from trl.trainer import disable_dropout_in_model
+from trl.trainer.utils import DPODataCollatorWithPadding
 
-from swift.llm.utils.template import Template
 from swift.utils import get_logger
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer, patch_trl, sort_by_max_length
+from .utils import build_tokenized_answer, sort_by_max_length
 
 logger = get_logger()
 
 
 class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
 
-    def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
-        self.template = template
-        template._is_training = True
-        kwargs.pop('gamma', None)
-        self.streaming = kwargs.pop('streaming')
-        is_vision = kwargs.pop('is_vision')
-        patch_trl(is_vision)
-        self.processed_keys = []  # keys after tokenize_row mapiing
-        self.column_names = list(next(iter(kwargs.get('train_dataset'))).keys())
-        self._data_keys = []  # vision related key in _data
-        self.need_filter: bool = False
-        super().__init__(*args, **kwargs)
-        self.train_dataset = self.train_dataset.remove_columns(self.column_names)
-        if self.eval_dataset is not None:
-            self.eval_dataset = self.eval_dataset.remove_columns(self.column_names)
+    def __init__(self,
+                 model: Union['PreTrainedModel', torch.nn.Module],
+                 args: CPOConfig,
+                 test_oom_error=False,
+                 **kwargs):
+        kwargs.pop('ref_model', None)
+        self.streaming = kwargs.pop('streaming', False)
+        self.is_vision_model = kwargs.pop('is_vision', False)
+        self.vision_keys = kwargs.pop('vision_keys', None)
+        self.max_length = args.max_length
+        self.generate_during_eval = args.generate_during_eval
+        self.is_encoder_decoder = model.config.is_encoder_decoder
+        self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
+        self.tokenizer = kwargs['tokenizer']
+        self.beta = args.beta
+        self.loss_type = args.loss_type
+        self.label_smoothing = args.label_smoothing
+        self.cpo_alpha = args.cpo_alpha
+        if args.loss_type == 'simpo':
+            self.simpo_gamma = args.simpo_gamma
+            if self.cpo_alpha > 0:
+                logger.warning('You are using CPO-SimPO method because you set a non-zero cpo_alpha. '
+                               'This will result in the CPO-SimPO method '
+                               '(https://github.com/fe1ixxu/CPO_SIMPO/tree/main). '
+                               'If you want to use a pure SimPO method, please set cpo_alpha to 0.')
+        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
 
-        if self.need_filter:
-            self.train_dataset = self.train_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
-            if self.eval_dataset is not None:
-                self.eval_dataset = self.eval_dataset.filter(lambda x: x['prompt_input_ids'] is not None)
+        kwargs['data_collator'] = DPODataCollatorWithPadding(
+            pad_token_id=self.tokenizer.pad_token_id,
+            label_pad_token_id=args.label_pad_token_id,
+            is_encoder_decoder=self.is_encoder_decoder,
+        )
+        self.use_dpo_data_collator = True
+        self.label_pad_token_id = -100
+        self.padding_value = 0
+        if args.disable_dropout:
+            disable_dropout_in_model(model)
+        self._peft_has_been_casted_to_bf16 = False
+        kwargs['super_class'] = Trainer
+        SwiftMixin.__init__(self, model, args, **kwargs)
+        self._stored_metrics = defaultdict(lambda: defaultdict(list))
+
         if not self.streaming:
             train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
 
@@ -52,8 +79,6 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
             'memory': {},
             'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
         }
-        self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix
-        self.is_vision_model = is_vision
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)

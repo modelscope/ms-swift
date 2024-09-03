@@ -231,15 +231,14 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
 
     trainer_kwargs['is_vision'] = args.is_vision
     trainer_kwargs['streaming'] = streaming
-    trainer_kwargs['vision_keys'] = vision_keys
-
+    if vision_keys:
+        trainer_kwargs['vision_keys'] = vision_keys
     trainer = trainer_cls(
         model=model,
         ref_model=ref_model,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        template=template,
         **trainer_kwargs)
 
     trainer.sft_args = args

@@ -135,8 +135,7 @@ def _convert_bfloat16_to_float32(data):
 
 def get_preprocess_func(template: Template, rlhf_type, vision_keys: list):
     if rlhf_type == 'kto':
-        # TODO
-        raise NotImplementedError
+        return partial(preprocess_kto_dataset, template=template)
     else:
         return partial(
             tokenize_paired_dataset, template=template, vision_keys=vision_keys
@@ -144,12 +143,77 @@ def get_preprocess_func(template: Template, rlhf_type, vision_keys: list):
         )
 
 
-def tokenize_paired_dataset(
-    examples: Dict[str, List[Any]],
-    template: Template,
-    vision_keys: Optional[List[str]] = None,
-    max_length: int = 4096,
-):
+def preprocess_kto_dataset(batch: Dict[str, List[Any]], template: Template):
+    """
+    preprocess KTO specific dataset with given template
+
+    Args:
+    batch: A dictionary containing:
+        - prompt: The main prompt string
+        - completion: The completion string
+        - label: The label data
+        - history (optional): A list of historical queries/responses
+        - system (optional): A system string to use
+
+    template: swift Template object
+
+    Returns:
+    A dictionary with encoded prompt, completion, and label.
+    """
+    preprocessed_data = {'prompt': [], 'completion': [], 'label': []}
+    column_names = list(batch.keys())
+    has_system = 'system' in column_names
+    has_history = 'history' in column_names
+
+    for i in range(len(batch['query'])):
+        query: Optional[str] = batch['query'][i]
+
+        history: Optional[History] = batch['history'][i] if has_history else []
+        system: Optional[str] = batch['system'][i] if has_system else None
+        if system is None:
+            if template.use_default_system:
+                system = template.default_system
+
+        res_context_list: List[Context] = []
+        compute_loss_idx: List[float] = []
+
+        if system is None:
+            assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
+            prefix = template.prefix
+        else:
+            prefix = template.system_prefix
+
+        template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
+
+        for i, (q, r) in enumerate(history):
+            template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
+                                          res_context_list,
+                                          compute_loss_idx,
+                                          query=q,
+                                          response=r,
+                                          round0=i)
+        template._concat_context_list(
+            template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
+        res_context_list, compute_loss_idx = template._simplify_context_list(
+            res_context_list, compute_loss_idx, example=batch)
+        # prompt = ''.join(res_context_list)
+        preprocessed_data['prompt'].append(batch['query'][i])
+        preprocessed_data['completion'].append(batch['response'][i])
+        preprocessed_data['label'].append(batch['label'][i])
+
+    return preprocessed_data
+
+
+def encode_paired_example(example: Dict[str, Any], template: Template):
+    pass
+
+
+def tokenize_paired_dataset(examples: Dict[str, List[Any]],
+                            template: Template,
+                            vision_keys: Optional[List[str]] = None,
+                            max_length: int = 4096,
+                            max_prompt_length: int = 512):
+
     model_inputs = {
         'chosen_input_ids': [],
         'chosen_attention_mask': [],
