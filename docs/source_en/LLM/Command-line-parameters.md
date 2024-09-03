@@ -426,7 +426,7 @@ app-ui parameters inherit from infer parameters, with the following added parame
 
 deploy parameters inherit from infer parameters, with the following added parameters:
 
-- `--🔥host`: Default is `'127.0.0.1`. To make it accessible on the local network, you can set it to '0.0.0.0'.
+- `--host`: Default is `'0.0.0.0'`.
 - `--port`: Default is `8000`.
 - `--api_key`: The default is `None`, meaning that the request will not be subjected to api_key verification.
 - `--ssl_keyfile`: Default is `None`.
