@@ -1574,6 +1574,7 @@ class DeployArguments(InferArguments):
     ssl_certfile: Optional[str] = None
 
     owned_by: str = 'swift'
+    served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 10  # Interval for printing global statistics
 
