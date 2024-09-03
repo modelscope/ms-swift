@@ -165,8 +165,8 @@ def ta_test_dataloader(test_dataset, data_collator, sampler, args):
 def ta_save_optimizer_and_scheduler(optimizer, lr_scheduler, output_dir):
     import torch_xla.core.xla_model as xm
     xm.rendezvous('saving_optimizer_states')
-    torch.save(optimizer.state_dict(), os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'))
-    torch.save(lr_scheduler.state_dict(), os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'))
+    xm.save(optimizer.state_dict(), os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'), master_only=False)
+    xm.save(lr_scheduler.state_dict(), os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'), master_only=False)
     xm.rendezvous('saving_optimizer_states_done')
 
 
