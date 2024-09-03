@@ -11,6 +11,7 @@ Swift DOCUMENTATION
 
    GetStarted/SWIFT安装.md
    GetStarted/界面训练推理.md
+   GetStarted/推送模型.md
    GetStarted/使用tuners.md
    GetStarted/ResTuning.md
    GetStarted/SCEdit.md
@@ -18,22 +19,28 @@ Swift DOCUMENTATION
 
 .. toctree::
    :maxdepth: 2
+   :caption: Instruction
+   Instruction/index.md
+   Instruction/LLM微调文档.md
+   Instruction/LLM推理文档.md
+   Instruction/LLM评测文档.md
+   Instruction/LLM量化与导出文档.md
+   Instruction/LLM实验文档.md
+   Instruction/命令行参数.md
+   Instruction/支持的模型和数据集.md
+   Instruction/自定义与拓展.md
+
+
+.. toctree::
+   :maxdepth: 2
    :caption: LLM Training and Inference
 
    LLM/index.md
-   LLM/LLM推理文档.md
-   LLM/LLM微调文档.md
    LLM/人类偏好对齐训练文档.md
-   LLM/LLM评测文档.md
-   LLM/LLM量化与导出文档.md
    LLM/OLLAMA导出文档.md
    LLM/VLLM推理加速与部署.md
    LLM/LmDeploy推理加速与部署.md
    LLM/Megatron训练文档.md
-   LLM/LLM实验文档.md
-   LLM/命令行参数.md
-   LLM/支持的模型和数据集.md
-   LLM/自定义与拓展.md
    LLM/自我认知微调最佳实践.md
    LLM/Agent微调最佳实践.md
    LLM/Agent部署最佳实践.md

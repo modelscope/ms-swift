@@ -1,6 +1,6 @@
 
 # VLLM推理加速与部署
-vllm支持的模型可以查看[支持的模型](支持的模型和数据集.md#模型).
+vllm支持的模型可以查看[支持的模型](../Instruction/支持的模型和数据集.md#模型).
 
 llama3.1 405b推理加速与部署最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1484)
 
@@ -166,7 +166,7 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1 swift infer \
 
 **单样本推理**:
 
-使用LoRA进行微调的模型你需要先[merge-lora](LLM微调文档.md#merge-lora), 产生完整的checkpoint目录.
+使用LoRA进行微调的模型你需要先[merge-lora](../Instruction/LLM微调文档.md#merge-lora), 产生完整的checkpoint目录.
 
 使用全参数微调的模型可以无缝使用VLLM进行推理加速.
 ```python
@@ -230,7 +230,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 ## 部署
 swift使用VLLM作为推理后端, 并兼容openai的API样式.
 
-服务端的部署命令行参数可以参考: [deploy命令行参数](命令行参数.md#deploy-参数).
+服务端的部署命令行参数可以参考: [deploy命令行参数](../Instruction/命令行参数.md#deploy-参数).
 
 客户端的openai的API参数可以参考: https://platform.openai.com/docs/api-reference/introduction.
 
@@ -577,7 +577,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged
 目前pt方式部署模型已经支持`peft>=0.10.0`进行多LoRA部署，具体方法为：
 
 - 确保部署时`merge_lora`为`False`
-- 使用`--lora_modules`参数,  可以查看[命令行文档](命令行参数.md)
+- 使用`--lora_modules`参数,  可以查看[命令行文档](../Instruction/命令行参数.md)
 - 推理时指定lora tuner的名字到模型字段
 
 举例：
