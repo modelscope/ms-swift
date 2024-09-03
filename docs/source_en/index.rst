@@ -11,6 +11,7 @@ Swift DOCUMENTATION
 
    GetStarted/Installation.md
    GetStarted/Web-ui.md
+   GetStarted/Push-Model.md
    GetStarted/Tuners.md
    GetStarted/ResTuning.md
    GetStarted/SCEdit.md

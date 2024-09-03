@@ -37,7 +37,7 @@ pip install -r requirements/llm.txt  -U
 ```
 
 ## 微调
-如果你要使用界面的方式进行微调与推理, 可以查看[界面训练与推理文档](../GetStarted/%E7%95%8C%E9%9D%A2%E8%AE%AD%E7%BB%83%E6%8E%A8%E7%90%86.md).
+如果你要使用界面的方式进行微调与推理, 可以查看[界面训练与推理文档](../GetStarted/界面训练推理.md).
 
 ### 使用python
 ```python
@@ -139,7 +139,7 @@ cd examples/pytorch/llm
 - 如果你想要使用基于**auto_gptq**的量化, 你需要先安装对应cuda版本的[auto_gptq](https://github.com/PanQiWei/AutoGPTQ): `pip install auto_gptq -U`.
   > 使用auto_gptq的模型可以查看[LLM支持的模型](支持的模型和数据集.md#模型). 建议使用auto_gptq, 而不是bnb.
 - 如果你想要使用deepspeed, 你需要`pip install deepspeed -U`. 使用deepspeed可以**节约显存**, 但可能会略微降低训练速度.
-- 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
+- 如果你的训练涉及到**知识编辑**的内容, 例如: [自我认知微调](../LLM/自我认知微调最佳实践.md), 你需要在MLP上也加上LoRA, 否则可能会效果不佳. 你可以简单传入参数`--lora_target_modules ALL`来对所有的linear(qkvo, mlp)加上lora, **这通常是效果最好的**.
 - 如果你使用的是**V100**等较老的GPU, 你需要设置`--dtype AUTO`或者`--dtype fp16`, 因为其不支持bf16.
 - 如果你的机器是A100等高性能显卡, 且模型支持flash-attn, 推荐你安装[**flash-attn**](https://github.com/Dao-AILab/flash-attention), 这将会加快训练和推理的速度以及显存占用(A10, 3090, V100等显卡不支持flash-attn进行训练). 支持flash-attn的模型可以查看[LLM支持的模型](支持的模型和数据集.md#模型)
 - 如果你要进行**二次预训练**, **多轮对话**, 你可以参考[自定义与拓展](自定义与拓展.md#注册数据集的方式)
@@ -168,10 +168,10 @@ cd examples/pytorch/llm
 
 
 ## DPO
-如果你要使用DPO进行人类对齐, 你可以查看[DPO训练文档](DPO训练文档.md).
+如果你要使用DPO进行人类对齐, 你可以查看[DPO训练文档](../LLM/DPO训练文档.md).
 
 ## ORPO
-如果你要使用ORPO进行人类对齐, 你可以查看[ORPO最佳实践](ORPO算法最佳实践.md).
+如果你要使用ORPO进行人类对齐, 你可以查看[ORPO最佳实践](../LLM/ORPO算法最佳实践.md).
 
 ## Merge LoRA
 提示: **暂时**不支持bnb和auto_gptq量化模型的merge lora, 这会产生较大的精度损失.
@@ -186,7 +186,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 对微调后模型进行量化可以查看[LLM量化与导出文档](LLM量化与导出文档.md#微调后模型)
 
 ## 推理
-如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#微调后的模型)
+如果你要使用VLLM进行推理加速, 可以查看[VLLM推理加速与部署](../LLM/VLLM推理加速与部署.md#微调后的模型)
 
 ### 原始模型
 **单样本推理**可以查看[LLM推理文档](LLM推理文档.md#推理)
@@ -279,7 +279,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
-如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#部署)
+如果你要使用VLLM进行部署并提供**API**接口, 可以查看[VLLM推理加速与部署](../LLM/VLLM推理加速与部署.md#部署)
 
 ### 原始模型
 使用原始模型的web-ui可以查看[LLM推理文档](LLM推理文档.md#Web-UI)
