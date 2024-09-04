@@ -635,6 +635,26 @@ def _check_api_key(raw_request: Request, api_key: str) -> bool:
     return request_api_key == api_key
 
 
+def _get_logprobs_pt(logits_list: Optional[List[torch.Tensor]],
+                     sequences: torch.Tensor,
+                     top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    if logits_list is None:
+        return None
+    res = []
+    for logits, token_id in zip(logits_list, sequences):
+        logprob = logits[0, token_id]
+        _res = {'token': logprob.decoded_token, 'logprob': logprob.logprob, 'bytes': list(logprob.decoded_token.encode('utf8'))}
+        if top_logprobs is not None:
+            res_top_logprobs = []
+            for k, logprob in logprobs.items():
+                if logprob.logprob == float('-inf') or k == token_id:
+                    continue
+                res_top_logprobs.append({'token': logprob.decoded_token, 'logprob': logprob.logprob, 'bytes': list(logprob.decoded_token.encode('utf8'))})
+            _res['top_logprobs'] = res_top_logprobs
+        res.append(_res)
+    return {'content': res}
+
+
 @torch.inference_mode()
 async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global model, template, _args
@@ -668,6 +688,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         kwargs['top_k'] = 50
     else:
         kwargs['do_sample'] = True
+    kwargs['return_dict_in_generate'] = True
+    if request.logprobs:
+        kwargs['output_logits'] = True
 
     generation_config = _GenerationConfig(**kwargs)
     _old_generation_config = model.generation_config
@@ -703,7 +726,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     async def _generate_full():
         generation_info = {}
-        response, _ = inference(
+        resp = inference(
             model,
             template,
             **example,
@@ -711,6 +734,9 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
             generation_config=generation_config,
             generation_info=generation_info,
             **adapter_kwargs)
+        response = resp['response']
+        logprobs = _get_logprobs_pt(resp.get('logits'), resp.get('sequences'), request.top_logprobs)
+
         num_prompt_tokens = generation_info['num_prompt_tokens']
         num_generated_tokens = generation_info['num_generated_tokens']
         usage_info = UsageInfo(
@@ -761,9 +787,10 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         resp = None
         while not is_finished:
             try:
-                response, _ = next(gen)
+                resp = next(gen)
             except StopIteration:
                 is_finished = True
+            response = resp['response']
             num_prompt_tokens = generation_info['num_prompt_tokens']
             num_generated_tokens = generation_info['num_generated_tokens']
             usage_info = UsageInfo(

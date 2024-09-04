@@ -714,13 +714,11 @@ def inference_stream(model: PreTrainedModel,
         except StopIteration:
             is_finished = True
         res = {}
+        generate_ids = template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
         if return_dict and is_finished:
             thread.join()
             res = dict(result_queue.get())
-            if res['sequences'][0].tolist() != raw_generate_ids:
-                logger.warning(f"res['sequences'][0].tolist(): {res['sequences'][0].tolist()}\n"
-                               f'raw_generate_ids: {raw_generate_ids}')
-        generate_ids = template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
+            res['sequences'] = generate_ids
         generation_info['num_generated_tokens'] = len(generate_ids)
         response = template.generate_ids_to_response(
             generate_ids,
@@ -834,6 +832,7 @@ def inference(model: PreTrainedModel,
     generation_info['samples/s'] = 1 / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
     if return_dict:
+        res['sequences'] = generate_ids
         res.update({'response': response, 'history': history})
         return res
     else:

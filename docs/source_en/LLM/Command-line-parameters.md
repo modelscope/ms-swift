@@ -267,7 +267,7 @@ The following parameters take effect when the `sft_type` is set to `reft`.
 ### Liger Parameters
 
 - `--use_liger`: Use liger-kernel to train.
--
+
 ## PT Parameters
 
 PT parameters inherit from the SFT parameters with some modifications to the default values:

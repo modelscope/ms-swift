@@ -63,6 +63,8 @@ def test_vllm():
 def test_lmdeploy():
     _test('lmdeploy')
 
+def test_pt():
+    _test('pt')
 
 def test_vllm_orgin():
     import os
@@ -79,4 +81,5 @@ def test_vllm_orgin():
 if __name__ == '__main__':
     # test_vllm_orgin()
     # test_vllm()
-    test_lmdeploy()
+    # test_lmdeploy()
+    test_pt()
