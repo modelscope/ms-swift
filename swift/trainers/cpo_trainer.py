@@ -13,7 +13,7 @@ from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
 from .mixin import PushToMsHubMixin, SwiftMixin
-from .utils import build_tokenized_answer, sort_by_max_length
+from .utils import sort_by_max_length
 
 logger = get_logger()
 
@@ -32,6 +32,9 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         self.max_length = args.max_length
         self.generate_during_eval = args.generate_during_eval
         self.is_encoder_decoder = model.config.is_encoder_decoder
+        if self.is_encoder_decoder:
+            self.decoder_start_token_id = model.config.decoder_start_token_id
+            self.pad_token_id = model.config.pad_token_id
         self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
         self.tokenizer = kwargs['tokenizer']
         self.beta = args.beta
@@ -135,10 +138,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                         _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
                     else:
                         _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
-                    model_kwargs['_data'] = _data
-
-            if 'images' in concatenated_batch:
-                model_kwargs['images'] = concatenated_batch['images']
+                model_kwargs['_data'] = _data
 
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True

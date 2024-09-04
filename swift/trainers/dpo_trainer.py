@@ -219,7 +219,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                         _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
                     else:
                         _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
-                    model_kwargs['_data'] = _data
+                model_kwargs['_data'] = _data
 
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True

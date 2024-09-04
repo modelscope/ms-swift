@@ -3,6 +3,7 @@
 
 import heapq
 import inspect
+from copy import deepcopy
 from functools import partial
 from types import FunctionType, MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -101,15 +102,6 @@ def concat_template(feature: Dict, template: Template):
     return res_context_list, feature['response'], feature['rejected_response'], compute_loss_idx
 
 
-def build_tokenized_answer(answer, template: Template):
-    tgt_input_ids = template._encode_context_list([answer], [1.0])[0]
-    tgt_input_ids += template._encode_context_list(template.suffix, [1.0])[0]
-    return dict(
-        input_ids=tgt_input_ids,
-        attention_mask=[1] * len(tgt_input_ids),
-    )
-
-
 def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
     logger.info('sort by max length...')
     if not is_encoder_decoder:
@@ -133,17 +125,51 @@ def _convert_bfloat16_to_float32(data):
     return data
 
 
-def get_preprocess_func(template: Template, rlhf_type, vision_keys: list):
+def get_preprocess_func(template: Template, rlhf_type, vision_keys: list, streaming: bool, max_length: int,
+                        max_prompt_length: int, truncation_mode, is_encoder_decoder: bool):
     if rlhf_type == 'kto':
+        # leave truncation in trainer for KTO
         return partial(preprocess_kto_dataset, template=template)
     else:
         return partial(
-            tokenize_paired_dataset, template=template, vision_keys=vision_keys
-            # max_length=max_length,
-        )
+            tokenize_paired_dataset,
+            template=template,
+            vision_keys=vision_keys,
+            streaming=streaming,
+            max_length=max_length,
+            max_prompt_length=max_prompt_length,
+            truncation_mode=truncation_mode,
+            is_encoder_decoder=is_encoder_decoder)
 
 
-def preprocess_kto_dataset(batch: Dict[str, List[Any]], template: Template):
+def concatenate_prompts(template: Template, system: Optional[str], history: Optional[History], query: Optional[str],
+                        example: Optional[Dict[str, Any]]) -> str:
+    res_context_list: List[Context] = []
+    compute_loss_idx: List[float] = []
+
+    if system is None:
+        assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
+        prefix = template.prefix
+    else:
+        prefix = template.system_prefix
+
+    template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
+
+    for i, (q, r) in enumerate(history):
+        template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
+                                      res_context_list,
+                                      compute_loss_idx,
+                                      query=q,
+                                      response=r,
+                                      round0=i)
+    template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
+    res_context_list, compute_loss_idx = template._simplify_context_list(
+        res_context_list, compute_loss_idx, example=example)
+    prompt = ''.join(res_context_list)
+    return prompt
+
+
+def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
     """
     preprocess KTO specific dataset with given template
 
@@ -160,116 +186,152 @@ def preprocess_kto_dataset(batch: Dict[str, List[Any]], template: Template):
     Returns:
     A dictionary with encoded prompt, completion, and label.
     """
-    preprocessed_data = {'prompt': [], 'completion': [], 'label': []}
-    column_names = list(batch.keys())
-    has_system = 'system' in column_names
-    has_history = 'history' in column_names
+    query: str = example.get('query')
+    history: Optional[History] = example.get('history', None)
+    system: Optional[str] = example.get('system', None)
+    if history is None:
+        history = []
+    if system is None:
+        if template.use_default_system:
+            system = template.default_system
+    else:
+        assert template.system_prefix is not None, 'not support `system`'
 
-    for i in range(len(batch['query'])):
-        query: Optional[str] = batch['query'][i]
+    res_context_list: List[Context] = []
+    compute_loss_idx: List[float] = []
 
-        history: Optional[History] = batch['history'][i] if has_history else []
-        system: Optional[str] = batch['system'][i] if has_system else None
-        if system is None:
-            if template.use_default_system:
-                system = template.default_system
+    if system is None:
+        assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
+        prefix = template.prefix
+    else:
+        prefix = template.system_prefix
 
-        res_context_list: List[Context] = []
-        compute_loss_idx: List[float] = []
+    template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
 
-        if system is None:
-            assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
-            prefix = template.prefix
-        else:
-            prefix = template.system_prefix
+    for i, (q, r) in enumerate(history):
+        template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
+                                      res_context_list,
+                                      compute_loss_idx,
+                                      query=q,
+                                      response=r,
+                                      round0=i)
+    template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
+    res_context_list, compute_loss_idx = template._simplify_context_list(
+        res_context_list, compute_loss_idx, example=example)
+    prompt = ''.join(res_context_list)
 
-        template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
-
-        for i, (q, r) in enumerate(history):
-            template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
-                                          res_context_list,
-                                          compute_loss_idx,
-                                          query=q,
-                                          response=r,
-                                          round0=i)
-        template._concat_context_list(
-            template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
-        res_context_list, compute_loss_idx = template._simplify_context_list(
-            res_context_list, compute_loss_idx, example=batch)
-        # prompt = ''.join(res_context_list)
-        preprocessed_data['prompt'].append(batch['query'][i])
-        preprocessed_data['completion'].append(batch['response'][i])
-        preprocessed_data['label'].append(batch['label'][i])
-
-    return preprocessed_data
+    return {'prompt': prompt, 'completion': example['response'], 'label': example['label']}
 
 
-def encode_paired_example(example: Dict[str, Any], template: Template):
-    pass
+def _truncate_tokens(
+    chosen_tokens: Dict[str, List[int]],
+    rejected_tokens: Dict[str, List[int]],
+    prompt_tokens: Dict[str, List[int]],
+    max_length: int,
+    max_prompt_length: int,
+    truncation_mode: Literal['keep_start', 'keep_end'] = 'keep_end',
+) -> None:
+    """
+    Truncates the tokens in chosen, rejected
+    and prompt sequences to ensure they fit within the maximum length constraints.
+    """
+
+    longer_response_length = max(len(chosen_tokens['input_ids']), len(rejected_tokens['input_ids']))
+
+    # if combined sequence is too long, truncate the prompt
+    for answer_tokens in [chosen_tokens, rejected_tokens, prompt_tokens]:
+        if len(answer_tokens['prompt_input_ids']) + longer_response_length > max_length:
+            if truncation_mode == 'keep_start':
+                for k in ['prompt_input_ids', 'prompt_attention_mask']:
+                    answer_tokens[k] = answer_tokens[k][:max_prompt_length]
+            elif truncation_mode == 'keep_end':
+                for k in ['prompt_input_ids', 'prompt_attention_mask']:
+                    answer_tokens[k] = answer_tokens[k][-max_prompt_length:]
+
+    # if that's still too long, truncate the response from the end
+    for answer_tokens in [chosen_tokens, rejected_tokens]:
+        if len(answer_tokens['prompt_input_ids']) + longer_response_length > max_length:
+            for k in ['input_ids', 'attention_mask']:
+                answer_tokens[k] = answer_tokens[k][:max_length - max_prompt_length]
 
 
-def tokenize_paired_dataset(examples: Dict[str, List[Any]],
-                            template: Template,
-                            vision_keys: Optional[List[str]] = None,
-                            max_length: int = 4096,
-                            max_prompt_length: int = 512):
+def tokenize_paired_dataset(
+    examples: Dict[str, List[Any]],
+    template: Template,
+    vision_keys: Optional[List[str]] = None,
+    streaming: bool = False,
+    max_length: int = 4096,
+    max_prompt_length: int = 512,
+    truncation_mode: Literal['keep_start', 'keep_end'] = 'keep_end',
+    is_encoder_decoder: bool = False,
+):
+    model_inputs = {}
+    prompt_example, chosen_example, rejected_example = deepcopy(examples), examples, deepcopy(examples)
+    prompt_example['response'] = None
+    rejected_example['response'] = examples['rejected_response']
 
-    model_inputs = {
-        'chosen_input_ids': [],
-        'chosen_attention_mask': [],
-        'chosen_labels': [],
-        'rejected_input_ids': [],
-        'rejected_attention_mask': [],
-        'rejected_labels': [],
-    }
-    # pop vision related data
-    if vision_keys is not None:
-        for k in vision_keys:
-            _data_key = f'vision_{k}'
-            if k not in ['input_ids', 'labels']:
-                # for vision data, we only keep the one to save on GPU memory usage.
-                model_inputs[_data_key] = []
-
-    for i in range(len(examples['query'])):
-        chosen_example = {
-            'query': examples['query'][i],
-            'response': examples['response'][i],
+    chosen_tokenized = template.encode(chosen_example)[0] if not streaming else template.encode(chosen_example)
+    rejected_tokenized = template.encode(rejected_example)[0] if not streaming else template.encode(rejected_example)
+    prompt_tokenized = template.encode(prompt_example)[0] if not streaming else template.encode(prompt_example)
+    if not is_encoder_decoder:
+        prompt_input_ids = prompt_tokenized['input_ids']
+        prompt_tokenized = {
+            'prompt_input_ids':
+            prompt_input_ids,
+            'prompt_attention_mask':
+            prompt_tokenized['attention_mask'] if 'attention_mask' in prompt_tokenized else [1]
+            * len(prompt_tokenized['input_ids']),
         }
-        rejected_example = {
-            'query': examples['query'][i],
-            'response': examples['response'][i],
-        }
-        if 'images' in examples:
-            chosen_example['images'] = examples['images'][i]
-            rejected_example['images'] = examples['images'][i]
 
-        chosen, rejected = template.encode(chosen_example)[0], template.encode(rejected_example)[0]
-        model_inputs['chosen_input_ids'].append(chosen['input_ids'])
-        model_inputs['chosen_attention_mask'].append([1] * len(chosen['input_ids']))
-        model_inputs['chosen_labels'].append(chosen['labels'])
-        model_inputs['rejected_input_ids'].append(rejected['input_ids'])
-        model_inputs['rejected_attention_mask'].append([1] * len(rejected['input_ids']))
-        model_inputs['rejected_labels'].append(rejected['labels'])
-        # vision related data
-        if '_data' in chosen and vision_keys is not None:
+        if 'attention_mask' not in chosen_tokenized:
+            chosen_tokenized['attention_mask'] = [1] * len(chosen_tokenized['input_ids'])
+            rejected_tokenized['attention_mask'] = [1] * len(rejected_tokenized['input_ids'])
+
+        # take response tokens
+        for tokenized in [chosen_tokenized, rejected_tokenized]:
+            tokenized.update(prompt_tokenized)
+            for k in ['input_ids', 'attention_mask']:
+                tokenized[k] = tokenized[k][len(prompt_input_ids):]
+
+        _truncate_tokens(chosen_tokenized, rejected_tokenized, prompt_tokenized, max_length, max_prompt_length,
+                         truncation_mode)
+        for prefix, tokenzied in zip(['chosen', 'rejected'], [chosen_tokenized, chosen_tokenized]):
+            for k in ['input_ids', 'attention_mask']:
+                model_inputs[f'{prefix}_{k}'] = tokenzied[k] + tokenized[f'prompt_{k}']
+            model_inputs[f'{prefix}_labels'] = model_inputs[f'{prefix}_input_ids'][:]
+            model_inputs[f'{prefix}_labels'][:len(tokenized['prompt_input_ids'])] = [-100] * len(
+                tokenized['prompt_input_ids'])
+
+        # we keep single vision related tokens to save memory, and convert to float32 for bfloat16
+        if '_data' in chosen_tokenized and vision_keys is not None:
             for k in vision_keys:
                 _data_key = f'vision_{k}'
                 if k not in ['input_ids', 'labels']:
-                    if k in chosen['_data']:
-                        model_inputs[_data_key].append(_convert_bfloat16_to_float32(chosen['_data'][k]))
-                else:
-                    model_inputs[_data_key].append(_convert_bfloat16_to_float32(chosen['_data'][k]))
-        # glm4v
+                    model_inputs[_data_key] = (_convert_bfloat16_to_float32(chosen_tokenized['_data'][k]))
+        # fix glm4v
         elif vision_keys is not None:
             for k in vision_keys:
+                if k not in ['input_ids', 'labels']:
+                    _data_key = f'vision_{k}'
+                    model_inputs[_data_key] = (_convert_bfloat16_to_float32(chosen_tokenized[k]))
+    else:
+        model_inputs['chosen_labels'] = chosen_tokenized['input_ids']
+        model_inputs['rejected_labels'] = rejected_tokenized['input_ids']
+        model_inputs['prompt_input_ids'] = prompt_tokenized['input_ids']
+        model_inputs['prompt_attention_mask'] = prompt_tokenized['attention_mask']
+        if '_data' in chosen_tokenized and vision_keys is not None:
+            for k in vision_keys:
                 _data_key = f'vision_{k}'
-                model_inputs[_data_key].append(_convert_bfloat16_to_float32(chosen[k]))
+                if k not in ['input_ids', 'labels']:
+                    model_inputs[_data_key] = (_convert_bfloat16_to_float32(chosen_tokenized['_data'][k]))
+
     return model_inputs
 
 
 def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
-                                  rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'], vision_keys: Optional[list],
-                                  **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+                                  rlhf_type, vision_keys: Optional[list], streaming: bool, max_length: int,
+                                  max_prompt_length: int, truncation_mode: Literal['keep_start', 'keep_end'],
+                                  is_encoder_decoder: bool, **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
     """
     Preprocesses the RLHF datasets using the specified template and RLHF type.
 
@@ -284,12 +346,20 @@ def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Opti
     Returns:
         Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]: The preprocessed training and validation datasets.
     """
-    preprocess_func = get_preprocess_func(template=template, rlhf_type=rlhf_type, vision_keys=vision_keys)
+    preprocess_func = get_preprocess_func(
+        template=template,
+        rlhf_type=rlhf_type,
+        vision_keys=vision_keys,
+        streaming=streaming,
+        max_length=max_length,
+        max_prompt_length=max_prompt_length,
+        truncation_mode=truncation_mode,
+        is_encoder_decoder=is_encoder_decoder)
     column_names = list(next(iter(train_dataset)).keys())
     with PartialState().local_main_process_first():
-        train_dataset = train_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
+        train_dataset = train_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)
         if val_dataset is not None:
-            val_dataset = val_dataset.map(preprocess_func, batched=True, remove_columns=column_names, **kwargs)
+            val_dataset = val_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)
     return train_dataset, val_dataset
 
 

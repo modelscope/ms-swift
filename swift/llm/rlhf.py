@@ -215,12 +215,18 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             desc='tokenizing paired dataset',
         )
     patch_trl(args.is_vision)
+    is_encoder_decoder = model.config.is_encoder_decoder
     train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
         train_dataset,
         val_dataset,
         template=template,
         rlhf_type=args.rlhf_type,
         vision_keys=vision_keys,
+        max_length=args.max_length,
+        max_prompt_length=args.max_prompt_length,
+        truncation_mode=args.truncation_mode,
+        streaming=streaming,
+        is_encoder_decoder=is_encoder_decoder,
         **preprocess_kwargs)
 
     # Trainer
@@ -233,6 +239,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
 
     trainer_kwargs['is_vision'] = args.is_vision
     trainer_kwargs['streaming'] = streaming
+    trainer_kwargs['is_encoder_decoder'] = is_encoder_decoder
     if vision_keys:
         trainer_kwargs['vision_keys'] = vision_keys
     trainer = trainer_cls(
