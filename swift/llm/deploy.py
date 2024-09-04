@@ -457,8 +457,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
         usage_info = UsageInfo(
             prompt_tokens=num_prompt_tokens,
             completion_tokens=num_generated_tokens,
-            total_tokens=num_prompt_tokens + num_generated_tokens,
-        )
+            total_tokens=num_prompt_tokens + num_generated_tokens)
         finish_reason = None
         if output.status.name == 'FINISH':
             finish_reason = 'stop'
@@ -477,17 +476,12 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                 ChatCompletionResponseChoice(
                     index=0,
                     message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=finish_reason,
-                )
+                    finish_reason=finish_reason)
             ]
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         else:
-            choices = [CompletionResponseChoice(
-                index=0,
-                text=response,
-                finish_reason=finish_reason,
-            )]
+            choices = [CompletionResponseChoice(index=0, text=response, finish_reason=finish_reason)]
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         if _args.log_interval > 0:
@@ -676,17 +670,12 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 ChatCompletionResponseChoice(
                     index=0,
                     message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=None,
-                )
+                    finish_reason=None)
             ]
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         else:
-            choices = [CompletionResponseChoice(
-                index=0,
-                text=response,
-                finish_reason=None,
-            )]
+            choices = [CompletionResponseChoice(index=0, text=response, finish_reason=None)]
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         if _args.log_interval > 0:

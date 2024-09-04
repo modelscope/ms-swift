@@ -1567,7 +1567,7 @@ class AppUIArguments(InferArguments):
 
 @dataclass
 class DeployArguments(InferArguments):
-    host: str = '127.0.0.1'
+    host: str = '0.0.0.0'
     port: int = 8000
     api_key: Optional[str] = None
     ssl_keyfile: Optional[str] = None
