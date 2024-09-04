@@ -1403,6 +1403,7 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
+    max_logprobs: int = 20
 
     # lmdeploy
     tp: int = 1
