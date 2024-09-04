@@ -576,6 +576,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                 )
                 delta_text = template.generate_ids_to_response(
                     output.token_ids, is_finished, return_delta=True, print_idx=print_idx)
+
                 finish_reason = None
                 if output.status.name == 'FINISH':
                     finish_reason = 'stop'
