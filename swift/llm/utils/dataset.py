@@ -916,7 +916,10 @@ def _repair_ms_bench(conversations: str) -> Optional[List[Dict[str, str]]]:
     # skip MOSS
     for c in conversations:
         value = c['value'].lower()
-        if 'moss' in value or 'human:' in value or 'assistant:' in value or 'user:' in value:
+        # 观察数据后，发现下面的代码会过滤掉一些没有问题的数据，如：sure, here are some tools and technologies that can be used to implement the interactive elements on this website:\n\n1. infographics and videos:\n- canva: a design tool that helps create visually appealing graphics and infographics.\n- adobe creative suite: a suite of creative tools that includes photoshop, illustrator, and premiere pro for creating graphics and videos.\n- animoto: a video creation tool that allows users to create professional-looking videos with ease.\n\n2. quizzes and surveys:\n- surveymonkey: a popular survey tool that allows users to create and distribute surveys.\n- google forms: a free tool that allows users to create surveys and quizzes easily.\n\n3. chatbots:\n- dialogflow: a natural language processing platform that allows users to create chatbots.\n- ibm watson assistant: a chatbot tool that uses ai to understand and respond to user queries.\n\n4. interactive timelines:\n- tiki-toki: an online timeline creation tool that allows users to create interactive timelines.\n- timelinejs: a free, open-source tool that allows users to create interactive timelines using google sheets.\n\n5. visuals:\n- unsplash: a platform that provides free, high-quality images.\n- pexels: a platform that provides free stock photos and videos.\n\nthese tools and technologies can help create engaging and interactive elements on the website and enhance the user experience.
+        # 所以这里将"if 'moss' in value or 'human:' in value or 'assistant:' in value or 'user:' in value:"
+        # 改为"if 'moss' in value or 'human:' in value or '\nassistant:' in value or ( 'human:' in value and 'assistant:' in value ) or ( 'user:' in value and 'assistant:' in value ):"。
+        if 'moss' in value or 'human:' in value or '\nassistant:' in value or ( 'human:' in value and 'assistant:' in value ) or ( 'user:' in value and 'assistant:' in value ):
             return
     return conversations
 
