@@ -257,7 +257,7 @@ else:
                                'the output of num_beams in transformers.')
                 assert self.best_of is None
                 self.use_beam_search = True
-                self.best_of = num_beams
+                self.best_of = self.num_beams
             if self.top_k == 0:
                 self.top_k = -1
             if self.stop is None:
