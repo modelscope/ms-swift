@@ -13,7 +13,7 @@ GPU devices: A10, 3090, V100, A100 are all supported.
 pip install 'ms-swift[llm]' -U
 
 # If you want to use models based on auto_gptq for inference.
-# Models using auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/Supported Models and Datasets.md#Models`
+# Models using auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/Instruction/Supported Models and Datasets.md#Models`
 # auto_gptq and cuda versions have a correspondence, please select the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`
 pip install auto_gptq -U
 

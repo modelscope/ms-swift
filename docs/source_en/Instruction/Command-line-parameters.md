@@ -267,7 +267,7 @@ The following parameters take effect when the `sft_type` is set to `reft`.
 ### Liger Parameters
 
 - `--use_liger`: Use liger-kernel to train.
--
+
 ## PT Parameters
 
 PT parameters inherit from the SFT parameters with some modifications to the default values:
@@ -426,7 +426,7 @@ app-ui parameters inherit from infer parameters, with the following added parame
 
 deploy parameters inherit from infer parameters, with the following added parameters:
 
-- `--🔥host`: Default is `'127.0.0.1`. To make it accessible on the local network, you can set it to '0.0.0.0'.
+- `--host`: Default is `'0.0.0.0'`.
 - `--port`: Default is `8000`.
 - `--api_key`: The default is `None`, meaning that the request will not be subjected to api_key verification.
 - `--ssl_keyfile`: Default is `None`.

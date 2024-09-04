@@ -129,6 +129,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
         *,
         n: int = 1,
         stop_words: Optional[List[int]] = None,
+        logprobs: Optional[int] = None,
         random_seed: Optional[int] = None,
         skip_special_tokens: bool = False,
         **kwargs,
@@ -146,6 +147,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             repetition_penalty=repetition_penalty,
             n=n,
             stop_words=stop_words,
+            logprobs=logprobs,
             random_seed=random_seed,
             skip_special_tokens=skip_special_tokens,
             **kwargs)

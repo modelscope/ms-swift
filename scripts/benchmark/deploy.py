@@ -1,4 +1,4 @@
-def test_benchmark(infer_backend):
+def test_benchmark(infer_backend: str) -> None:
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     os.environ['TIMEOUT'] = '-1'

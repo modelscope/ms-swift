@@ -20,7 +20,7 @@ pip install -e '.[llm]'
 pip install deepspeed -U
 
 # If you want to use qlora training based on auto_gptq. (Recommended, better than bnb)
-# Models supporting auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/supported-models-and-datasets.md#models`
+# Models supporting auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/Instruction/supported-models-and-datasets.md#models`
 # auto_gptq and cuda versions are related, please choose the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`
 pip install auto_gptq -U
 
@@ -79,7 +79,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --output_dir output \
 
 # Using your own dataset
-# custom dataset format: https://github.com/modelscope/swift/blob/main/docs/source_en/LLM/Customization.md#custom-datasets
+# custom dataset format: https://github.com/modelscope/swift/blob/main/docs/source_en/Instruction/Customization.md#custom-datasets
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset chatml.jsonl \

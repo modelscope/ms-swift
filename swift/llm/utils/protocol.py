@@ -12,7 +12,7 @@ def random_uuid() -> str:
 @dataclass
 class Model:
     id: str  # model_type
-    is_chat: Optional[bool] = None  # chat model or generation model
+    is_chat: bool = True  # chat model or generation model
     is_multimodal: bool = False
 
     object: str = 'model'
@@ -151,8 +151,8 @@ class CompletionResponse:
 
 @dataclass
 class DeltaMessage:
-    role: Literal['system', 'user', 'assistant']
-    content: str
+    role: Literal['system', 'user', 'assistant', None] = None
+    content: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
@@ -167,7 +167,7 @@ class ChatCompletionResponseStreamChoice:
 class ChatCompletionStreamResponse:
     model: str
     choices: List[ChatCompletionResponseStreamChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
@@ -184,7 +184,7 @@ class CompletionResponseStreamChoice:
 class CompletionStreamResponse:
     model: str
     choices: List[CompletionResponseStreamChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
