@@ -849,6 +849,5 @@ def patch_clip_grad_norm(accelerator):
         return torch.nn.utils.clip_grad_norm_(parameters, max_norm, norm_type=norm_type)
 
     # TODO(baole): This should be removed once accelerate is updated.
-    if version.parse(accelerate.__version__) < version.parse('0.34.0'):
-        accelerator.clip_grad_norm_ = types.MethodType(clip_grad_norm_, accelerator)
+    accelerator.clip_grad_norm_ = types.MethodType(clip_grad_norm_, accelerator)
     return accelerator
