@@ -314,7 +314,6 @@ def inference_client(
         resp = requests.post(url, json=data, stream=True, **_get_request_kwargs(api_key))
 
         def _gen_stream() -> Union[Iterator[ChatCompletionStreamResponse], Iterator[CompletionStreamResponse]]:
-            role = None
             for data in resp.iter_lines():
                 data = _parse_stream_data(data)
                 if data == '[DONE]':

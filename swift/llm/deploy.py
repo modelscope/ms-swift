@@ -238,13 +238,21 @@ def _get_logprobs_vllm(logprobs_list: Optional[List[Dict[int, float]]],
     res = []
     for logprobs, token_id in zip(logprobs_list, token_ids):
         logprob = logprobs[token_id]
-        _res = {'token': logprob.decoded_token, 'logprob': logprob.logprob, 'bytes': list(logprob.decoded_token.encode('utf8'))}
+        _res = {
+            'token': logprob.decoded_token,
+            'logprob': logprob.logprob,
+            'bytes': list(logprob.decoded_token.encode('utf8'))
+        }
         if top_logprobs is not None:
             res_top_logprobs = []
             for k, logprob in logprobs.items():
                 if logprob.logprob == float('-inf') or k == token_id:
                     continue
-                res_top_logprobs.append({'token': logprob.decoded_token, 'logprob': logprob.logprob, 'bytes': list(logprob.decoded_token.encode('utf8'))})
+                res_top_logprobs.append({
+                    'token': logprob.decoded_token,
+                    'logprob': logprob.logprob,
+                    'bytes': list(logprob.decoded_token.encode('utf8'))
+                })
             _res['top_logprobs'] = res_top_logprobs
         res.append(_res)
     return {'content': res}
@@ -417,9 +425,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                 choices = []
                 for output in result.outputs:
                     choice = CompletionResponseStreamChoice(
-                        index=output.index,
-                        text=output.delta_text,
-                        finish_reason=output.finish_reason)
+                        index=output.index, text=output.delta_text, finish_reason=output.finish_reason)
                     choices.append(choice)
                 response = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
@@ -596,10 +602,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                     response = ChatCompletionStreamResponse(
                         model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
                 else:
-                    choices = [
-                        CompletionResponseStreamChoice(
-                            index=0, text=delta_text, finish_reason=finish_reason)
-                    ]
+                    choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=finish_reason)]
                     response = CompletionStreamResponse(
                         model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
                 yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
@@ -641,15 +644,21 @@ def _get_logprobs_pt(logits_list: Optional[List[torch.Tensor]],
     if logits_list is None:
         return None
     res = []
+    tokenizer = template.tokenizer
     for logits, token_id in zip(logits_list, sequences):
-        logprob = logits[0, token_id]
-        _res = {'token': logprob.decoded_token, 'logprob': logprob.logprob, 'bytes': list(logprob.decoded_token.encode('utf8'))}
+        token = tokenizer.decode(token_id)
+        logprobs = torch.log_softmax(logits[0], -1)
+        logprob = logprobs[token_id].item()
+        sorted_logprobs_idx = logprobs.argsort(descending=True).tolist()
+        _res = {'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))}
         if top_logprobs is not None:
             res_top_logprobs = []
-            for k, logprob in logprobs.items():
-                if logprob.logprob == float('-inf') or k == token_id:
+            for idx in sorted_logprobs_idx[:top_logprobs]:
+                token = tokenizer.decode(idx)
+                logprob = logprobs[idx].item()
+                if idx == token_id or logprob == float('-inf'):
                     continue
-                res_top_logprobs.append({'token': logprob.decoded_token, 'logprob': logprob.logprob, 'bytes': list(logprob.decoded_token.encode('utf8'))})
+                res_top_logprobs.append({'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))})
             _res['top_logprobs'] = res_top_logprobs
         res.append(_res)
     return {'content': res}
@@ -758,12 +767,13 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 ChatCompletionResponseChoice(
                     index=0,
                     message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                    finish_reason=None)
+                    finish_reason=None,
+                    logprobs=logprobs)
             ]
             response = ChatCompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         else:
-            choices = [CompletionResponseChoice(index=0, text=response, finish_reason=None)]
+            choices = [CompletionResponseChoice(index=0, text=response, finish_reason=None, logprobs=logprobs)]
             response = CompletionResponse(
                 model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
         if _args.log_interval > 0:
@@ -784,13 +794,11 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
         print_idx = 0
         response = ''
         is_finished = False
-        resp = None
         while not is_finished:
             try:
-                resp = next(gen)
+                response = next(gen)['response']
             except StopIteration:
                 is_finished = True
-            response = resp['response']
             num_prompt_tokens = generation_info['num_prompt_tokens']
             num_generated_tokens = generation_info['num_generated_tokens']
             usage_info = UsageInfo(
