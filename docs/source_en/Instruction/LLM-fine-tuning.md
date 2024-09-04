@@ -135,7 +135,7 @@ cd examples/pytorch/llm
 - If you want to use quantization based on **auto_gptq**, you need to install the corresponding cuda version of [auto_gptq](https://github.com/PanQiWei/AutoGPTQ): `pip install auto_gptq -U`.
   > Models that can use auto_gptq can be viewed in [LLM Supported Models](Supported-models-datasets.md#models). It is recommended to use auto_gptq instead of bnb.
 - If you want to use deepspeed, you need `pip install deepspeed -U`. Using deepspeed can **save memory**, but may slightly reduce training speed.
-- If your training involves **knowledge editing**, such as: [Self-aware Fine-tuning](Self-cognition-best-practice.md), you need to add LoRA to MLP as well, otherwise, the results might be poor. You can simply pass the argument `--lora_target_modules ALL` to add lora to all linear(qkvo, mlp), **this is usually the best result**.
+- If your training involves **knowledge editing**, such as: [Self-aware Fine-tuning](../LLM/Self-cognition-best-practice.md), you need to add LoRA to MLP as well, otherwise, the results might be poor. You can simply pass the argument `--lora_target_modules ALL` to add lora to all linear(qkvo, mlp), **this is usually the best result**.
 - If you are using older GPUs like **V100**, you need to set `--dtype AUTO` or `--dtype fp16`, as they do not support bf16.
 - If your machine has high-performance graphics cards like A100 and the model supports flash-attn, it is recommended to install [**flash-attn**](https://github.com/Dao-AILab/flash-attention), which will speed up training and inference as well as reduce memory usage (A10, 3090, V100, etc. graphics cards do not support training with flash-attn). Models that support flash-attn can be viewed in [LLM Supported Models](Supported-models-datasets.md#models)
 - If you are doing **second pre-training** or **multi-turn dialogue**, you can refer to [Customization and Extension](Customization.md#Registering-Datasets)
@@ -163,10 +163,10 @@ If you want to **customize scripts**, you can refer to the following scripts for
 - qlora(bnb-int4): [qwen-7b-chat](https://github.com/modelscope/swift/tree/main/examples/pytorch/llm/scripts/qwen_7b_chat/qlora) (3090)
 
 ## DPO
-If you want to use DPO for human-aligned fine-tuning, you can check the [DPO Fine-Tuning Documentation](DPO.md).
+If you want to use DPO for human-aligned fine-tuning, you can check the [DPO Fine-Tuning Documentation](../LLM/DPO.md).
 
 ## ORPO
-If you want to use ORPO for human-aligned fine-tuning, you can check the [ORPO Fine-Tuning Documentation](ORPO.md).
+If you want to use ORPO for human-aligned fine-tuning, you can check the [ORPO Fine-Tuning Documentation](../LLM/ORPO.md).
 
 ## Merge LoRA
 Tip: **Currently**, merging LoRA is not supported for bnb and auto_gptq quantized models, as this would result in significant accuracy loss.
@@ -181,7 +181,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 For quantization of the fine-tuned model, you can check [LLM Quantization Documentation](LLM-quantization-and-export.md#fine-tuned-model)
 
 ## Inference
-If you want to use VLLM for accelerated inference, you can check [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md)
+If you want to use VLLM for accelerated inference, you can check [VLLM Inference Acceleration and Deployment](../LLM/VLLM-inference-acceleration-and-deployment.md)
 
 ### Original Model
 **Single sample inference** can be checked in [LLM Inference Documentation](LLM-inference.md)
@@ -274,7 +274,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir 'xxx/vx-xxx/checkpoint-xxx-merged'
 ```
 
 ## Web-UI
-If you want to deploy VLLM and provide **API** interface, you can check [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md)
+If you want to deploy VLLM and provide **API** interface, you can check [VLLM Inference Acceleration and Deployment](../LLM/VLLM-inference-acceleration-and-deployment.md)
 
 ### Original Model
 Using the original model's web-ui can be viewed in [LLM Inference Documentation](LLM-inference.md#Web-UI)

@@ -1,7 +1,7 @@
 # LmDeploy Inference Acceleration and Deployment
 lmdeploy github: [https://github.com/InternLM/lmdeploy](https://github.com/InternLM/lmdeploy).
 
-MLLM that support inference acceleration using lmdeploy can be found at [Supported Models](../LLM/Supported-models-datasets.md#MLLM).
+MLLM that support inference acceleration using lmdeploy can be found at [Supported Models](../Instruction/Supported-models-datasets.md#MLLM).
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)

@@ -12,7 +12,7 @@
 - [deploy Parameters](#deploy-parameters)
 
 ## sft Parameters
-- `--🔥model_type`: Represents the selected model type, default is `None`. `model_type` specifies the default `target_modules`, `template_type`, and other information for the corresponding model. You can fine-tune by specifying only `model_type`. The corresponding `model_id_or_path` will use default settings, and the model will be downloaded from ModelScope and use the default cache path. One of model_type and model_id_or_path must be specified. You can see the list of available `model_type` [here](Supported-models-datasets.md#Models). You can set the `USE_HF` environment variable to control downloading models and datasets from the HF Hub, see [HuggingFace Ecosystem Compatibility Documentation](Compat-HF.md).
+- `--🔥model_type`: Represents the selected model type, default is `None`. `model_type` specifies the default `target_modules`, `template_type`, and other information for the corresponding model. You can fine-tune by specifying only `model_type`. The corresponding `model_id_or_path` will use default settings, and the model will be downloaded from ModelScope and use the default cache path. One of model_type and model_id_or_path must be specified. You can see the list of available `model_type` [here](Supported-models-datasets.md#Models). You can set the `USE_HF` environment variable to control downloading models and datasets from the HF Hub, see [HuggingFace Ecosystem Compatibility Documentation](../LLM/Compat-HF.md).
 - `--🔥model_id_or_path`: Represents the `model_id` in the ModelScope/HuggingFace Hub or a local path for the model, default is `None`. If the provided `model_id_or_path` has already been registered, the `model_type` will be inferred based on the `model_id_or_path`. If it has not been registered, both `model_type` and `model_id_or_path` must be specified, e.g. `--model_type <model_type> --model_id_or_path <model_id_or_path>`.
 - `--model_revision`: The version number corresponding to `model_id` on ModelScope Hub, default is `None`. If `model_revision` is `None`, use the revision registered in `MODEL_MAPPING`. Otherwise, force use of the `model_revision` passed from command line.
 - `--local_repo_path`: Some models rely on a GitHub repo for loading. To avoid network issues during `git clone`, you can directly use the local repo. This parameter requires input of the local repo path, and defaults to `None`. These models include:
@@ -59,7 +59,7 @@
 - `--custom_train_dataset_path`: Default value is `[]`. This parameter has been deprecated, please use `--dataset {dataset_path}`.
 - `--custom_val_dataset_path`: Default value is `[]`. This parameter is deprecated. Please use `--val_dataset {dataset_path}` instead.
 - `--self_cognition_sample`: The number of samples for the self-cognition dataset. Default is `0`. If you set this value to >0, you need to specify `--model_name` and `--model_author` at the same time. This parameter has been deprecated, please use `--dataset self-cognition#{self_cognition_sample}` instead.
-- `--🔥model_name`: Default value is `[None, None]`. If self-cognition dataset sampling is enabled (i.e., specifying `--dataset self-cognition` or self_cognition_sample>0), you need to provide two values, representing the Chinese and English names of the model, respectively. For example: `--model_name 小黄 'Xiao Huang'`. If you want to learn more, you can refer to the [Self-Cognition Fine-tuning Best Practices](Self-cognition-best-practice.md).
+- `--🔥model_name`: Default value is `[None, None]`. If self-cognition dataset sampling is enabled (i.e., specifying `--dataset self-cognition` or self_cognition_sample>0), you need to provide two values, representing the Chinese and English names of the model, respectively. For example: `--model_name 小黄 'Xiao Huang'`. If you want to learn more, you can refer to the [Self-Cognition Fine-tuning Best Practices](../LLM/Self-cognition-best-practice.md).
 - `--🔥model_author`: Default is `[None, None]`. If self-cognition dataset sampling is enabled, you need to pass two values, representing the author's Chinese and English names respectively. E.g. `--model_author 魔搭 ModelScope`.
 - `--quant_method`: Quantization method, default is None. You can choose from 'bnb', 'hqq', 'eetq'.
 - `--quantization_bit`: Specifies whether to quantize and number of quantization bits, default is `0`, i.e. no quantization. To use 4bit qlora, set `--sft_type lora --quantization_bit 4`.Hqq support 1,2,3,4,8bit, bnb support 4,8bit
@@ -279,11 +279,11 @@ PT parameters inherit from the SFT parameters with some modifications to the def
 
 ## RLHF Parameters
 RLHF parameters are an extension of the sft parameters, with the addition of the following options:
-- `--🔥rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo'. For training scripts with  different algorithms, please refer to [document](./Human-Preference-Alignment-Training-Documentation.md)
+- `--🔥rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo'. For training scripts with  different algorithms, please refer to [document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--🔥ref_model_type`: Select the reference model, similar to the model_type parameter, by default consistent with the model being trained. No selection is necessary for `cpo` and `simpo` algorithms.
 - `--🔥ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
 - `--max_prompt_length`: The maximum length of the prompt. This parameter is passed to the corresponding Trainer to ensure the prompt length does not exceed the set value. The default value is `1024`.
-- `--beta`: Coefficient for the KL regularization term. For `simpo` the default is 2.0, for other algorithms, the default is 0.1. For detail please check[document](./Human-Preference-Alignment-Training-Documentation.md)
+- `--beta`: Coefficient for the KL regularization term. For `simpo` the default is 2.0, for other algorithms, the default is 0.1. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--label_smoothing`: Whether to use DPO smoothing, the default value is 0, normally set between 0 and 0.5.
 - `--loss_type`: Type of loss, default value is 'sigmoid'.
 - `--sft_beta`: Whether to include sft loss in DPO, default is 0.1, supporting the range $[0, 1)$ . The final loss is `(1-sft_beta)*KL_loss + sft_beta * sft_loss`.
@@ -299,7 +299,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--model_revision`: Default is `None`. See `sft command line arguments` for parameter details. If `model_id_or_path` is None or a local model directory, this parameter has no effect.
 - `--🔥sft_type`: Default is `'lora'`, see `sft command line arguments` for parameter details.
 - `--🔥template_type`: Default is `'AUTO'`, see `sft command line arguments` for parameter details.
-- `--🔥infer_backend`: Options are 'AUTO', 'vllm', 'pt'. Default uses 'AUTO', for intelligent selection, i.e. if `ckpt_dir` is not passed or using full fine-tuning, and vllm is installed and model supports vllm, then use vllm engine, otherwise use native torch for inference. vllm environment setup can be found in [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md), vllm supported models can be found in [Supported Models](Supported-models-datasets.md).
+- `--🔥infer_backend`: Options are 'AUTO', 'vllm', 'pt'. Default uses 'AUTO', for intelligent selection, i.e. if `ckpt_dir` is not passed or using full fine-tuning, and vllm is installed and model supports vllm, then use vllm engine, otherwise use native torch for inference. vllm environment setup can be found in [VLLM Inference Acceleration and Deployment](../LLM/VLLM-inference-acceleration-and-deployment.md), vllm supported models can be found in [Supported Models](Supported-models-datasets.md).
 - `--🔥ckpt_dir`: Required, value is the checkpoint path saved in SFT stage, e.g. `'/path/to/your/vx-xxx/checkpoint-xxx'`.
 - `--load_args_from_ckpt_dir`: Whether to read model configuration info from `sft_args.json` file in `ckpt_dir`. Default is `True`.
 - `--🔥load_dataset_config`: This parameter only takes effect when `--load_args_from_ckpt_dir true`. I.e. whether to read dataset related configuration from `sft_args.json` file in `ckpt_dir`. Default is `False`.
@@ -353,7 +353,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 ### vLLM Parameters
 Reference document: [https://docs.vllm.ai/en/latest/models/engine_args.html](https://docs.vllm.ai/en/latest/models/engine_args.html)
 
-- `--🔥gpu_memory_utilization`: Parameter for initializing vllm engine `EngineArgs`, default is `0.9`. This parameter only takes effect when using vllm. vLLM inference acceleration and deployment can be found in [vLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md).
+- `--🔥gpu_memory_utilization`: Parameter for initializing vllm engine `EngineArgs`, default is `0.9`. This parameter only takes effect when using vllm. vLLM inference acceleration and deployment can be found in [vLLM Inference Acceleration and Deployment](../LLM/VLLM-inference-acceleration-and-deployment.md).
 - `--🔥tensor_parallel_size`: Parameter for initializing vllm engine `EngineArgs`, default is `1`. This parameter only takes effect when using vllm.
 - `--max_num_seqs`: The parameter for initializing the `EngineArgs` of the vllm engine, with a default value of `256`. This parameter is only effective when using vllm.
 - `--🔥max_model_len`: Override model's max_model__len, default is `None`. This parameter only takes effect when using vllm.
@@ -397,7 +397,7 @@ export parameters inherit from infer parameters, with the following added parame
 
 The eval parameters inherit from the infer parameters, and additionally include the following parameters: (Note: The generation_config parameter in infer will be invalid, controlled by [evalscope](https://github.com/modelscope/eval-scope).)
 
-- `--🔥eval_dataset`: The official evaluation dataset, default is `None`, means all datasets. if `custom_eval_config` is specified, this arg will be ignored. [Check all supported eval datasets](./LLM-eval.md#introduction).
+- `--🔥eval_dataset`: The official evaluation dataset, default is `None`, means all datasets. if `custom_eval_config` is specified, this arg will be ignored. [Check all supported eval datasets](LLM-eval.mdntroduction).
 - `--eval_few_shot`: The few-shot number of sub-datasets for each evaluation set, with a default value of `None`, meaning to use the default configuration of the dataset. **This parameter is currently deprecated.**
 - `--eval_limit`: The sampling quantity for each sub-dataset of the evaluation set, with a default value of `None` indicating full-scale evaluation. You can pass integer(number of samples from each eval dataset) or str(`[10:20]`, slice).
 - `--name`: Used to differentiate the result storage path for evaluating the same configuration. Like: `{eval_output_dir}/{name}`, default will be `eval_outputs/defaults`, in which a timestamp named folder will hold each eval result.
@@ -407,7 +407,7 @@ The eval parameters inherit from the infer parameters, and additionally include 
   ```
 - `--eval_token`: The token for the standard model invocation interface for OpenAI, with a default value of `'EMPTY'`, indicating no token.
 - `--eval_is_chat_model`: If `eval_url` is not empty, this value needs to be passed to determine if it is a "chat" model. False represents a "base" model. Default is `None`.
-- `--custom_eval_config`: Used for evaluating with custom datasets, and needs to be a locally existing file path. For details on file format, refer to [Custom Evaluation Set](./LLM-eval.md#Custom-Evaluation-Set). Default is `None`.
+- `--custom_eval_config`: Used for evaluating with custom datasets, and needs to be a locally existing file path. For details on file format, refer to [Custom Evaluation Set](LLM-eval.mdustom-Evaluation-Set). Default is `None`.
 - `--eval_use_cache`: Whether to use already generated evaluation cache, so that previously evaluated results won't be rerun but only the evaluation results regenerated. Default is `False`.
 - `--eval_output_dir`: Output path for evaluation results, default is `eval_outputs` in the current folder.
 - `--eval_batch_size`: Input batch size for evaluation, default is 8.
