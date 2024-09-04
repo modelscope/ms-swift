@@ -642,7 +642,7 @@ def inference_stream(model: PreTrainedModel,
                      stop_words: Optional[StopWords] = None,
                      generation_info: Optional[Dict[str, Any]] = None,
                      adapter_names: Optional[List[str]] = None,
-                     **kwargs) -> Iterator[Tuple[str, History]]:
+                     **kwargs) -> Iterator[Tuple[str, History], Dict[str, Any]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
@@ -758,7 +758,7 @@ def inference(model: PreTrainedModel,
               adapter_names: Optional[List[str]] = None,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
-              **kwargs) -> Tuple[str, History]:
+              **kwargs) -> Union[Tuple[str, History], Dict[str, Any]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
