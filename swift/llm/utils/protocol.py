@@ -2,7 +2,7 @@
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 
 def random_uuid() -> str:
@@ -12,7 +12,7 @@ def random_uuid() -> str:
 @dataclass
 class Model:
     id: str  # model_type
-    is_chat: Optional[bool] = None  # chat model or generation model
+    is_chat: bool = True  # chat model or generation model
     is_multimodal: bool = False
 
     object: str = 'model'
@@ -44,6 +44,8 @@ class XRequestConfig:
     seed: Optional[int] = None
     stop: Optional[List[str]] = None
     stream: bool = False
+    logprobs: bool = False
+    top_logprobs: Optional[int] = None
 
     best_of: Optional[int] = None
     presence_penalty: float = 0.
@@ -120,6 +122,7 @@ class ChatCompletionResponseChoice:
     index: int
     message: ChatMessage
     finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
@@ -127,6 +130,7 @@ class CompletionResponseChoice:
     index: int
     text: str
     finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
@@ -151,8 +155,8 @@ class CompletionResponse:
 
 @dataclass
 class DeltaMessage:
-    role: Literal['system', 'user', 'assistant']
-    content: str
+    role: Literal['system', 'user', 'assistant', None] = None
+    content: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
@@ -161,13 +165,14 @@ class ChatCompletionResponseStreamChoice:
     index: int
     delta: DeltaMessage
     finish_reason: Literal['stop', 'length', None]
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
 class ChatCompletionStreamResponse:
     model: str
     choices: List[ChatCompletionResponseStreamChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
@@ -178,13 +183,14 @@ class CompletionResponseStreamChoice:
     index: int
     text: str
     finish_reason: Literal['stop', 'length', None]
+    logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
 @dataclass
 class CompletionStreamResponse:
     model: str
     choices: List[CompletionResponseStreamChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))

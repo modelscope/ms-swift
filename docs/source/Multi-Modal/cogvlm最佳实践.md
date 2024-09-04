@@ -144,7 +144,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset coco-en-2-mini \
 ```
 
-[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
+[自定义数据集](../Instruction/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (支持多轮对话, 但总的轮次对话只能包含一张图片, 支持传入本地路径或URL)
 

@@ -424,7 +424,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             logger.info(f'images_dir: {images_dir}')
             plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
         if args.push_to_hub:
-            trainer._add_patterns_to_gitignore(['images/'])
             trainer.push_to_hub()
     run_info = {
         'memory': trainer.perf['memory'],

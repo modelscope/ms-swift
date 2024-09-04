@@ -440,6 +440,8 @@ class Runtime(BaseUI):
             args = task.split('swift sft')[1]
         elif 'swift rlhf' in task:
             args = task.split('swift rlhf')[1]
+        else:
+            raise ValueError(f'Cannot parse cmd line: {task}')
         args = [arg.strip() for arg in args.split('--') if arg.strip()]
         all_args = {}
         for i in range(len(args)):

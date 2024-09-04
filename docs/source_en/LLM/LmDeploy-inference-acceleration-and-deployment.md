@@ -1,7 +1,7 @@
 # LmDeploy Inference Acceleration and Deployment
 lmdeploy github: [https://github.com/InternLM/lmdeploy](https://github.com/InternLM/lmdeploy).
 
-Models that support inference acceleration using lmdeploy can be found at [Supported Models](Supported-models-datasets.md#LLM).
+Models that support inference acceleration using lmdeploy can be found at [Supported Models](../Instruction/Supported-models-datasets.md#LLM).
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
@@ -109,6 +109,8 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-72b-instruct --infer_ba
 ```
 
 The method for client invocation can be found in: [vLLM Inference Acceleration and Deployment Documentation](VLLM-inference-acceleration-and-deployment.md#deployment).
+
+Benchmark testing code: https://github.com/modelscope/ms-swift/blob/main/scripts/benchmark/deploy.py
 
 ## Multimodal
 Check [here](../Multi-Modal/LmDeploy-inference-acceleration-and-deployment.md)

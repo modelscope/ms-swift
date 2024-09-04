@@ -121,7 +121,7 @@ NPROC_PER_NODE=4 CUDA_VISIBLE_DEVICES=0,1,2,3 swift sft \
     --deepspeed default-zero2
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) supports json, jsonl styles, the following is an example of a custom dataset:
+[Custom datasets](../Instruction/Customization.md#-Recommended-Command-line-arguments) supports json, jsonl styles, the following is an example of a custom dataset:
 
 (Supports multi-turn conversations, supports each turn of conversation containing multiple or no audio segments, supports passing local paths or URLs)
 

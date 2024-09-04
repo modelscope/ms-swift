@@ -1,7 +1,7 @@
 # LmDeploy推理加速与部署
 lmdeploy github: [https://github.com/InternLM/lmdeploy](https://github.com/InternLM/lmdeploy).
 
-支持lmdeploy推理加速的模型可以查看[支持的模型](支持的模型和数据集.md#模型).
+支持lmdeploy推理加速的模型可以查看[支持的模型](../Instruction/支持的模型和数据集.md#模型).
 
 ## 目录
 - [环境准备](#环境准备)
@@ -180,6 +180,8 @@ CUDA_VISIBLE_DEVICES=0,1 swift deploy --model_type qwen2-72b-instruct --infer_ba
 ```
 
 客户端调用方式可以查看: [vLLM推理加速与部署文档](VLLM推理加速与部署.md#部署)
+
+benchmark测试代码: https://github.com/modelscope/ms-swift/blob/main/scripts/benchmark/deploy.py
 
 ## 多模态
 查看[这里](../Multi-Modal/LmDeploy推理加速文档.md)

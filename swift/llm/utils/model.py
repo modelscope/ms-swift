@@ -151,7 +151,13 @@ class ModelType:
     qwen2_audio_7b = 'qwen2-audio-7b'
     qwen2_audio_7b_instruct = 'qwen2-audio-7b-instruct'
     qwen2_vl_2b_instruct = 'qwen2-vl-2b-instruct'
+    qwen2_vl_2b_instruct_gptq_int4 = 'qwen2-vl-2b-instruct-gptq-int4'
+    qwen2_vl_2b_instruct_gptq_int8 = 'qwen2-vl-2b-instruct-gptq-int8'
+    qwen2_vl_2b_instruct_awq = 'qwen2-vl-2b-instruct-awq'
     qwen2_vl_7b_instruct = 'qwen2-vl-7b-instruct'
+    qwen2_vl_7b_instruct_gptq_int4 = 'qwen2-vl-7b-instruct-gptq-int4'
+    qwen2_vl_7b_instruct_gptq_int8 = 'qwen2-vl-7b-instruct-gptq-int8'
+    qwen2_vl_7b_instruct_awq = 'qwen2-vl-7b-instruct-awq'
     # chatglm
     chatglm2_6b = 'chatglm2-6b'
     chatglm2_6b_32k = 'chatglm2-6b-32k'
@@ -280,7 +286,7 @@ class ModelType:
     yi_vl_6b_chat = 'yi-vl-6b-chat'
     yi_vl_34b_chat = 'yi-vl-34b-chat'
     # llava-llama (xtuner)
-    llava_llama3_8b_v1_1 = 'llava-llama-3-8b-v1_1'
+    llava_llama3_8b_v1_1 = 'llava-llama3-8b-v1_1'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -983,7 +989,7 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_llama_instruct,
     support_flash_attn=True,
-    support_lmdeploy=True,
+    support_vllm=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='xtuner/llava-llama-3-8b-v1_1-transformers')
@@ -3463,9 +3469,45 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     support_flash_attn=True,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     # pip install qwen_vl_utils
-    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],  # 'pyav'
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-7B-Instruct')
+@register_model(
+    ModelType.qwen2_vl_7b_instruct_gptq_int4,
+    'qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_vl_7b_instruct_gptq_int8,
+    'qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_vl_7b_instruct_awq,
+    'qwen/Qwen2-VL-7B-Instruct-AWQ',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-7B-Instruct-AWQ')
 @register_model(
     ModelType.qwen2_vl_2b_instruct,
     'qwen/Qwen2-VL-2B-Instruct',
@@ -3473,9 +3515,45 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     TemplateType.qwen2_vl,
     support_flash_attn=True,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-    requires=['pyav', 'transformers>=4.45.0.dev0', 'qwen_vl_utils'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],  # 'pyav'
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct')
+@register_model(
+    ModelType.qwen2_vl_2b_instruct_gptq_int4,
+    'qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 4},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4')
+@register_model(
+    ModelType.qwen2_vl_2b_instruct_gptq_int8,
+    'qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'gptq_bits': 8},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8')
+@register_model(
+    ModelType.qwen2_vl_2b_instruct_awq,
+    'qwen/Qwen2-VL-2B-Instruct-AWQ',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
+    tags=['multi-modal', 'vision'],
+    function_kwargs={'is_awq': True},
+    torch_dtype=torch.float16,
+    hf_model_id='Qwen/Qwen2-VL-2B-Instruct-AWQ')
 def get_model_tokenizer_qwen2_vl(model_dir: str,
                                  torch_dtype: Dtype,
                                  model_kwargs: Dict[str, Any],
@@ -4316,7 +4394,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     eos_token='<|im_end|>',
     support_flash_attn=True,
     support_lmdeploy=True,
-    requires=['decord'],
+    # requires=['decord'],
     tags=['multi-modal', 'vision'],
     function_kwargs={'version': 'v2.5'},
     hf_model_id='internlm/internlm-xcomposer2d5-7b')
@@ -5899,7 +5977,7 @@ def ignore_check_imports():
     TemplateType.minicpm_v_v2_6,
     support_flash_attn=True,
     support_vllm=True,
-    requires=['timm', 'transformers>=4.36', 'decord'],
+    requires=['timm', 'transformers>=4.36'],  # 'decord'
     placeholder_tokens=['<unk>'],
     function_kwargs={'version': 'v2.6'},
     tags=['multi-modal', 'vision', 'video'],
@@ -5968,7 +6046,6 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     eos_token='</s>',
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-13b-hf')
@@ -5980,7 +6057,6 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     eos_token='</s>',
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-7b-hf')
@@ -6167,7 +6243,6 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
     LoRATM.llava_llama,
     TemplateType.llama3_llava_next,
     support_flash_attn=True,
-    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'next_llama'},
     hf_model_id='lmms-lab/llama3-llava-next-8b')
@@ -6177,7 +6252,6 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_qwen,
     support_flash_attn=True,
-    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'next_qwen'},
     hf_model_id='lmms-lab/llava-next-72b')
@@ -6187,7 +6261,6 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_qwen,
     support_flash_attn=True,
-    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'next_qwen'},
     hf_model_id='lmms-lab/llava-next-110b')
@@ -6529,7 +6602,7 @@ def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')
 
 
-def get_default_lora_target_modules(model_type: str) -> Optional[List[str]]:
+def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, None]:
     res = MODEL_MAPPING[model_type].get('lora_target_modules')
     if isinstance(res, str):
         res = get_regex_for_mm_default_lora(res)

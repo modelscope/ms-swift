@@ -1,6 +1,6 @@
 # Megatron Training Documentation
 
-Models that support training with Megatron can be found [here](./Supported-models-datasets.md#models).
+Models that support training with Megatron can be found [here](../Instruction/Supported-models-datasets.md#models).
 
 ## Table of Contents
 - [Environment Preparation](#Environment-Preparation)

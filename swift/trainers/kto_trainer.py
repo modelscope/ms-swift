@@ -9,7 +9,8 @@ from trl.trainer import kto_trainer
 
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
-from .mixin import PushToMsHubMixin, SwiftMixin
+from .mixin import SwiftMixin
+from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 

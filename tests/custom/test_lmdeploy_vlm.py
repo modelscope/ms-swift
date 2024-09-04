@@ -11,6 +11,7 @@ def test_lmdeploy_vlm():
     template = get_template(template_type, lmdeploy_engine.hf_tokenizer)
     # 与`transformers.GenerationConfig`类似的接口
     lmdeploy_engine.generation_config.max_new_tokens = 256
+    lmdeploy_engine.generation_config.logprobs = 2
     generation_info = {}
 
     request_list = [{
@@ -25,6 +26,7 @@ def test_lmdeploy_vlm():
     for request, resp in zip(request_list, resp_list):
         print(f"query: {request['query']}")
         print(f"response: {resp['response']}")
+        print(f"len(logprobs): {len(resp['logprobs'])}")
     print(generation_info)
 
     # stream
@@ -45,6 +47,7 @@ def test_lmdeploy_vlm():
     history = resp_list[0]['history']
     print(f'history: {history}')
     print(generation_info)
+    print(f"len(logprobs): {len(resp_list[0]['logprobs'])}")
 
     # batched
     n_batched = 1000

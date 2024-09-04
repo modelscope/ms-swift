@@ -19,11 +19,12 @@ from .utils import Messages, history_to_messages
 
 
 def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:
-    timeout = float(os.getenv('TIMEOUT', '60'))
-    request_kwargs = {'timeout': timeout}
-    if api_key is None:
-        return request_kwargs
-    request_kwargs['headers'] = {'Authorization': f'Bearer {api_key}'}
+    timeout = float(os.getenv('TIMEOUT', '300'))
+    request_kwargs = {}
+    if timeout > 0:
+        request_kwargs['timeout'] = timeout
+    if api_key is not None:
+        request_kwargs['headers'] = {'Authorization': f'Bearer {api_key}'}
     return request_kwargs
 
 
@@ -229,7 +230,12 @@ def _pre_inference_client(model_type: str,
         else:
             raise ValueError(f'model_type: {model_type}, model_list: {[model.id for model in model_list.data]}')
     assert is_chat_request is not None and is_multimodal is not None
-    data = {k: v for k, v in request_config.__dict__.items() if not k.startswith('__')}
+    data = {}
+    request_config_origin = XRequestConfig()
+    for k, v in request_config.__dict__.items():
+        v_origin = getattr(request_config_origin, k)
+        if v != v_origin:
+            data[k] = v
     url = kwargs.pop('url', None)
     if url is None:
         url = f'http://{host}:{port}/v1'
@@ -252,9 +258,9 @@ def _pre_inference_client(model_type: str,
         if medias:
             medias = convert_to_base64(images=medias)['images']
             data[media_key] = medias
-    if tools and len(tools) > 0:
+    if tools:
         data['tools'] = tools
-    if tool_choice:
+    if tool_choice and tool_choice != 'auto':
         data['tool_choice'] = tool_choice
     return url, data, is_chat_request
 
@@ -280,6 +286,7 @@ def inference_client(
     if request_config is None:
         request_config = XRequestConfig()
     model_list = None
+    is_chat_request = is_chat_request or kwargs.get('is_chat')
     if is_chat_request is None or is_multimodal is None:
         model_list = get_model_list_client(host, port, api_key=api_key, **kwargs)
 
@@ -350,6 +357,7 @@ async def inference_client_async(
     if request_config is None:
         request_config = XRequestConfig()
     model_list = None
+    is_chat_request = is_chat_request or kwargs.get('is_chat')
     if is_chat_request is None or is_multimodal is None:
         model_list = await get_model_list_client_async(host, port, api_key=api_key, **kwargs)
 

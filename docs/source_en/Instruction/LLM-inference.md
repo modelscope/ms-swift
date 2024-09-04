@@ -1,5 +1,5 @@
 # LLM Inference Documentation
-If you want to use vllm for inference acceleration, you can check out [VLLM Inference Acceleration and Deployment](VLLM-inference-acceleration-and-deployment.md#inference-acceleration)
+If you want to use vllm for inference acceleration, you can check out [VLLM Inference Acceleration and Deployment](../LLM/VLLM-inference-acceleration-and-deployment.md#inference-acceleration)
 
 ## Table of Contents
 - [Environment Preparation](#Environment-Preparation)
@@ -13,7 +13,7 @@ GPU devices: A10, 3090, V100, A100 are all supported.
 pip install 'ms-swift[llm]' -U
 
 # If you want to use models based on auto_gptq for inference.
-# Models using auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/Supported Models and Datasets.md#Models`
+# Models using auto_gptq: `https://github.com/modelscope/swift/blob/main/docs/source/Instruction/Supported Models and Datasets.md#Models`
 # auto_gptq and cuda versions have a correspondence, please select the version according to `https://github.com/PanQiWei/AutoGPTQ#quick-installation`
 pip install auto_gptq -U
 
@@ -465,4 +465,4 @@ app_ui_main(app_ui_args)
 ```
 
 ### Fine-tuned Models
-To use the web-ui with fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM-fine-tuning#fine-tuned-model)
+To use the web-ui with fine-tuned models, you can check out the [LLM Fine-tuning Documentation](LLM-fine-tuning.md#fine-tuned-model)

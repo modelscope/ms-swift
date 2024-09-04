@@ -12,7 +12,8 @@ from trl.trainer import FDivergenceConstants, disable_dropout_in_model
 from trl.trainer.utils import DPODataCollatorWithPadding, pad_to_length
 
 from swift.utils import get_logger
-from .mixin import PushToMsHubMixin, SwiftMixin
+from .mixin import SwiftMixin
+from .push_to_ms import PushToMsHubMixin
 from .utils import sort_by_max_length
 
 logger = get_logger()

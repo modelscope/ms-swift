@@ -1,10 +1,10 @@
 from typing import Any, List
 
-from swift.llm import MODEL_MAPPING, ModelType
+from swift.llm import MODEL_MAPPING, ModelType, get_default_lora_target_modules
 
 
 def get_model_info_table():
-    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
+    fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-datasets.md']
     end_words = [['### 多模态大模型', '## 数据集'], ['### MLLM', '## Datasets']]
     model_name_list = ModelType.get_model_name_list()
     result = [
@@ -19,7 +19,7 @@ def get_model_info_table():
     for model_name in model_name_list:
         model_info = MODEL_MAPPING[model_name]
         model_id = model_info['model_id_or_path']
-        lora_target_modules = model_info['lora_target_modules']
+        lora_target_modules = get_default_lora_target_modules(model_name)
         if isinstance(lora_target_modules, list):
             lora_target_modules = ', '.join(lora_target_modules)
         else:

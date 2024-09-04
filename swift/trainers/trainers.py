@@ -19,7 +19,8 @@ from swift.torchacc_utils import (patch_clip_grad_norm, ta_eval_dataloader, ta_t
 from swift.utils import use_torchacc
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .loss import get_loss_func
-from .mixin import PushToMsHubMixin, SwiftMixin
+from .mixin import SwiftMixin
+from .push_to_ms import PushToMsHubMixin
 
 
 class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
