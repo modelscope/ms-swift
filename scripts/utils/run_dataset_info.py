@@ -8,7 +8,7 @@ from swift.utils import stat_array
 
 
 def write_dataset_info() -> None:
-    fpaths = ['docs/source/LLM/支持的模型和数据集.md', 'docs/source_en/LLM/Supported-models-datasets.md']
+    fpaths = ['docs/source/Instruction/支持的模型和数据集.md', 'docs/source_en/Instruction/Supported-models-datasets.md']
     pre_texts = []
     for fpath in fpaths:
         if os.path.exists(fpath):

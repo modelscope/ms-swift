@@ -24,7 +24,7 @@ pip install -e '.[llm]'
 pip install deepspeed -U
 
 # 如果你想要使用基于auto_gptq的qlora训练. (推荐, 效果优于bnb)
-# 支持auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
+# 支持auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/Instruction/支持的模型和数据集.md#模型`
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
 pip install auto_gptq -U
 
@@ -83,7 +83,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --output_dir output \
 
 # 使用自己的数据集
-# 自定义数据集格式查看: https://github.com/modelscope/swift/blob/main/docs/source/LLM/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86
+# 自定义数据集格式查看: https://github.com/modelscope/swift/blob/main/docs/source/Instruction/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.md#%E8%87%AA%E5%AE%9A%E4%B9%89%E6%95%B0%E6%8D%AE%E9%9B%86
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model_id_or_path qwen/Qwen-7B-Chat \
     --dataset chatml.jsonl \
