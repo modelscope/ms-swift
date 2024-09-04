@@ -268,7 +268,7 @@ class LazyLLMDataset(Dataset):
             try:
                 res = self.template.encode(data)
             except Exception as e:
-                logger.error('Error occurs in lazy tokenize:', e)
+                logger.error(f'Error occurs in lazy tokenize: {e}')
                 continue
             if len(res[0]) > 0:
                 return res

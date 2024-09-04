@@ -164,6 +164,11 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
         if not is_valid:
             return create_error_response(HTTPStatus.BAD_REQUEST, 'API key error')
 
+    if request.top_logprobs > _args.max_logprobs:
+        return create_error_response(
+            HTTPStatus.BAD_REQUEST, f'The value of top_logprobs({request.top_logprobs}) is greater than '
+            f'the server\'s max_logprobs({_args.max_logprobs}).')
+
     if _args.infer_backend in {'vllm', 'lmdeploy'}:
         model_or_engine = llm_engine
     else:
