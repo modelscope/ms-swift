@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple, Un
 import aiohttp
 import json
 import requests
-from dacite import MissingValueError, from_dict
+from dacite import from_dict
 from requests.exceptions import HTTPError
 
 from .protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
