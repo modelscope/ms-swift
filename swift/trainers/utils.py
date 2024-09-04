@@ -142,33 +142,6 @@ def get_preprocess_func(template: Template, rlhf_type, vision_keys: list, stream
             is_encoder_decoder=is_encoder_decoder)
 
 
-def concatenate_prompts(template: Template, system: Optional[str], history: Optional[History], query: Optional[str],
-                        example: Optional[Dict[str, Any]]) -> str:
-    res_context_list: List[Context] = []
-    compute_loss_idx: List[float] = []
-
-    if system is None:
-        assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
-        prefix = template.prefix
-    else:
-        prefix = template.system_prefix
-
-    template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
-
-    for i, (q, r) in enumerate(history):
-        template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
-                                      res_context_list,
-                                      compute_loss_idx,
-                                      query=q,
-                                      response=r,
-                                      round0=i)
-    template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
-    res_context_list, compute_loss_idx = template._simplify_context_list(
-        res_context_list, compute_loss_idx, example=example)
-    prompt = ''.join(res_context_list)
-    return prompt
-
-
 def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
     """
     preprocess KTO specific dataset with given template
