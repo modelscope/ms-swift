@@ -184,6 +184,7 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             num_beams: int = 1,
             *,
             n: int = 1,
+            logprobs: Optional[int] = None,
             seed: Optional[int] = None,
             length_penalty: float = 1.,
             stop: Optional[List[str]] = None,
@@ -214,6 +215,7 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
                 kwargs['use_beam_search'] = True
                 kwargs['best_of'] = num_beams
             kwargs['n'] = n
+            kwargs['logprobs'] = logprobs
             kwargs['seed'] = seed
             kwargs['length_penalty'] = length_penalty
             kwargs['stop'] = stop
@@ -236,6 +238,7 @@ else:
         repetition_penalty: float = 1.
         num_beams: int = 1
         n: int = 1
+        logprobs: Optional[int] = None
         seed: Optional[int] = None
         length_penalty: float = 1.
         stop: Optional[List[str]] = None
@@ -254,7 +257,7 @@ else:
                                'the output of num_beams in transformers.')
                 assert self.best_of is None
                 self.use_beam_search = True
-                self.best_of = num_beams
+                self.best_of = self.num_beams
             if self.top_k == 0:
                 self.top_k = -1
             if self.stop is None:
