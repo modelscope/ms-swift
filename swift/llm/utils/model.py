@@ -286,7 +286,7 @@ class ModelType:
     yi_vl_6b_chat = 'yi-vl-6b-chat'
     yi_vl_34b_chat = 'yi-vl-34b-chat'
     # llava-llama (xtuner)
-    llava_llama3_8b_v1_1 = 'llava-llama-3-8b-v1_1'
+    llava_llama3_8b_v1_1 = 'llava-llama3-8b-v1_1'
     # internlm
     internlm_7b = 'internlm-7b'
     internlm_7b_chat = 'internlm-7b-chat'
@@ -989,7 +989,7 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_llama_instruct,
     support_flash_attn=True,
-    support_lmdeploy=True,
+    support_vllm=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='xtuner/llava-llama-3-8b-v1_1-transformers')
@@ -6046,7 +6046,6 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     eos_token='</s>',
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-13b-hf')
@@ -6058,7 +6057,6 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     eos_token='</s>',
     support_flash_attn=True,
     support_vllm=True,
-    support_lmdeploy=True,
     requires=['transformers>=4.36'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-7b-hf')
@@ -6245,7 +6243,6 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
     LoRATM.llava_llama,
     TemplateType.llama3_llava_next,
     support_flash_attn=True,
-    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'next_llama'},
     hf_model_id='lmms-lab/llama3-llava-next-8b')
@@ -6255,7 +6252,6 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_qwen,
     support_flash_attn=True,
-    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'next_qwen'},
     hf_model_id='lmms-lab/llava-next-72b')
@@ -6265,7 +6261,6 @@ def get_model_tokenizer_llava_next_video_yi(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_qwen,
     support_flash_attn=True,
-    support_lmdeploy=True,
     tags=['multi-modal', 'vision'],
     function_kwargs={'llm_model_type': 'next_qwen'},
     hf_model_id='lmms-lab/llava-next-110b')
