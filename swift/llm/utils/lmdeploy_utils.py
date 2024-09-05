@@ -19,7 +19,7 @@ from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
 from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
-from swift.utils import get_logger
+from swift.utils import get_logger, get_seed
 from .argument import InferArguments
 from .model import get_model_tokenizer
 from .template import Template, get_template
@@ -197,6 +197,8 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
 
     _add_stop_word(generation_config.stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
     _add_stop_word(generation_config.stop_words, template.suffix[-1], tokenizer=tokenizer)
+    if generation_config.random_seed is None:
+        generation_config.random_seed = get_seed()
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     generators = []
