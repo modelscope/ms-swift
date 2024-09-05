@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.09.05: 支持minicpm3-4b模型. 使用`swift infer --model_type minicpm3-4b`进行体验.
 - 2024.09.05: 支持yi-coder系列模型. 使用`swift infer --model_type yi-coder-1_5b-chat`进行体验.
 - 🔥2024.08.30: 支持qwen2-vl系列模型的推理与微调: qwen2-vl-2b-instruct, qwen2-vl-7b-instruct. 最佳实践可以查看[这里](docs/source/Multi-Modal/qwen2-vl最佳实践.md).
 - 🔥2024.08.26: 支持[Liger](https://github.com/linkedin/Liger-Kernel), 该内核支持LLaMA、Qwen、Mistral等模型, 并大幅减少显存使用(10%~60%), 使用`--use_liger true`开启训练.
@@ -577,7 +578,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math<br>DeepSeek-V2<br>DeepSeek-Coder-V2 | [幻方系列模型](https://github.com/deepseek-ai)                                  | 中文<br>英文 | 1.3B-236B           | base模型<br>chat模型<br>MoE模型<br>代码模型<br>数学模型 |
 | MAMBA                                                                                           | [MAMBA时序卷积模型](https://github.com/state-spaces/mamba)                      | 英文       | 130M-2.8B           | base模型                                    |
 | Gemma<br>Gemma2                                                                                 | [Google Gemma系列模型](https://github.com/google/gemma_pytorch)               | 英文       | 2B-27B              | base模型<br>instruct模型                      |
-| MiniCPM                                                                                         | [OpenBmB MiniCPM系列模型](https://github.com/OpenBMB/MiniCPM)                 | 中文<br>英文 | 2B-3B               | chat模型<br>MoE模型                           |
+| MiniCPM<br>MiniCPM3                                                                         | [OpenBmB MiniCPM系列模型](https://github.com/OpenBMB/MiniCPM)                 | 中文<br>英文 | 2B-3B               | chat模型<br>MoE模型                           |
 | OpenBuddy                                                                                       | [OpenBuddy系列模型](https://github.com/OpenBuddy/OpenBuddy)                   | 中文<br>英文 | 7B-70B              | base模型<br>chat模型                          |
 | Orion                                                                                           | [猎户星空系列模型](https://github.com/OrionStarAI)                                | 中文<br>英文 | 14B                 | base模型<br>chat模型                          |
 | BlueLM                                                                                          | [VIVO蓝心大模型](https://github.com/vivo-ai-lab/BlueLM)                        | 中文<br>英文 | 7B                  | base模型<br>chat模型                          |

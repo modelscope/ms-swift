@@ -89,8 +89,6 @@ class TemplateType:
     internvl_phi3 = 'internvl-phi3'
     internvl2_phi3 = 'internvl2-phi3'
     florence = 'florence'
-    yi = 'yi'
-    yi1_5 = 'yi1_5'
     yi_coder = 'yi-coder'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
@@ -1420,13 +1418,6 @@ register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
 register_template(
     TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
-
-register_template(TemplateType.yi, ChatmlTemplate())
-
-register_template(
-    TemplateType.yi1_5,
-    Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
-             None, ['{{SYSTEM}}']))
 
 
 class YiCoderTemplate(ChatmlTemplate):
