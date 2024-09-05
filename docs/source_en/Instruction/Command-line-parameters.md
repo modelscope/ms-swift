@@ -342,7 +342,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--🔥merge_lora`: Whether to merge lora weights into base model and save full weights, default is `False`. Weights will be saved in the same level directory as `ckpt_dir`, e.g. `'/path/to/your/vx-xxx/checkpoint-xxx-merged'` directory.
 - `--merge_device_map`: device_map used when merge-lora, default is `None`, to reduce memory usage, use `auto` only during merge-lora process, otherwise default is `cpu`.
 - `--save_safetensors`: Whether to save as `safetensors` file or `bin` file. Default is `True`.
-- `--overwrite_generation_config`: Whether to save the generation_config used for evaluation as `generation_config.json` file, default is `None`. If `ckpt_dir` is specified, set to `True`, otherwise set to `False`. The generation_config file saved during training will be overwritten.
+- `--overwrite_generation_config`: Whether to save the generation_config used for evaluation as a `generation_config.json` file, default is `False`.
 - `--🔥verbose`: If set to False, use tqdm style inference. If set to True, output inference query, response, label. Default is `None`, for auto selection, i.e. when `len(val_dataset) >= 100`, set to False, otherwise set to True. This parameter only takes effect when using dataset evaluation.
 - `--lora_modules`: Default`[]`, the input format is `'{lora_name}={lora_path}'`, e.g. `--lora_modules lora_name1=lora_path1 lora_name2=lora_path2`. `ckpt_dir` will be added with `f'default-lora={args.ckpt_dir}'` by default.
 - `--custom_register_path`: Default is `None`. Pass in a `.py` file used to register templates, models, and datasets.
