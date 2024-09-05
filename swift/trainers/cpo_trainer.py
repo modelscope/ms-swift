@@ -120,12 +120,16 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
 
         if self.is_vision_model:
             # Here, we restore the _data, processing image information within the forward hook of the model.
-            batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
+            pair_batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
+            batch_size = pair_batch_size // 2
             if self.vision_keys is not None:
-                _data = [dict() for _ in range(batch_size)]
+                _data = [dict() for _ in range(pair_batch_size)]
                 for k in self.vision_keys:
                     if k in ['input_ids', 'labels']:
-                        _data = [{**d, k: concatenated_batch[f'concatenated_{k}'][i]} for i, d in enumerate(_data)]
+                        order = [i for pair in [(i, i + batch_size) for i in range(batch_size)] for i in pair]
+                        _data = [{
+                            **d, k: concatenated_batch[f'concatenated_{k}'][order[i]]
+                        } for i, d in enumerate(_data)]
                     # for vision related data, paired response share the same one
                     elif k == 'images':
                         # convert the dtype of the images that may be converted to float32 in tokenize_row
@@ -204,24 +208,29 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         concatenated_batch: Dict[str, torch.LongTensor],
         device: Optional[torch.device] = None,
     ) -> Dict[str, torch.LongTensor]:
-        if 'prompt_pixel_values' in batch:
-            pixel_values = [values for values in batch['prompt_pixel_values']]
-            concatenated_batch['pixel_values'] = pixel_values
+        if 'vision_pixel_values' in batch:
+            concatenated_batch['pixel_values'] = batch['vision_pixel_values']
 
-        if 'prompt_image_flags' in batch:
-            image_flags = [torch.tensor(flags) for flags in batch['prompt_image_flags']]
+        if 'vision_image_flags' in batch:
+            image_flags = [torch.tensor(flags) for flags in batch['vision_image_flags']]
             concatenated_batch['image_flags'] = image_flags
 
-        if 'prompt_pixel_attention_mask' in batch:
-            pixel_attention_mask = [mask for mask in batch['pixel_attention_mask']]
+        if 'vision_pixel_attention_mask' in batch:
+            pixel_attention_mask = [mask for mask in batch['vision_pixel_attention_mask']]
             concatenated_batch['pixel_attention_mask'] = pixel_attention_mask
 
-        if 'prompt_image_sizes' in batch:
-            concatenated_batch['image_sizes'] = batch['prompt_image_sizes']
+        if 'vision_image_sizes' in batch:
+            concatenated_batch['image_sizes'] = batch['vision_image_sizes']
 
-        if 'prompt_images' in batch:
+        if 'vision_images' in batch:
             # images not in _data, we manually execute data collector here
-            concatenated_batch['images'] = batch['prompt_images'].squeeze(1).repeat(2, 1, 1, 1).to(device=device)
+            concatenated_batch['images'] = batch['vision_images'].squeeze(1).repeat(2, 1, 1, 1).to(device=device)
+
+        if 'vision_tgt_sizes' in batch:
+            concatenated_batch['tgt_sizes'] = batch['vision_tgt_sizes']
+
+        if 'vision_image_bound' in batch:
+            concatenated_batch['image_bound'] = batch['vision_image_bound']
         return concatenated_batch
 
     @staticmethod

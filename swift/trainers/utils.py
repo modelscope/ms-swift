@@ -268,9 +268,9 @@ def tokenize_paired_dataset(
 
         _truncate_tokens(chosen_tokenized, rejected_tokenized, prompt_tokenized, max_length, max_prompt_length,
                          truncation_mode)
-        for prefix, tokenzied in zip(['chosen', 'rejected'], [chosen_tokenized, chosen_tokenized]):
+        for prefix, tokenzied in zip(['chosen', 'rejected'], [chosen_tokenized, rejected_tokenized]):
             for k in ['input_ids', 'attention_mask']:
-                model_inputs[f'{prefix}_{k}'] = tokenzied[k] + tokenized[f'prompt_{k}']
+                model_inputs[f'{prefix}_{k}'] = tokenized[f'prompt_{k}'] + tokenzied[k]
             model_inputs[f'{prefix}_labels'] = model_inputs[f'{prefix}_input_ids'][:]
             model_inputs[f'{prefix}_labels'][:len(tokenized['prompt_input_ids'])] = [-100] * len(
                 tokenized['prompt_input_ids'])
