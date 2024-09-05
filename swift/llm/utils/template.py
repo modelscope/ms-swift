@@ -807,7 +807,7 @@ class Template:
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
-    def use_efficient_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
+    def use_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
         for i in range(1, len(labels)):
@@ -875,7 +875,7 @@ class Template:
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
         if labels is not None:
-            self.use_efficient_eos(labels, self._encode_context_list(self.suffix)[0])
+            self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
         if response is None:
             labels = None
