@@ -18,7 +18,7 @@ from modelscope import GenerationConfig
 from packaging import version
 from peft import PeftModel
 
-from swift.utils import get_logger, get_main, seed_everything
+from swift.utils import get_logger, get_main, get_seed, seed_everything
 from .agent import split_action_action_input
 from .infer import merge_lora, prepare_model_template
 from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
@@ -495,6 +495,8 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
     _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
     kwargs['stop_words'] = stop_words
+    if request.seed is None:
+        request.seed = get_seed()
     kwargs['random_seed'] = request.seed
 
     if request.logprobs:
