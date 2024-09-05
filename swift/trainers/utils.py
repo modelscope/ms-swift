@@ -420,6 +420,8 @@ def patch_datacollator():
                 elif k.endswith('_logps'):
                     # the cached reference model logprobs
                     padded_batch[k] = torch.tensor([ex[k] for ex in features])
+                elif k.endswith(('_pixel_values', '_images')):
+                    padded_batch[k] = [torch.Tensor(ex[k]) for ex in features]
                 else:
                     padded_batch[k] = [ex[k] for ex in features]
 
