@@ -382,8 +382,8 @@ def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[in
         if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
             e = i
             result_str += f'[{input_ids[i - 1]} * {e - s}]'
-    if _is_special(input_ids[-1]):
-        result_str += f'[{input_ids[i - 1]} * {len(input_ids) - s}]'
+    if _is_special(input_ids[i]):
+        result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
     else:
         result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
     return result_str
