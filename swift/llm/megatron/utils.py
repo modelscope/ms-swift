@@ -39,7 +39,10 @@ def init_megatron_env() -> None:
             old_path = os.path.join(dir_path, fname)
             new_path = os.path.join(dir_path, fname.replace('qwen1.', 'qwen1_'))
             if old_path != new_path:
-                shutil.move(old_path, new_path)
+                try:
+                    shutil.move(old_path, new_path)
+                except FileNotFoundError:
+                    pass
 
 
 def patch_megatron(tokenizer):

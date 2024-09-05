@@ -3,11 +3,15 @@
 
 import heapq
 import inspect
+from copy import deepcopy
 from functools import partial
 from types import FunctionType, MethodType
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import torch
+from accelerate import PartialState
 from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HFIterableDataset
 from torch.nn import Module
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
@@ -23,6 +27,7 @@ except ImportError:
     ShardedDDPOption = None
 
 logger = get_logger()
+DATASET_TYPE = Union[HfDataset, HFIterableDataset]
 
 
 def can_return_loss(model: Module) -> bool:
@@ -97,15 +102,6 @@ def concat_template(feature: Dict, template: Template):
     return res_context_list, feature['response'], feature['rejected_response'], compute_loss_idx
 
 
-def build_tokenized_answer(answer, template: Template):
-    tgt_input_ids = template._encode_context_list([answer], [1.0])[0]
-    tgt_input_ids += template._encode_context_list(template.suffix, [1.0])[0]
-    return dict(
-        input_ids=tgt_input_ids,
-        attention_mask=[1] * len(tgt_input_ids),
-    )
-
-
 def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
     logger.info('sort by max length...')
     if not is_encoder_decoder:
@@ -119,6 +115,225 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder:
         dataset_len = [len(d['prompt_input_ids']) for d in dataset]
         idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
     return dataset.select(idx)
+
+
+def _convert_bfloat16_to_float32(data):
+    if isinstance(data, torch.Tensor) and data.dtype == torch.bfloat16:
+        return data.to(torch.float32)
+    elif isinstance(data, list):
+        return [_convert_bfloat16_to_float32(item) for item in data]
+    return data
+
+
+def get_preprocess_func(template: Template, rlhf_type, vision_keys: list, streaming: bool, max_length: int,
+                        max_prompt_length: int, truncation_mode, is_encoder_decoder: bool):
+    if rlhf_type == 'kto':
+        # leave truncation in trainer for KTO
+        return partial(preprocess_kto_dataset, template=template)
+    else:
+        return partial(
+            tokenize_paired_dataset,
+            template=template,
+            vision_keys=vision_keys,
+            streaming=streaming,
+            max_length=max_length,
+            max_prompt_length=max_prompt_length,
+            truncation_mode=truncation_mode,
+            is_encoder_decoder=is_encoder_decoder)
+
+
+def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
+    """
+    preprocess KTO specific dataset with given template
+
+    Args:
+    batch: A dictionary containing:
+        - prompt: The main prompt string
+        - completion: The completion string
+        - label: The label data
+        - history (optional): A list of historical queries/responses
+        - system (optional): A system string to use
+
+    template: swift Template object
+
+    Returns:
+    A dictionary with encoded prompt, completion, and label.
+    """
+    query: str = example.get('query')
+    history: Optional[History] = example.get('history', None)
+    system: Optional[str] = example.get('system', None)
+    if history is None:
+        history = []
+    if system is None:
+        if template.use_default_system:
+            system = template.default_system
+    else:
+        assert template.system_prefix is not None, 'not support `system`'
+
+    res_context_list: List[Context] = []
+    compute_loss_idx: List[float] = []
+
+    if system is None:
+        assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
+        prefix = template.prefix
+    else:
+        prefix = template.system_prefix
+
+    template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
+
+    for i, (q, r) in enumerate(history):
+        template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
+                                      res_context_list,
+                                      compute_loss_idx,
+                                      query=q,
+                                      response=r,
+                                      round0=i)
+    template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
+    res_context_list, compute_loss_idx = template._simplify_context_list(
+        res_context_list, compute_loss_idx, example=example)
+    prompt = ''.join(res_context_list)
+
+    return {'prompt': prompt, 'completion': example['response'], 'label': example['label']}
+
+
+def _truncate_tokens(
+    chosen_tokens: Dict[str, List[int]],
+    rejected_tokens: Dict[str, List[int]],
+    prompt_tokens: Dict[str, List[int]],
+    max_length: int,
+    max_prompt_length: int,
+    truncation_mode: Literal['keep_start', 'keep_end'] = 'keep_end',
+) -> None:
+    """
+    Truncates the tokens in chosen, rejected
+    and prompt sequences to ensure they fit within the maximum length constraints.
+    """
+
+    longer_response_length = max(len(chosen_tokens['input_ids']), len(rejected_tokens['input_ids']))
+
+    # if combined sequence is too long, truncate the prompt
+    for answer_tokens in [chosen_tokens, rejected_tokens, prompt_tokens]:
+        if len(answer_tokens['prompt_input_ids']) + longer_response_length > max_length:
+            if truncation_mode == 'keep_start':
+                for k in ['prompt_input_ids', 'prompt_attention_mask']:
+                    answer_tokens[k] = answer_tokens[k][:max_prompt_length]
+            elif truncation_mode == 'keep_end':
+                for k in ['prompt_input_ids', 'prompt_attention_mask']:
+                    answer_tokens[k] = answer_tokens[k][-max_prompt_length:]
+
+    # if that's still too long, truncate the response from the end
+    for answer_tokens in [chosen_tokens, rejected_tokens]:
+        if len(answer_tokens['prompt_input_ids']) + longer_response_length > max_length:
+            for k in ['input_ids', 'attention_mask']:
+                answer_tokens[k] = answer_tokens[k][:max_length - max_prompt_length]
+
+
+def tokenize_paired_dataset(
+    examples: Dict[str, List[Any]],
+    template: Template,
+    vision_keys: Optional[List[str]] = None,
+    streaming: bool = False,
+    max_length: int = 4096,
+    max_prompt_length: int = 512,
+    truncation_mode: Literal['keep_start', 'keep_end'] = 'keep_end',
+    is_encoder_decoder: bool = False,
+):
+    model_inputs = {}
+    prompt_example, chosen_example, rejected_example = deepcopy(examples), examples, deepcopy(examples)
+    prompt_example['response'] = None
+    rejected_example['response'] = examples['rejected_response']
+
+    chosen_tokenized = template.encode(chosen_example)[0] if not streaming else template.encode(chosen_example)
+    rejected_tokenized = template.encode(rejected_example)[0] if not streaming else template.encode(rejected_example)
+    prompt_tokenized = template.encode(prompt_example)[0] if not streaming else template.encode(prompt_example)
+    if not is_encoder_decoder:
+        prompt_input_ids = prompt_tokenized['input_ids']
+        prompt_tokenized = {
+            'prompt_input_ids':
+            prompt_input_ids,
+            'prompt_attention_mask':
+            prompt_tokenized['attention_mask'] if 'attention_mask' in prompt_tokenized else [1]
+            * len(prompt_tokenized['input_ids']),
+        }
+
+        if 'attention_mask' not in chosen_tokenized:
+            chosen_tokenized['attention_mask'] = [1] * len(chosen_tokenized['input_ids'])
+            rejected_tokenized['attention_mask'] = [1] * len(rejected_tokenized['input_ids'])
+
+        # take response tokens
+        for tokenized in [chosen_tokenized, rejected_tokenized]:
+            tokenized.update(prompt_tokenized)
+            for k in ['input_ids', 'attention_mask']:
+                tokenized[k] = tokenized[k][len(prompt_input_ids):]
+
+        _truncate_tokens(chosen_tokenized, rejected_tokenized, prompt_tokenized, max_length, max_prompt_length,
+                         truncation_mode)
+        for prefix, tokenzied in zip(['chosen', 'rejected'], [chosen_tokenized, chosen_tokenized]):
+            for k in ['input_ids', 'attention_mask']:
+                model_inputs[f'{prefix}_{k}'] = tokenzied[k] + tokenized[f'prompt_{k}']
+            model_inputs[f'{prefix}_labels'] = model_inputs[f'{prefix}_input_ids'][:]
+            model_inputs[f'{prefix}_labels'][:len(tokenized['prompt_input_ids'])] = [-100] * len(
+                tokenized['prompt_input_ids'])
+
+        # we keep single vision related tokens to save memory, and convert to float32 for bfloat16
+        if '_data' in chosen_tokenized and vision_keys is not None:
+            for k in vision_keys:
+                _data_key = f'vision_{k}'
+                if k not in ['input_ids', 'labels']:
+                    model_inputs[_data_key] = (_convert_bfloat16_to_float32(chosen_tokenized['_data'][k]))
+        # fix glm4v
+        elif vision_keys is not None:
+            for k in vision_keys:
+                if k not in ['input_ids', 'labels']:
+                    _data_key = f'vision_{k}'
+                    model_inputs[_data_key] = (_convert_bfloat16_to_float32(chosen_tokenized[k]))
+    else:
+        model_inputs['chosen_labels'] = chosen_tokenized['input_ids']
+        model_inputs['rejected_labels'] = rejected_tokenized['input_ids']
+        model_inputs['prompt_input_ids'] = prompt_tokenized['input_ids']
+        model_inputs['prompt_attention_mask'] = prompt_tokenized['attention_mask']
+        if '_data' in chosen_tokenized and vision_keys is not None:
+            for k in vision_keys:
+                _data_key = f'vision_{k}'
+                if k not in ['input_ids', 'labels']:
+                    model_inputs[_data_key] = (_convert_bfloat16_to_float32(chosen_tokenized['_data'][k]))
+
+    return model_inputs
+
+
+def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
+                                  rlhf_type, vision_keys: Optional[list], streaming: bool, max_length: int,
+                                  max_prompt_length: int, truncation_mode: Literal['keep_start', 'keep_end'],
+                                  is_encoder_decoder: bool, **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    """
+    Preprocesses the RLHF datasets using the specified template and RLHF type.
+
+    Args:
+        train_dataset (DATASET_TYPE): The training dataset.
+        val_dataset (Optional[DATASET_TYPE]): The validation dataset.
+        template (Template): The template used for preprocessing.
+        rlhf_type (Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo']): The type of RLHF.
+        dataset_enable_cache (bool, optional): Whether to enable cache. Defaults to True.
+        **kwargs: kwargs for preprocess func.
+
+    Returns:
+        Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]: The preprocessed training and validation datasets.
+    """
+    preprocess_func = get_preprocess_func(
+        template=template,
+        rlhf_type=rlhf_type,
+        vision_keys=vision_keys,
+        streaming=streaming,
+        max_length=max_length,
+        max_prompt_length=max_prompt_length,
+        truncation_mode=truncation_mode,
+        is_encoder_decoder=is_encoder_decoder)
+    column_names = list(next(iter(train_dataset)).keys())
+    with PartialState().local_main_process_first():
+        train_dataset = train_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)
+        if val_dataset is not None:
+            val_dataset = val_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)
+    return train_dataset, val_dataset
 
 
 def patch_trl(is_vision_model: bool = False):
@@ -139,7 +354,6 @@ def patch_trl(is_vision_model: bool = False):
 
 def patch_datacollator():
     import torch
-    from typing import Any, Dict, List
     from trl.trainer.utils import DPODataCollatorWithPadding, pad
     if not hasattr(DPODataCollatorWithPadding, '_old_call'):  # Avoid double patching
         from torch.nn.utils.rnn import pad_sequence

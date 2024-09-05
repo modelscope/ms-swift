@@ -285,6 +285,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--max_prompt_length`: The maximum length of the prompt. This parameter is passed to the corresponding Trainer to ensure the prompt length does not exceed the set value. The default value is `1024`.
 - `--beta`: Coefficient for the KL regularization term. For `simpo` the default is 2.0, for other algorithms, the default is 0.1. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--label_smoothing`: Whether to use DPO smoothing, the default value is 0, normally set between 0 and 0.5.
+- `--truncation_mode`: Type of truncation mode, default is `keep_end`, which retains the end of excessively long data.
 - `--loss_type`: Type of loss, default value is 'sigmoid'.
 - `--sft_beta`: Whether to include sft loss in DPO, default is 0.1, supporting the range $[0, 1)$ . The final loss is `(1-sft_beta)*KL_loss + sft_beta * sft_loss`.
 - `--simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is 1.0.
