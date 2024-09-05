@@ -1421,8 +1421,10 @@ register_template(
     Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
              None, ['{{SYSTEM}}']))
 
+
 class YiCoderTemplate(ChatmlTemplate):
     system = 'You are a helpful assistant.'
+
 
 register_template(TemplateType.yi_coder, YiCoderTemplate())
 
