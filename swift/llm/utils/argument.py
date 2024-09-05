@@ -135,7 +135,8 @@ class ArgumentsBase:
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.temperature == 0:
             self.do_sample = False
-        if isinstance(self, InferArguments) and self.infer_backend == 'pt' and self.do_sample is False:
+        if self.do_sample is False and (isinstance(self, InferArguments) and self.infer_backend == 'pt'
+                                        and isinstance(self, SftArguments)):
             # fix warning
             self.temperature = 1.
             self.top_p = 1.
