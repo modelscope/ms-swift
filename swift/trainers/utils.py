@@ -268,9 +268,9 @@ def tokenize_paired_dataset(
 
         _truncate_tokens(chosen_tokenized, rejected_tokenized, prompt_tokenized, max_length, max_prompt_length,
                          truncation_mode)
-        for prefix, tokenzied in zip(['chosen', 'rejected'], [chosen_tokenized, chosen_tokenized]):
+        for prefix, tokenzied in zip(['chosen', 'rejected'], [chosen_tokenized, rejected_tokenized]):
             for k in ['input_ids', 'attention_mask']:
-                model_inputs[f'{prefix}_{k}'] = tokenzied[k] + tokenized[f'prompt_{k}']
+                model_inputs[f'{prefix}_{k}'] = tokenized[f'prompt_{k}'] + tokenzied[k]
             model_inputs[f'{prefix}_labels'] = model_inputs[f'{prefix}_input_ids'][:]
             model_inputs[f'{prefix}_labels'][:len(tokenized['prompt_input_ids'])] = [-100] * len(
                 tokenized['prompt_input_ids'])
@@ -365,7 +365,7 @@ def patch_datacollator():
         def new_call(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
             padded_batch = {}
             for k in features[0].keys():
-                if k.endswith(('_input_ids', '_attention_mask', '_labels', '_pixel_values', '_images')):
+                if k.endswith(('_input_ids', '_attention_mask', '_labels')):
                     if self.is_encoder_decoder:
                         to_pad = [torch.LongTensor(ex[k]) for ex in features]
 
@@ -382,8 +382,6 @@ def patch_datacollator():
                         elif k.startswith(('chosen', 'rejected', 'completion')) or ('decoder' in k):
                             padding_value = self.label_pad_token_id
                         # patch here
-                        elif k.endswith('_pixel_values'):
-                            padding_value = 0
                         else:
                             raise ValueError(f"Unexpected key in batch '{k}'")
                         padded_batch[k] = pad_sequence(to_pad, batch_first=True, padding_value=padding_value)
@@ -400,8 +398,6 @@ def patch_datacollator():
                         elif k.endswith('_labels'):
                             padding_value = self.label_pad_token_id
                         elif k.endswith('_attention_mask'):
-                            padding_value = 0
-                        elif k.endswith(('_pixel_values', '_images')):
                             padding_value = 0
                         else:
                             raise ValueError(f"Unexpected key in batch '{k}'")
@@ -424,6 +420,8 @@ def patch_datacollator():
                 elif k.endswith('_logps'):
                     # the cached reference model logprobs
                     padded_batch[k] = torch.tensor([ex[k] for ex in features])
+                elif k.endswith(('_pixel_values', '_images')):
+                    padded_batch[k] = [torch.Tensor(ex[k]) for ex in features]
                 else:
                     padded_batch[k] = [ex[k] for ex in features]
 
