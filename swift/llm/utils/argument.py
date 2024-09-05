@@ -135,6 +135,13 @@ class ArgumentsBase:
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.temperature == 0:
             self.do_sample = False
+        if self.do_sample is False:
+            # fix warning
+            self.temperature = 1.
+            self.top_p = 1.
+            self.top_k = 50
+            logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
+                        f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
     def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
@@ -1382,7 +1389,7 @@ class InferArguments(ArgumentsBase):
     merge_lora: bool = False
     merge_device_map: Optional[str] = None
     save_safetensors: bool = True
-    overwrite_generation_config: Optional[bool] = None
+    overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
     local_repo_path: Optional[str] = None
     custom_register_path: Optional[str] = None  # .py
@@ -1481,12 +1488,6 @@ class InferArguments(ArgumentsBase):
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
-        if self.overwrite_generation_config is None:
-            if self.ckpt_dir is None:
-                self.overwrite_generation_config = False
-            else:
-                self.overwrite_generation_config = True
-            logger.info(f'Setting overwrite_generation_config: {self.overwrite_generation_config}')
         if self.ckpt_dir is None:
             self.sft_type = 'full'
 
