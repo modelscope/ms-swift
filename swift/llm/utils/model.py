@@ -572,6 +572,7 @@ class LoRATM(NamedTuple):
     florence = 'florence'
     idefics3 = 'idefics3'
     # default lora target modules for nlp llms.
+    minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
     chatglm = ['query_key_value']
     llama = ['q_proj', 'k_proj', 'v_proj']
@@ -1800,7 +1801,7 @@ def get_model_tokenizer_glm4v(model_dir: str,
 @register_model(
     ModelType.minicpm3_4b,
     'OpenBMB/MiniCPM3-4B',
-    LoRATM.llama,
+    LoRATM.minicpm3,
     TemplateType.chatml,
     requires=['transformers>=4.36'],
     support_flash_attn=True,
