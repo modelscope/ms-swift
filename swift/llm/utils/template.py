@@ -806,6 +806,19 @@ class Template:
             loss_scale.extend([loss_weight] * len(token_list))
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
+    @staticmethod
+    def use_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
+        suffix_len = len(suffix_tokens_id)
+        start = 0
+        for i in range(1, len(labels)):
+            if labels[i - 1] >= 0 and labels[i] == -100:
+                start = i
+            if start > 0 and labels[i - 1] == -100 and labels[i] >= 0:
+                # [0, 1, 2, -100(start), -100, 3(i), 4]
+                length = i - start
+                if length >= suffix_len:
+                    labels[start:start + suffix_len] = suffix_tokens_id
+
     def _concat_and_tokenize(self,
                              query: str,
                              query_role: str,
@@ -840,18 +853,10 @@ class Template:
         history.append([query, response])
         history_roles.append([query_role, 'assistant'])
 
-        # Set the loss_scale of chat_sep or suffix to 1 if efficient_eos.
-        efficient_eos = False
-        if self.chat_sep is not None and len(self.chat_sep) > 0:
-            if isinstance(self.chat_sep[0], str) and isinstance(self.suffix[0], str) and self.chat_sep[0].startswith(
-                    self.suffix[0]):
-                efficient_eos = True
-            elif isinstance(self.chat_sep[0], list) and self.chat_sep[0] == self.suffix[0]:
-                efficient_eos = True
-
         for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
             context_list = self.tool_prompt.copy() if qr == 'tool' else prompt.copy()
             extra_context_list = []
+            is_suffix = False
             if i < len(history) - 1:
                 context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
                 context_list.append('{{RESPONSE}}')
@@ -861,14 +866,16 @@ class Template:
                 # last response
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = self.suffix
-                efficient_eos = True
+                is_suffix = True
             if q or r:
                 self._concat_context_list(
                     context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
                 res_context_list += extra_context_list
-                loss_scale_list += ([1.] if efficient_eos else [0.]) * len(extra_context_list)
+                loss_scale_list += ([1.] if is_suffix else [0.]) * len(extra_context_list)
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
         input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
+        if labels is not None:
+            self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
         if response is None:
             labels = None

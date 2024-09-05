@@ -135,7 +135,8 @@ class ArgumentsBase:
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.temperature == 0:
             self.do_sample = False
-        if self.do_sample is False:
+        if self.do_sample is False and (isinstance(self, InferArguments) and self.infer_backend == 'pt'
+                                        and isinstance(self, SftArguments)):
             # fix warning
             self.temperature = 1.
             self.top_p = 1.
@@ -994,7 +995,6 @@ class SftArguments(ArgumentsBase):
             self.dataset_seed = self.seed
         self.set_model_type()
         self.check_flash_attn()
-        self.handle_generation_config()
         self.handle_lr_scheduler_kwargs()
         self.is_multimodal = self._is_multimodal(self.model_type)
         self.is_vision = self._is_vision(self.model_type)
@@ -1170,6 +1170,7 @@ class SftArguments(ArgumentsBase):
             self.logging_dir = f'{self.output_dir}/runs'
             if self.train_backend == 'transformers':
                 self.training_args.logging_dir = self.logging_dir
+        self.handle_generation_config()
 
     def _init_training_args(self) -> None:
         additional_saved_files = []
@@ -1460,7 +1461,6 @@ class InferArguments(ArgumentsBase):
         self.handle_custom_dataset_info()
         self.set_model_type()
         self.check_flash_attn()
-        self.handle_generation_config()
         self.is_multimodal = self._is_multimodal(self.model_type)
         self.prepare_ms_hub()
 
@@ -1492,6 +1492,7 @@ class InferArguments(ArgumentsBase):
             self.sft_type = 'full'
 
         self.handle_infer_backend()
+        self.handle_generation_config()
 
     def handle_infer_backend(self):
         model_info = MODEL_MAPPING[self.model_type]
