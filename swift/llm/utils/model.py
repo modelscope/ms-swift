@@ -282,6 +282,11 @@ class ModelType:
     yi_1_5_9b_chat_gptq_int4 = 'yi-1_5-9b-chat-gptq-int4'
     yi_1_5_34b_chat_awq_int4 = 'yi-1_5-34b-chat-awq-int4'
     yi_1_5_34b_chat_gptq_int4 = 'yi-1_5-34b-chat-gptq-int4'
+    # yi-coder
+    yi_coder_1_5b = 'yi-coder-1_5b'
+    yi_coder_1_5b_chat = 'yi-coder-1_5b-chat'
+    yi_coder_9b = 'yi-coder-9b'
+    yi_coder_9b_chat = 'yi-coder-9b-chat'
     # yi-vl
     yi_vl_6b_chat = 'yi-vl-6b-chat'
     yi_vl_34b_chat = 'yi-vl-34b-chat'
@@ -2190,6 +2195,42 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='HuggingFaceH4/zephyr-7b-beta')
+@register_model(
+    ModelType.yi_coder_1_5b,
+    '01ai/Yi-Coder-1.5B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='01-ai/Yi-Coder-1.5B')
+@register_model(
+    ModelType.yi_coder_9b,
+    '01ai/Yi-Coder-9B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='01-ai/Yi-Coder-9B')
+@register_model(
+    ModelType.yi_coder_1_5b_chat,
+    '01ai/Yi-Coder-1.5B-Chat',
+    LoRATM.llama,
+    TemplateType.yi_coder,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='01-ai/Yi-Coder-1.5B-Chat')
+@register_model(
+    ModelType.yi_coder_9b_chat,
+    '01ai/Yi-Coder-9B-Chat',
+    LoRATM.llama,
+    TemplateType.yi_coder,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    hf_model_id='01-ai/Yi-Coder-9B-Chat')
 @register_model(
     ModelType.yi_6b_chat,
     '01ai/Yi-6B-Chat',

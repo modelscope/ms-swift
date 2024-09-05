@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.09.05: 支持yi-coder系列模型. 使用`swift infer --model_type yi-coder-1_5b-chat`进行体验.
 - 🔥2024.08.30: 支持qwen2-vl系列模型的推理与微调: qwen2-vl-2b-instruct, qwen2-vl-7b-instruct. 最佳实践可以查看[这里](docs/source/Multi-Modal/qwen2-vl最佳实践.md).
 - 🔥2024.08.26: 支持[Liger](https://github.com/linkedin/Liger-Kernel), 该内核支持LLaMA、Qwen、Mistral等模型, 并大幅减少显存使用(10%~60%), 使用`--use_liger true`开启训练.
 - 🔥2024.08.22: 支持[ReFT](https://github.com/stanfordnlp/pyreft), 该tuner可以以LoRA的1/15~1/65的参数量达到和LoRA匹配或更好的效果, 使用`--sft_type reft`开始训练!
@@ -571,7 +572,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | LLaMA2                                                                                          | [LLaMA2系列模型](https://github.com/facebookresearch/llama)                   | 英文       | 7B-70B<br>包含量化版本    | base模型<br>chat模型                          |
 | | LLaMA3<br>LLaMA3.1                                                  | [LLaMA3系列模型](https://github.com/meta-llama/llama3)                        | 英文       | 8B-70B<br>包含量化版本    | base模型<br>chat模型                          |
 | Mistral<br>Mixtral                                                                              | [Mistral系列模型](https://github.com/mistralai/mistral-src)                   | 英文       | 7B-8x22B            | base模型<br>instruct模型<br>MoE模型             |
-| Yi<br>Yi1.5                                                                                     | [01AI的YI系列模型](https://github.com/01-ai)                                   | 中文<br>英文 | 6B-34B<br>包含量化版本    | base模型<br>chat模型<br>长文本模型                 |
+| Yi<br>Yi1.5<br>Yi-Coder                                  | [01AI的YI系列模型](https://github.com/01-ai)                                   | 中文<br>英文 | 1.5B-34B<br>包含量化版本    | base模型<br>chat模型<br>长文本模型                 |
 | InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5                                          | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM)                     | 中文<br>英文 | 1.8B-20B            | base模型<br>chat模型<br>数学模型                  |
 | DeepSeek<br>DeepSeek-MoE<br>DeepSeek-Coder<br>DeepSeek-Math<br>DeepSeek-V2<br>DeepSeek-Coder-V2 | [幻方系列模型](https://github.com/deepseek-ai)                                  | 中文<br>英文 | 1.3B-236B           | base模型<br>chat模型<br>MoE模型<br>代码模型<br>数学模型 |
 | MAMBA                                                                                           | [MAMBA时序卷积模型](https://github.com/state-spaces/mamba)                      | 英文       | 130M-2.8B           | base模型                                    |

@@ -91,6 +91,7 @@ class TemplateType:
     florence = 'florence'
     yi = 'yi'
     yi1_5 = 'yi1_5'
+    yi_coder = 'yi-coder'
     yi_vl = 'yi-vl'
     yuan = 'yuan'
     xverse = 'xverse'
@@ -1419,6 +1420,13 @@ register_template(
     TemplateType.yi1_5,
     Template([], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'], ['<|im_end|>'],
              None, ['{{SYSTEM}}']))
+
+
+class YiCoderTemplate(ChatmlTemplate):
+    system = 'You are a helpful assistant.'
+
+
+register_template(TemplateType.yi_coder, YiCoderTemplate())
 
 yi_vl_default_system = (
     'This is a chat between an inquisitive human and an AI assistant. Assume the role of the AI assistant. '
