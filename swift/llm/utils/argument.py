@@ -1746,10 +1746,12 @@ class RLHFArguments(SftArguments):
 
     ref_model_id_or_path: Optional[str] = None
     ref_model_free: bool = False
-    max_prompt_length: int = 1024
+    max_prompt_length: Optional[int] = None
     beta: Optional[float] = None
     label_smoothing: float = 0.0
     loss_type: Optional[str] = None
+    truncation_mode: Literal['keep_end', 'keep_start'] = 'keep_end'
+    # DPO
     sft_beta: float = 0.1
     # SimPO
     simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
@@ -1768,6 +1770,7 @@ class RLHFArguments(SftArguments):
         self.set_default_loss_type()
         self.set_default_config()
         self.check_loss_type()
+        self.set_default_max_prompt_length()
 
     def set_default_beta(self):
         if self.beta is None:
@@ -1820,6 +1823,11 @@ class RLHFArguments(SftArguments):
             self.loss_type = 'sigmoid'
         elif self.rlhf_type == 'kto':
             self.loss_type = 'kto'
+
+    def set_default_max_prompt_length(self):
+        if self.max_prompt_length is None:
+            self.max_prompt_length = 4096 if self.is_vision else 512
+            logger.info(f'setting default max_prompt_length: {self.max_prompt_length}')
 
 
 @dataclass

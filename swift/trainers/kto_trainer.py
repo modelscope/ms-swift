@@ -1,5 +1,5 @@
 import heapq
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import torch
 from datasets import Dataset as HfDataset
@@ -7,7 +7,6 @@ from transformers import trainer
 from trl import KTOTrainer as HFKTOTrainer
 from trl.trainer import kto_trainer
 
-from swift.llm.utils.template import Context, History, Template
 from swift.utils import get_logger
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import SwiftMixin
@@ -28,79 +27,11 @@ def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder:
     return dataset.select(idx)
 
 
-def encode_batch(batch: Dict[str, List[Any]], template: Template):
-    """
-    Encode a batch from KTO specific dataset with given template
-
-    Args:
-    batch: A dictionary containing:
-        - prompt: The main prompt string
-        - completion: The completion string
-        - label: The label data
-        - history (optional): A list of historical queries/responses
-        - system (optional): A system string to use
-
-    template: swift Template object
-
-    Returns:
-    A dictionary with encoded prompt, completion, and label.
-    """
-
-    query: Optional[str] = batch.get('query', None)
-    history: Optional[History] = batch.get('history', None)
-    system: Optional[str] = batch.get('system', None)
-    if history is None:
-        history = []
-    if system is None:
-        if template.use_default_system:
-            system = template.default_system
-    else:
-        assert template.system_prefix is not None, 'not support `system`'
-
-    res_context_list: List[Context] = []
-    compute_loss_idx: List[float] = []
-
-    if system is None:
-        assert template.prefix != template.system_prefix, f'template.prefix: {template.prefix}'
-        prefix = template.prefix
-    else:
-        prefix = template.system_prefix
-
-    template._concat_context_list(prefix, res_context_list, compute_loss_idx, system=system)
-
-    for i, (q, r) in enumerate(history):
-        template._concat_context_list([*template.prompt, '{{RESPONSE}}', *template.chat_sep],
-                                      res_context_list,
-                                      compute_loss_idx,
-                                      query=q,
-                                      response=r,
-                                      round0=i)
-    template._concat_context_list(template.prompt, res_context_list, compute_loss_idx, query=query, round0=len(history))
-    res_context_list, compute_loss_idx = template._simplify_context_list(
-        res_context_list, compute_loss_idx, example=batch)
-    prompt = ''.join(res_context_list)
-
-    return {'prompt': prompt, 'completion': batch['response'], 'label': batch['label']}
-
-
 class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
 
-    def __init__(self, *args, template: Template, test_oom_error=False, **kwargs):
-        eval_dataset = kwargs.get('eval_dataset', None)
-        kwargs['train_dataset'] = kwargs['train_dataset'].map(
-            encode_batch,
-            fn_kwargs={'template': template},
-            desc='Encode dataset with template',
-        )
-        if eval_dataset is not None:
-            kwargs['eval_dataset'] = eval_dataset.map(
-                encode_batch,
-                fn_kwargs={'template': template},
-                desc='Encode dataset with template',
-            )
+    def __init__(self, *args, test_oom_error=False, **kwargs):
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
-        self.column_names = next(iter(kwargs.get('train_dataset'))).keys()
         super().__init__(*args, **kwargs)
         if not self.streaming:
             train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)

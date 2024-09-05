@@ -72,19 +72,36 @@ class SwiftMixin:
             model._hf_peft_config_loaded = True
         self.is_encoder_decoder = kwargs.pop('is_encoder_decoder', False)
         # mro
-        super().__init__(
-            model=model,
-            args=args,
-            data_collator=data_collator,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
-            model_init=model_init,
-            compute_metrics=compute_metrics,
-            callbacks=callbacks,
-            optimizers=optimizers,
-            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-            **kwargs)
+        super_class = kwargs.pop('super_class', None)
+        if super_class is not None:
+            super_class.__init__(
+                self,
+                model=model,
+                args=args,
+                data_collator=data_collator,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset,
+                tokenizer=tokenizer,
+                model_init=model_init,
+                compute_metrics=compute_metrics,
+                callbacks=callbacks,
+                optimizers=optimizers,
+                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+                **kwargs)
+        else:
+            super().__init__(
+                model=model,
+                args=args,
+                data_collator=data_collator,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset,
+                tokenizer=tokenizer,
+                model_init=model_init,
+                compute_metrics=compute_metrics,
+                callbacks=callbacks,
+                optimizers=optimizers,
+                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+                **kwargs)
         if not self.label_names:
             self.label_names = ['labels']
         if is_quantized and use_swift:
