@@ -7,6 +7,7 @@ from typing import Any, Callable, List, TypeVar, Union
 import numpy as np
 import requests
 import torch
+from packaging import version
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -267,17 +268,19 @@ def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
     return librosa.load(audio_io, sr=sampling_rate)[0]
 
 
-@load_file_decorator
-def load_video_qwen2(video_io: BytesIO):
+def load_video_qwen2(video_path: str):
     from .template import get_env_args
+    import torchvision
     from torchvision import io, transforms
     from qwen_vl_utils.vision_process import (round_by_factor, FPS, FRAME_FACTOR, FPS_MIN_FRAMES, FPS_MAX_FRAMES,
                                               VIDEO_MIN_PIXELS, VIDEO_MAX_PIXELS, VIDEO_TOTAL_PIXELS, smart_resize,
                                               ceil_by_factor, floor_by_factor)
     from torchvision.transforms import InterpolationMode
 
+    if version.parse(torchvision.__version__) >= version.parse('0.19'):
+        video_path = load_file(video_path)
     video, _, info = io.read_video(
-        video_io,
+        video_path,
         pts_unit='sec',
         output_format='TCHW',
     )
