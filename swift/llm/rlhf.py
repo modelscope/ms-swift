@@ -268,6 +268,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
+        lazy_tokenize=args.lazy_tokenize,
         **trainer_kwargs)
 
     trainer.sft_args = args

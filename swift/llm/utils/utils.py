@@ -269,7 +269,7 @@ class LazyLLMDataset(Dataset):
             data = self.dataset[i]
             try:
                 if self.encode_func:
-                    res = self.encode_func(data)
+                    res = self.encode_func(data), {}
                 else:
                     res = self.template.encode(data)
             except Exception as e:

@@ -36,6 +36,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.is_encoder_decoder = model.config.is_encoder_decoder
         self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
         self.tokenizer = kwargs['tokenizer']
+        self.lazy_tokenize = kwargs.pop('lazy_tokenize', False)
         self.sft_beta = sft_beta
         self.beta = args.beta
         self.loss_type = args.loss_type
@@ -76,7 +77,7 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
                 self.ref_model.eval()
 
-        if not self.streaming:
+        if not self.streaming and not self.lazy_tokenize:
             train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
 
             if self.eval_dataset is not None:
