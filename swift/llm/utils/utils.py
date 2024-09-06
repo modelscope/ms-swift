@@ -248,8 +248,12 @@ class ConstantLengthDataset(IterableDataset):
 
 class LazyLLMDataset(Dataset):
 
-    def __init__(self, dataset: HfDataset, template: Template, *, try_fetch_time: int = 20,
-                 encode_func: Callable=None) -> None:
+    def __init__(self,
+                 dataset: HfDataset,
+                 template: Template,
+                 *,
+                 try_fetch_time: int = 20,
+                 encode_func: Callable = None) -> None:
         self.dataset = dataset
         self.template = template
         self.try_fetch_time = min(try_fetch_time, len(self.dataset))
