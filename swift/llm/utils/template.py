@@ -118,6 +118,7 @@ class TemplateType:
     gemma = 'gemma'
     paligemma = 'paligemma'
     mplug_owl2 = 'mplug-owl2'
+    mplug_owl3 = 'mplug_owl3'
     wizardlm2_awq = 'wizardlm2-awq'
     wizardlm2 = 'wizardlm2'
     atom = 'atom'
@@ -3108,6 +3109,45 @@ class mPlugOwl2Template(Template):
 
 register_template(
     TemplateType.mplug_owl2, mPlugOwl2Template(), infer_media_type='round', use_model=True, lazy_tokenize=True)
+
+
+class mPlugOwl3Template(QwenTemplateMixin, Template):
+    system = None
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
+        assert media_type == 'image'
+        return [[-100], '\n']
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example['images']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, -100)
+        processor = self.tokenizer.processor
+        if images:
+            image_inputs = processor.image_processor(images, cut_enable=True, return_tensors='pt')
+            added_tokens_len = 0
+            if image_inputs.get('cut_shape', None) is not None:
+                cut_shapes = image_inputs['cut_shape']
+                for idx, cut_shape in zip(idx_list, cut_shapes):
+                    text = processor.image_processor.cut_prompt_template(
+                        img_token='<|image|>', h=cut_shape[0], w=cut_shape[1])
+                    token_list = self.tokenizer.encode(text, add_special_tokens=False)
+                    input_ids = input_ids[:idx + added_tokens_len] + token_list + input_ids[added_tokens_len + idx + 1:]
+                    if labels:
+                        labels = labels[:idx + added_tokens_len] + [-100] * len(token_list) + labels[added_tokens_len
+                                                                                                     + idx + 1:]
+                    added_tokens_len += len(token_list) - 1
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+        inputs['pixel_values'] = image_inputs['pixel_values']
+        return inputs, {}
+
+
+register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)
 
 register_template(TemplateType.wizardlm2_awq,
                   Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'], ['</s>']))
