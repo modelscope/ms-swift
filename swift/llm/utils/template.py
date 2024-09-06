@@ -2614,14 +2614,17 @@ class LLavaQwenTemplate(QwenTemplateMixin, LLavaTemplate):
 register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
 
 
-def _findall(token_list: List[int], token: int) -> List[int]:
+def _findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
     """Find the index of a token in the token_list."""
+    if isinstance(sub_token_list, int):
+        sub_token_list = [sub_token_list]
     res = []
     idx = -1
     try:
         while True:
-            idx = token_list.index(token, idx + 1)
-            res.append(idx)
+            idx = token_list.index(sub_token_list[0], idx + 1)
+            if len(sub_token_list) == 1 or sub_token_list == token_list[idx:idx + len(sub_token_list)]:
+                res.append(idx)
     except ValueError:
         pass
     return res
