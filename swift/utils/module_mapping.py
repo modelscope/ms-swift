@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from typing import List, Union
 
 
 @dataclass
@@ -43,9 +43,9 @@ class ModelKeys:
 
 @dataclass
 class MultiModelKeys(ModelKeys):
-    language_model: List[str] = field(default_factory=list)
-    connector: List[str] = field(default_factory=list)
-    vision_tower: List[str] = field(default_factory=list)
+    language_model: Union[List[str], str] = field(default_factory=list)
+    connector: Union[List[str], str] = field(default_factory=list)
+    vision_tower: Union[List[str], str] = field(default_factory=list)
 
     def __post_init__(self):
         # compat
@@ -235,7 +235,7 @@ PHI3V_KEYS = MultiModelKeys(
 
 COGVLM_KEYS = MultiModelKeys(
     language_model='model.layers',
-    connector=None,
+    connector=[],
     vision_tower='model.vision',
 )
 
@@ -247,13 +247,13 @@ FLORENCE_KEYS = MultiModelKeys(
 
 QWEN_VL_KEYS = MultiModelKeys(
     language_model='transformer.h',
-    connector=None,
+    connector=[],
     vision_tower='transformer.visual',
 )
 
 QWEN_AUDIO_KEYS = MultiModelKeys(
     language_model='transformer.h',
-    connector=None,
+    connector=[],
     vision_tower='transformer.audio',
 )
 
@@ -265,13 +265,13 @@ QWEN2_AUDIO_KEYS = MultiModelKeys(
 
 QWEN2_VL_KEYS = MultiModelKeys(
     language_model='model',
-    connector=None,
+    connector=[],
     vision_tower='visual',
 )
 
 GLM4V_KEYS = MultiModelKeys(
     language_model='transformer.encoder',
-    connector=None,
+    connector=[],
     vision_tower='transformer.vision',
 )
 
