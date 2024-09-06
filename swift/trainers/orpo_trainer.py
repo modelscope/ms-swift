@@ -30,6 +30,7 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         self.streaming = kwargs.pop('streaming', False)
         self.is_vision_model = kwargs.pop('is_vision', False)
         self.vision_keys = kwargs.pop('vision_keys', None)
+        self.lazy_tokenize = kwargs.pop('lazy_tokenize', False)
         self.max_length = args.max_length
         self.generate_during_eval = args.generate_during_eval
         self.is_encoder_decoder = model.config.is_encoder_decoder
@@ -54,7 +55,7 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         kwargs['super_class'] = Trainer
         SwiftMixin.__init__(self, model, args, **kwargs)
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
-        if not self.streaming:
+        if not self.streaming and not self.lazy_tokenize:
             train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
 
             if self.eval_dataset is not None:
