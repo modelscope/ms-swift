@@ -2615,14 +2615,17 @@ class LLavaQwenTemplate(QwenTemplateMixin, LLavaTemplate):
 register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
 
 
-def _findall(token_list: List[int], token: int) -> List[int]:
+def _findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
     """Find the index of a token in the token_list."""
+    if isinstance(sub_token_list, int):
+        sub_token_list = [sub_token_list]
     res = []
     idx = -1
     try:
         while True:
-            idx = token_list.index(token, idx + 1)
-            res.append(idx)
+            idx = token_list.index(sub_token_list[0], idx + 1)
+            if len(sub_token_list) == 1 or sub_token_list == token_list[idx:idx + len(sub_token_list)]:
+                res.append(idx)
     except ValueError:
         pass
     return res
@@ -3114,6 +3117,19 @@ register_template(
 class mPlugOwl3Template(QwenTemplateMixin, Template):
     system = None
 
+    def _get_image_token_list(self, cut_shape):
+        processor = self.tokenizer.processor
+        text = processor.image_processor.cut_prompt_template(img_token='<|image|>', h=cut_shape[0], w=cut_shape[1])
+        text_list = text.split('<|image|>')
+        if text_list[-1] == '':
+            text_list.pop()
+        res_text_list = []
+        for text in text_list[:-1]:
+            res_text_list += [text, '<|image|>']
+        res_text_list.append('<|image|>')
+        token_list = self._encode_context_list(res_text_list)[0]
+        return token_list
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         assert media_type == 'image'
         return [[-100], '\n']
@@ -3130,21 +3146,28 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         if images:
             image_inputs = processor.image_processor(images, cut_enable=True, return_tensors='pt')
             added_tokens_len = 0
-            if image_inputs.get('cut_shape', None) is not None:
-                cut_shapes = image_inputs['cut_shape']
-                for idx, cut_shape in zip(idx_list, cut_shapes):
-                    text = processor.image_processor.cut_prompt_template(
-                        img_token='<|image|>', h=cut_shape[0], w=cut_shape[1])
-                    token_list = self.tokenizer.encode(text, add_special_tokens=False)
-                    input_ids = input_ids[:idx + added_tokens_len] + token_list + input_ids[added_tokens_len + idx + 1:]
-                    if labels:
-                        labels = labels[:idx + added_tokens_len] + [-100] * len(token_list) + labels[added_tokens_len
-                                                                                                     + idx + 1:]
-                    added_tokens_len += len(token_list) - 1
+            cut_shapes = image_inputs['cut_shape']
+            image_token_list = self.tokenizer.encode('<|image|>', add_special_tokens=False)
+            for idx, cut_shape in zip(idx_list, cut_shapes):
+                token_list = self._get_image_token_list(cut_shape)
+                input_ids = input_ids[:idx + added_tokens_len] + token_list + input_ids[added_tokens_len + idx + 1:]
+                if labels:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(token_list) + labels[added_tokens_len + idx
+                                                                                                 + 1:]
+                added_tokens_len += len(token_list) - 1
+            image_token_idx = torch.tensor(_findall(input_ids, image_token_list))[None]
+            _range = torch.arange(len(input_ids))[:, None]
+            matrix = (_range > image_token_idx).sum(dim=1)
+            media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
+            inputs['_data'] = {'pixel_values': image_inputs['pixel_values']}
+            inputs['media_offset'] = media_offset
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
-        inputs['pixel_values'] = image_inputs['pixel_values']
         return inputs, {}
+
+    def _post_encode(self, data: Any) -> Dict[str, Any]:
+        image_embeds = self.model.forward_image(data['pixel_values'])
+        return {'image_embeds': image_embeds}
 
 
 register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)

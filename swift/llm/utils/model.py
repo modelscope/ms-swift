@@ -2630,6 +2630,8 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
+    func_list = ['generate', 'forward']
+    _use_submodel_func(model, 'language_model', func_list)
     return model, tokenizer
 
 
@@ -4178,30 +4180,9 @@ def get_model_tokenizer_deepseek2(model_dir: str,
                                   model_kwargs: Dict[str, Any],
                                   load_model: bool = True,
                                   **kwargs):
-    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config._attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
-    model, tokenizer = get_model_tokenizer_from_repo(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    model, tokenizer = get_model_tokenizer_deepseek_moe(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model is not None:
         model.generation_config.pad_token_id = model.generation_config.eos_token_id
-        # fix dtype bug
-        mlp_cls = model.model.layers[1].mlp.__class__
-        for module in model.modules():
-            if isinstance(module, mlp_cls):
-                if not hasattr(module, '__old_forward'):  # Avoid double patching
-                    __old_forward = module._old_forward if hasattr(module, '_old_forward') else module.forward
-
-                    def _new_forward(hidden_states, *, __old_forward) -> Tensor:
-                        dtype = hidden_states.dtype
-                        return __old_forward(hidden_states).to(dtype)
-
-                    _new_forward = partial(_new_forward, __old_forward=__old_forward)
-                    if hasattr(module, '_old_forward'):  # device_map
-                        module._old_forward = _new_forward
-                    else:
-                        module.forward = _new_forward
-                    module.__old_forward = __old_forward
     return model, tokenizer
 
 
@@ -4432,8 +4413,11 @@ def get_model_tokenizer_internvl(model_dir: str,
         tokenizer.eos_token = '<|im_end|>'
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+    use_flash_attn = kwargs.pop('use_flash_attn', None)
+    if use_flash_attn:
+        model_config.llm_config.attn_implementation = 'flash_attention_2'
+    elif use_flash_attn is False:
+        model_config.llm_config.attn_implementation = 'eager'
     model_quant_config = getattr(model_config, 'quantization_config', None)
 
     use_bnb = False
