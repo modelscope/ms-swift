@@ -339,9 +339,11 @@ def get_regex_for_mm_default_lora(model_type: str):
     if not isinstance(mapping, MultiModelKeys):
         return None
     llm = mapping.language_model
-    connectors = mapping.connector
-    _regex = f'^({llm}'
-    for connector in connectors:
-        _regex += f'|{connector}'
-    _regex += ')(?!.*(lm_head|output|emb|wte|shared)).*'
-    return _regex
+    connector = mapping.connector
+    assert isinstance(llm, (tuple, list)) and isinstance(connector, (list, tuple)), f'llm: {llm}, connector: {connector}'
+    _regex = []
+    for module in llm + connector:
+        _regex.append(f'{module}')
+    regex = '|'.join(_regex)
+    regex = f'^({regex})(?!.*(lm_head|output|emb|wte|shared)).*'
+    return regex
