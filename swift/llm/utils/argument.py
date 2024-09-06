@@ -1050,8 +1050,8 @@ class SftArguments(ArgumentsBase):
                 vision_tower = None
                 if isinstance(lora_target_modules, str):
                     vision_tower = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
-                if vision_tower is not None:
-                    self.freeze_parameters.append(vision_tower)
+                if vision_tower:
+                    self.freeze_parameters += vision_tower
             assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "

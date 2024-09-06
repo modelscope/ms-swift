@@ -1,9 +1,9 @@
-import dataclasses
 from collections import OrderedDict
-from typing import Optional, Union
+from dataclasses import dataclass, field
+from typing import List, Union
 
 
-@dataclasses.dataclass
+@dataclass
 class ModelKeys:
 
     model_type: str = None
@@ -41,16 +41,20 @@ class ModelKeys:
     output: str = None
 
 
-@dataclasses.dataclass
+@dataclass
 class MultiModelKeys(ModelKeys):
+    language_model: Union[List[str], str] = field(default_factory=list)
+    connector: Union[List[str], str] = field(default_factory=list)
+    vision_tower: Union[List[str], str] = field(default_factory=list)
 
-    language_model: str = None
-
-    projector: Optional[str] = None
-
-    vision_tower: str = None
-
-    vision_resampler: str = None
+    def __post_init__(self):
+        # compat
+        for key in ['language_model', 'connector', 'vision_tower']:
+            v = getattr(self, key)
+            if isinstance(v, str):
+                setattr(self, key, [v])
+            if v is None:
+                setattr(self, key, [])
 
 
 LLAMA_KEYS = ModelKeys(
@@ -183,98 +187,97 @@ DEEPSEEK_V2_KEYS = ModelKeys(
 
 LLAVA_KEYS = MultiModelKeys(
     language_model='language_model',
-    projector='multi_modal_projector',
+    connector='multi_modal_projector',
     vision_tower='vision_tower',
 )
 
 LLAVA_NEXT_VIDEO_KEYS = MultiModelKeys(
     language_model='language_model',
-    projector='multi_modal_projector',
+    connector=['multi_modal_projector', 'vision_resampler'],
     vision_tower='vision_tower',
-    vision_resampler='vision_resampler',
 )
 
 LLAVA_LLAMA_KEYS = MultiModelKeys(
     language_model='model.layers',
-    projector='model.mm_projector',
+    connector='model.mm_projector',
     vision_tower='model.vision_tower',
 )
 
 INTERNLM_XCOMPOSER_KEYS = MultiModelKeys(
     language_model='model',
-    projector='vision_proj',
+    connector='vision_proj',
     vision_tower='vit',
 )
 
 INTERNVL_KEYS = MultiModelKeys(
     language_model='language_model',
-    projector='mlp1',
+    connector='mlp1',
     vision_tower='vision_model',
 )
 
 DEEPSEEK_VL_KEYS = MultiModelKeys(
     language_model='language_model',
-    projector='aligner',
+    connector='aligner',
     vision_tower='vision_model',
 )
 
 MINICPM_V_KEYS = MultiModelKeys(
     language_model='llm',
-    projector='resampler',
+    connector='resampler',
     vision_tower='vpm',
 )
 
 PHI3V_KEYS = MultiModelKeys(
     language_model='model.layers',
-    projector='model.vision_embed_tokens.img_projection',
+    connector='model.vision_embed_tokens.img_projection',
     vision_tower='model.vision_embed_tokens.img_processor',
 )
 
 COGVLM_KEYS = MultiModelKeys(
     language_model='model.layers',
-    projector=None,
+    connector=[],
     vision_tower='model.vision',
 )
 
 FLORENCE_KEYS = MultiModelKeys(
     language_model='language_model',
-    projector='image_projection',
+    connector='image_projection',
     vision_tower='vision_tower',
 )
 
 QWEN_VL_KEYS = MultiModelKeys(
     language_model='transformer.h',
-    projector=None,
+    connector=[],
     vision_tower='transformer.visual',
 )
 
 QWEN_AUDIO_KEYS = MultiModelKeys(
     language_model='transformer.h',
-    projector=None,
+    connector=[],
     vision_tower='transformer.audio',
 )
 
 QWEN2_AUDIO_KEYS = MultiModelKeys(
     language_model='language_model',
-    projector='multi_modal_projector',
+    connector='multi_modal_projector',
     vision_tower='audio_tower',
 )
 
 QWEN2_VL_KEYS = MultiModelKeys(
     language_model='model',
-    projector=None,
+    connector=[],
     vision_tower='visual',
 )
 
 GLM4V_KEYS = MultiModelKeys(
     language_model='transformer.encoder',
-    projector=None,
+    connector=[],
     vision_tower='transformer.vision',
 )
 
 IDEFICS3_KEYS = MultiModelKeys(
     language_model='model.text_model',
-    projector='model.connector',
+    connector='model.connector',
     vision_tower='model.vision_model',
 )
 
@@ -336,9 +339,12 @@ def get_regex_for_mm_default_lora(model_type: str):
     if not isinstance(mapping, MultiModelKeys):
         return None
     llm = mapping.language_model
-    projector = mapping.projector
-    _regex = f'^({llm}'
-    if projector:
-        _regex += f'|{projector}'
-    _regex += ')(?!.*(lm_head|output|emb|wte|shared)).*'
-    return _regex
+    connector = mapping.connector
+    assert isinstance(llm, (list, tuple)) and isinstance(connector,
+                                                         (list, tuple)), f'llm: {llm}, connector: {connector}'
+    _regex = []
+    for module in llm + connector:
+        _regex.append(f'{module}')
+    regex = '|'.join(_regex)
+    regex = f'^({regex})(?!.*(lm_head|output|emb|wte|shared)).*'
+    return regex
