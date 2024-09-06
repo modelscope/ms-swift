@@ -248,10 +248,12 @@ class ConstantLengthDataset(IterableDataset):
 
 class LazyLLMDataset(Dataset):
 
-    def __init__(self, dataset: HfDataset, template: Template, *, try_fetch_time: int = 20) -> None:
+    def __init__(self, dataset: HfDataset, template: Template, *, try_fetch_time: int = 20,
+                 encode_func: Callable=None) -> None:
         self.dataset = dataset
         self.template = template
         self.try_fetch_time = min(try_fetch_time, len(self.dataset))
+        self.encode_func = encode_func
         assert self.try_fetch_time >= 1
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
@@ -266,7 +268,10 @@ class LazyLLMDataset(Dataset):
         for i in [first_idx] + idx.tolist():
             data = self.dataset[i]
             try:
-                res = self.template.encode(data)
+                if self.encode_func:
+                    res = self.encode_func(data)
+                else:
+                    res = self.template.encode(data)
             except Exception as e:
                 logger.error(f'Error occurs in lazy tokenize: {e}')
                 continue

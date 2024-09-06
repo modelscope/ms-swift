@@ -14,9 +14,11 @@ from trl.models import create_reference_model
 from swift.trainers import RLHFTrainerFactory, get_preprocessed_rlhf_dataset, patch_trl
 from swift.utils import (append_to_jsonl, check_json_format, get_dist_setting, get_logger, get_main, get_model_info,
                          is_ddp_plus_mp, is_dist, is_master, plot_images, seed_everything, show_layers)
+from . import LazyLLMDataset, print_example
 from .sft import _get_train_val_dataset
 from .tuner import prepare_model
 from .utils import RLHFArguments, Template, get_model_tokenizer, get_template, get_time_info, set_generation_config
+from ..trainers.utils import get_preprocess_func
 
 logger = get_logger()
 
@@ -217,18 +219,35 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         )
     patch_trl(args.is_vision)
     is_encoder_decoder = model.config.is_encoder_decoder
-    train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
-        train_dataset,
-        val_dataset,
-        template=template,
-        rlhf_type=args.rlhf_type,
-        vision_keys=vision_keys,
-        max_length=args.max_length,
-        max_prompt_length=args.max_prompt_length,
-        truncation_mode=args.truncation_mode,
-        streaming=streaming,
-        is_encoder_decoder=is_encoder_decoder,
-        **preprocess_kwargs)
+
+    if args.lazy_tokenize:
+        preprocess_func = get_preprocess_func(
+            template=template,
+            rlhf_type=args.rlhf_type,
+            vision_keys=vision_keys,
+            streaming=streaming,
+            max_length=args.max_length,
+            max_prompt_length=args.max_prompt_length,
+            truncation_mode=args.truncation_mode,
+            is_encoder_decoder=is_encoder_decoder)
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
+        train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)
+        if val_dataset is not None:
+            val_dataset = LazyLLMDataset(val_dataset, template, encode_func=preprocess_func)
+    else:
+        train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
+            train_dataset,
+            val_dataset,
+            template=template,
+            rlhf_type=args.rlhf_type,
+            vision_keys=vision_keys,
+            max_length=args.max_length,
+            max_prompt_length=args.max_prompt_length,
+            truncation_mode=args.truncation_mode,
+            streaming=streaming,
+            is_encoder_decoder=is_encoder_decoder,
+            **preprocess_kwargs)
 
     # Trainer
     logger.info(f'training_args: {training_args}')
