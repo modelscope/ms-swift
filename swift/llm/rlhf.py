@@ -228,7 +228,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             max_prompt_length=args.max_prompt_length,
             truncation_mode=args.truncation_mode,
             is_encoder_decoder=is_encoder_decoder)
-        td0, tkwargs0 = template.encode(train_dataset[0])
+        td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)
         if val_dataset is not None:
