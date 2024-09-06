@@ -339,9 +339,9 @@ def get_regex_for_mm_default_lora(model_type: str):
     if not isinstance(mapping, MultiModelKeys):
         return None
     llm = mapping.language_model
-    connector = mapping.connector
+    connectors = mapping.connector
     _regex = f'^({llm}'
-    if connector:
+    for connector in connectors:
         _regex += f'|{connector}'
     _regex += ')(?!.*(lm_head|output|emb|wte|shared)).*'
     return _regex
