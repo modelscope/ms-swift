@@ -217,7 +217,7 @@ INTERNVL_KEYS = MultiModelKeys(
 
 MPLUG_OWL3_KEYS = MultiModelKeys(
     language_model='language_model',
-    projector='vision2text_model',
+    connector='vision2text_model',
     vision_tower='vision_model',
 )
 
