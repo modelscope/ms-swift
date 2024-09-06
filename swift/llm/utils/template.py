@@ -1061,6 +1061,8 @@ class Template:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
         tokenizer = self.tokenizer
+        if hasattr(generate_ids, 'tolist'):
+            generate_ids = generate_ids.tolist()
         # avoid printing template.suffix[-1])
         if isinstance(self.suffix[-1], list) and (not is_finished or is_finished
                                                   and generate_ids[-len(self.suffix[-1]):] == self.suffix[-1]):

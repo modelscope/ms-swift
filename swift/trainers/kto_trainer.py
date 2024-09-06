@@ -32,8 +32,9 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
     def __init__(self, *args, test_oom_error=False, **kwargs):
         self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
+        self.lazy_tokenize = kwargs.pop('lazy_tokenize', False)
         super().__init__(*args, **kwargs)
-        if not self.streaming:
+        if not self.streaming and not self.lazy_tokenize:
             train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
 
             if self.eval_dataset is not None:
@@ -41,6 +42,8 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
                 self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
             else:
                 self.dataset_info = {'train_dataset': train_ds_info}
+        else:
+            self.dataset_info = {}
         if test_oom_error:
             self.train_dataset = sort_by_max_length(self.train_dataset, 20000, self.is_encoder_decoder)
         # performance
