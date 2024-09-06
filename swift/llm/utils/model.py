@@ -2618,7 +2618,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     'iic/mPLUG-Owl3-7B-240728',
     LoRATM.mplug_owl3,
     TemplateType.mplug_owl3,
-    requires=['transformers>=4.36', 'icecream'],
+    requires=['transformers>=4.36', 'icecream'],  # decord
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='mPLUG/mPLUG-Owl3-7B-240728')
