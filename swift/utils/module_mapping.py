@@ -340,7 +340,7 @@ def get_regex_for_mm_default_lora(model_type: str):
         return None
     llm = mapping.language_model
     connector = mapping.connector
-    assert isinstance(llm, (tuple, list)) and isinstance(connector,
+    assert isinstance(llm, (list, tuple)) and isinstance(connector,
                                                          (list, tuple)), f'llm: {llm}, connector: {connector}'
     _regex = []
     for module in llm + connector:
