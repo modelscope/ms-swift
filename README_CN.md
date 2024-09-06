@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.09.06: 支持mplug-owl3的微调和推理, 使用`swift infer --model_type mplug-owl3-7b-chat`进行体验.
 - 2024.09.05: 支持minicpm3-4b模型. 使用`swift infer --model_type minicpm3-4b`进行体验.
 - 2024.09.05: 支持yi-coder系列模型. 使用`swift infer --model_type yi-coder-1_5b-chat`进行体验.
 - 🔥2024.08.30: 支持qwen2-vl系列模型的推理与微调: qwen2-vl-2b-instruct, qwen2-vl-7b-instruct. 最佳实践可以查看[这里](docs/source/Multi-Modal/qwen2-vl最佳实践.md).
@@ -617,7 +618,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llava-HF               | [Llava-HF系列模型](https://huggingface.co/llava-hf)                          | 英文       | 0.5B-110B           | chat模型           |
 | Llava1.5<br>Llava1.6                                    | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文       | 7B-34B           | chat模型           |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 7B-110B          | chat模型           |
-| mPLUG-Owl                                               | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 11B              | chat模型           |
+| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3           | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 11B              | chat模型           |
 | InternVL<br>Mini-InternVL<br>InternVL2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 1B-40B<br>包含量化版本 | chat模型           |
 | Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文       | 8B               | chat模型       |
 | Phi3-Vision                                             | 微软                                                                         | 英文       | 4B               | chat模型       |

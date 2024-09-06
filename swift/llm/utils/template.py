@@ -3126,9 +3126,8 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         if text_list[-1] == '':
             text_list.pop()
         res_text_list = []
-        for text in text_list[:-1]:
+        for text in text_list:
             res_text_list += [text, '<|image|>']
-        res_text_list.append('<|image|>')
         token_list = self._encode_context_list(res_text_list)[0]
         return token_list
 
