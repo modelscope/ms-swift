@@ -240,9 +240,7 @@ def load_video_llava(video_io: BytesIO) -> np.ndarray:
 
 
 @load_file_decorator
-def load_video_minicpmv(video_io: BytesIO):
-    MAX_NUM_FRAMES = 64
-
+def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
     from PIL import Image
     from decord import VideoReader, cpu  # pip install decord
 
@@ -255,8 +253,8 @@ def load_video_minicpmv(video_io: BytesIO):
     sample_fps = round(vr.get_avg_fps() / 1)  # FPS
     frame_idx = [i for i in range(0, len(vr), sample_fps)]
 
-    if len(frame_idx) > MAX_NUM_FRAMES:
-        frame_idx = uniform_sample(frame_idx, MAX_NUM_FRAMES)
+    if len(frame_idx) > max_num_frames:
+        frame_idx = uniform_sample(frame_idx, max_num_frames)
     frames = vr.get_batch(frame_idx).asnumpy()
     frames = [Image.fromarray(v.astype('uint8')) for v in frames]
     return frames

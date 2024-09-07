@@ -215,6 +215,12 @@ INTERNVL_KEYS = MultiModelKeys(
     vision_tower='vision_model',
 )
 
+MPLUG_OWL3_KEYS = MultiModelKeys(
+    language_model='language_model',
+    connector='vision2text_model',
+    vision_tower='vision_model',
+)
+
 DEEPSEEK_VL_KEYS = MultiModelKeys(
     language_model='language_model',
     connector='aligner',
@@ -326,6 +332,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('phi3-small', LLAMA_KEYS),
     ('phi3', LLAMA_KEYS),
     ('minicpm', LLAMA_KEYS),
+    ('mplug_owl3', MPLUG_OWL3_KEYS),
 ])
 
 

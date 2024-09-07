@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.09.06: Support fine-tuning and inference for mplug-owl3. Use `swift infer --model_type mplug-owl3-7b-chat` to experience it.
 - 2024.09.05: Support for the minicpm3-4b model. Experience it using `swift infer --model_type minicpm3-4b`.
 - 2024.09.05: Support for the yi-coder series models. Experience it using `swift infer --model_type yi-coder-1_5b-chat`.
 - 🔥2024.08.30: Support for inference and fine-tuning of the qwen2-vl series models: qwen2-vl-2b-instruct, qwen2-vl-7b-instruct. The best practices can be found [here](docs/source_en/Multi-Modal/qwen2-vl-best-practice.md).
@@ -624,7 +625,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llava-HF                                                   | [Llava-HF series models](https://huggingface.co/llava-hf)                          | English       | 0.5B-110B           | chat model           |
 | Llava1.5<br>Llava1.6                                       | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                             | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
-| mPLUG-Owl                                                  | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
+| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3                | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
 | InternVL<br>Mini-InternVL<br>InternVL2                     | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 1B-40B<br>including quantized version | chat model               |
 | Llava-llama3                                               | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)             | English            | 8B                                    | chat model               |
 | Phi3-Vision                                                | Microsoft                                                                              | English            | 4B                                    | chat model               |
