@@ -58,6 +58,7 @@ class TemplateType:
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    reflection = 'reflection'
     longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
     llava1_5 = 'llava1_5'
@@ -1622,6 +1623,14 @@ class Llama3Template(Llama3TemplateMixin, Template):
     pass
 
 
+class ReflectionTemplate(Llama3TemplateMixin, Template):
+    system = ('You are a world-class AI system, capable of complex reasoning and reflection. '
+              'Reason through the query inside <thinking> tags, and then provide your final '
+              'response inside <output> tags. If you detect that you made a mistake in your reasoning '
+              'at any point, correct yourself inside <reflection> tags.')
+
+
+register_template(TemplateType.reflection, ReflectionTemplate())
 register_template(TemplateType.llama3, Llama3Template())
 
 OPENBUDDY_DEFAULT_SYSTEM = (

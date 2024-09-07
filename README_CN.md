@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.09.07: 支持`Reflection-llama3-70b`模型， 使用`swift sft/infer --model_type reflection-llama_3_1-70b`命令即可训练和推理.
 - 2024.09.06: 支持mplug-owl3的微调和推理, 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1969).
 - 2024.09.05: 支持minicpm3-4b模型. 使用`swift infer --model_type minicpm3-4b`进行体验.
 - 2024.09.05: 支持yi-coder系列模型. 使用`swift infer --model_type yi-coder-1_5b-chat`进行体验.

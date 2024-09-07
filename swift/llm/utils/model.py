@@ -208,6 +208,8 @@ class ModelType:
     llama3_1_405b_instruct_awq = 'llama3_1-405b-instruct-awq'
     llama3_1_405b_instruct_gptq_int4 = 'llama3_1-405b-instruct-gptq-int4'
     llama3_1_405b_instruct_bnb = 'llama3_1-405b-instruct-bnb'
+    # reflection
+    reflection_llama_3_1_70b = 'reflection-llama_3_1-70b'
     # long writer
     longwriter_glm4_9b = 'longwriter-glm4-9b'
     longwriter_llama3_1_8b = 'longwriter-llama3_1-8b'
@@ -4720,6 +4722,15 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.43', 'bitsandbytes'],
     hf_model_id='unsloth/Meta-Llama-3.1-70B-Instruct-bnb-4bit')
+@register_model(
+    ModelType.reflection_llama_3_1_70b,
+    'LLM-Research/Reflection-Llama-3.1-70B',
+    LoRATM.llama,
+    TemplateType.reflection,
+    support_flash_attn=True,
+    support_vllm=True,
+    requires=['transformers>=4.43'],
+    hf_model_id='mattshumer/Reflection-Llama-3.1-70B')
 @register_model(
     ModelType.llama3_1_70b_instruct_gptq_int4,
     'LLM-Research/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4',
