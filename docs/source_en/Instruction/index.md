@@ -1,6 +1,6 @@
 ## Instructions
 
-[English Documentation](https://swift.readthedocs.io/en/latest/Instruction/index.html)
+[中文文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/index.html)
 
 ### 🐔Features
 
