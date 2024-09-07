@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.09.07: Support the `Reflection-llama3-70b` model, use by `swift sft/infer --model_type reflection-llama_3_1-70b`.
 - 2024.09.05: Support for the minicpm3-4b model. Experience it using `swift infer --model_type minicpm3-4b`.
 - 2024.09.05: Support for the yi-coder series models. Experience it using `swift infer --model_type yi-coder-1_5b-chat`.
 - 🔥2024.08.30: Support for inference and fine-tuning of the qwen2-vl series models: qwen2-vl-2b-instruct, qwen2-vl-7b-instruct. The best practices can be found [here](docs/source_en/Multi-Modal/qwen2-vl-best-practice.md).
