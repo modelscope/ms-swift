@@ -76,8 +76,7 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                 self.dataset_info = {'train_dataset': train_ds_info}
         else:
             self.dataset_info = {}
-        if test_oom_error:
-            self.train_dataset = sort_by_max_length(self.train_dataset, 20000, self.is_encoder_decoder)
+
         # performance
         self.perf: Dict[str, Any] = {
             'gen_time': 0.,
