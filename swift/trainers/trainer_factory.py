@@ -35,8 +35,6 @@ class TrainerFactory:
         trainer_kwargs = {}
         if args.train_type == 'sft':
             trainer_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
-        elif args.train_type == 'dpo':
-            trainer_kwargs['rpo_alpha'] = args.rpo_alpha
         return trainer_cls, trainer_kwargs
 
     @classmethod
@@ -45,6 +43,8 @@ class TrainerFactory:
         training_args_kwargs = {}
         if args.train_type == 'sft':
             training_args_kwargs['predict_with_generate'] = args.predict_with_generate
+        elif args.train_type == 'dpo':
+            training_args_kwargs['rpo_alpha'] = args.rpo_alpha
         return training_args_cls, training_args_kwargs
 
     @staticmethod
@@ -56,4 +56,4 @@ class TrainerFactory:
         template.__class__._old_encode = template.__class__.encode
         template.__class__._old_data_collator = template.__class__.data_collator
         template.__class__.encode = template_mixin.encode
-        template.__class__.data_collator = template_mixin.encode
+        template.__class__.data_collator = template_mixin.data_collator

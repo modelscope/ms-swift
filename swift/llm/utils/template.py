@@ -3212,9 +3212,9 @@ class RLHFTemplateMixin:
     def encode(self: Template,
                example: Dict[str, Any],
                streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        template_encode = self._old_encode
         inputs = {}
         tokenizer_kwargs = {}
-        template_encode = self._old_encode
         chosen_example, rejected_example = example, example.copy()
         rejected_example['response'] = example['rejected_response']
         if streaming:
@@ -3232,7 +3232,17 @@ class RLHFTemplateMixin:
         return inputs, tokenizer_kwargs
 
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        print()
+        _data_collator = self._old_data_collator
+        new_batch = []
+        for inputs in batch:
+            for prefix in ['chosen_', 'rejected_']:
+                new_inputs = {}
+                for k, v in inputs.items():
+                    if k.startswith(prefix):
+                        new_k = k[len(prefix):]
+                        new_inputs[new_k] = inputs[k]
+                new_batch.append(new_inputs)
+        return _data_collator(new_batch, padding_to)
 
 
 def get_template(

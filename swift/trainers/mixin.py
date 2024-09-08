@@ -617,19 +617,26 @@ class RLHFTrainerMixin:
                  *_args,
                  **kwargs):
         self.ref_model = ref_model
-        self.is_vision_model = False
-        self.args = kwargs['args']
+        self._stored_metrics = defaultdict(lambda: defaultdict(list))
+        # not use
+        tokenizer = kwargs['tokenizer']
         self.is_encoder_decoder = kwargs['is_encoder_decoder']
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
-        self._stored_metrics = defaultdict(lambda: defaultdict(list))
+        self.label_pad_token_id = -100
+        self.padding_value = tokenizer.pad_token_id 
+        self.is_vision_model = False
+        self.use_dpo_data_collator = True
+        self._peft_has_been_casted_to_bf16 = False
 
-        self.f_divergence_type = self.args.f_divergence_type
-        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: self.args.f_alpha_divergence_coef}
-        if self.args.disable_dropout:
+        args = kwargs['args']
+        self.precompute_ref_log_probs = args.precompute_ref_log_probs
+        self.f_divergence_type = args.f_divergence_type
+        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
+        if args.disable_dropout:
             disable_dropout_in_model(model)
             if self.ref_model is not None:
                 disable_dropout_in_model(self.ref_model)
-        super().__init__(self, model, *_args, **kwargs)
+        super().__init__(model, *_args, **kwargs)
 
         if self.ref_model is not None:
             if self.is_deepspeed_enabled:
