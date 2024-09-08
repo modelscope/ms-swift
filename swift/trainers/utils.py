@@ -145,7 +145,7 @@ def tokenize_paired_dataset(template: Template, examples: Dict[str, List[Any]], 
     return model_inputs
 
 
-def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
+def get_rlhf_preprocessed_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
                                   rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'], streaming: bool,
                                   **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
 

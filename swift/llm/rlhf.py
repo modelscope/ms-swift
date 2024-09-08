@@ -4,9 +4,8 @@ from typing import Any, Dict
 
 import json
 import torch
-from transformers import IntervalStrategy
 
-from swift.trainers import RLHFTrainerFactory, get_preprocess_func, get_preprocessed_rlhf_dataset
+from swift.trainers import RLHFTrainerFactory, get_rlhf_preprocess_func, get_rlhf_preprocessed_dataset
 from swift.utils import (append_to_jsonl, check_json_format, get_logger, get_main, is_master, plot_images,
                          seed_everything)
 from . import LazyLLMDataset, print_example
@@ -39,12 +38,12 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     is_encoder_decoder = model.config.is_encoder_decoder
 
     if args.lazy_tokenize:
-        preprocess_func = get_preprocess_func(template=template, rlhf_type=args.rlhf_type, streaming=streaming)
+        preprocess_func = get_rlhf_preprocess_func(template=template, rlhf_type=args.rlhf_type, streaming=streaming)
         td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)
+        train_dataset = LazyLLMDataset(train_dataset, preprocess_func)
         if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, template, encode_func=preprocess_func)
+            val_dataset = LazyLLMDataset(val_dataset, preprocess_func)
     else:
         preprocess_kwargs = {}
         if not streaming:
@@ -52,7 +51,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
                 num_proc=args.preprocess_num_proc,
                 desc='tokenizing paired dataset',
             )
-        train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
+        train_dataset, val_dataset = get_rlhf_preprocessed_dataset(
             train_dataset,
             val_dataset,
             template=template,
