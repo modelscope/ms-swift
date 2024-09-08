@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from .trainers import Seq2SeqTrainer, Trainer
     from .loss import LOSS_MAPPING, LossName, register_loss_func, get_loss_func
     from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
-                        ShardedDDPOption, TrainerCallback)
+                        ShardedDDPOption, TrainerCallback, tokenize_paired_dataset)
 else:
     _import_structure = {
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
@@ -22,7 +22,7 @@ else:
         'loss': ['LOSS_MAPPING', 'LossName', 'register_loss_func', 'get_loss_func'],
         'utils': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
-            'ShardedDDPOption', 'TrainerCallback'
+            'ShardedDDPOption', 'TrainerCallback', 'tokenize_paired_dataset'
         ]
     }
 

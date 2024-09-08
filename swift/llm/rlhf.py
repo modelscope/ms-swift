@@ -8,12 +8,18 @@ import torch
 from swift.trainers import RLHFTrainerFactory
 from swift.utils import (append_to_jsonl, check_json_format, get_logger, get_main, is_master, plot_images,
                          seed_everything)
-from . import LazyLLMDataset, print_example
 from .sft import prepare_dataset, prepare_train_model_template
-from .utils import TEMPLATE_MAPPING, RLHFArguments, get_time_info
+from .utils import TEMPLATE_MAPPING, RLHFArguments, get_time_info, LazyLLMDataset, print_example, RLHFTemplateMixin
 
 logger = get_logger()
 
+
+def patch_template(args, template) -> None:
+    if args.rlhf_type != 'kto':
+        template.__class__.encode = RLHFTemplateMixin.encode
+        template.__class__.data_collator = RLHFTemplateMixin.encode
+    else:
+        assert True
 
 def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
@@ -30,6 +36,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
     model, ref_model, template, callbacks = prepare_train_model_template(args)
+    patch_template(args, template)
     tokenizer = template.tokenizer
 
     train_dataset, val_dataset = prepare_dataset(args)
