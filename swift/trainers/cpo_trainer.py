@@ -30,7 +30,6 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         self.lazy_tokenize = kwargs.pop('lazy_tokenize', False)
         self.streaming = kwargs.pop('streaming', False)
         self.is_vision_model = kwargs.pop('is_vision', False)
-        self.vision_keys = kwargs.pop('vision_keys', None)
         self.max_length = args.max_length
         self.generate_during_eval = args.generate_during_eval
         self.is_encoder_decoder = model.config.is_encoder_decoder
@@ -120,33 +119,6 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         model_kwargs = ({
             'decoder_input_ids': self._shift_right(concatenated_batch['concatenated_labels']),
         } if self.is_encoder_decoder else {})
-
-        if self.is_vision_model:
-            # Here, we restore the _data, processing image information within the forward hook of the model.
-            pair_batch_size = concatenated_batch['concatenated_input_ids'].shape[0]
-            batch_size = pair_batch_size // 2
-            if self.vision_keys is not None:
-                _data = [dict() for _ in range(pair_batch_size)]
-                for k in self.vision_keys:
-                    if k in ['input_ids', 'labels']:
-                        order = [i for pair in [(i, i + batch_size) for i in range(batch_size)] for i in pair]
-                        _data = [{
-                            **d, k: concatenated_batch[f'concatenated_{k}'][order[i]]
-                        } for i, d in enumerate(_data)]
-                    # for vision related data, paired response share the same one
-                    elif k == 'images':
-                        # convert the dtype of the images that may be converted to float32 in tokenize_row
-                        model_dtype = self.accelerator.unwrap_model(model).dtype
-                        _data = [{
-                            **d, k: concatenated_batch[k][i // 2].to(model_dtype).unsqueeze(0)
-                        } for i, d in enumerate(_data)]
-                    elif k == 'pixel_values':
-                        # convert the dtype of the pixel values that may be converted to float32 in tokenize_row
-                        model_dtype = self.accelerator.unwrap_model(model).dtype
-                        _data = [{**d, k: concatenated_batch[k][i // 2].to(model_dtype)} for i, d in enumerate(_data)]
-                    else:
-                        _data = [{**d, k: concatenated_batch[k][i // 2]} for i, d in enumerate(_data)]
-                model_kwargs['_data'] = _data
 
         if self.aux_loss_enabled:
             model_kwargs['output_router_logits'] = True

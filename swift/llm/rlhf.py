@@ -23,125 +23,20 @@ logger = get_logger()
 
 def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
-    seed_everything(args.seed)
     training_args = args.training_args
     streaming = args.streaming
-    if is_torch_npu_available():
-        print(f'device_count: {torch.npu.device_count()}')
-    else:
-        print(f'device_count: {torch.cuda.device_count()}')
-    rank, local_rank, world_size, local_world_size = get_dist_setting()
-    print(f'rank: {rank}, local_rank: {local_rank}, ' f'world_size: {world_size}, local_world_size: {local_world_size}')
+    seed_everything(args.seed)
+
+    is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
+    if is_generation:
+        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. ")
 
     if args.gpu_memory_fraction is not None:
         for device_id in range(torch.cuda.device_count()):
             torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
-    # device map
-    if is_deepspeed_zero3_enabled():
-        model_kwargs = {'device_map': None}
-    elif is_torch_npu_available():
-        model_kwargs = {'device_map': local_rank if local_rank >= 0 else 0}
-    elif args.device_map_config is not None:
-        model_kwargs = {'device_map': args.device_map_config}
-    else:
-        model_kwargs = {'low_cpu_mem_usage': True}
-        if is_dist() and not is_ddp_plus_mp():
-            model_kwargs['device_map'] = {'': local_rank}
-        elif torch.cuda.device_count() == 1:
-            model_kwargs['device_map'] = 'cuda:0'
-        else:
-            model_kwargs['device_map'] = 'auto'
-
-    if args.device_max_memory:
-        n_gpu = torch.cuda.device_count()
-        assert len(args.device_max_memory) == n_gpu // local_world_size
-        model_kwargs['max_memory'] = {
-            i: mem
-            for i, mem in zip(list(range(max(local_rank, 0), n_gpu, local_world_size)), args.device_max_memory)
-        }
-
-    # quantization
-    if args.quant_method == 'hqq':
-        from transformers import HqqConfig
-        if args.hqq_dynamic_config_path is not None:
-            cwd = os.getcwd()
-            config_path = args.hqq_dynamic_config_path if os.path.isabs(args.hqq_dynamic_config_path) else os.path.join(
-                cwd, args.hqq_dynamic_config_path)
-            with open(config_path, 'r') as json_file:
-                quantization_config = HqqConfig(dynamic_config=json.load(json_file))
-        else:
-            if args.quantization_bit == 0:
-                logger.info("You haven't set the quantization_bit parameter; set it to 8.")
-                args.quantization_bit = 8
-            quantization_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
-        logger.info(f'quantization_config: {quantization_config.__dict__}')
-        model_kwargs['quantization_config'] = quantization_config
-    elif args.quant_method == 'eetq':
-        from transformers import EetqConfig
-        quantization_config = EetqConfig('int8')
-        logger.info(f'quantization_config: {quantization_config.__dict__}')
-        model_kwargs['quantization_config'] = quantization_config
-    elif args.load_in_8bit or args.load_in_4bit:
-        quantization_config = BitsAndBytesConfig(
-            args.load_in_8bit,
-            args.load_in_4bit,
-            bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
-            bnb_4bit_quant_type=args.bnb_4bit_quant_type,
-            bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
-        logger.info(f'quantization_config: {quantization_config.__dict__}')
-        model_kwargs['quantization_config'] = quantization_config
-
-    kwargs = {
-        'max_length': args.max_length,
-        'use_unsloth': args.tuner_backend == 'unsloth',
-        'load_in_4bit': args.quantization_bit == 4
-    }
-    if args.use_flash_attn is not None:
-        kwargs['use_flash_attn'] = args.use_flash_attn
-    if args.local_repo_path:
-        kwargs['local_repo_path'] = args.local_repo_path
-
-    if args.rope_scaling:
-        kwargs['rope_scaling'] = args.rope_scaling
-        kwargs['max_length'] = args.max_length
-
-    model, tokenizer = get_model_tokenizer(
-        args.model_type,
-        args.torch_dtype,
-        model_kwargs,
-        model_id_or_path=args.model_id_or_path,
-        revision=args.model_revision,
-        quant_method=args.quant_method,
-        is_training=True,
-        **kwargs)
-    logger.info(f'model_config: {model.config}')
-
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    set_generation_config(model, generation_config)
-    logger.info(f'model.generation_config: {model.generation_config}')
-
-    # Preparing LoRA
-    model, _ = prepare_model(model, args)
-
-    show_layers(model)
-    logger.info(model)
-    model_info = get_model_info(model)
-    logger.info(model_info)
-
-    if args.gradient_checkpointing:
-        model.config.use_cache = False  # fix transformers==4.36
-        logger.info('Setting model.config.use_cache: False')
-        model.enable_input_require_grads()
+    model, template = prepare_train_model_template(args)
+    tokenizer = template.tokenizer
 
     if args.ref_model_type is not None:
         if args.ref_model_free:
@@ -162,50 +57,15 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     else:
         ref_model = None
 
-    if hasattr(model, 'hf_device_map'):
-        logger.info(f'model.hf_device_map: {model.hf_device_map}')
-
     train_dataset, val_dataset = _get_train_val_dataset(args)
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
         training_args.do_eval = False
         training_args.eval_strategy = IntervalStrategy.NO
 
-    template_kwargs = {}
-    template_kwargs['model'] = model
     if ref_model:
-        template_kwargs['ref_model'] = ref_model
+        template.ref_model = ref_model
 
-    if args.sequence_parallel_size and args.sequence_parallel_size > 1:
-        template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
-
-    template_kwargs['rescale_image'] = args.rescale_image
-
-    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
-                                      args.truncation_strategy, **template_kwargs)
-    if not template.support_multi_round and 'history' in next(iter(train_dataset)):
-        logger.info(
-            'The current template does not support multi-turn dialogue. The chatml template is used by default. \
-    You can also use the --model_type parameter to specify the  template.')
-        template: Template = get_template(
-            'chatml', tokenizer, args.system, args.max_length, args.truncation_strategy, model=model)
-    template._is_training = True
-    args.system = template.default_system
-    logger.info(f'system: {args.system}')
-    # TODO: lazy dataset
-    if args.lazy_tokenize:
-        logger.warning('lazy_tokenize is not supported for RLHF training now, it will be supported soon.')
-
-    vision_keys = []
-    if args.is_vision:
-        # get vision related keys in mllm
-        td0 = template.encode(next(iter(train_dataset)))[0] if not streaming else template.encode(
-            next(iter(train_dataset)))
-        if '_data' in td0:
-            vision_keys = list(td0['_data'].keys())
-        # fix glm4v-chat
-        if 'images' in td0:
-            vision_keys.append('images')
     # tokenize dataset
     preprocess_kwargs = {}
     if not streaming:
@@ -215,19 +75,12 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             load_from_cache_file=dataset_enable_cache,
             desc='tokenizing paired dataset',
         )
-    patch_trl(args.is_vision)
+    patch_trl()
     is_encoder_decoder = model.config.is_encoder_decoder
 
     if args.lazy_tokenize:
         preprocess_func = get_preprocess_func(
-            template=template,
-            rlhf_type=args.rlhf_type,
-            vision_keys=vision_keys,
-            streaming=streaming,
-            max_length=args.max_length,
-            max_prompt_length=args.max_prompt_length,
-            truncation_mode=args.truncation_mode,
-            is_encoder_decoder=is_encoder_decoder)
+            template=template, rlhf_type=args.rlhf_type, streaming=streaming, is_encoder_decoder=is_encoder_decoder)
         td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)
@@ -239,10 +92,6 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             val_dataset,
             template=template,
             rlhf_type=args.rlhf_type,
-            vision_keys=vision_keys,
-            max_length=args.max_length,
-            max_prompt_length=args.max_prompt_length,
-            truncation_mode=args.truncation_mode,
             streaming=streaming,
             is_encoder_decoder=is_encoder_decoder,
             **preprocess_kwargs)
@@ -255,11 +104,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     trainer_kwargs['args'].generation_config = generation_config
     trainer_cls = RLHFTrainerFactory.get_trainer(args.rlhf_type)
 
-    trainer_kwargs['is_vision'] = args.is_vision
     trainer_kwargs['streaming'] = streaming
     trainer_kwargs['is_encoder_decoder'] = is_encoder_decoder
-    if vision_keys:
-        trainer_kwargs['vision_keys'] = vision_keys
     trainer = trainer_cls(
         model=model,
         ref_model=ref_model,

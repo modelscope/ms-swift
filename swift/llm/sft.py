@@ -114,32 +114,15 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     return {}
 
 
-def llm_sft(args: SftArguments) -> Dict[str, Any]:
-    logger.info(f'args: {args}')
-    is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
-    streaming = args.streaming
-    if is_generation and type(args) is SftArguments:
-        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. "
-                       'Currently, SFT is in progress, but the template is used for PT.')
-    elif not is_generation and type(args) is PtArguments:
-        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. "
-                       'Currently, PT is in progress, but the template is used for SFT.')
-
-    seed_everything(args.seed)
-    if args.train_backend == 'megatron':
-        return llm_sft_megatron(args)
-
-    training_args = args.training_args
+def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
+    if msg is None:
+        msg = {}
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
     else:
         print(f'device_count: {torch.cuda.device_count()}')
     print(f'rank: {args.rank}, local_rank: {args.local_rank}, '
           f'world_size: {args.world_size}, local_world_size: {args.local_world_size}')
-
-    if args.gpu_memory_fraction is not None:
-        for device_id in range(torch.cuda.device_count()):
-            torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
     # Loading Model and Tokenizer
     if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
@@ -165,6 +148,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             for i, mem in zip(range(max(args.local_rank, 0), n_gpu, args.local_world_size), args.device_max_memory)
         }
 
+    # quantization
     if args.quant_method == 'hqq':
         from transformers import HqqConfig
         if args.hqq_dynamic_config_path is not None:
@@ -217,6 +201,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         quant_method=args.quant_method,
         is_training=True,
         **kwargs)
+
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model.hf_device_map: {model.hf_device_map}')
     for k in ['gptq', 'awq', 'aqlm']:
@@ -225,6 +210,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             logger.info(f'Setting args.quant_method: {args.quant_method}')
             break
     logger.info(f'model_config: {model.config}')
+
     generation_config = GenerationConfig(
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
@@ -237,7 +223,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         eos_token_id=tokenizer.eos_token_id)
     set_generation_config(model, generation_config)
     logger.info(f'model.generation_config: {model.generation_config}')
-    training_args.generation_config = model.generation_config
+    args.training_args.generation_config = model.generation_config
 
     if use_torchacc():
         import torchacc as ta
@@ -246,6 +232,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         label_names = find_labels(model)
         return_loss = can_return_loss(model)
         model = patch_acc_model(model, args)
+        model.label_names = label_names
+        model.return_loss = return_loss
+
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -253,6 +242,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     logger.info(model)
     model_info = get_model_info(model)
     logger.info(model_info)
+    msg['model_info'] = model_info
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
@@ -271,9 +261,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             gradient_checkpointing=True,
             fsdp_flatten_parameters=(args.sft_type == 'full'))
 
-    train_dataset, val_dataset = _get_train_val_dataset(args)
-    if use_torchacc():
-        training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
     template_kwargs = {}
     template_kwargs['use_loss_scale'] = args.use_loss_scale
     if args.loss_scale_config_path is not None:
@@ -295,11 +282,43 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         model=model,
         **template_kwargs)
     template._is_training = True
-    if streaming:
-        template.encode = partial(template.encode, streaming=streaming)
+    if args.streaming:
+        template.encode = partial(template.encode, streaming=args.streaming)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
+    return model, template, callbacks
+
+
+def llm_sft(args: SftArguments) -> Dict[str, Any]:
+    logger.info(f'args: {args}')
+    training_args = args.training_args
+    streaming = args.streaming
+    seed_everything(args.seed)
+
+    is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
+    if is_generation and type(args) is SftArguments:
+        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. "
+                       'Currently, SFT is in progress, but the template is used for PT.')
+    elif not is_generation and type(args) is PtArguments:
+        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. "
+                       'Currently, PT is in progress, but the template is used for SFT.')
+
+    if args.train_backend == 'megatron':
+        return llm_sft_megatron(args)
+
+    if args.gpu_memory_fraction is not None:
+        for device_id in range(torch.cuda.device_count()):
+            torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
+
+    msg = {}
+    model, template, callbacks = prepare_train_model_template(args, msg)
+    tokenizer = template.tokenizer
+
+    train_dataset, val_dataset = _get_train_val_dataset(args)
+    if use_torchacc():
+        training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
+
     if args.packing:
         from swift.llm.utils.utils import ConstantLengthDataset
         train_dataset = ConstantLengthDataset.get_packed_dataset(
@@ -400,8 +419,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         **trainer_kwargs)
     trainer.sft_args = args
     if use_torchacc():
-        trainer.label_names = label_names
-        trainer.can_return_loss = return_loss
+        trainer.label_names = model.label_names
+        trainer.can_return_loss = model.return_loss
     if is_master():
         for args_obj, fname in zip([args, training_args], ['sft_args.json', 'training_args.json']):
             fpath = os.path.join(args.output_dir, fname)
@@ -419,7 +438,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master() and not use_torchacc():
-        if 'tensorboard' in args.training_args.report_to:
+        if 'tensorboard' in training_args.report_to:
             images_dir = os.path.join(args.output_dir, 'images')
             logger.info(f'images_dir: {images_dir}')
             plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
@@ -432,8 +451,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
-        'model_info': model_info,
         'dataset_info': dataset_info,
+        **msg
     }
     if not streaming:
         run_info.update({'train_time': train_time})

@@ -22,7 +22,6 @@ import transformers
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from modelscope.utils.config_ds import MS_CACHE_HOME
-from torch import device as Device
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, IterableDataset
@@ -420,19 +419,19 @@ def print_example(example: Dict[str, Any],
     if chosen_input_ids is not None:
         logger.info(f'[CHOSEN_INPUT_IDS] {chosen_input_ids}')
         input_str = safe_tokenizer_decode(tokenizer, chosen_input_ids, **tokenizer_kwargs)
-        logger.info(f'[CHOSEN INPUT] {input_str}')
+        logger.info(f'[CHOSEN_INPUT] {input_str}')
     if rejected_input_ids is not None:
         logger.info(f'[REJECTED_INPUT_IDS] {rejected_input_ids}')
         input_str = safe_tokenizer_decode(tokenizer, rejected_input_ids, **tokenizer_kwargs)
-        logger.info(f'[REJECTED INPUT] {input_str}')
+        logger.info(f'[REJECTED_INPUT] {input_str}')
     if chosen_labels is not None:
-        logger.info(f'[CHOSEN_LABLES_IDS] {chosen_labels}')
+        logger.info(f'[CHOSEN_LABELS_IDS] {chosen_labels}')
         labels_str = safe_tokenizer_decode(tokenizer, chosen_labels, **tokenizer_kwargs)
-        logger.info(f'[CHOSEN LABELS] {labels_str}')
+        logger.info(f'[CHOSEN_LABELS] {labels_str}')
     if rejected_labels is not None:
-        logger.info(f'[REJECTED_INPUT_IDS] {rejected_labels}')
+        logger.info(f'[REJECTED_LABELS_IDS] {rejected_labels}')
         labels_str = safe_tokenizer_decode(tokenizer, rejected_labels, **tokenizer_kwargs)
-        logger.info(f'[REJECTED LABELS] {labels_str}')
+        logger.info(f'[REJECTED_LABELS] {labels_str}')
 
 
 def _find_layers(model: Module, module_cls: type) -> List[str]:
@@ -535,7 +534,7 @@ def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
     return llm_dataset.select(idx)
 
 
-def to_device(inputs: Any, device: Device) -> Any:
+def to_device(inputs: Any, device: torch.device) -> Any:
     if callable(getattr(inputs, 'to', None)):
         return inputs.to(device=device)
 
@@ -1124,7 +1123,7 @@ if is_ddp_plus_mp():
     @wraps(infer_auto_device_map)
     def _infer_auto_device_map_patch(model: Module,
                                      max_memory: Optional[Dict[Union[int, str], Union[int, str]]] = None,
-                                     **kwargs) -> Dict[str, Union[int, str, Device]]:
+                                     **kwargs) -> Dict[str, Union[int, str, torch.device]]:
         """The auxiliary function for supports DDP+MP. Monkey Patching.
         add feat in accelerate to support DDP + MP"""
         verbose = kwargs.pop('verbose', False)
