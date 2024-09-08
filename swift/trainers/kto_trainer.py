@@ -14,19 +14,6 @@ from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 
-
-def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
-    logger.info('sort by max length...')
-    dataset_prompt_len = [len(d['prompt_input_ids']) for d in dataset]
-    if not is_encoder_decoder:
-        dataset_answer_len = [len(d['answer_input_ids']) for d in dataset]
-        idx = heapq.nlargest(
-            num_dataset, range(len(dataset_prompt_len)), key=lambda i: (dataset_prompt_len[i] + dataset_answer_len[i]))
-    else:
-        idx = heapq.nlargest(num_dataset, range(len(dataset_prompt_len)), key=lambda i: dataset_prompt_len[i])
-    return dataset.select(idx)
-
-
 class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
 
     def __init__(self, *args, test_oom_error=False, **kwargs):
@@ -44,8 +31,7 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
                 self.dataset_info = {'train_dataset': train_ds_info}
         else:
             self.dataset_info = {}
-        if test_oom_error:
-            self.train_dataset = sort_by_max_length(self.train_dataset, 20000, self.is_encoder_decoder)
+
         # performance
         self.perf: Dict[str, Any] = {
             'gen_time': 0.,
