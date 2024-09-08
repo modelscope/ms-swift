@@ -5,7 +5,7 @@ import heapq
 import inspect
 from functools import partial
 from types import FunctionType, MethodType
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Literal
 
 from accelerate import PartialState
 from datasets import Dataset as HfDataset
@@ -62,29 +62,14 @@ def is_instance_of_ms_model(model: Module) -> bool:
             return True
     return False
 
-
-def sort_by_max_length(dataset: HfDataset, num_dataset: int, is_encoder_decoder: bool = False) -> HfDataset:
-    logger.info('sort by max length...')
-    if not is_encoder_decoder:
-        dataset_chosen_len = [len(d['chosen_input_ids']) for d in dataset]
-        dataset_rejected_len = [len(d['rejected_input_ids']) for d in dataset]
-        idx = heapq.nlargest(
-            num_dataset,
-            range(len(dataset_chosen_len)),
-            key=lambda i: max(dataset_chosen_len[i], dataset_rejected_len[i]))
-    else:
-        dataset_len = [len(d['prompt_input_ids']) for d in dataset]
-        idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
-    return dataset.select(idx)
-
-
-def get_preprocess_func(template: Template, rlhf_type: str, streaming: bool, is_encoder_decoder: bool):
+def get_rlhf_preprocess_func(template: Template, rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'],
+                             streaming: bool):
     if rlhf_type == 'kto':
         # leave truncation in trainer for KTO
         return partial(preprocess_kto_dataset, template=template)
     else:
         return partial(
-            tokenize_paired_dataset, template=template, streaming=streaming, is_encoder_decoder=is_encoder_decoder)
+            tokenize_paired_dataset, template, streaming)
 
 
 def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
@@ -142,17 +127,19 @@ def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
 
 
 def tokenize_paired_dataset(
-    examples: Dict[str, List[Any]],
     template: Template,
-    streaming: bool = False,
-    is_encoder_decoder: bool = False,
+    examples: Dict[str, List[Any]],
+    streaming: bool = False
 ):
     model_inputs = {}
     chosen_example, rejected_example = examples.copy(), examples
     rejected_example['response'] = examples['rejected_response']
-
-    chosen_tokenized = template.encode(chosen_example)[0] if not streaming else template.encode(chosen_example)
-    rejected_tokenized = template.encode(rejected_example)[0] if not streaming else template.encode(rejected_example)
+    if streaming:
+        chosen_tokenized = template.encode(chosen_example)
+        rejected_tokenized = template.encode(rejected_example)
+    else:
+        chosen_tokenized = template.encode(chosen_example)[0]
+        rejected_tokenized = template.encode(rejected_example)[0]
 
     for prompt, tokenized in zip(['chosen', 'rejected'], [chosen_tokenized, rejected_tokenized]):
         for k, v in tokenized.items():
@@ -162,25 +149,14 @@ def tokenize_paired_dataset(
     return model_inputs
 
 
-def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
-                                  rlhf_type, streaming: bool, is_encoder_decoder: bool,
+def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE],
+                                  template: Template,
+                                  rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'],
+                                  streaming: bool,
                                   **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
-    """
-    Preprocesses the RLHF datasets using the specified template and RLHF type.
 
-    Args:
-        train_dataset (DATASET_TYPE): The training dataset.
-        val_dataset (Optional[DATASET_TYPE]): The validation dataset.
-        template (Template): The template used for preprocessing.
-        rlhf_type (Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo']): The type of RLHF.
-        dataset_enable_cache (bool, optional): Whether to enable cache. Defaults to True.
-        **kwargs: kwargs for preprocess func.
-
-    Returns:
-        Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]: The preprocessed training and validation datasets.
-    """
-    preprocess_func = get_preprocess_func(
-        template=template, rlhf_type=rlhf_type, streaming=streaming, is_encoder_decoder=is_encoder_decoder)
+    preprocess_func = get_rlhf_preprocess_func(
+        template=template, rlhf_type=rlhf_type, streaming=streaming)
     column_names = list(next(iter(train_dataset)).keys())
     with PartialState().local_main_process_first():
         train_dataset = train_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)

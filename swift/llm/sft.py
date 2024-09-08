@@ -290,11 +290,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     # ref_model
     ref_model = None
-    if args.ref_model_type is not None:
-        if args.ref_model_free:
-            logger.warning(f"{args.rlhf_type} algorithm don't require ref model,\
-                     therefore the ref model will not be loaded here.")
-        else:
+    if hasattr(args, 'ref_model_type'):
+        if args.ref_model_type is not None:
             ref_model, _ = get_model_tokenizer(
                 args.ref_model_type,
                 args.torch_dtype,
@@ -303,9 +300,11 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
                 revision=args.model_revision,
                 quant_method=args.quant_method,
                 **kwargs)
-    elif not args.ref_model_free and args.sft_type == 'full':
-        from trl.models import create_reference_model
-        ref_model = create_reference_model(model)
+            ref_model.requires_grad_(False)
+            ref_model.eval()
+        elif args.sft_type == 'full':
+            from trl.models import create_reference_model
+            ref_model = create_reference_model(model)
 
     if ref_model is None:
         return model, template, callbacks
@@ -314,10 +313,79 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         return model, ref_model, template, callbacks
 
 
+def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = None):
+    training_args = args.training_args
+    train_dataset, val_dataset = _get_train_val_dataset(args)
+    if use_torchacc():
+        training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
+
+    if val_dataset is None:
+        training_args.evaluation_strategy = IntervalStrategy.NO
+        training_args.eval_strategy = IntervalStrategy.NO
+        training_args.do_eval = False
+
+    tokenizer = template.tokenizer
+    dataset_info = {}
+    if args.packing:
+        from swift.llm.utils.utils import ConstantLengthDataset
+        train_dataset = ConstantLengthDataset.get_packed_dataset(
+            template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        if val_dataset is not None:
+            val_dataset = ConstantLengthDataset.get_packed_dataset(
+                template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
+        if not args.lazy_tokenize:
+            td0 = train_dataset[0]
+            print_example(td0, tokenizer, {})
+            dataset_info['train_dataset'] = stat_dataset(train_dataset)
+            if val_dataset is not None:
+                dataset_info['val_dataset'] = stat_dataset(val_dataset)
+    elif not args.lazy_tokenize:
+        model = template.model
+        if not args.streaming:
+            if args.preprocess_num_proc > 1:
+                use_model = TEMPLATE_MAPPING[args.template_type].get('use_model', False)
+                if use_model:
+                    args.preprocess_num_proc = 1
+                    logger.warning('The current Template does not support num_proc. '
+                                   f'Setting args.preprocess_num_proc to: {args.preprocess_num_proc}')
+                else:
+                    template.model = None
+            logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
+        if val_dataset is not None:
+            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
+        template.model = model  # recover
+        if args.test_oom_error:
+            train_dataset = sort_by_max_length(train_dataset, 20000)
+        # Data analysis
+        if train_dataset is None:
+            logger.error('Error accessing train_dataset properties. '
+                         'Please ensure that the dataset is properly initialized,'
+                         'and every sample of the train_dataset not empty.')
+            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
+                                 '(1) The dataset contains None for input or labels;\n'
+                                 "(2) The 'max_length' setting is too short causing data truncation.")
+        if args.streaming:
+            td0, tkwargs0 = next(iter(train_dataset)), {}
+        else:
+            td0, tkwargs0 = train_dataset.data[0]
+        print_example(td0, tokenizer, tkwargs0)
+        if not args.streaming:
+            dataset_info['train_dataset'] = stat_dataset(train_dataset)
+            if val_dataset is not None:
+                dataset_info['val_dataset'] = stat_dataset(val_dataset)
+    else:
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
+        train_dataset = LazyLLMDataset(train_dataset, template)
+        if val_dataset is not None:
+            val_dataset = LazyLLMDataset(val_dataset, template)
+    msg['dataset_info'] = dataset_info
+    return train_dataset, val_dataset
+
 def llm_sft(args: SftArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     training_args = args.training_args
-    streaming = args.streaming
     seed_everything(args.seed)
 
     is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
@@ -339,66 +407,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     model, template, callbacks = prepare_train_model_template(args, msg)
     tokenizer = template.tokenizer
 
-    train_dataset, val_dataset = _get_train_val_dataset(args)
-    if use_torchacc():
-        training_args.train_dataset_sample = train_dataset.shape[0] if train_dataset is not None else 0
-
-    if args.packing:
-        from swift.llm.utils.utils import ConstantLengthDataset
-        train_dataset = ConstantLengthDataset.get_packed_dataset(
-            template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
-        if val_dataset is not None:
-            val_dataset = ConstantLengthDataset.get_packed_dataset(
-                template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
-        dataset_info = {}
-        if not args.lazy_tokenize:
-            td0 = train_dataset[0]
-            print_example(td0, tokenizer, {})
-            dataset_info['train_dataset'] = stat_dataset(train_dataset)
-            if val_dataset is not None:
-                dataset_info['val_dataset'] = stat_dataset(val_dataset)
-    elif not args.lazy_tokenize:
-        dataset_info = {}
-        if not streaming:
-            if args.preprocess_num_proc > 1:
-                use_model = TEMPLATE_MAPPING[args.template_type].get('use_model', False)
-                if use_model:
-                    args.preprocess_num_proc = 1
-                    logger.warning('The current Template does not support num_proc. '
-                                   f'Setting args.preprocess_num_proc to: {args.preprocess_num_proc}')
-                else:
-                    template.model = None
-            logger.info(f'Using num_proc: {args.preprocess_num_proc}')
-        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
-        if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
-        template.model = model
-        if args.test_oom_error:
-            train_dataset = sort_by_max_length(train_dataset, 20000)
-        # Data analysis
-        if train_dataset is None:
-            logger.error('Error accessing train_dataset properties. '
-                         'Please ensure that the dataset is properly initialized,'
-                         'and every sample of the train_dataset not empty.')
-            raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
-                                 '(1) The dataset contains None for input or labels;\n'
-                                 "(2) The 'max_length' setting is too short causing data truncation.")
-        td0, tkwargs0 = train_dataset.data[0] if not streaming else (next(iter(train_dataset)), {})
-        print_example(td0, tokenizer, tkwargs0)
-        dataset_info['train_dataset'] = stat_dataset(train_dataset) if not streaming else None
-        if val_dataset is not None:
-            dataset_info['val_dataset'] = stat_dataset(val_dataset) if not streaming else None
-    else:
-        dataset_info = None
-        td0, tkwargs0 = template.encode(train_dataset[0])
-        print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, template)
-        if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, template)
-    if val_dataset is None:
-        training_args.evaluation_strategy = IntervalStrategy.NO
-        training_args.eval_strategy = IntervalStrategy.NO
-        training_args.do_eval = False
+    train_dataset, val_dataset = prepare_dataset(args, template, msg)
 
     padding_to = args.max_length if args.sft_type == 'longlora' else None
     data_collator = partial(template.data_collator, padding_to=padding_to)
@@ -458,8 +467,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
     logger.info(f'best_model_checkpoint: {trainer.state.best_model_checkpoint}')
-    if not streaming:
-        train_time = get_time_info(trainer.state.log_history, len(train_dataset))
     # Visualization
     if is_master() and not use_torchacc():
         if 'tensorboard' in training_args.report_to:
@@ -475,10 +482,10 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         'best_metric': trainer.state.best_metric,
         'global_step': trainer.state.global_step,
         'log_history': trainer.state.log_history,
-        'dataset_info': dataset_info,
         **msg
     }
-    if not streaming:
+    if not args.streaming:
+        train_time = get_time_info(trainer.state.log_history, len(train_dataset))
         run_info.update({'train_time': train_time})
     for key in ['gen_time', 'gen_len']:
         if trainer.perf[key] != 0:

@@ -262,8 +262,7 @@ class LazyLLMDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         res = self._try_fetch(idx)
         if res is not None:
-            data, _ = res
-            return data
+            return res
         raise ValueError('Please check if the max_length is appropriate.')
 
     def _try_fetch(self, first_idx: int) -> Optional[Dict[str, Any]]:
@@ -272,13 +271,13 @@ class LazyLLMDataset(Dataset):
             data = self.dataset[i]
             try:
                 if self.encode_func:
-                    res = self.encode_func(data), {}
+                    res = self.encode_func(data)
                 else:
-                    res = self.template.encode(data)
+                    res = self.template.encode(data)[0]
             except Exception as e:
                 logger.error(f'Error occurs in lazy tokenize: {e}')
                 continue
-            if len(res[0]) > 0:
+            if len(res) > 0:
                 return res
 
     def __len__(self) -> int:
@@ -297,7 +296,7 @@ def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]
 
 def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue, start_idx: int):
     for i, d in enumerate(subset, start=start_idx):
-        queue.put((i, map_func(d)))  # idx, result
+        queue.put((i, map_func(d)[0]))  # idx, result
 
 
 def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
@@ -408,31 +407,13 @@ def print_example(example: Dict[str, Any],
     rejected_input_ids = example.get('rejected_input_ids')
     rejected_labels = example.get('rejected_labels')
     labels = example.get('labels')
-    if input_ids is not None:
-        logger.info(f'[INPUT_IDS] {input_ids}')
-        input_str = safe_tokenizer_decode(tokenizer, input_ids, **tokenizer_kwargs)
-        logger.info(f'[INPUT] {input_str}')
-    if labels is not None:
-        logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = safe_tokenizer_decode(tokenizer, labels, **tokenizer_kwargs)
-        logger.info(f'[LABLES] {labels_str}')
-    if chosen_input_ids is not None:
-        logger.info(f'[CHOSEN_INPUT_IDS] {chosen_input_ids}')
-        input_str = safe_tokenizer_decode(tokenizer, chosen_input_ids, **tokenizer_kwargs)
-        logger.info(f'[CHOSEN_INPUT] {input_str}')
-    if rejected_input_ids is not None:
-        logger.info(f'[REJECTED_INPUT_IDS] {rejected_input_ids}')
-        input_str = safe_tokenizer_decode(tokenizer, rejected_input_ids, **tokenizer_kwargs)
-        logger.info(f'[REJECTED_INPUT] {input_str}')
-    if chosen_labels is not None:
-        logger.info(f'[CHOSEN_LABELS_IDS] {chosen_labels}')
-        labels_str = safe_tokenizer_decode(tokenizer, chosen_labels, **tokenizer_kwargs)
-        logger.info(f'[CHOSEN_LABELS] {labels_str}')
-    if rejected_labels is not None:
-        logger.info(f'[REJECTED_LABELS_IDS] {rejected_labels}')
-        labels_str = safe_tokenizer_decode(tokenizer, rejected_labels, **tokenizer_kwargs)
-        logger.info(f'[REJECTED_LABELS] {labels_str}')
-
+    for key in ['input_ids', 'chosen_input_ids', 'rejected_input_ids', 'labels', 'chosen_labels', 'rejected_labels']:
+        val = locals()[key]
+        if val is not None:
+            key_upper = key.upper()
+            logger.info(f'[{key_upper}] {val}')
+            val_str = safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
+            logger.info(f'[INPUT] {val_str}')
 
 def _find_layers(model: Module, module_cls: type) -> List[str]:
     module_names = set()

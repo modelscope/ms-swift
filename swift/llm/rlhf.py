@@ -10,7 +10,7 @@ from swift.trainers import RLHFTrainerFactory, get_preprocess_func, get_preproce
 from swift.utils import (append_to_jsonl, check_json_format, get_logger, get_main,
                          is_master, plot_images, seed_everything)
 from . import LazyLLMDataset, print_example
-from .sft import _get_train_val_dataset, prepare_train_model_template
+from .sft import prepare_dataset, prepare_train_model_template
 from .utils import RLHFArguments, TEMPLATE_MAPPING, get_time_info
 
 logger = get_logger()
@@ -33,39 +33,32 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     model, ref_model, template, callbacks = prepare_train_model_template(args)
     tokenizer = template.tokenizer
 
-    train_dataset, val_dataset = _get_train_val_dataset(args)
-    if val_dataset is None:
-        training_args.evaluation_strategy = IntervalStrategy.NO
-        training_args.do_eval = False
-        training_args.eval_strategy = IntervalStrategy.NO
+    train_dataset, val_dataset = prepare_dataset(args)
 
     # tokenize dataset
-    preprocess_kwargs = {}
-    if not streaming:
-        from swift.llm.utils.dataset import dataset_enable_cache
-        preprocess_kwargs = dict(
-            num_proc=args.preprocess_num_proc,
-            load_from_cache_file=dataset_enable_cache,
-            desc='tokenizing paired dataset',
-        )
     is_encoder_decoder = model.config.is_encoder_decoder
 
     if args.lazy_tokenize:
         preprocess_func = get_preprocess_func(
-            template=template, rlhf_type=args.rlhf_type, streaming=streaming, is_encoder_decoder=is_encoder_decoder)
+            template=template, rlhf_type=args.rlhf_type, streaming=streaming)
         td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template, encode_func=preprocess_func)
     else:
+        preprocess_kwargs = {}
+        if not streaming:
+            preprocess_kwargs = dict(
+                num_proc=args.preprocess_num_proc,
+                desc='tokenizing paired dataset',
+            )
         train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
             train_dataset,
             val_dataset,
             template=template,
             rlhf_type=args.rlhf_type,
             streaming=streaming,
-            is_encoder_decoder=is_encoder_decoder,
             **preprocess_kwargs)
 
     # Trainer
