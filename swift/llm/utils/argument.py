@@ -1171,6 +1171,7 @@ class SftArguments(ArgumentsBase):
             if self.train_backend == 'transformers':
                 self.training_args.logging_dir = self.logging_dir
         self.handle_generation_config()
+        self.train_type = self.rlhf_type if hasattr(self, 'rlhf_type') else 'sft'
 
     def _init_training_args(self) -> None:
         additional_saved_files = []

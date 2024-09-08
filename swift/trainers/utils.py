@@ -134,5 +134,3 @@ def tokenize_paired_dataset(template: Template, examples: Dict[str, List[Any]], 
         if f'{prompt}_attention_mask' not in model_inputs:
             model_inputs[f'{prompt}_attention_mask'] = [1] * len(tokenized['input_ids'])
     return model_inputs
-
-

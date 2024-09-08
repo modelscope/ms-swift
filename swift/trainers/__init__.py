@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from .arguments import Seq2SeqTrainingArguments, TrainingArguments
     from .dpo_trainer import DPOTrainer
     from .orpo_trainer import ORPOTrainer
-    from .rlhf_trainers import RLHFTrainerFactory
+    from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .loss import LOSS_MAPPING, LossName, register_loss_func, get_loss_func
     from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
@@ -17,7 +17,7 @@ else:
         'arguments': ['Seq2SeqTrainingArguments', 'TrainingArguments'],
         'dpo_trainer': ['DPOTrainer'],
         'orpo_trainer': ['ORPOTrainer'],
-        'rlhf_trainers': ['RLHFTrainerFactory'],
+        'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'loss': ['LOSS_MAPPING', 'LossName', 'register_loss_func', 'get_loss_func'],
         'utils': [

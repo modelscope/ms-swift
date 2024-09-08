@@ -1,0 +1,33 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from .cpo_trainer import CPOTrainer
+from .dpo_trainer import DPOTrainer
+from .kto_trainer import KTOTrainer
+from .orpo_trainer import ORPOTrainer
+from .trainers import Seq2SeqTrainer
+
+
+class TrainerFactory:
+    TRAINERS_MAPPING = {
+        'sft': Seq2SeqTrainer,
+        'dpo': DPOTrainer,
+        'simpo': CPOTrainer,
+        'orpo': ORPOTrainer,
+        'kto': KTOTrainer,
+        'cpo': CPOTrainer
+    }
+
+    @classmethod
+    def get_trainer_info(cls, args):
+        trainer_cls = cls.TRAINERS_MAPPING[args.train_type]
+        trainer_kwargs = {}
+        if args.train_type == 'sft':
+            trainer_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
+        elif args.train_type == 'dpo':
+            trainer_kwargs['rpo_alpha'] = args.rpo_alpha
+        return trainer_cls, trainer_kwargs
+
+    @staticmethod
+    def get_template_mixin(args):
+        args.train_type = args.rlhf_type if hasattr(args, 'rlhf_type') else 'sft'
+        if args.train_type == 'sft':
+            return None

@@ -3208,11 +3208,15 @@ register_template(TemplateType.atom,
 
 
 class RLHFTemplateMixin:
-    def encode(self: Template, example: Dict[str, Any], streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+
+    def encode(self: Template,
+               example: Dict[str, Any],
+               streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         pass
 
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         pass
+
 
 def get_template(
     template_type: str,
