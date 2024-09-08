@@ -287,5 +287,3 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                 data_collator = self._get_collator_with_removed_columns(data_collator, description='test')
 
             return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
-
-

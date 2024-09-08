@@ -33,9 +33,9 @@ from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoin
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, use_torchacc
 from swift.utils.constants import Invoke
+from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
-from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 
 logger = get_logger()
 
@@ -553,6 +553,7 @@ class SwiftMixin:
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
         return self.optimizer
+
 
 # monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
