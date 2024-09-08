@@ -63,15 +63,6 @@ def is_instance_of_ms_model(model: Module) -> bool:
     return False
 
 
-def get_rlhf_preprocess_func(template: Template, rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'],
-                             streaming: bool):
-    if rlhf_type == 'kto':
-        # leave truncation in trainer for KTO
-        return partial(preprocess_kto_dataset, template=template)
-    else:
-        return partial(tokenize_paired_dataset, template, streaming)
-
-
 def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
     """
     preprocess KTO specific dataset with given template
@@ -145,14 +136,3 @@ def tokenize_paired_dataset(template: Template, examples: Dict[str, List[Any]], 
     return model_inputs
 
 
-def get_rlhf_preprocessed_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
-                                  rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'], streaming: bool,
-                                  **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
-
-    preprocess_func = get_rlhf_preprocess_func(template=template, rlhf_type=rlhf_type, streaming=streaming)
-    column_names = list(next(iter(train_dataset)).keys())
-    with PartialState().local_main_process_first():
-        train_dataset = train_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)
-        if val_dataset is not None:
-            val_dataset = val_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)
-    return train_dataset, val_dataset

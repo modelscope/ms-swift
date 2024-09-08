@@ -5,7 +5,7 @@ from typing import Any, Dict
 import json
 import torch
 
-from swift.trainers import RLHFTrainerFactory, get_rlhf_preprocess_func, get_rlhf_preprocessed_dataset
+from swift.trainers import RLHFTrainerFactory
 from swift.utils import (append_to_jsonl, check_json_format, get_logger, get_main, is_master, plot_images,
                          seed_everything)
 from . import LazyLLMDataset, print_example
@@ -37,8 +37,13 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     # tokenize dataset
     is_encoder_decoder = model.config.is_encoder_decoder
 
+    if args.rlhf_type == 'kto':
+        # leave truncation in trainer for KTO
+        preprocess_func = partial(preprocess_kto_dataset, template=template)
+    else:
+        preprocess_func = partial(tokenize_paired_dataset, template, streaming)
+
     if args.lazy_tokenize:
-        preprocess_func = get_rlhf_preprocess_func(template=template, rlhf_type=args.rlhf_type, streaming=streaming)
         td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, preprocess_func)
