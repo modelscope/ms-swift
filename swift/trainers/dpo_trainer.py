@@ -10,7 +10,7 @@ from transformers.utils import is_peft_available
 from trl import DPOConfig
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer import FDivergenceConstants, disable_dropout_in_model
-from trl.trainer.utils import DPODataCollatorWithPadding, pad_to_length
+from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
 from .mixin import SwiftMixin

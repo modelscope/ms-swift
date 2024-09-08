@@ -5,9 +5,8 @@ import heapq
 import inspect
 from functools import partial
 from types import FunctionType, MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-import torch
 from accelerate import PartialState
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HFIterableDataset
