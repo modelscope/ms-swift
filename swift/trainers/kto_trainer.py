@@ -18,40 +18,11 @@ logger = get_logger()
 class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
 
     def __init__(self, *args, test_oom_error=False, **kwargs):
-        self.streaming = kwargs.pop('streaming')
         is_vision = kwargs.pop('is_vision')
-        self.lazy_tokenize = kwargs.pop('lazy_tokenize', False)
         super().__init__(*args, **kwargs)
-        if not self.streaming and not self.lazy_tokenize:
-            train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
-
-            if self.eval_dataset is not None:
-                val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
-                self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
-            else:
-                self.dataset_info = {'train_dataset': train_ds_info}
-        else:
-            self.dataset_info = {}
 
         self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix
         self.is_vision_model = is_vision
-
-    @staticmethod
-    def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
-        _token_len = []
-        from swift.utils.np_utils import stat_array
-        if isinstance(llm_dataset, HfDataset):
-            prompt_input_ids = llm_dataset['prompt_input_ids']
-            if not is_encoder_decoder:
-                answer_input_ids = llm_dataset['answer_input_ids']
-                for pi, ai in zip(prompt_input_ids, answer_input_ids):
-                    _token_len.append(len(pi) + len(ai))
-            else:
-                for pi in prompt_input_ids:
-                    _token_len.append(len(pi))
-        _, stat_str = stat_array(_token_len)
-        logger.info(f'Dataset Token Length: {stat_str}')
-        return stat_str
 
 
 # fix kto when tokenizer do not have a bos_token_id

@@ -1,16 +1,9 @@
-from collections import defaultdict
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
-from peft import PeftModel
 from torch import nn
-from transformers import PreTrainedModel, Trainer
-from transformers.utils import is_peft_available
-from trl import DPOConfig
 from trl import DPOTrainer as HFDPOTrainer
-from trl.trainer import FDivergenceConstants, disable_dropout_in_model
-from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
 from .mixin import RLHFTrainerMixin, SwiftMixin
@@ -154,31 +147,3 @@ class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, batch)
-
-    @staticmethod
-    def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
-        _token_len = []
-        from datasets import Dataset as HfDataset
-        from swift.utils.np_utils import stat_array
-        if isinstance(llm_dataset, HfDataset):
-            if is_encoder_decoder:
-                prompt = llm_dataset['prompt_input_ids']
-                chosen = llm_dataset['chosen_labels']
-                rejected = llm_dataset['chosen_labels']
-                for p, cc, rr in zip(prompt, chosen, rejected):
-                    _token_len.append(max(len(cc), len(rr)) + len(p))
-            else:
-                chosen = llm_dataset['chosen_input_ids']
-                rejected = llm_dataset['rejected_input_ids']
-                for cc, rr in zip(chosen, rejected):
-                    _token_len.append(max(len(cc), len(rr)))
-        else:
-            for d in llm_dataset:
-                if is_encoder_decoder:
-                    _token_len.append(
-                        max(len(d['chosen_labels']), len(d['chosen_labels'])) + len(d['prompt_input_ids']))
-                else:
-                    _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
-        _, stat_str = stat_array(_token_len)
-        logger.info(f'Dataset Token Length: {stat_str}')
-        return stat_str

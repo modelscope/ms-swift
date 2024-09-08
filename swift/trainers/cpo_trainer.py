@@ -50,14 +50,6 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
                                'If you want to use a pure SimPO method, please set cpo_alpha to 0.')
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
 
-        kwargs['data_collator'] = DPODataCollatorWithPadding(
-            pad_token_id=self.tokenizer.pad_token_id,
-            label_pad_token_id=args.label_pad_token_id,
-            is_encoder_decoder=self.is_encoder_decoder,
-        )
-        self.use_dpo_data_collator = True
-        self.label_pad_token_id = -100
-        self.padding_value = 0
         if args.disable_dropout:
             disable_dropout_in_model(model)
         self._peft_has_been_casted_to_bf16 = False
@@ -180,31 +172,3 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         if 'vision_image_bound' in batch:
             concatenated_batch['image_bound'] = batch['vision_image_bound']
         return concatenated_batch
-
-    @staticmethod
-    def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:
-        _token_len = []
-        from datasets import Dataset as HfDataset
-        from swift.utils.np_utils import stat_array
-        if isinstance(llm_dataset, HfDataset):
-            if is_encoder_decoder:
-                prompt = llm_dataset['prompt_input_ids']
-                chosen = llm_dataset['chosen_labels']
-                rejected = llm_dataset['chosen_labels']
-                for p, cc, rr in zip(prompt, chosen, rejected):
-                    _token_len.append(max(len(cc), len(rr)) + len(p))
-            else:
-                chosen = llm_dataset['chosen_input_ids']
-                rejected = llm_dataset['rejected_input_ids']
-                for cc, rr in zip(chosen, rejected):
-                    _token_len.append(max(len(cc), len(rr)))
-        else:
-            for d in llm_dataset:
-                if is_encoder_decoder:
-                    _token_len.append(
-                        max(len(d['chosen_labels']), len(d['chosen_labels'])) + len(d['prompt_input_ids']))
-                else:
-                    _token_len.append(max(len(d['chosen_input_ids']), len(d['rejected_input_ids'])))
-        _, stat_str = stat_array(_token_len)
-        logger.info(f'Dataset Token Length: {stat_str}')
-        return stat_str

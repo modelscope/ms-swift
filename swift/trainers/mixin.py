@@ -7,6 +7,10 @@ import shutil
 import time
 from pathlib import Path
 from types import MethodType
+from collections import defaultdict
+from trl.trainer import FDivergenceConstants, disable_dropout_in_model
+
+import torch.nn as nn
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
@@ -614,14 +618,14 @@ class RLHFTrainerMixin:
                  **kwargs):
         self.ref_model = ref_model
         self.is_vision_model = False
+        self.args = kwargs['args']
         self.is_encoder_decoder = kwargs['is_encoder_decoder']
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
-        self.f_divergence_type = args.f_divergence_type
-        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
-
-        if args.disable_dropout:
+        self.f_divergence_type = self.args.f_divergence_type
+        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: self.args.f_alpha_divergence_coef}
+        if self.args.disable_dropout:
             disable_dropout_in_model(model)
             if self.ref_model is not None:
                 disable_dropout_in_model(self.ref_model)
