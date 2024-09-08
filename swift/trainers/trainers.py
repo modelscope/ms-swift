@@ -1,7 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import torch
+from peft import PeftModel
+from torch import Tensor, nn
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
+from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.modeling_utils import unwrap_model
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.utils import is_peft_available
 
+from swift.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
+from swift.utils import use_torchacc
+from .loss import get_loss_func
 from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
 
@@ -11,6 +24,7 @@ class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
 
 
 class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # performance
@@ -25,12 +39,12 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             patch_clip_grad_norm(self.accelerator)
 
     def prediction_step(
-            self,
-            model: nn.Module,
-            inputs: Dict[str, Union[torch.Tensor, Any]],
-            prediction_loss_only: bool,
-            ignore_keys: Optional[List[str]] = None,
-            **gen_kwargs,
+        self,
+        model: nn.Module,
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+        **gen_kwargs,
     ) -> Tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]:
         if not self.args.predict_with_generate or prediction_loss_only:
             return super().prediction_step(

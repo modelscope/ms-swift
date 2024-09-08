@@ -17,27 +17,24 @@ import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
-from torch import Tensor, nn
 from torch.nn import Module
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, trainer
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
-from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trainer, TrainerCallback
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
-from transformers.utils import is_peft_available, is_sagemaker_mp_enabled, is_torch_npu_available
+from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import (patch_clip_grad_norm, save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint,
-                                  ta_eval_dataloader, ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler,
-                                  ta_test_dataloader, ta_train_dataloader, ta_trim_graph)
+from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
+                                  ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler, ta_test_dataloader,
+                                  ta_train_dataloader, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, use_torchacc
 from swift.utils.constants import Invoke
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
-from .loss import get_loss_func
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -606,6 +603,7 @@ class SwiftMixin:
                 data_collator = self._get_collator_with_removed_columns(data_collator, description='test')
 
             return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
+
 
 # monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
