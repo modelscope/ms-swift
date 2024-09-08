@@ -13,7 +13,7 @@ from trl.trainer import FDivergenceConstants, disable_dropout_in_model
 from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
-from .mixin import Seq2SeqTrainerMixin, SwiftMixin
+from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
@@ -21,7 +21,7 @@ logger = get_logger()
 del HFDPOTrainer.__init__
 
 
-class DPOTrainer(Seq2SeqTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
+class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
     def __init__(self,
                  model: Union['PreTrainedModel', torch.nn.Module],
