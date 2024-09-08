@@ -5,14 +5,13 @@ from typing import Any, Dict
 import json
 import torch
 from transformers import IntervalStrategy
-from trl.models import create_reference_model
 
 from swift.trainers import RLHFTrainerFactory, get_preprocess_func, get_preprocessed_rlhf_dataset
 from swift.utils import (append_to_jsonl, check_json_format, get_logger, get_main,
                          is_master, plot_images, seed_everything)
 from . import LazyLLMDataset, print_example
 from .sft import _get_train_val_dataset, prepare_train_model_template
-from .utils import RLHFArguments, get_model_tokenizer, TEMPLATE_MAPPING, get_time_info
+from .utils import RLHFArguments, TEMPLATE_MAPPING, get_time_info
 
 logger = get_logger()
 
@@ -31,30 +30,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         for device_id in range(torch.cuda.device_count()):
             torch.cuda.set_per_process_memory_fraction(max(min(args.gpu_memory_fraction, 1.0), 0.01), device=device_id)
 
-    model, template = prepare_train_model_template(args)
+    model, ref_model, template, callbacks = prepare_train_model_template(args)
     tokenizer = template.tokenizer
-
-    if args.ref_model_type is not None:
-        if args.ref_model_free:
-            logger.warning(f"{args.rlhf_type} algorithm don't require ref model,\
-                     therefore the ref model will not be loaded here.")
-            ref_model = None
-        else:
-            ref_model, _ = get_model_tokenizer(
-                args.ref_model_type,
-                args.torch_dtype,
-                model_kwargs,
-                model_id_or_path=args.ref_model_id_or_path,
-                revision=args.model_revision,
-                quant_method=args.quant_method,
-                **kwargs)
-    elif not args.ref_model_free and args.sft_type == 'full':
-        ref_model = create_reference_model(model)
-    else:
-        ref_model = None
-
-    if ref_model:
-        template.ref_model = ref_model
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     if val_dataset is None:

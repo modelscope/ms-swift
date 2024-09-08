@@ -287,7 +287,31 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
-    return model, template, callbacks
+
+    # ref_model
+    ref_model = None
+    if args.ref_model_type is not None:
+        if args.ref_model_free:
+            logger.warning(f"{args.rlhf_type} algorithm don't require ref model,\
+                     therefore the ref model will not be loaded here.")
+        else:
+            ref_model, _ = get_model_tokenizer(
+                args.ref_model_type,
+                args.torch_dtype,
+                model_kwargs,
+                model_id_or_path=args.ref_model_id_or_path,
+                revision=args.model_revision,
+                quant_method=args.quant_method,
+                **kwargs)
+    elif not args.ref_model_free and args.sft_type == 'full':
+        from trl.models import create_reference_model
+        ref_model = create_reference_model(model)
+
+    if ref_model is None:
+        return model, template, callbacks
+    else:
+        template.ref_model = ref_model
+        return model, ref_model, template, callbacks
 
 
 def llm_sft(args: SftArguments) -> Dict[str, Any]:
