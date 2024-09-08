@@ -292,12 +292,11 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
 
-    # ref_model
-    is_rlhf = isinstance(args, RLHFArguments)
-    ref_model = None
-    if not is_rlhf:
+    if not isinstance(args, RLHFArguments):
         return model, template, callbacks
 
+    # ref_model
+    ref_model = None
     if args.ref_model_type is not None:
         ref_model, _ = get_model_tokenizer(
             args.ref_model_type,
@@ -314,7 +313,6 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         ref_model = create_reference_model(model)
 
     TrainerFactory.patch_template(args, template)
-
 
     template.ref_model = ref_model
     return model, ref_model, template, callbacks
@@ -427,7 +425,7 @@ def trainer_train(args,
             compute_acc_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=is_encoder_decoder)
         trainer_kwargs['compute_metrics'] = compute_metrics
         trainer_kwargs['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
-    if ref_model is not None:
+    if isinstance(args, RLHFArguments):
         trainer_kwargs['ref_model'] = ref_model
 
     trainer = trainer_cls(

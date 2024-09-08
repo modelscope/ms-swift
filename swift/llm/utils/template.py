@@ -3224,17 +3224,11 @@ class RLHFTemplateMixin:
             chosen_inputs, chosen_tokenizer_kwargs = template_encode(chosen_example)
             rejected_inputs, rejected_tokenizer_kwargs = template_encode(rejected_example)
 
-        for prefix in ['chosen', 'rejected']:
-            _inputs = locals()[f'{prefix}_inputs']
-            for k, v in _inputs.items():
-                inputs[f'{prefix}_{k}'] = v
-            if f'{prefix}_attention_mask' not in inputs:
-                inputs[f'{prefix}_attention_mask'] = [1] * len(_inputs['input_ids'])
-
-        for prefix in ['chosen', 'rejected']:
-            _tokenizer_kwargs = locals()[f'{prefix}_tokenizer_kwargs']
-            for k, v in _tokenizer_kwargs.items():
-                tokenizer_kwargs[f'{prefix}_{k}'] = v
+        for suffix, res in zip(['inputs', 'tokenizer_kwargs'], [inputs, tokenizer_kwargs]):
+            for prefix in ['chosen', 'rejected']:
+                data = locals()[f'{prefix}_{suffix}']
+                for k, v in data.items():
+                    res[f'{prefix}_{k}'] = v
         return inputs, tokenizer_kwargs
 
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:

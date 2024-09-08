@@ -17,7 +17,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
 
     is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
     if is_generation:
-        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. ")
+        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct.")
 
     msg = {}
     model, ref_model, template, callbacks = prepare_train_model_template(args)

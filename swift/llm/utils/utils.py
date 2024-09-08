@@ -353,7 +353,9 @@ def stat_dataset(llm_dataset: Dataset) -> str:
             _token_len.append(len(ii))
     else:
         for d in llm_dataset:
-            _token_len.append(len(d['input_ids']))
+            for k, v in d.items():
+                if k == 'input_ids' or k.endswith('_input_ids'):  # sft, rlhf
+                    _token_len.append(len(v))
     _, stat_str = stat_array(_token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
