@@ -43,6 +43,13 @@ class TrainerFactory:
         training_args_kwargs = {}
         if args.train_type == 'sft':
             training_args_kwargs['predict_with_generate'] = args.predict_with_generate
+            if args.predict_with_generate:
+                trainer_kwargs['compute_metrics'] = partial(compute_nlg_metrics, tokenizer=tokenizer)
+            else:
+                compute_metrics = partial(
+                    compute_acc_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=is_encoder_decoder)
+                trainer_kwargs['compute_metrics'] = compute_metrics
+                trainer_kwargs['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
         elif args.train_type == 'dpo':
             training_args_kwargs['rpo_alpha'] = args.rpo_alpha
         return training_args_cls, training_args_kwargs

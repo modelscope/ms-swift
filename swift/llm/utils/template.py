@@ -3234,8 +3234,8 @@ class RLHFTemplateMixin:
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         _data_collator = self._old_data_collator
         new_batch = []
-        for inputs in batch:
-            for prefix in ['chosen_', 'rejected_']:
+        for prefix in ['chosen_', 'rejected_']:
+            for inputs in batch:
                 new_inputs = {}
                 for k, v in inputs.items():
                     if k.startswith(prefix):
