@@ -1744,91 +1744,27 @@ class RLHFArguments(SftArguments):
     rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-
     ref_model_id_or_path: Optional[str] = None
-    ref_model_free: bool = False
-    max_prompt_length: Optional[int] = None
-    beta: Optional[float] = None
-    label_smoothing: float = 0.0
-    loss_type: Optional[str] = None
-    truncation_mode: Literal['keep_end', 'keep_start'] = 'keep_end'
+    ref_model_revision: Optional[str] = None
+
+    beta: float = 0.1
+    label_smoothing: float = 0.
+    loss_type: Literal[
+        "sigmoid",
+        "hinge",
+        "ipo",
+        "exo_pair",
+        "nca_pair",
+        "robust",
+        "bco_pair",
+        "sppo_hard",
+        "aot",
+        "aot_pair",
+        "apo_zero",
+        "apo_down",
+    ] = "sigmoid"
     # DPO
-    sft_beta: float = 0.1
-    # SimPO
-    simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
-    cpo_alpha: float = 1.0
-    # KTO
-    desirable_weight: float = 1.0
-    undesirable_weight: float = 1.0
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        # without reference model
-        self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
-        if self.rlhf_type == 'simpo':
-            self.loss_type = 'simpo'
-        self.set_default_beta()
-        self.set_default_loss_type()
-        self.set_default_config()
-        self.check_loss_type()
-        self.set_default_max_prompt_length()
-
-    def set_default_beta(self):
-        if self.beta is None:
-            if self.rlhf_type in ['dpo', 'orpo', 'kto', 'cpo']:
-                self.beta = 0.1
-            elif self.rlhf_type == 'simpo':
-                self.beta = 2.0
-
-    def set_default_config(self):
-        from importlib import import_module
-        from dataclasses import fields, MISSING
-        CONFIG_MAPPING = {
-            'orpo': 'trl.trainer.orpo_config.ORPOConfig',
-            'kto': 'trl.trainer.kto_config.KTOConfig',
-            'simpo': 'trl.trainer.cpo_config.CPOConfig',
-            'cpo': 'trl.trainer.cpo_config.CPOConfig',
-            'dpo': 'trl.trainer.dpo_config.DPOConfig'
-        }
-        if self.rlhf_type in CONFIG_MAPPING:
-            config_path = CONFIG_MAPPING[self.rlhf_type]
-            module_path, config_name = config_path.rsplit('.', 1)
-            config_module = import_module(module_path)
-            cls = getattr(config_module, config_name, None)
-            assert cls is not None
-            for f in fields(cls):
-                if hasattr(self.training_args, f.name):
-                    continue
-                elif hasattr(self, f.name):
-                    setattr(self.training_args, f.name, getattr(self, f.name))
-                elif f.default != MISSING:
-                    setattr(self.training_args, f.name, f.default)
-                elif f.default_factory != MISSING:
-                    setattr(self.training_args, f.name, f.default_factory())
-
-    def check_loss_type(self):
-        supported_loss_types = {
-            'dpo':
-            ['sigmoid', 'hinge', 'ipo', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust', 'aot', 'aot_pair', 'exo_pair'],
-            'cpo': ['sigmoid', 'hinge', 'ipo', 'simpo'],
-            'kto': ['kto', 'bco']
-        }
-        if self.rlhf_type in supported_loss_types:
-            assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
-                f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
-
-    def set_default_loss_type(self):
-        if self.loss_type is not None:
-            return
-        if self.rlhf_type in ['dpo', 'cpo']:
-            self.loss_type = 'sigmoid'
-        elif self.rlhf_type == 'kto':
-            self.loss_type = 'kto'
-
-    def set_default_max_prompt_length(self):
-        if self.max_prompt_length is None:
-            self.max_prompt_length = 4096 if self.is_vision else 512
-            logger.info(f'setting default max_prompt_length: {self.max_prompt_length}')
+    rpo_alpha: Optional[float] = None
 
 
 @dataclass
