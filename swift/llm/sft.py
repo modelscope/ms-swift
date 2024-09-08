@@ -21,8 +21,8 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, PtArguments, SftArguments, Template, dataset_map, get_dataset,
-                    get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
+from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, PtArguments, RLHFArguments, SftArguments, Template, dataset_map,
+                    get_dataset, get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
                     sort_by_max_length, stat_dataset)
 
 logger = get_logger()
@@ -293,33 +293,33 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
 
     # ref_model
+    is_rlhf = isinstance(args, RLHFArguments)
     ref_model = None
-    if hasattr(args, 'ref_model_type'):
-        if args.ref_model_type is not None:
-            ref_model, _ = get_model_tokenizer(
-                args.ref_model_type,
-                args.torch_dtype,
-                model_kwargs,
-                model_id_or_path=args.ref_model_id_or_path,
-                revision=args.model_revision,
-                quant_method=args.quant_method,
-                **kwargs)
-            ref_model.requires_grad_(False)
-            ref_model.eval()
-        elif args.sft_type == 'full':
-            from trl.models import create_reference_model
-            ref_model = create_reference_model(model)
+    if not is_rlhf:
+        return model, template, callbacks
+
+    if args.ref_model_type is not None:
+        ref_model, _ = get_model_tokenizer(
+            args.ref_model_type,
+            args.torch_dtype,
+            model_kwargs,
+            model_id_or_path=args.ref_model_id_or_path,
+            revision=args.model_revision,
+            quant_method=args.quant_method,
+            **kwargs)
+        ref_model.requires_grad_(False)
+        ref_model.eval()
+    elif args.sft_type == 'full':
+        from trl.models import create_reference_model
+        ref_model = create_reference_model(model)
 
     template_mixin = TrainerFactory.get_template_mixin(args)
     if template_mixin is not None:
         template.__class__.encode = template_mixin.encode
         template.__class__.data_collator = template_mixin.encode
 
-    if ref_model is None:
-        return model, template, callbacks
-    else:
-        template.ref_model = ref_model
-        return model, ref_model, template, callbacks
+    template.ref_model = ref_model
+    return model, ref_model, template, callbacks
 
 
 def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = None):
