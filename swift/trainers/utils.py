@@ -115,22 +115,3 @@ def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
     prompt = ''.join(res_context_list)
 
     return {'prompt': prompt, 'completion': example['response'], 'label': example['label']}
-
-
-def tokenize_paired_dataset(template: Template, examples: Dict[str, List[Any]], streaming: bool = False):
-    model_inputs = {}
-    chosen_example, rejected_example = examples.copy(), examples
-    rejected_example['response'] = examples['rejected_response']
-    if streaming:
-        chosen_tokenized = template.encode(chosen_example)
-        rejected_tokenized = template.encode(rejected_example)
-    else:
-        chosen_tokenized = template.encode(chosen_example)[0]
-        rejected_tokenized = template.encode(rejected_example)[0]
-
-    for prompt, tokenized in zip(['chosen', 'rejected'], [chosen_tokenized, rejected_tokenized]):
-        for k, v in tokenized.items():
-            model_inputs[f'{prompt}_{k}'] = v
-        if f'{prompt}_attention_mask' not in model_inputs:
-            model_inputs[f'{prompt}_attention_mask'] = [1] * len(tokenized['input_ids'])
-    return model_inputs

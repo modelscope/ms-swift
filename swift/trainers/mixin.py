@@ -605,6 +605,10 @@ class SwiftMixin:
             return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
 
 
+class RLHFTrainerMixin:
+    pass
+
+
 # monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
 trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]

@@ -21,7 +21,7 @@ from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_availa
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
-from swift.trainers import LOSS_MAPPING, Seq2SeqTrainingArguments
+from swift.trainers import LOSS_MAPPING, TrainerFactory
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
@@ -1174,15 +1174,16 @@ class SftArguments(ArgumentsBase):
         self.train_type = self.rlhf_type if hasattr(self, 'rlhf_type') else 'sft'
 
     def _init_training_args(self) -> None:
+
+        training_args_cls, kwargs = TrainerFactory.get_training_args_info(self)
         additional_saved_files = []
         if self.sft_type == 'full':
             additional_saved_files = get_additional_saved_files(self.model_type)
 
-        kwargs = {}
         if self.neftune_backend != 'swift':
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
-        parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
+        parameters = inspect.signature(training_args_cls.__init__).parameters
         for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size']:
             if k in parameters:
                 kwargs[k] = getattr(self, k)
@@ -1194,7 +1195,7 @@ class SftArguments(ArgumentsBase):
         if 'accelerator_config' in parameters:
             kwargs['accelerator_config'] = {'dispatch_batches': False}
 
-        training_args = Seq2SeqTrainingArguments(
+        training_args = training_args_cls(
             output_dir=self.output_dir,
             logging_dir=self.logging_dir,
             per_device_train_batch_size=self.batch_size,
