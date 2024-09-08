@@ -33,21 +33,8 @@ class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         else:
             self.dataset_info = {}
 
-        # performance
-        self.perf: Dict[str, Any] = {
-            'gen_time': 0.,
-            'gen_len': 0,
-            'memory': {},
-            'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
-        }
         self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix
         self.is_vision_model = is_vision
-
-    def train(self, *args, **kwargs) -> torch.Tensor:
-        res = super().train(*args, **kwargs)
-        for i in range(torch.cuda.device_count()):
-            self.perf['memory'][f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
-        return res
 
     @staticmethod
     def stat_dataset(llm_dataset, is_encoder_decoder: bool = False) -> Any:

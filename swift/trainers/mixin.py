@@ -606,7 +606,32 @@ class SwiftMixin:
 
 
 class RLHFTrainerMixin:
-    pass
+
+    def __init__(self,
+                 model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
+                 ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
+                 *_args,
+                 **kwargs):
+        self.ref_model = ref_model
+        self.is_vision_model = False
+        self.is_encoder_decoder = kwargs['is_encoder_decoder']
+        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
+        self._stored_metrics = defaultdict(lambda: defaultdict(list))
+
+        self.f_divergence_type = args.f_divergence_type
+        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
+
+        if args.disable_dropout:
+            disable_dropout_in_model(model)
+            if self.ref_model is not None:
+                disable_dropout_in_model(self.ref_model)
+        super().__init__(self, model, *_args, **kwargs)
+
+        if self.ref_model is not None:
+            if self.is_deepspeed_enabled:
+                self.ref_model = self._prepare_deepspeed(self.ref_model)
+            else:
+                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
 
 # monkey patching

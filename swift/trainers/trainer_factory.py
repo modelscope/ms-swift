@@ -43,6 +43,8 @@ class TrainerFactory:
     def get_training_args_info(cls, args):
         training_args_cls = cls.get_cls(args.train_type, cls.TRAINING_ARGS_MAPPING)
         training_args_kwargs = {}
+        if args.train_type == 'sft':
+            training_args_kwargs['predict_with_generate'] = args.predict_with_generate
         return training_args_cls, training_args_kwargs
 
     @staticmethod

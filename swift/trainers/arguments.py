@@ -56,15 +56,19 @@ try:
     from trl import (DPOConfig as HfDPOConfig, CPOConfig as HfCPOConfig, ORPOConfig as HfORPOConfig, KTOConfig as
                      HfKTOConfig)
 
+    @dataclass
     class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
         pass
 
+    @dataclass
     class CPOConfig(SwiftArgumentsMixin, HfCPOConfig):
         pass
 
+    @dataclass
     class ORPOConfig(SwiftArgumentsMixin, HfORPOConfig):
         pass
 
+    @dataclass
     class KTOConfig(SwiftArgumentsMixin, HfKTOConfig):
         pass
 

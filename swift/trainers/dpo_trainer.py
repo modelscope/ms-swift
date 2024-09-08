@@ -13,7 +13,7 @@ from trl.trainer import FDivergenceConstants, disable_dropout_in_model
 from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
-from .mixin import SwiftMixin
+from .mixin import RLHFTrainerMixin, SwiftMixin
 from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
@@ -21,60 +21,7 @@ logger = get_logger()
 del HFDPOTrainer.__init__
 
 
-class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
-
-    def __init__(self,
-                 model: Union['PreTrainedModel', torch.nn.Module],
-                 ref_model: Optional[Union['PreTrainedModel', torch.nn.Module]],
-                 args: DPOConfig,
-                 sft_beta=0.,
-                 **kwargs):
-        self.streaming = kwargs.pop('streaming', False)
-        self.is_vision_model = kwargs.pop('is_vision', False)
-        self.generate_during_eval = args.generate_during_eval
-        self.is_encoder_decoder = model.config.is_encoder_decoder
-        self.is_peft_model = is_peft_available() and isinstance(model, PeftModel)
-        self.tokenizer = kwargs['tokenizer']
-        self.lazy_tokenize = kwargs.pop('lazy_tokenize', False)
-        self.sft_beta = sft_beta
-        self.beta = args.beta
-        self.loss_type = args.loss_type
-        self.label_smoothing = args.label_smoothing
-        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
-        self.f_divergence_type = args.f_divergence_type
-        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
-
-        if args.disable_dropout:
-            disable_dropout_in_model(model)
-            if ref_model is not None:
-                disable_dropout_in_model(ref_model)
-        self.label_pad_token_id = -100
-        self.padding_value = 0
-        self.precompute_ref_log_probs = args.precompute_ref_log_probs
-        self._precomputed_train_ref_log_probs = False
-        self._precomputed_eval_ref_log_probs = False
-        self._peft_has_been_casted_to_bf16 = False  # ?
-        kwargs['super_class'] = Trainer
-        SwiftMixin.__init__(self, model, args, **kwargs)
-        self._stored_metrics = defaultdict(lambda: defaultdict(list))
-
-        self.ref_model = ref_model
-        self.ref_adapter_name = None
-        self.reference_free = False
-        if ref_model is not None:
-            if self.is_deepspeed_enabled:
-                if not (getattr(ref_model, 'is_loaded_in_8bit', False)
-                        or getattr(ref_model, 'is_loaded_in_4bit', False)):
-                    self.ref_model = self._prepare_deepspeed(self.ref_model)
-            else:
-                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
-                self.ref_model.eval()
-
-    def train(self, *args, **kwargs) -> torch.Tensor:
-        res = super().train(*args, **kwargs)
-        for i in range(torch.cuda.device_count()):
-            self.perf['memory'][f'cuda:{i}'] = f'{torch.cuda.max_memory_reserved(i)/1024/1024/1024:.2f}GiB'
-        return res
+class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
     def get_batch_loss_metrics(
         self,
