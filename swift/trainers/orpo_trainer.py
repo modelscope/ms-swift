@@ -14,7 +14,6 @@ from swift.llm.utils.template import Template
 from swift.utils import get_logger
 from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
-from .utils import sort_by_max_length
 
 logger = get_logger()
 

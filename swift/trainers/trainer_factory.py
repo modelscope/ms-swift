@@ -28,6 +28,8 @@ class TrainerFactory:
 
     @staticmethod
     def get_template_mixin(args):
-        args.train_type = args.rlhf_type if hasattr(args, 'rlhf_type') else 'sft'
+        from swift.llm import RLHFTemplateMixin
         if args.train_type == 'sft':
             return None
+        else:
+            return RLHFTemplateMixin
