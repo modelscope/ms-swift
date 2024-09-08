@@ -13,12 +13,13 @@ from trl.trainer import FDivergenceConstants, disable_dropout_in_model
 from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
-from .mixin import SwiftMixin, Seq2SeqTrainerMixin
+from .mixin import Seq2SeqTrainerMixin, SwiftMixin
 from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 
 del HFDPOTrainer.__init__
+
 
 class DPOTrainer(Seq2SeqTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
