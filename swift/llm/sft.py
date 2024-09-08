@@ -306,13 +306,10 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
             revision=args.model_revision,
             quant_method=args.quant_method,
             **kwargs)
-        ref_model.requires_grad_(False)
-        ref_model.eval()
+        ref_model.requires_grad_(False).eval()
     elif args.sft_type == 'full':
         from trl.models import create_reference_model
         ref_model = create_reference_model(model)
-
-    TrainerFactory.patch_template(args, template)
 
     template.ref_model = ref_model
     return model, ref_model, template, callbacks
@@ -475,7 +472,7 @@ def trainer_train(args,
         train_time = get_time_info(trainer.state.log_history, len(train_dataset))
         run_info.update({'train_time': train_time})
     for key in ['gen_time', 'gen_len']:
-        if trainer.perf[key] != 0:
+        if key in trainer.perf and trainer.perf[key] != 0:
             run_info[key] = trainer.perf[key]
     if is_master():
         jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
@@ -500,7 +497,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     msg = {}
     model, template, callbacks = prepare_train_model_template(args, msg)
     train_dataset, val_dataset = prepare_dataset(args, template, msg)
-
     return trainer_train(args, model, template, train_dataset, val_dataset, callbacks=callbacks, msg=msg)
 
 

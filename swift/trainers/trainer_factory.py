@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import importlib.util
+from contextlib import contextmanager
 from functools import partial
 from typing import Dict
 
@@ -48,8 +49,9 @@ class TrainerFactory:
             training_args_kwargs['rpo_alpha'] = args.rpo_alpha
         return training_args_cls, training_args_kwargs
 
+    @contextmanager
     @staticmethod
-    def patch_template(args, template) -> None:
+    def patch_template(args, template):
         from swift.llm import RLHFTemplateMixin
         if args.train_type == 'sft':
             return None
@@ -58,3 +60,7 @@ class TrainerFactory:
         template.__class__._old_data_collator = template.__class__.data_collator
         template.__class__.encode = template_mixin.encode
         template.__class__.data_collator = template_mixin.data_collator
+        yield
+        template.__class__.encode = template.__class__._old_encode
+        template.__class__.data_collator = template.__class__._old_data_collator
+        del template.__class__._old_encode, template.__class__._old_data_collator
