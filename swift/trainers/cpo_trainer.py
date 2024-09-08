@@ -9,7 +9,6 @@ from transformers.utils import is_peft_available
 from trl import CPOConfig
 from trl import CPOTrainer as HFCPOTrainer
 from trl.trainer import disable_dropout_in_model
-from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
 from .mixin import SwiftMixin
@@ -17,14 +16,12 @@ from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 
+del HFCPOTrainer.__init__
+
 
 class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
 
-    def __init__(self,
-                 model: Union['PreTrainedModel', torch.nn.Module],
-                 args: CPOConfig,
-                 test_oom_error=False,
-                 **kwargs):
+    def __init__(self, model: Union['PreTrainedModel', torch.nn.Module], args: CPOConfig, **kwargs):
         kwargs.pop('ref_model', None)
         self.lazy_tokenize = kwargs.pop('lazy_tokenize', False)
         self.streaming = kwargs.pop('streaming', False)
@@ -53,7 +50,6 @@ class CPOTrainer(PushToMsHubMixin, SwiftMixin, HFCPOTrainer):
         if args.disable_dropout:
             disable_dropout_in_model(model)
         self._peft_has_been_casted_to_bf16 = False
-        kwargs['super_class'] = Trainer
         SwiftMixin.__init__(self, model, args, **kwargs)
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 

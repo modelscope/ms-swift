@@ -1,30 +1,27 @@
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from peft import PeftModel
 from torch import nn
-from transformers import PreTrainedModel, Trainer
+from transformers import PreTrainedModel
 from transformers.utils import is_peft_available
 from trl import ORPOConfig
 from trl import ORPOTrainer as HFORPOTrainer
-from trl.trainer.utils import DPODataCollatorWithPadding, disable_dropout_in_model
+from trl.trainer.utils import disable_dropout_in_model
 
-from swift.llm.utils.template import Template
 from swift.utils import get_logger
 from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 
+del HFORPOTrainer.__init__
+
 
 class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
 
-    def __init__(self,
-                 model: Union['PreTrainedModel', torch.nn.Module],
-                 args: ORPOConfig,
-                 test_oom_error=False,
-                 **kwargs):
+    def __init__(self, model: Union['PreTrainedModel', torch.nn.Module], args: ORPOConfig, **kwargs):
         kwargs.pop('ref_model', None)
         self.streaming = kwargs.pop('streaming', False)
         self.is_vision_model = kwargs.pop('is_vision', False)
@@ -39,18 +36,12 @@ class ORPOTrainer(PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
         self.tokenizer = kwargs['tokenizer']
         self.beta = args.beta
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
-        kwargs['data_collator'] = DPODataCollatorWithPadding(
-            pad_token_id=self.tokenizer.pad_token_id,
-            label_pad_token_id=args.label_pad_token_id,
-            is_encoder_decoder=self.is_encoder_decoder,
-        )
         self.use_dpo_data_collator = True
         self.label_pad_token_id = -100
         self.padding_value = 0
         if args.disable_dropout:
             disable_dropout_in_model(model)
         self._peft_has_been_casted_to_bf16 = False
-        kwargs['super_class'] = Trainer
         SwiftMixin.__init__(self, model, args, **kwargs)
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         self.model.config.model_type = self.model.config.model_type[:-1]  # remove suffix

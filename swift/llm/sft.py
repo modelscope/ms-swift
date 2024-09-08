@@ -420,6 +420,13 @@ def trainer_train(args,
         trainer_kwargs['check_model'] = False
     if isinstance(args, RLHFArguments):
         trainer_kwargs['ref_model'] = ref_model
+    elif args.predict_with_generate:
+        trainer_kwargs['compute_metrics'] = partial(compute_nlg_metrics, tokenizer=tokenizer)
+    else:
+        compute_metrics = partial(
+            compute_acc_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=is_encoder_decoder)
+        trainer_kwargs['compute_metrics'] = compute_metrics
+        trainer_kwargs['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
 
     trainer = trainer_cls(
         model=model,

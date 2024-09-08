@@ -1,13 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 # Part of the implementation is borrowed from huggingface/transformers.
 
-import heapq
 import inspect
-from functools import partial
 from types import FunctionType, MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
-from accelerate import PartialState
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HFIterableDataset
 from torch.nn import Module

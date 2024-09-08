@@ -5,18 +5,16 @@ import os
 import re
 import shutil
 import time
+from collections import defaultdict
 from pathlib import Path
 from types import MethodType
-from collections import defaultdict
-from trl.trainer import FDivergenceConstants, disable_dropout_in_model
-
-import torch.nn as nn
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
 import numpy as np
 import safetensors
 import torch
+import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
@@ -30,6 +28,7 @@ from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trai
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
+from trl.trainer import FDivergenceConstants, disable_dropout_in_model
 
 from swift.hub.check_model import check_local_model_is_latest
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
@@ -639,7 +638,7 @@ class RLHFTrainerMixin:
         # not use
         tokenizer = kwargs['tokenizer']
         self.label_pad_token_id = -100
-        self.padding_value = tokenizer.pad_token_id 
+        self.padding_value = tokenizer.pad_token_id
         self.is_vision_model = False
         self.use_dpo_data_collator = True
 

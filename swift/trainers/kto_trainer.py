@@ -2,17 +2,16 @@ import heapq
 from typing import Any, Dict
 
 import torch
-from datasets import Dataset as HfDataset
-from transformers import trainer
 from trl import KTOTrainer as HFKTOTrainer
 from trl.trainer import kto_trainer
 
 from swift.utils import get_logger
-from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
+
+del HFKTOTrainer.__init__
 
 
 class KTOTrainer(PushToMsHubMixin, SwiftMixin, HFKTOTrainer):

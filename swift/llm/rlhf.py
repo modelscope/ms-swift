@@ -2,8 +2,6 @@
 import os
 from typing import Any, Dict
 
-import torch
-
 from swift.utils import get_logger, get_main, seed_everything
 from .sft import prepare_dataset, prepare_train_model_template, trainer_train
 from .utils import TEMPLATE_MAPPING, RLHFArguments
