@@ -78,9 +78,9 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     train_dataset, val_dataset = _get_train_val_dataset(args)
     td0, tkwargs0 = template.encode(train_dataset[0])
     print_example(td0, tokenizer, tkwargs0)
-    train_dataset = LazyLLMDataset(train_dataset, template)
+    train_dataset = LazyLLMDataset(train_dataset, template.encode)
     if val_dataset is not None:
-        val_dataset = LazyLLMDataset(val_dataset, template)
+        val_dataset = LazyLLMDataset(val_dataset, template.encode)
 
     res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
     res.update(MegatronArguments.from_sft_args(args, train_dataset, val_dataset))
@@ -371,9 +371,9 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
 
-        train_dataset = LazyLLMDataset(train_dataset, template)
+        train_dataset = LazyLLMDataset(train_dataset, template.encode)
         if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, template)
+            val_dataset = LazyLLMDataset(val_dataset, template.encode)
     msg['dataset_info'] = dataset_info
     return train_dataset, val_dataset
 

@@ -249,14 +249,12 @@ class LazyLLMDataset(Dataset):
 
     def __init__(self,
                  dataset: HfDataset,
-                 template: Template,
+                 encode_func: Callable[[Dict[str, Any]], Union[Tuple[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]],
                  *,
-                 try_fetch_time: int = 20,
-                 encode_func: Callable = None) -> None:
+                 try_fetch_time: int = 20) -> None:
         self.dataset = dataset
-        self.template = template
-        self.try_fetch_time = min(try_fetch_time, len(self.dataset))
         self.encode_func = encode_func
+        self.try_fetch_time = min(try_fetch_time, len(self.dataset))
         assert self.try_fetch_time >= 1
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
@@ -270,10 +268,9 @@ class LazyLLMDataset(Dataset):
         for i in [first_idx] + idx.tolist():
             data = self.dataset[i]
             try:
-                if self.encode_func:
-                    res = self.encode_func(data)
-                else:
-                    res = self.template.encode(data)[0]
+                res = self.encode_func(data)
+                if isinstance(res, (tuple, list)) and len(res) == 2:
+                    res = res[0]
             except Exception as e:
                 logger.error(f'Error occurs in lazy tokenize: {e}')
                 continue
