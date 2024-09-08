@@ -313,10 +313,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         from trl.models import create_reference_model
         ref_model = create_reference_model(model)
 
-    template_mixin = TrainerFactory.get_template_mixin(args)
-    if template_mixin is not None:
-        template.__class__.encode = template_mixin.encode
-        template.__class__.data_collator = template_mixin.encode
+    TrainerFactory.patch_template(args, template)
+
 
     template.ref_model = ref_model
     return model, ref_model, template, callbacks

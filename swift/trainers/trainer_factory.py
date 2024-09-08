@@ -27,9 +27,12 @@ class TrainerFactory:
         return trainer_cls, trainer_kwargs
 
     @staticmethod
-    def get_template_mixin(args):
+    def patch_template(args, template) -> None:
         from swift.llm import RLHFTemplateMixin
         if args.train_type == 'sft':
             return None
-        else:
-            return RLHFTemplateMixin
+        template_mixin = RLHFTemplateMixin
+        template.__class__._old_encode = template.__class__.encode
+        template.__class__._old_data_collator = template.__class__.data_collator
+        template.__class__.encode = template_mixin.encode
+        template.__class__.data_collator = template_mixin.encode
