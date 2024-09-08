@@ -17,7 +17,6 @@ from transformers.utils import is_peft_available
 from swift.torchacc_utils import (patch_clip_grad_norm, ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader,
                                   ta_trim_graph)
 from swift.utils import use_torchacc
-from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .loss import get_loss_func
 from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
@@ -290,7 +289,3 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
 
 
-# monkey patching
-trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
-trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
-trainer.PrinterCallback = PrinterCallbackNew

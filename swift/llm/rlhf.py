@@ -57,14 +57,14 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     else:
         ref_model = None
 
+    if ref_model:
+        template.ref_model = ref_model
+
     train_dataset, val_dataset = _get_train_val_dataset(args)
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
         training_args.do_eval = False
         training_args.eval_strategy = IntervalStrategy.NO
-
-    if ref_model:
-        template.ref_model = ref_model
 
     # tokenize dataset
     preprocess_kwargs = {}
@@ -75,7 +75,6 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             load_from_cache_file=dataset_enable_cache,
             desc='tokenizing paired dataset',
         )
-    patch_trl()
     is_encoder_decoder = model.config.is_encoder_decoder
 
     if args.lazy_tokenize:

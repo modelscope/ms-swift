@@ -188,12 +188,3 @@ def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Opti
         if val_dataset is not None:
             val_dataset = val_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)
     return train_dataset, val_dataset
-
-
-def patch_trl():
-    from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
-    from transformers import trainer
-
-    trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
-    trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
-    trainer.PrinterCallback = PrinterCallbackNew

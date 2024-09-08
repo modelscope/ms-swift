@@ -18,7 +18,7 @@ from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, trainer
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
@@ -35,6 +35,7 @@ from swift.utils import check_json_format, get_logger, use_torchacc
 from swift.utils.constants import Invoke
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 
 logger = get_logger()
 
@@ -552,3 +553,8 @@ class SwiftMixin:
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
         return self.optimizer
+
+# monkey patching
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew
