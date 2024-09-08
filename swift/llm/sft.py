@@ -326,6 +326,8 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
 
     tokenizer = template.tokenizer
     dataset_info = {}
+    td0, tkwargs0 = template.encode(train_dataset[0])
+    print_example(td0, tokenizer, tkwargs0)
     if args.packing:
         from swift.llm.utils.utils import ConstantLengthDataset
         train_dataset = ConstantLengthDataset.get_packed_dataset(
@@ -334,8 +336,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
             val_dataset = ConstantLengthDataset.get_packed_dataset(
                 template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
         if not args.lazy_tokenize:
-            td0 = train_dataset[0]
-            print_example(td0, tokenizer, {})
             dataset_info['train_dataset'] = stat_dataset(train_dataset)
             if val_dataset is not None:
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
@@ -365,23 +365,18 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
             raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
                                  '(1) The dataset contains None for input or labels;\n'
                                  "(2) The 'max_length' setting is too short causing data truncation.")
-        if args.streaming:
-            td0, tkwargs0 = next(iter(train_dataset)), {}
-        else:
-            td0, tkwargs0 = train_dataset.data[0]
-        print_example(td0, tokenizer, tkwargs0)
         if not args.streaming:
             dataset_info['train_dataset'] = stat_dataset(train_dataset)
             if val_dataset is not None:
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
-        td0, tkwargs0 = template.encode(train_dataset[0])
-        print_example(td0, tokenizer, tkwargs0)
+
         train_dataset = LazyLLMDataset(train_dataset, template)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template)
     msg['dataset_info'] = dataset_info
     return train_dataset, val_dataset
+
 
 def llm_sft(args: SftArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')

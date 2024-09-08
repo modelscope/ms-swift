@@ -5,7 +5,7 @@ import heapq
 import inspect
 from functools import partial
 from types import FunctionType, MethodType
-from typing import Any, Dict, List, Optional, Tuple, Union, Literal
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from accelerate import PartialState
 from datasets import Dataset as HfDataset
@@ -62,14 +62,14 @@ def is_instance_of_ms_model(model: Module) -> bool:
             return True
     return False
 
+
 def get_rlhf_preprocess_func(template: Template, rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'],
                              streaming: bool):
     if rlhf_type == 'kto':
         # leave truncation in trainer for KTO
         return partial(preprocess_kto_dataset, template=template)
     else:
-        return partial(
-            tokenize_paired_dataset, template, streaming)
+        return partial(tokenize_paired_dataset, template, streaming)
 
 
 def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
@@ -126,11 +126,7 @@ def preprocess_kto_dataset(example: Dict[str, List[Any]], template: Template):
     return {'prompt': prompt, 'completion': example['response'], 'label': example['label']}
 
 
-def tokenize_paired_dataset(
-    template: Template,
-    examples: Dict[str, List[Any]],
-    streaming: bool = False
-):
+def tokenize_paired_dataset(template: Template, examples: Dict[str, List[Any]], streaming: bool = False):
     model_inputs = {}
     chosen_example, rejected_example = examples.copy(), examples
     rejected_example['response'] = examples['rejected_response']
@@ -149,14 +145,11 @@ def tokenize_paired_dataset(
     return model_inputs
 
 
-def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE],
-                                  template: Template,
-                                  rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'],
-                                  streaming: bool,
+def get_preprocessed_rlhf_dataset(train_dataset: DATASET_TYPE, val_dataset: Optional[DATASET_TYPE], template: Template,
+                                  rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'], streaming: bool,
                                   **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
 
-    preprocess_func = get_rlhf_preprocess_func(
-        template=template, rlhf_type=rlhf_type, streaming=streaming)
+    preprocess_func = get_rlhf_preprocess_func(template=template, rlhf_type=rlhf_type, streaming=streaming)
     column_names = list(next(iter(train_dataset)).keys())
     with PartialState().local_main_process_first():
         train_dataset = train_dataset.map(preprocess_func, remove_columns=column_names, **kwargs)

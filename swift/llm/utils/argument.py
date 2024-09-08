@@ -1749,20 +1749,8 @@ class RLHFArguments(SftArguments):
 
     beta: float = 0.1
     label_smoothing: float = 0.
-    loss_type: Literal[
-        "sigmoid",
-        "hinge",
-        "ipo",
-        "exo_pair",
-        "nca_pair",
-        "robust",
-        "bco_pair",
-        "sppo_hard",
-        "aot",
-        "aot_pair",
-        "apo_zero",
-        "apo_down",
-    ] = "sigmoid"
+    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'exo_pair', 'nca_pair', 'robust', 'bco_pair', 'sppo_hard', 'aot',
+                       'aot_pair', 'apo_zero', 'apo_down', ] = 'sigmoid'
     # DPO
     rpo_alpha: Optional[float] = None
 

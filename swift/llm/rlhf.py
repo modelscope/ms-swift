@@ -7,11 +7,11 @@ import torch
 from transformers import IntervalStrategy
 
 from swift.trainers import RLHFTrainerFactory, get_preprocess_func, get_preprocessed_rlhf_dataset
-from swift.utils import (append_to_jsonl, check_json_format, get_logger, get_main,
-                         is_master, plot_images, seed_everything)
+from swift.utils import (append_to_jsonl, check_json_format, get_logger, get_main, is_master, plot_images,
+                         seed_everything)
 from . import LazyLLMDataset, print_example
 from .sft import prepare_dataset, prepare_train_model_template
-from .utils import RLHFArguments, TEMPLATE_MAPPING, get_time_info
+from .utils import TEMPLATE_MAPPING, RLHFArguments, get_time_info
 
 logger = get_logger()
 
@@ -39,8 +39,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     is_encoder_decoder = model.config.is_encoder_decoder
 
     if args.lazy_tokenize:
-        preprocess_func = get_preprocess_func(
-            template=template, rlhf_type=args.rlhf_type, streaming=streaming)
+        preprocess_func = get_preprocess_func(template=template, rlhf_type=args.rlhf_type, streaming=streaming)
         td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)

@@ -142,10 +142,10 @@ class LLMDataset(Dataset):
 
     def __getitem__(self, idx: Union[int, str]) -> Dict[str, Any]:
         if isinstance(idx, int):
-            data, _ = self.data[idx]
+            data = self.data[idx]
             return data
         elif isinstance(idx, str):
-            return [d[0][idx] for d in self.data]
+            return [d[idx] for d in self.data]
         else:
             raise ValueError(f'idx: {idx}')
 
@@ -288,15 +288,15 @@ MapFunc = Callable[[Dict[str, Any]], Tuple[Dict[str, Any], Dict[str, Any]]]
 
 
 def _single_map(d: Dict[str, Any], map_func: MapFunc) -> Optional[Dict[str, Any]]:
-    d = map_func(d)
-    if len(d[0]) == 0:
+    d = map_func(d)[0]
+    if len(d) == 0:
         return None
     return d
 
 
 def _map_mp_single(subset: HfDataset, map_func: MapFunc, queue: Queue, start_idx: int):
     for i, d in enumerate(subset, start=start_idx):
-        queue.put((i, map_func(d)[0]))  # idx, result
+        queue.put((i, map_func(d)))  # idx, result
 
 
 def _map_mp_i(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
@@ -414,6 +414,7 @@ def print_example(example: Dict[str, Any],
             logger.info(f'[{key_upper}] {val}')
             val_str = safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
             logger.info(f'[INPUT] {val_str}')
+
 
 def _find_layers(model: Module, module_cls: type) -> List[str]:
     module_names = set()
