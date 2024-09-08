@@ -7,7 +7,7 @@ from .trainers import Seq2SeqTrainer
 
 
 class TrainerFactory:
-    TRAINERS_MAPPING = {
+    TRAINER_MAPPING = {
         'sft': Seq2SeqTrainer,
         'dpo': DPOTrainer,
         'simpo': CPOTrainer,
@@ -18,7 +18,7 @@ class TrainerFactory:
 
     @classmethod
     def get_trainer_info(cls, args):
-        trainer_cls = cls.TRAINERS_MAPPING[args.train_type]
+        trainer_cls = cls.TRAINER_MAPPING[args.train_type]
         trainer_kwargs = {}
         if args.train_type == 'sft':
             trainer_kwargs['sequence_parallel_size'] = args.sequence_parallel_size

@@ -13,20 +13,20 @@ from trl.trainer import FDivergenceConstants, disable_dropout_in_model
 from trl.trainer.utils import DPODataCollatorWithPadding
 
 from swift.utils import get_logger
-from .mixin import SwiftMixin
+from .mixin import SwiftMixin, Seq2SeqTrainerMixin
 from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 
+del HFDPOTrainer.__init__
 
-class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
+class DPOTrainer(Seq2SeqTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
     def __init__(self,
                  model: Union['PreTrainedModel', torch.nn.Module],
                  ref_model: Optional[Union['PreTrainedModel', torch.nn.Module]],
                  args: DPOConfig,
                  sft_beta=0.,
-                 test_oom_error=False,
                  **kwargs):
         self.streaming = kwargs.pop('streaming', False)
         self.is_vision_model = kwargs.pop('is_vision', False)
@@ -43,11 +43,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
 
-        kwargs['data_collator'] = DPODataCollatorWithPadding(
-            pad_token_id=self.tokenizer.pad_token_id,
-            label_pad_token_id=args.label_pad_token_id,
-            is_encoder_decoder=self.is_encoder_decoder,
-        )
         if args.disable_dropout:
             disable_dropout_in_model(model)
             if ref_model is not None:
@@ -73,24 +68,6 @@ class DPOTrainer(PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
                 self.ref_model.eval()
-
-        if not self.streaming and not self.lazy_tokenize:
-            train_ds_info = self.stat_dataset(self.train_dataset, self.is_encoder_decoder)
-
-            if self.eval_dataset is not None:
-                val_ds_info = self.stat_dataset(self.eval_dataset, self.is_encoder_decoder)
-                self.dataset_info = {'train_dataset': train_ds_info, 'val_dataset': val_ds_info}
-            else:
-                self.dataset_info = {'train_dataset': train_ds_info}
-        else:
-            self.dataset_info = {}
-        # performance
-        self.perf: Dict[str, Any] = {
-            'gen_time': 0.,
-            'gen_len': 0,
-            'memory': {},
-            'model': self.model.get_trainable_parameters() if hasattr(self.model, 'get_trainable_parameters') else None,
-        }
 
     def train(self, *args, **kwargs) -> torch.Tensor:
         res = super().train(*args, **kwargs)
