@@ -3252,8 +3252,10 @@ class RLHFTemplateMixin:
                     if k.startswith(prefix):
                         new_k = k[len(prefix):]
                         new_inputs[new_k] = inputs[k]
-                new_batch.append(new_inputs)
-        return _data_collator(new_batch, padding_to)
+                if len(new_inputs) > 0:
+                    new_batch.append(new_inputs)
+        assert len(new_batch) in {0, len(batch) * 2}, f'new_batch: {new_batch}'
+        return _data_collator(new_batch or batch, padding_to)
 
 
 def get_template(
