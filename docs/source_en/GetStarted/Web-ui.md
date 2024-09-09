@@ -20,4 +20,4 @@ The web-ui command has two ways to control the UI behaviour. The first way is to
 >
 > USE_INFERENCE=1/0: Default is 0. Controls whether the gradio inference page directly loads the model for inference or deployment (USE_INFERENCE=0).
 
-The second way is to use [parameter](../LLM/Command-line-parameters.md#web-ui-parameters).
+The second way is to use [parameter](../Instruction/Command-line-parameters.md#web-ui-parameters).

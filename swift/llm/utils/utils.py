@@ -248,10 +248,16 @@ class ConstantLengthDataset(IterableDataset):
 
 class LazyLLMDataset(Dataset):
 
-    def __init__(self, dataset: HfDataset, template: Template, *, try_fetch_time: int = 20) -> None:
+    def __init__(self,
+                 dataset: HfDataset,
+                 template: Template,
+                 *,
+                 try_fetch_time: int = 20,
+                 encode_func: Callable = None) -> None:
         self.dataset = dataset
         self.template = template
         self.try_fetch_time = min(try_fetch_time, len(self.dataset))
+        self.encode_func = encode_func
         assert self.try_fetch_time >= 1
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
@@ -266,9 +272,12 @@ class LazyLLMDataset(Dataset):
         for i in [first_idx] + idx.tolist():
             data = self.dataset[i]
             try:
-                res = self.template.encode(data)
+                if self.encode_func:
+                    res = self.encode_func(data), {}
+                else:
+                    res = self.template.encode(data)
             except Exception as e:
-                logger.error('Error occurs in lazy tokenize:', e)
+                logger.error(f'Error occurs in lazy tokenize: {e}')
                 continue
             if len(res[0]) > 0:
                 return res
@@ -382,8 +391,8 @@ def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[in
         if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
             e = i
             result_str += f'[{input_ids[i - 1]} * {e - s}]'
-    if _is_special(input_ids[-1]):
-        result_str += f'[{input_ids[i - 1]} * {len(input_ids) - s}]'
+    if _is_special(input_ids[i]):
+        result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
     else:
         result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
     return result_str
@@ -395,6 +404,10 @@ def print_example(example: Dict[str, Any],
     if tokenizer_kwargs is None:
         tokenizer_kwargs = {}
     input_ids = example.get('input_ids')
+    chosen_input_ids = example.get('chosen_input_ids')
+    chosen_labels = example.get('chosen_labels')
+    rejected_input_ids = example.get('rejected_input_ids')
+    rejected_labels = example.get('rejected_labels')
     labels = example.get('labels')
     if input_ids is not None:
         logger.info(f'[INPUT_IDS] {input_ids}')
@@ -404,6 +417,22 @@ def print_example(example: Dict[str, Any],
         logger.info(f'[LABLES_IDS] {labels}')
         labels_str = safe_tokenizer_decode(tokenizer, labels, **tokenizer_kwargs)
         logger.info(f'[LABLES] {labels_str}')
+    if chosen_input_ids is not None:
+        logger.info(f'[CHOSEN_INPUT_IDS] {chosen_input_ids}')
+        input_str = safe_tokenizer_decode(tokenizer, chosen_input_ids, **tokenizer_kwargs)
+        logger.info(f'[CHOSEN INPUT] {input_str}')
+    if rejected_input_ids is not None:
+        logger.info(f'[REJECTED_INPUT_IDS] {rejected_input_ids}')
+        input_str = safe_tokenizer_decode(tokenizer, rejected_input_ids, **tokenizer_kwargs)
+        logger.info(f'[REJECTED INPUT] {input_str}')
+    if chosen_labels is not None:
+        logger.info(f'[CHOSEN_LABLES_IDS] {chosen_labels}')
+        labels_str = safe_tokenizer_decode(tokenizer, chosen_labels, **tokenizer_kwargs)
+        logger.info(f'[CHOSEN LABELS] {labels_str}')
+    if rejected_labels is not None:
+        logger.info(f'[REJECTED_INPUT_IDS] {rejected_labels}')
+        labels_str = safe_tokenizer_decode(tokenizer, rejected_labels, **tokenizer_kwargs)
+        logger.info(f'[REJECTED LABELS] {labels_str}')
 
 
 def _find_layers(model: Module, module_cls: type) -> List[str]:
@@ -642,7 +671,7 @@ def inference_stream(model: PreTrainedModel,
                      stop_words: Optional[StopWords] = None,
                      generation_info: Optional[Dict[str, Any]] = None,
                      adapter_names: Optional[List[str]] = None,
-                     **kwargs) -> Iterator[Tuple[str, History]]:
+                     **kwargs) -> Iterator[Union[Tuple[str, History], Dict[str, Any]]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
@@ -685,13 +714,16 @@ def inference_stream(model: PreTrainedModel,
         raise ValueError(error_msg)
 
     streamer = TokenListIteratorStreamer()
+    return_dict = generation_config.return_dict_in_generate
     generation_kwargs = {'streamer': streamer, 'generation_config': generation_config, **inputs}
-    _model_generate = model.generate
-    if is_torch_npu_available():
+    result_queue = Queue()
 
-        def _model_generate(*args, **kwargs):
+    def _model_generate(*args, **kwargs):
+        if is_torch_npu_available():
             torch.npu.set_device(model.device)
-            return model.generate(*args, **kwargs)
+        res = model.generate(*args, **kwargs)
+        result_queue.put(res)
+        return res
 
     thread = Thread(target=_model_generate, kwargs=generation_kwargs)
     thread.start()
@@ -710,7 +742,12 @@ def inference_stream(model: PreTrainedModel,
             raw_generate_ids += token_list
         except StopIteration:
             is_finished = True
+        res = {}
         generate_ids = template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
+        if return_dict and is_finished:
+            thread.join()
+            res = dict(result_queue.get())
+            res['sequences'] = generate_ids
         generation_info['num_generated_tokens'] = len(generate_ids)
         response = template.generate_ids_to_response(
             generate_ids,
@@ -727,7 +764,11 @@ def inference_stream(model: PreTrainedModel,
         generation_info['runtime'] = runtime
         generation_info['samples/s'] = 1 / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-        yield response, history
+        if return_dict:
+            res.update({'response': response, 'history': history})
+            yield res
+        else:
+            yield response, history
 
 
 @torch.inference_mode()
@@ -746,7 +787,7 @@ def inference(model: PreTrainedModel,
               adapter_names: Optional[List[str]] = None,
               prompt_prefix: str = '[PROMPT]',
               output_prefix: str = '[OUTPUT]',
-              **kwargs) -> Tuple[str, History]:
+              **kwargs) -> Union[Tuple[str, History], Dict[str, Any]]:
     """
     generation_config: Priority: generation_config > model.generation_config.
     """
@@ -799,7 +840,11 @@ def inference(model: PreTrainedModel,
         else:
             print(f'[QUERY]{query}\n{output_prefix}', end='')
 
+    return_dict = generation_config.return_dict_in_generate
     generate_ids = model.generate(streamer=streamer, generation_config=generation_config, **inputs)
+    if return_dict:
+        res = dict(generate_ids)
+        generate_ids = generate_ids['sequences']
     generate_ids = template.get_generate_ids(generate_ids, token_len)
     generation_info['num_generated_tokens'] = len(generate_ids)
     if verbose and stream is False:
@@ -815,7 +860,12 @@ def inference(model: PreTrainedModel,
     generation_info['runtime'] = runtime
     generation_info['samples/s'] = 1 / runtime
     generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-    return response, history
+    if return_dict:
+        res['sequences'] = generate_ids
+        res.update({'response': response, 'history': history})
+        return res
+    else:
+        return response, history
 
 
 def limit_history_length(template: Template, query: str, history: Optional[History],

@@ -165,8 +165,8 @@ def ta_test_dataloader(test_dataset, data_collator, sampler, args):
 def ta_save_optimizer_and_scheduler(optimizer, lr_scheduler, output_dir):
     import torch_xla.core.xla_model as xm
     xm.rendezvous('saving_optimizer_states')
-    torch.save(optimizer.state_dict(), os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'))
-    torch.save(lr_scheduler.state_dict(), os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'))
+    xm.save(optimizer.state_dict(), os.path.join(output_dir, f'optimizer_{xm.get_ordinal()}.pt'), master_only=False)
+    xm.save(lr_scheduler.state_dict(), os.path.join(output_dir, f'scheduler_{xm.get_ordinal()}.pt'), master_only=False)
     xm.rendezvous('saving_optimizer_states_done')
 
 
@@ -849,6 +849,5 @@ def patch_clip_grad_norm(accelerator):
         return torch.nn.utils.clip_grad_norm_(parameters, max_norm, norm_type=norm_type)
 
     # TODO(baole): This should be removed once accelerate is updated.
-    if version.parse(accelerate.__version__) < version.parse('0.34.0'):
-        accelerator.clip_grad_norm_ = types.MethodType(clip_grad_norm_, accelerator)
+    accelerator.clip_grad_norm_ = types.MethodType(clip_grad_norm_, accelerator)
     return accelerator

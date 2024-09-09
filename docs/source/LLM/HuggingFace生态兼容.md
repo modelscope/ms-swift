@@ -1,7 +1,7 @@
 # HuggingFace生态兼容
 默认我们会使用[ModelScope](https://modelscope.cn/my/overview)中的模型和数据集进行微调和推理。但是考虑到海外用户更熟悉[HuggingFace](https://huggingface.co/)生态，这里对其进行兼容。
 
-你需要设置环境变量`USE_HF=1`，支持的HuggingFace模型和数据集可以参考[支持的模型和数据集](支持的模型和数据集.md)，部分数据集只支持在ModelScope环境下使用。
+你需要设置环境变量`USE_HF=1`，支持的HuggingFace模型和数据集可以参考[支持的模型和数据集](../Instruction/支持的模型和数据集.md)，部分数据集只支持在ModelScope环境下使用。
 
 以下是对`qwen1.5-7b-chat`的推理脚本:
 ```shell

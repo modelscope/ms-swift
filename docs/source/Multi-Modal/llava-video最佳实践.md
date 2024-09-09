@@ -113,7 +113,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset video-chatgpt \
 ```
 
-[自定义数据集](../LLM/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
+[自定义数据集](../Instruction/自定义与拓展.md#-推荐命令行参数的形式)支持json, jsonl样式, 以下是自定义数据集的例子:
 
 (每轮对话需包含一段视频/图片或不含视频/图片, 支持传入本地路径或URL)
 

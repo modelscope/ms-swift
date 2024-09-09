@@ -25,9 +25,6 @@ class RLHFTrainerFactory:
         if args.rlhf_type in ['dpo']:
             trainer_kwargs['sft_beta'] = args.sft_beta
 
-        if args.rlhf_type == 'simpo':
-            trainer_kwargs['gamma'] = args.simpo_gamma
-
         return trainer_kwargs
 
     @staticmethod

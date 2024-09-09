@@ -11,6 +11,7 @@ Swift DOCUMENTATION
 
    GetStarted/Installation.md
    GetStarted/Web-ui.md
+   GetStarted/Push-Model.md
    GetStarted/Tuners.md
    GetStarted/ResTuning.md
    GetStarted/SCEdit.md
@@ -18,22 +19,28 @@ Swift DOCUMENTATION
 
 .. toctree::
    :maxdepth: 2
+   :caption: Instruction
+
+   Instruction/index.md
+   Instruction/LLM-fine-tuning.md
+   Instruction/LLM-inference.md
+   Instruction/LLM-eval.md
+   Instruction/LLM-quantization-and-export.md
+   Instruction/LLM-exp.md
+   Instruction/Command-line-parameters.md
+   Instruction/Supported-models-datasets.md
+   Instruction/Customization.md
+
+.. toctree::
+   :maxdepth: 2
    :caption: LLM Training and Inference
 
    LLM/index.md
-   LLM/LLM-inference.md
-   LLM/LLM-fine-tuning.md
    LLM/Human-Preference-Alignment-Training-Documentation.md
-   LLM/LLM-eval.md
-   LLM/LLM-quantization-and-export.md
    LLM/OLLaMA-Export.md
    LLM/VLLM-inference-acceleration-and-deployment.md
    LLM/LmDeploy-inference-acceleration-and-deployment.md
    LLM/Megatron-training.md
-   LLM/LLM-exp.md
-   LLM/Command-line-parameters.md
-   LLM/Supported-models-datasets.md
-   LLM/Customization.md
    LLM/Self-cognition-best-practice.md
    LLM/Agent-fine-tuning-best-practice.md
    LLM/Agent-deployment-best-practice.md

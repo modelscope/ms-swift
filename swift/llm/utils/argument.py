@@ -135,6 +135,14 @@ class ArgumentsBase:
     def handle_generation_config(self: Union['SftArguments', 'InferArguments']) -> None:
         if self.temperature == 0:
             self.do_sample = False
+        if self.do_sample is False and (isinstance(self, InferArguments) and self.infer_backend == 'pt'
+                                        and isinstance(self, SftArguments)):
+            # fix warning
+            self.temperature = 1.
+            self.top_p = 1.
+            self.top_k = 50
+            logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
+                        f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
     def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
@@ -987,7 +995,6 @@ class SftArguments(ArgumentsBase):
             self.dataset_seed = self.seed
         self.set_model_type()
         self.check_flash_attn()
-        self.handle_generation_config()
         self.handle_lr_scheduler_kwargs()
         self.is_multimodal = self._is_multimodal(self.model_type)
         self.is_vision = self._is_vision(self.model_type)
@@ -1043,8 +1050,8 @@ class SftArguments(ArgumentsBase):
                 vision_tower = None
                 if isinstance(lora_target_modules, str):
                     vision_tower = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
-                if vision_tower is not None:
-                    self.freeze_parameters.append(vision_tower)
+                if vision_tower:
+                    self.freeze_parameters += vision_tower
             assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
@@ -1163,6 +1170,7 @@ class SftArguments(ArgumentsBase):
             self.logging_dir = f'{self.output_dir}/runs'
             if self.train_backend == 'transformers':
                 self.training_args.logging_dir = self.logging_dir
+        self.handle_generation_config()
 
     def _init_training_args(self) -> None:
         additional_saved_files = []
@@ -1382,7 +1390,7 @@ class InferArguments(ArgumentsBase):
     merge_lora: bool = False
     merge_device_map: Optional[str] = None
     save_safetensors: bool = True
-    overwrite_generation_config: Optional[bool] = None
+    overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
     local_repo_path: Optional[str] = None
     custom_register_path: Optional[str] = None  # .py
@@ -1403,6 +1411,7 @@ class InferArguments(ArgumentsBase):
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
+    max_logprobs: int = 20
 
     # lmdeploy
     tp: int = 1
@@ -1452,7 +1461,6 @@ class InferArguments(ArgumentsBase):
         self.handle_custom_dataset_info()
         self.set_model_type()
         self.check_flash_attn()
-        self.handle_generation_config()
         self.is_multimodal = self._is_multimodal(self.model_type)
         self.prepare_ms_hub()
 
@@ -1480,16 +1488,11 @@ class InferArguments(ArgumentsBase):
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
-        if self.overwrite_generation_config is None:
-            if self.ckpt_dir is None:
-                self.overwrite_generation_config = False
-            else:
-                self.overwrite_generation_config = True
-            logger.info(f'Setting overwrite_generation_config: {self.overwrite_generation_config}')
         if self.ckpt_dir is None:
             self.sft_type = 'full'
 
         self.handle_infer_backend()
+        self.handle_generation_config()
 
     def handle_infer_backend(self):
         model_info = MODEL_MAPPING[self.model_type]
@@ -1567,13 +1570,14 @@ class AppUIArguments(InferArguments):
 
 @dataclass
 class DeployArguments(InferArguments):
-    host: str = '127.0.0.1'
+    host: str = '0.0.0.0'
     port: int = 8000
     api_key: Optional[str] = None
     ssl_keyfile: Optional[str] = None
     ssl_certfile: Optional[str] = None
 
     owned_by: str = 'swift'
+    served_model_name: Optional[str] = None
     verbose: bool = True  # Whether to log request_info
     log_interval: int = 10  # Interval for printing global statistics
 
@@ -1743,10 +1747,12 @@ class RLHFArguments(SftArguments):
 
     ref_model_id_or_path: Optional[str] = None
     ref_model_free: bool = False
-    max_prompt_length: int = 1024
+    max_prompt_length: Optional[int] = None
     beta: Optional[float] = None
     label_smoothing: float = 0.0
     loss_type: Optional[str] = None
+    truncation_mode: Literal['keep_end', 'keep_start'] = 'keep_end'
+    # DPO
     sft_beta: float = 0.1
     # SimPO
     simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
@@ -1765,6 +1771,7 @@ class RLHFArguments(SftArguments):
         self.set_default_loss_type()
         self.set_default_config()
         self.check_loss_type()
+        self.set_default_max_prompt_length()
 
     def set_default_beta(self):
         if self.beta is None:
@@ -1817,6 +1824,11 @@ class RLHFArguments(SftArguments):
             self.loss_type = 'sigmoid'
         elif self.rlhf_type == 'kto':
             self.loss_type = 'kto'
+
+    def set_default_max_prompt_length(self):
+        if self.max_prompt_length is None:
+            self.max_prompt_length = 4096 if self.is_vision else 512
+            logger.info(f'setting default max_prompt_length: {self.max_prompt_length}')
 
 
 @dataclass

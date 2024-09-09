@@ -163,7 +163,7 @@ This format will be converted to a format recognizable by Qwen-VL. Specifically:
 
 You can also directly provide the above format, but please use thousandths for the coordinates.
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json and jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../Instruction/Customization.md#-Recommended-Command-line-arguments) support json and jsonl formats. Here is an example of a custom dataset:
 
 (Supports multi-turn dialogues, where each turn can contain multiple images or no images, and supports passing in local paths or URLs)
 
