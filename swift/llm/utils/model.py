@@ -5963,8 +5963,7 @@ def _patch_minicpm_v_device_map(model) -> None:
         model.__class__.get_vision_embedding = _get_vision_embedding
 
     if hasattr(model, 'resampler'):  # minicpm-v-v2_5-chat
-        _device_hook = get_device_hook(device)
-        model.resampler.register_forward_hook(_device_hook)
+        model.resampler.register_forward_hook(get_device_hook(device))
 
 
 @register_model(
