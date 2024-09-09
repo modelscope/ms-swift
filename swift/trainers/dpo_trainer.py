@@ -22,10 +22,7 @@ class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         model_kwargs = batch.copy()
         labels = model_kwargs.pop('labels', None)
-        outputs = model(
-            **model_kwargs,
-            use_cache=False,
-        )
+        outputs = model(**model_kwargs, use_cache=False)
         model_kwargs['labels'] = labels
         model_kwargs['chosen_labels'] = torch.zeros(model_kwargs['input_ids'].shape[0] // 2)  # just get shape
         for key in ['input_ids', 'attention_mask', 'labels']:
