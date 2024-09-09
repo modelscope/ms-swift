@@ -413,26 +413,26 @@ def print_example(example: Dict[str, Any],
         logger.info(f'[INPUT_IDS] {input_ids}')
         input_str = safe_tokenizer_decode(tokenizer, input_ids, **tokenizer_kwargs)
         logger.info(f'[INPUT] {input_str}')
-    if labels is not None:
-        logger.info(f'[LABLES_IDS] {labels}')
-        labels_str = safe_tokenizer_decode(tokenizer, labels, **tokenizer_kwargs)
-        logger.info(f'[LABLES] {labels_str}')
     if chosen_input_ids is not None:
         logger.info(f'[CHOSEN_INPUT_IDS] {chosen_input_ids}')
         input_str = safe_tokenizer_decode(tokenizer, chosen_input_ids, **tokenizer_kwargs)
-        logger.info(f'[CHOSEN INPUT] {input_str}')
+        logger.info(f'[CHOSEN_INPUT] {input_str}')
     if rejected_input_ids is not None:
         logger.info(f'[REJECTED_INPUT_IDS] {rejected_input_ids}')
         input_str = safe_tokenizer_decode(tokenizer, rejected_input_ids, **tokenizer_kwargs)
-        logger.info(f'[REJECTED INPUT] {input_str}')
+        logger.info(f'[REJECTED_INPUT] {input_str}')
+    if labels is not None:
+        logger.info(f'[LABELS_IDS] {labels}')
+        labels_str = safe_tokenizer_decode(tokenizer, labels, **tokenizer_kwargs)
+        logger.info(f'[LABELS] {labels_str}')
     if chosen_labels is not None:
-        logger.info(f'[CHOSEN_LABLES_IDS] {chosen_labels}')
+        logger.info(f'[CHOSEN_LABELS_IDS] {chosen_labels}')
         labels_str = safe_tokenizer_decode(tokenizer, chosen_labels, **tokenizer_kwargs)
-        logger.info(f'[CHOSEN LABELS] {labels_str}')
+        logger.info(f'[CHOSEN_LABELS] {labels_str}')
     if rejected_labels is not None:
-        logger.info(f'[REJECTED_INPUT_IDS] {rejected_labels}')
+        logger.info(f'[REJECTED_LABELS_IDS] {rejected_labels}')
         labels_str = safe_tokenizer_decode(tokenizer, rejected_labels, **tokenizer_kwargs)
-        logger.info(f'[REJECTED LABELS] {labels_str}')
+        logger.info(f'[REJECTED_LABELS] {labels_str}')
 
 
 def _find_layers(model: Module, module_cls: type) -> List[str]:
