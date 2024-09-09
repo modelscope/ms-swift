@@ -145,9 +145,9 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             max_new_tokens = 64
         self._temperature = temperature
         if hasattr(_LmdeployGenerationConfig, 'stop_token_ids'):
-            stop_kwargs = dict(stop_token_ids=stop_words)
+            extra_kwargs = dict(stop_token_ids=stop_words, do_sample=True)
         else:
-            stop_kwargs = dict(stop_words=stop_words)
+            extra_kwargs = dict(stop_words=stop_words)
 
         super().__init__(
             max_new_tokens=max_new_tokens,
@@ -156,7 +156,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             top_p=top_p,
             repetition_penalty=repetition_penalty,
             n=n,
-            **stop_kwargs,
+            **extra_kwargs,
             logprobs=logprobs,
             random_seed=random_seed,
             skip_special_tokens=skip_special_tokens,
