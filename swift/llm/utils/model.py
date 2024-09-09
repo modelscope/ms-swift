@@ -944,6 +944,14 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
+def get_device_hook(device):
+
+    def _device_hook(module, input, output):
+        return to_device(output, device)
+
+    return _device_hook
+
+
 def _output_device_map_hook(module, input, output):
     return output.to(input[0].device)
 
@@ -4552,9 +4560,6 @@ def git_clone_github(github_url: str,
 
 
 def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
-    if hasattr(model, '_is_patching'):
-        return
-    model._is_patching = True
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
@@ -4567,7 +4572,8 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
                 device = find_device(args)
                 if device is None:
                     device = find_device(kwargs)
-                res = res.__class__(**to_device(res, device))
+                res.logits = to_device(res.logits, device)
+                res.loss = to_device(res.loss, device)
             return res
 
         return _new_func
@@ -5398,14 +5404,7 @@ def fix_qwen_inplace_bug(model) -> None:
     first_drop = model.transformer.drop
     if first_drop.p == 0.:
         # fix in-place operation bug
-        if not hasattr(first_drop, '__old_forward'):  # Avoid double patching
-            if hasattr(first_drop, '_old_forward'):  # device_map
-                __old_forward = first_drop._old_forward
-                first_drop._old_forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).clone()
-            else:
-                __old_forward = first_drop.forward
-                first_drop.forward = lambda *args, **kwargs: __old_forward(*args, **kwargs).clone()
-            first_drop.__old_forward = __old_forward
+        first_drop.register_forward_hook(_clone_hook)
 
 
 def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> str:
@@ -5460,17 +5459,15 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
     tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
-    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
-        tokenizer_cls._old_decode = tokenizer_cls._decode
-        tokenizer_cls._decode = _qwen_vl_audio_decode
+    tokenizer_cls._old_decode = tokenizer_cls._decode
+    tokenizer_cls._decode = _qwen_vl_audio_decode
     # fix device_map is 4
     n_gpu = torch.cuda.device_count()
     local_world_size = get_dist_setting()[3]
     if n_gpu // local_world_size >= 4:
         visual_block_cls = get_class_from_dynamic_module('visual.VisualAttentionBlock', model_dir)
-        if not hasattr(visual_block_cls, '__old_forward'):  # avoid double patching
-            visual_block_cls.__old_forward = visual_block_cls.forward
-            visual_block_cls.forward = _qwen_vl_visual_block_forward
+        visual_block_cls.__old_forward = visual_block_cls.forward
+        visual_block_cls.forward = _qwen_vl_visual_block_forward
 
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
@@ -5481,15 +5478,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
         # fix images cuda:1 bug
-        vision_transformer = model.transformer.visual
-        if not hasattr(vision_transformer, '__old_forward'):
-            _old_forward = vision_transformer.forward
-
-            def _new_forward(x: torch.Tensor):
-                return _old_forward(x).to(device=f'{x.device.type}:0')
-
-            vision_transformer.__old_forward = _old_forward
-            vision_transformer.forward = _new_forward
+        model.transformer.visual.register_forward_hook(get_device_hook(0))
     return model, tokenizer
 
 
@@ -5522,9 +5511,8 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
     tokenizer_cls._auto_class = 'AutoTokenizer'
     tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
-    if not hasattr(tokenizer_cls, '_old_decode'):  # avoid double patching
-        tokenizer_cls._old_decode = tokenizer_cls._decode
-        tokenizer_cls._decode = _qwen_vl_audio_decode
+    tokenizer_cls._old_decode = tokenizer_cls._decode
+    tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model is not None:
@@ -5804,21 +5792,13 @@ def get_model_tokenizer_deepseek_moe(model_dir: str,
     if model is not None:
         # fix dtype bug
         mlp_cls = model.model.layers[1].mlp.__class__
+
+        def _dtype_hook(module, input, output):
+            return output.to(input[0].dtype)
+
         for module in model.modules():
             if isinstance(module, mlp_cls):
-                if not hasattr(module, '__old_forward'):  # Avoid double patching
-                    __old_forward = module._old_forward if hasattr(module, '_old_forward') else module.forward
-
-                    def _new_forward(hidden_states, *, __old_forward) -> Tensor:
-                        dtype = hidden_states.dtype
-                        return __old_forward(hidden_states).to(dtype)
-
-                    _new_forward = partial(_new_forward, __old_forward=__old_forward)
-                    if hasattr(module, '_old_forward'):  # device_map
-                        module._old_forward = _new_forward
-                    else:
-                        module.forward = _new_forward
-                    module.__old_forward = __old_forward
+                module.register_forward_hook(_dtype_hook)
     return model, tokenizer
 
 
@@ -5964,30 +5944,23 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 def _patch_minicpm_v_device_map(model) -> None:
     if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
         return
-    if hasattr(model.llm, '__old_forward'):
-        # avoid double patching
-        return
-    device = list(model.hf_device_map.values())[0]
-    if hasattr(model, 'get_vision_embedding'):  # minicpm-v-v2-chat
-        _old_get_vision_embedding = model.get_vision_embedding
 
-        def _get_vision_embedding(pixel_values):
+    device = list(model.hf_device_map.values())[0]
+    if hasattr(model, 'get_vision_embedding') and not hasattr(model, '_old_get_vision_embedding'):
+        # minicpm-v-v2-chat; avoid double patching
+        _old_get_vision_embedding = model.__class__.get_vision_embedding
+
+        def _get_vision_embedding(self, pixel_values):
             if len(pixel_values) == 0:
-                return _old_get_vision_embedding(pixel_values)
-            output = _old_get_vision_embedding(pixel_values)
+                return _old_get_vision_embedding(self, pixel_values)
+            output = _old_get_vision_embedding(self, pixel_values)
             return output.to(device=device)
 
-        model._old_get_vision_embedding = _old_get_vision_embedding
-        model.get_vision_embedding = _get_vision_embedding
+        model.__class__._old_get_vision_embedding = _old_get_vision_embedding
+        model.__class__.get_vision_embedding = _get_vision_embedding
 
     if hasattr(model, 'resampler'):  # minicpm-v-v2_5-chat
-        __old_resampler_forward = model.resampler.forward
-
-        def _new_resampler_forward(*args, **kwargs) -> Tensor:
-            output = __old_resampler_forward(*args, **kwargs)
-            return output.to(device=device)
-
-        model.resampler.forward = _new_resampler_forward
+        model.resampler.register_forward_hook(get_device_hook(device))
 
 
 @register_model(

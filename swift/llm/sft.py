@@ -297,19 +297,21 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     # ref_model
     ref_model = None
-    if args.ref_model_type is not None:
-        ref_model, _ = get_model_tokenizer(
-            args.ref_model_type,
-            args.torch_dtype,
-            model_kwargs,
-            model_id_or_path=args.ref_model_id_or_path,
-            revision=args.model_revision,
-            quant_method=args.quant_method,
-            **kwargs)
-        ref_model.requires_grad_(False).eval()
-    elif args.sft_type == 'full':
-        from trl.models import create_reference_model
-        ref_model = create_reference_model(model)
+    if args.ref_model_type is not None or not args.sft_type == 'full':
+        if args.ref_model_free:
+            logger.warning(f"{args.rlhf_type} algorithm don't require ref model, "
+                           'therefore the ref model will not be loaded here.')
+        else:
+            # Be aware of the unexpected behavior caused by double monkey patching.
+            ref_model, _ = get_model_tokenizer(
+                args.ref_model_type or args.model_type,
+                args.torch_dtype,
+                model_kwargs,
+                model_id_or_path=args.ref_model_id_or_path or args.model_id_or_path,
+                revision=args.model_revision or args.ref_model_revision,
+                quant_method=args.quant_method,
+                **kwargs)
+            ref_model.requires_grad_(False).eval()
 
     template.ref_model = ref_model
     return model, ref_model, template, callbacks
