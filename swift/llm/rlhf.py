@@ -149,6 +149,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             logger.warning(f"{args.rlhf_type} algorithm don't require ref model,\
                      therefore the ref model will not be loaded here.")
         else:
+            # Be aware of the anomalous behavior caused by double monkey patching.
             ref_model, _ = get_model_tokenizer(
                 args.ref_model_type or args.model_type,
                 args.torch_dtype,
@@ -157,6 +158,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
                 revision=args.model_revision,
                 quant_method=args.quant_method,
                 **kwargs)
+            ref_model.requires_grad_(False).eval()
 
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model.hf_device_map: {model.hf_device_map}')
