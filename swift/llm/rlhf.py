@@ -149,7 +149,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             logger.warning(f"{args.rlhf_type} algorithm don't require ref model,\
                      therefore the ref model will not be loaded here.")
         else:
-            # Be aware of the anomalous behavior caused by double monkey patching.
+            # Be aware of the unexpected behavior caused by double monkey patching.
             ref_model, _ = get_model_tokenizer(
                 args.ref_model_type or args.model_type,
                 args.torch_dtype,
