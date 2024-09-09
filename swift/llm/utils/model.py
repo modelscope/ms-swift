@@ -4560,9 +4560,6 @@ def git_clone_github(github_url: str,
 
 
 def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
-    if hasattr(model, '_is_patching'):
-        return
-    model._is_patching = True
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
@@ -4570,12 +4567,13 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
         @wraps(_old_func)
         def _new_func(self, *args, **kwargs):
-            res = _old_func(getattr(self, submodel_name), *args, **kwargs)
+            res = _old_func(submodel, *args, **kwargs)
             if func_name == 'forward':
                 device = find_device(args)
                 if device is None:
                     device = find_device(kwargs)
-                res = res.__class__(**to_device(res, device))
+                res.logits = to_device(res.logits, device)
+                res.loss = to_device(res.loss, device)
             return res
 
         return _new_func
@@ -5946,11 +5944,10 @@ def get_model_tokenizer_yi_vl(model_dir: str,
 def _patch_minicpm_v_device_map(model) -> None:
     if not hasattr(model, 'hf_device_map') or len(model.hf_device_map.values()) == 1:
         return
-    if hasattr(model.llm, '__old_forward'):
-        # avoid double patching
-        return
+
     device = list(model.hf_device_map.values())[0]
-    if hasattr(model, 'get_vision_embedding'):  # minicpm-v-v2-chat
+    if hasattr(model, 'get_vision_embedding') and not hasattr(model, '_old_get_vision_embedding'):
+        # minicpm-v-v2-chat; avoid double patching
         _old_get_vision_embedding = model.__class__.get_vision_embedding
 
         def _get_vision_embedding(self, pixel_values):
