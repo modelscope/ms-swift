@@ -49,8 +49,8 @@ class TrainerFactory:
             training_args_kwargs['rpo_alpha'] = args.rpo_alpha
         return training_args_cls, training_args_kwargs
 
-    @contextmanager
     @staticmethod
+    @contextmanager
     def patch_template(args, template):
         from swift.llm import RLHFTemplateMixin
         if args.train_type == 'sft':

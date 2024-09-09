@@ -3207,6 +3207,15 @@ register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))
 
 
+def _ignore_labels_not_last(labels) -> None:
+    try:
+        # find last -100
+        index = len(labels) - 1 - labels[::-1].index(-100)
+        labels[:index + 1] = [-100] * (index + 1)
+    except ValueError:
+        pass
+
+
 class RLHFTemplateMixin:
 
     def encode(self: Template,
@@ -3228,6 +3237,8 @@ class RLHFTemplateMixin:
             for prefix in ['chosen', 'rejected']:
                 data = locals()[f'{prefix}_{suffix}']
                 for k, v in data.items():
+                    if k == 'labels':
+                        _ignore_labels_not_last(v)
                     res[f'{prefix}_{k}'] = v
         return inputs, tokenizer_kwargs
 
