@@ -1639,10 +1639,10 @@ class EvalArguments(InferArguments):
             super().handle_infer_backend()
 
     def _is_multimodal(self, model_type: Optional[str] = None) -> bool:
-        return False
+        return False if self.eval_url is not None else super()._is_multimodal(model_type)
 
     def _is_vision(self, model_type: Optional[str] = None) -> bool:
-        return False
+        return False if self.eval_url is not None else super()._is_vision(model_type)
 
 
 @dataclass
