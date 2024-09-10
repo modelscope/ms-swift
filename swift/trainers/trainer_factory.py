@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
+import inspect
 import importlib.util
 from contextlib import contextmanager
 from functools import partial
@@ -45,8 +45,11 @@ class TrainerFactory:
         training_args_kwargs = {}
         if args.train_type == 'sft':
             training_args_kwargs['predict_with_generate'] = args.predict_with_generate
-        elif args.train_type == 'dpo':
-            training_args_kwargs['rpo_alpha'] = args.rpo_alpha
+        check_parameters = ['beta', 'label_smoothing', 'loss_type', 'rpo_alpha', 'cpo_alpha', 'simpo_gamma']
+        parameters = inspect.signature(training_args_cls.__init__).parameters
+        for p_name in check_parameters:
+            if p_name in parameters:
+                training_args_kwargs[p_name] = getattr(args, p_name)
         return training_args_cls, training_args_kwargs
 
     @staticmethod

@@ -649,6 +649,30 @@ class RLHFTrainerMixin:
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
+    def concatenated_forward(
+        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+
+        model_kwargs = batch.copy()
+        labels = model_kwargs.pop('labels', None)
+        outputs = model(**model_kwargs, use_cache=False)
+        model_kwargs['labels'] = labels
+        model_kwargs['chosen_labels'] = torch.zeros(model_kwargs['input_ids'].shape[0] // 2)  # just get shape
+        for key in ['input_ids', 'attention_mask', 'labels']:
+            model_kwargs[f'concatenated_{key}'] = model_kwargs.pop(key)
+
+        @contextmanager
+        def _patch_concatenated_forward():
+            _old_concatenated_inputs = self.concatenated_inputs
+            _old_model_call = model.__class__.__call__
+            self.concatenated_inputs = lambda *args, **kwargs: model_kwargs
+            model.__class__.__call__ = lambda *args, **kwargs: outputs
+            yield
+            self.concatenated_inputs = _old_concatenated_inputs
+            model.__class__.__call__ = _old_model_call
+
+        with _patch_concatenated_forward():
+            return super().concatenated_forward(model, model_kwargs)
 
 # monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
