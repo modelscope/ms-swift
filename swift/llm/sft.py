@@ -290,6 +290,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         template.encode = partial(template.encode, streaming=args.streaming)
     if args.train_type not in {'sft', 'orpo'}:
         template._compute_per_round_loss = False
+        if args.train_type == 'kto':
+            template._output_prompt_completion = True
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
@@ -332,7 +334,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
         training_args.do_eval = False
 
     tokenizer = template.tokenizer
-    preprocess_func = template.encode
     dataset_info = {}
     if args.packing:
         from swift.llm.utils.utils import ConstantLengthDataset
@@ -360,9 +361,9 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
             logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = dataset_map(train_dataset, preprocess_func, args.preprocess_num_proc, streaming=args.streaming)
+        train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
         if val_dataset is not None:
-            val_dataset = dataset_map(val_dataset, preprocess_func, args.preprocess_num_proc, streaming=args.streaming)
+            val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
         template.model = model  # recover
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
@@ -381,9 +382,9 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
     else:
         td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, preprocess_func)
+        train_dataset = LazyLLMDataset(train_dataset, template.encode)
         if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, preprocess_func)
+            val_dataset = LazyLLMDataset(val_dataset, template.encode)
     if isinstance(msg, dict):
         msg['dataset_info'] = dataset_info
     return train_dataset, val_dataset

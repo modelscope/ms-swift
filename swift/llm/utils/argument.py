@@ -1250,6 +1250,7 @@ class SftArguments(ArgumentsBase):
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
             seed=self.seed,
+            data_seed=self.dataset_seed,
             loss_name=self.loss_name,
             **kwargs)
 

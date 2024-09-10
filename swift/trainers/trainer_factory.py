@@ -52,11 +52,14 @@ class TrainerFactory:
     @staticmethod
     @contextmanager
     def patch_template(args, template):
-        from swift.llm import RLHFTemplateMixin
-        if args.train_type in {'sft', 'kto'}:
+        from swift.llm import RLHFTemplateMixin, KTOTemplateMixin
+        if args.train_type == 'sft':
             yield
             return
-        template_mixin = RLHFTemplateMixin
+        if args.train_type == 'kto':
+            template_mixin = KTOTemplateMixin
+        else:
+            template_mixin = RLHFTemplateMixin
         template.__class__._old_encode = template.__class__.encode
         template.__class__._old_data_collator = template.__class__.data_collator
         template.__class__.encode = template_mixin.encode

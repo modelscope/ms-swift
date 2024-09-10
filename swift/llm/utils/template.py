@@ -237,6 +237,7 @@ class Template:
         self._is_lmdeploy = False
         self._is_training = False
         self._compute_per_round_loss = True
+        self._output_prompt_completion = False
         self.padding_side = padding_side
 
     @staticmethod
@@ -889,10 +890,28 @@ class Template:
                     compute_loss=self._compute_per_round_loss or is_suffix)
                 res_context_list += extra_context_list
                 loss_scale_list += ([1.] if is_suffix else [0.]) * len(extra_context_list)
-        res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
-        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
-        if labels is not None:
-            self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
+        inputs = {}
+        if self._output_prompt_completion:
+            # tokenizer_kwargs: use prompt
+            completion_len = len(extra_context_list) + 1
+            for key, _slice in zip(
+                ['completion', 'prompt'],
+                [slice(-completion_len, None), slice(None, -completion_len)]):
+                _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
+                                                                                  loss_scale_list[_slice], **kwargs)
+                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
+                    _res_context_list, _loss_scale_list)
+                inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
+                if self.use_loss_scale:
+                    inputs[f'{key}_loss_scale'] = loss_scale
+            input_ids = inputs[f'prompt_input_ids'] + inputs[f'completion_input_ids']
+            labels = inputs[f'prompt_labels'] + inputs[f'completion_labels']
+        else:
+            res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
+            input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
+                res_context_list, loss_scale_list)
+            if labels is not None:
+                self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
         if response is None:
             labels = None
@@ -907,10 +926,9 @@ class Template:
                 labels = labels[-self.max_length:]
             if loss_scale is not None:
                 loss_scale = loss_scale[-self.max_length:]
-        inputs = {
-            'input_ids': input_ids,
-            'labels': labels,
-        }
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+
         if self.use_loss_scale:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
@@ -3287,6 +3305,19 @@ class RLHFTemplateMixin:
                     new_batch.append(new_inputs)
         assert len(new_batch) in {0, len(batch) * 2}, f'new_batch: {new_batch}'
         return _data_collator(new_batch or batch, padding_to)
+
+
+class KTOTemplateMixin:
+
+    def encode(self: Template,
+               example: Dict[str, Any],
+               streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        res = self._old_encode(example, streaming)
+        res['label'] = example['label']
+        return res
+
+    def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        return self._old_data_collator(batch, padding_to)
 
 
 def get_template(
