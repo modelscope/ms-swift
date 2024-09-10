@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -20,6 +20,7 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
                  *_args,
                  **kwargs):
         args = kwargs['args']
+        args.disable_dropout = True
         self.desirable_weight = args.desirable_weight
         self.undesirable_weight = args.undesirable_weight
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
@@ -29,4 +30,7 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
     def forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        batch['KL_completion_input_ids'] = batch['input_ids']
+        batch['KL_completion_attention_mask'] = batch['attention_mask']
+        batch['KL_completion_labels'] = batch['labels']
         return super().forward(model, batch)

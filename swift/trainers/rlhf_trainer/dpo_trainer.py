@@ -8,7 +8,6 @@ from trl import DPOTrainer as HFDPOTrainer
 
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
-
 del HFDPOTrainer.__init__
 
 

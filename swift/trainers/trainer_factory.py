@@ -54,7 +54,8 @@ class TrainerFactory:
     def patch_template(args, template):
         from swift.llm import RLHFTemplateMixin
         if args.train_type in {'sft', 'kto'}:
-            return None
+            yield
+            return
         template_mixin = RLHFTemplateMixin
         template.__class__._old_encode = template.__class__.encode
         template.__class__._old_data_collator = template.__class__.data_collator
