@@ -1,6 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from trl import CPOTrainer as HFCPOTrainer
-
+from typing import Optional, Union
+import torch.nn as nn
+from transformers import PreTrainedModel
 from swift.utils import get_logger
 from .mixin import RLHFTrainerMixin, SwiftMixin
 from .push_to_ms import PushToMsHubMixin

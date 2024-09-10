@@ -1,9 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from trl import DPOTrainer as HFDPOTrainer
+from peft import PeftModel
 
 from swift.utils import get_logger
 from .mixin import RLHFTrainerMixin, SwiftMixin
 from .push_to_ms import PushToMsHubMixin
+from typing import  Optional, Union
+import torch.nn as nn
+from trl.trainer import FDivergenceConstants
+from transformers import PreTrainedModel
 
 logger = get_logger()
 
@@ -25,3 +30,4 @@ class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.ref_adapter_name = args.ref_adapter_name
         self.reference_free = args.reference_free
         self.is_vision_model = False
+        super().__init__(model, ref_model, *_args, **kwargs)

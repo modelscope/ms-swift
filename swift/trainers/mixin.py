@@ -29,7 +29,7 @@ from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trai
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
-from trl.trainer import FDivergenceConstants, disable_dropout_in_model
+from trl.trainer import disable_dropout_in_model
 
 from swift.hub.check_model import check_local_model_is_latest
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
