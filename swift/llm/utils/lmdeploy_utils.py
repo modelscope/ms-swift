@@ -5,6 +5,7 @@ import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import dataclass
 from functools import wraps
 from queue import Queue
 from threading import Thread
@@ -111,9 +112,11 @@ def get_lmdeploy_engine(
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)
         kwargs = generation_config.to_dict()
+        if kwargs.get('max_new_tokens') is None:
+            kwargs.pop('max_new_tokens', None)
         parameters = inspect.signature(LmdeployGenerationConfig.__init__).parameters
-        for k in kwargs.copy().keys():
-            if k not in parameters:
+        for k, v in kwargs.copy().items():
+            if k not in parameters or v is None:
                 kwargs.pop(k)
         lmdeploy_engine.generation_config = LmdeployGenerationConfig(**kwargs)
     else:
@@ -122,56 +125,40 @@ def get_lmdeploy_engine(
     return lmdeploy_engine
 
 
+@dataclass
 class LmdeployGenerationConfig(_LmdeployGenerationConfig):
+    max_new_tokens: int = 64
+    temperature: float = 1.
+    top_k: int = 50  # -1: all
+    top_p: float = 1.
+    repetition_penalty: float = 1.
 
-    def __init__(
-        self,
-        max_new_tokens: Optional[int] = 64,
-        temperature: float = 1.,
-        top_k: int = 50,  # -1: all
-        top_p: float = 1.,
-        repetition_penalty: float = 1.,
-        *,
-        n: int = 1,
-        stop_words: Optional[List[int]] = None,
-        logprobs: Optional[int] = None,
-        random_seed: Optional[int] = None,
-        skip_special_tokens: bool = False,
-        **kwargs,
-    ) -> None:
-        if stop_words is None:
-            stop_words = []
-        if max_new_tokens is None:
-            max_new_tokens = 64
-        self._temperature = temperature
-        if hasattr(_LmdeployGenerationConfig, 'stop_token_ids'):
-            extra_kwargs = dict(stop_token_ids=stop_words, do_sample=True)
-        else:
-            extra_kwargs = dict(stop_words=stop_words)
+    n: int = 1
+    stop_words: Optional[List[int]] = None
+    logprobs: Optional[int] = None
+    random_seed: Optional[int] = None
+    skip_special_tokens: bool = False
+    do_sample: bool = True  # compat lmdeploy==0.6
 
-        super().__init__(
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-            n=n,
-            **extra_kwargs,
-            logprobs=logprobs,
-            random_seed=random_seed,
-            skip_special_tokens=skip_special_tokens,
-            **kwargs)
+    def __post_init__(self):
+        if self.stop_words is None:
+            self.stop_words = []
+        self._temperature = self.temperature
+
+        super().__post_init__()
 
     def __setattr__(self, key: str, value: str) -> None:
-        if key == 'do_sample':
+        if key == 'max_length':
+            raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
+
+        if key == 'do_sample' and hasattr(self, '_temperature'):
             assert value in {True, False}
             super().__setattr__('temperature', self._temperature if value else 0)
-        elif key == 'max_length':
-            raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
-        else:
-            if key == 'temperature':
-                self._temperature = value
-            super().__setattr__(key, value)
+        elif key == 'temperature':
+            self._temperature = value
+        elif key == 'stop_words' and hasattr(self, 'stop_token_ids'):  # compat lmdeploy==0.6
+            self.stop_token_ids = value
+        super().__setattr__(key, value)
 
 
 def _add_stop_word(stop_words: List[int], token: Union[List[int], int, str, None], tokenizer=None) -> None:
@@ -205,9 +192,8 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     template.model = lmdeploy_engine
     tokenizer = template.tokenizer
 
-    stop_words = getattr(generation_config, 'stop_token_ids', getattr(generation_config, 'stop_words'))
-    _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
-    _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
+    _add_stop_word(generation_config.stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
+    _add_stop_word(generation_config.stop_words, template.suffix[-1], tokenizer=tokenizer)
     if generation_config.random_seed is None:
         generation_config.random_seed = get_seed()
 
@@ -264,7 +250,7 @@ def inference_stream_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
         return
     start_runtime = time.perf_counter()
     if generation_config is None:
-        generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
+        generation_config = getattr(lmdeploy_engine, 'generation_config', None) or LmdeployGenerationConfig()
     assert isinstance(generation_config, LmdeployGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -396,7 +382,7 @@ def inference_lmdeploy(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine],
         return resp_list
 
     if generation_config is None:
-        generation_config = getattr(lmdeploy_engine, 'generation_config', LmdeployGenerationConfig())
+        generation_config = getattr(lmdeploy_engine, 'generation_config', None) or LmdeployGenerationConfig()
     assert isinstance(generation_config, LmdeployGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
