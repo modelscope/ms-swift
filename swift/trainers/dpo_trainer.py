@@ -1,8 +1,4 @@
-from contextlib import contextmanager
-from typing import Dict, List, Tuple, Union
-
-import torch
-from torch import nn
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from trl import DPOTrainer as HFDPOTrainer
 
 from swift.utils import get_logger

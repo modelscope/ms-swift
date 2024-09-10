@@ -1,8 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import importlib.util
+import inspect
 from contextlib import contextmanager
-from functools import partial
 from typing import Dict
 
 

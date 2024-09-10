@@ -6,6 +6,7 @@ import re
 import shutil
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -673,6 +674,7 @@ class RLHFTrainerMixin:
 
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, model_kwargs)
+
 
 # monkey patching
 trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
