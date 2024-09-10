@@ -154,7 +154,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
                 args.ref_model_type or args.model_type,
                 args.torch_dtype,
                 model_kwargs,
-                model_id_or_path=args.ref_model_id_or_path or args.model_id_or_path,
+                model_id_or_path=args.ref_model_id_or_path if args.ref_model_type else args.model_id_or_path,
                 revision=args.model_revision,
                 quant_method=args.quant_method,
                 **kwargs)
