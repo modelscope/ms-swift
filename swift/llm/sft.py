@@ -291,7 +291,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     if args.train_type not in {'sft', 'orpo'}:
         template._compute_per_round_loss = False
         if args.train_type == 'kto':
-            template._output_prompt_completion = True
+            template._output_prompt_answer = True
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')

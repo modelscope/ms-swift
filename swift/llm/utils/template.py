@@ -237,7 +237,7 @@ class Template:
         self._is_lmdeploy = False
         self._is_training = False
         self._compute_per_round_loss = True
-        self._output_prompt_completion = False
+        self._output_prompt_answer = False
         self.padding_side = padding_side
 
     @staticmethod
@@ -891,12 +891,12 @@ class Template:
                 res_context_list += extra_context_list
                 loss_scale_list += ([1.] if is_suffix else [0.]) * len(extra_context_list)
         inputs = {}
-        if self._output_prompt_completion:
+        if self._output_prompt_answer:
             # tokenizer_kwargs: use prompt
-            completion_len = len(extra_context_list) + 1
+            answer_len = len(extra_context_list) + 1
             for key, _slice in zip(
-                ['completion', 'prompt'],
-                [slice(-completion_len, None), slice(None, -completion_len)]):
+                ['answer', 'prompt'],
+                [slice(-answer_len, None), slice(None, -answer_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
                                                                                   loss_scale_list[_slice], **kwargs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -904,8 +904,8 @@ class Template:
                 inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
                 if self.use_loss_scale:
                     inputs[f'{key}_loss_scale'] = loss_scale
-            input_ids = inputs[f'prompt_input_ids'] + inputs[f'completion_input_ids']
-            labels = inputs[f'prompt_labels'] + inputs[f'completion_labels']
+            input_ids = inputs[f'prompt_input_ids'] + inputs[f'answer_input_ids']
+            labels = inputs[f'prompt_labels'] + inputs[f'answer_labels']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -3313,7 +3313,7 @@ class KTOTemplateMixin:
                example: Dict[str, Any],
                streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         res = self._old_encode(example, streaming)
-        res['label'] = example['label']
+        res[0]['label'] = example['label']
         return res
 
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
