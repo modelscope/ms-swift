@@ -228,9 +228,9 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             is_encoder_decoder=is_encoder_decoder)
         td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)
+        train_dataset = LazyLLMDataset(train_dataset, preprocess_func)
         if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, template, encode_func=preprocess_func)
+            val_dataset = LazyLLMDataset(val_dataset, preprocess_func)
     else:
         train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
             train_dataset,

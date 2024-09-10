@@ -1,11 +1,8 @@
-import os
 import types
 
 import numpy as np
 import torch
-from peft import PeftModel
 from transformers import TrainerCallback
-from transformers.modeling_utils import unwrap_model
 
 
 class TrainerAdapterCallback(TrainerCallback):

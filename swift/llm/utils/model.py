@@ -1296,7 +1296,10 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
 
 
 def _clone_hook(module, input, output):
-    return output.requires_grad_(True).clone()
+    if module.training:
+        return output.requires_grad_(True).clone()
+    else:
+        return output
 
 
 @register_model(

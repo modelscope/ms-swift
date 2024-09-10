@@ -1220,7 +1220,6 @@ class SftArguments(ArgumentsBase):
             metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
             greater_is_better=self.predict_with_generate,
             full_determinism=self.full_determinism,
-            sortish_sampler=True,
             optim=self.optim,
             adam_beta1=self.adam_beta1,
             adam_beta2=self.adam_beta2,

@@ -321,7 +321,7 @@ class Template:
                 res_extra = []
                 data = kwargs.pop('_data')
                 for d in data:
-                    res_extra.append(self._post_encode(d))
+                    res_extra.append(self._post_encode(module, d))
                 kwargs.update(to_device(self.data_collator(res_extra), module.device))
                 if 'inputs_embeds' in kwargs:
                     kwargs.pop('input_ids', None)
@@ -332,7 +332,7 @@ class Template:
             return args, kwargs
 
         parameters = inspect.signature(self.model.register_forward_pre_hook).parameters
-        handle = None
+        handle, handle2 = None, None
         deepspeed = None
         if 'with_kwargs' in parameters:
             handle = self.model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
@@ -355,6 +355,8 @@ class Template:
         self._is_training = False
         if handle:
             handle.remove()
+        if handle2:
+            handle2.remove()
         if deepspeed:
             deepspeed.initialize = _old_initialize
 
@@ -370,7 +372,7 @@ class Template:
         yield
         self._is_lmdeploy = False
 
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         return {}
 
     def check_example(self, example: Dict[str, Any]) -> None:
@@ -540,7 +542,7 @@ class Template:
         if not self._is_training and '_data' in inputs:
             data = inputs.pop('_data')
             data = to_device(data, self.model.device)
-            inputs.update(self._post_encode(data))
+            inputs.update(self._post_encode(self.model, data))
         return res if not streaming else inputs
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
@@ -1778,7 +1780,7 @@ class InternLMXComposer2Template(Template):
         inputs['_data'] = {'input_ids': inputs['input_ids'], 'labels': inputs['labels'], 'images': images}
         return inputs, {}
 
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         input_ids = data['input_ids']
         labels = data['labels']
         images = data['images']
@@ -1799,13 +1801,13 @@ class InternLMXComposer2Template(Template):
         res_labels = []
         wrap_im_mask = []
         pre_i, i, idx = 0, 0, 0
-        device = self.model.device
-        internlm2_model = self.model.model
+        device = model.device
+        internlm2_model = model.model
         if not hasattr(internlm2_model, 'tok_embeddings'):
             internlm2_model = internlm2_model.model
         tok_embeddings = internlm2_model.tok_embeddings
         if len(images) > 0:
-            images = self.model.img2emb(images)[0]
+            images = model.img2emb(images)[0]
         while i < len(input_ids):
             if input_ids[i] == 2:  # replace_token
                 res_input_ids = torch.tensor([1] + input_ids[pre_i:i], device=device)
@@ -1914,20 +1916,20 @@ class InternvlTemplate(Template):
         inputs.pop('loss_scale', None)
         return inputs, {}
 
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
-        embedding = self.model.get_input_embeddings()
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        embedding = model.get_input_embeddings()
         device = embedding.weight.device
         input_ids = data['input_ids']
         inputs_embeds = embedding(input_ids[None])[0].to(device=device)
         pixel_values = data['pixel_values']
         if pixel_values is not None:
             pixel_values = pixel_values.to(device=device)
-            vit_embeds = self.model.extract_feature(pixel_values).to(device=device)
+            vit_embeds = model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
         elif is_deepspeed_zero3_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
-            vit_embeds = self.model.extract_feature(dummy_pixel_values).to(device=device)
+            vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
 
@@ -2693,8 +2695,8 @@ class DeepseekVLTemplate(Template):
         inputs = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
         return inputs, {}
 
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
-        inputs_embeds = self.model.prepare_inputs_embeds(**data)[0]
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        inputs_embeds = model.prepare_inputs_embeds(**data)[0]
         return {'inputs_embeds': inputs_embeds}
 
     @staticmethod
@@ -2936,8 +2938,8 @@ class MiniCPMVTemplate(Template):
         }
         return inputs, {}
 
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
-        inputs_embeds, _ = self.model.get_vllm_embedding(data)
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        inputs_embeds, _ = model.get_vllm_embedding(data)
         return {'inputs_embeds': inputs_embeds[0]}
 
     @staticmethod
@@ -3193,8 +3195,8 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         inputs['labels'] = labels
         return inputs, {}
 
-    def _post_encode(self, data: Any) -> Dict[str, Any]:
-        image_embeds = self.model.forward_image(data['pixel_values'])
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        image_embeds = model.forward_image(data['pixel_values'])
         return {'image_embeds': image_embeds}
 
 
