@@ -5,9 +5,8 @@ import torch
 from trl import KTOTrainer as HFKTOTrainer
 from trl.trainer import kto_trainer
 
+from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.utils import get_logger
-from .mixin import SwiftMixin
-from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 

@@ -11,9 +11,8 @@ from trl import ORPOConfig
 from trl import ORPOTrainer as HFORPOTrainer
 from trl.trainer.utils import disable_dropout_in_model
 
+from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.utils import get_logger
-from .mixin import SwiftMixin
-from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 

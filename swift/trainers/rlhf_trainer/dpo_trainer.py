@@ -5,11 +5,9 @@ import torch.nn as nn
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import DPOTrainer as HFDPOTrainer
-from trl.trainer import FDivergenceConstants
 
+from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.utils import get_logger
-from .mixin import RLHFTrainerMixin, SwiftMixin
-from .push_to_ms import PushToMsHubMixin
 
 logger = get_logger()
 
@@ -23,6 +21,7 @@ class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                  ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
                  *_args,
                  **kwargs):
+        from trl.trainer import FDivergenceConstants
         args = kwargs['args']
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.f_divergence_type = args.f_divergence_type
