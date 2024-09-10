@@ -902,8 +902,8 @@ class Template:
                 inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
                 if self.use_loss_scale:
                     inputs[f'{key}_loss_scale'] = loss_scale
-            input_ids = inputs[f'prompt_input_ids'] + inputs[f'answer_input_ids']
-            labels = inputs[f'prompt_labels'] + inputs[f'answer_labels']
+            input_ids = inputs['prompt_input_ids'] + inputs['answer_input_ids']
+            labels = inputs['prompt_labels'] + inputs['answer_labels']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(

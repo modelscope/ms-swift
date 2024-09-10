@@ -69,12 +69,10 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
             if not (des_weight_in_range or und_weight_in_range):
                 warnings.warn(
                     f"""
-                    You have different amounts of desirable/positive and undesirable/negative examples but the
-                    weights on the desirable and undesirable losses don't seem to be in an ideal range. Based
-                    on your data, we recommend EITHER desirable_weight in [{des_weight_lower_bound}, {des_weight_upper_bound}]
-                    or undesirable_weight in [{und_weight_lower_bound}, {und_weight_upper_bound}] (but NOT BOTH).
-                    See the documentation on how to optimally set these weights.""",
-                    UserWarning,
-                )
+            You have different amounts of desirable/positive and undesirable/negative examples but the
+            weights on the desirable and undesirable losses don't seem to be in an ideal range. Based
+            on your data, we recommend EITHER desirable_weight in [{des_weight_lower_bound}, '{des_weight_upper_bound}]
+            or undesirable_weight in [{und_weight_lower_bound}, {und_weight_upper_bound}] (but NOT BOTH).
+            See the documentation on how to optimally set these weights.""", UserWarning)
         kwargs['train_dataset'], kwargs['eval_dataset'] = train_dataset, eval_dataset
         super().__init__(model, ref_model, *_args, **kwargs)

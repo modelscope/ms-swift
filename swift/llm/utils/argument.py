@@ -1754,7 +1754,8 @@ class RLHFArguments(SftArguments):
     # cpo: 'sigmoid', 'hinge', 'ipo', 'simpo'
     loss_type: Optional[str] = None
     # DPO
-    # The alpha parameter from the [RPO](https://huggingface.co/papers/2404.19733) paper V3. The paper recommends `rpo_alpha=1.0`.
+    # The alpha parameter from the [RPO](https://huggingface.co/papers/2404.19733) paper V3.
+    # The paper recommends `rpo_alpha=1.0`.
     rpo_alpha: Optional[float] = None
     # CPO
     cpo_alpha: Optional[float] = None
