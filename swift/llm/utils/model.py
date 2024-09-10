@@ -379,6 +379,8 @@ class ModelType:
     deepseek_v2_chat = 'deepseek-v2-chat'
     deepseek_v2_lite = 'deepseek-v2-lite'
     deepseek_v2_lite_chat = 'deepseek-v2-lite-chat'
+    # deepseek-v2.5
+    deepseek_v2_5 = 'deepseek-v2_5'
     # gemma
     gemma_2b = 'gemma-2b'
     gemma_7b = 'gemma-7b'
@@ -4185,6 +4187,16 @@ def get_model_tokenizer_internlm2(model_dir: str,
     tags=['moe'],
     requires=['transformers>=4.39.3'],
     hf_model_id='deepseek-ai/DeepSeek-V2-Chat')
+@register_model(
+    ModelType.deepseek_v2_5,
+    'deepseek-ai/DeepSeek-V2.5',
+    LoRATM.deepseek2,
+    TemplateType.deepseek2_5,
+    support_flash_attn=True,
+    support_vllm=True,
+    tags=['moe'],
+    requires=['transformers>=4.39.3'],
+    hf_model_id='deepseek-ai/DeepSeek-V2.5')
 def get_model_tokenizer_deepseek2(model_dir: str,
                                   torch_dtype: Dtype,
                                   model_kwargs: Dict[str, Any],
