@@ -297,14 +297,19 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     # ref_model
     ref_model = None
-    if args.ref_model_type is not None or args.sft_type == 'full':
+    if args.ref_model_type or args.sft_type == 'full':
+        if args.ref_model_type:
+            kwargs['model_id_or_path'] = args.ref_model_id_or_path
+            kwargs['revision'] = args.ref_model_revision
+        else:
+            kwargs['model_id_or_path'] = args.model_id_or_path
+            kwargs['revision'] = args.model_revision
+
         # Be aware of the unexpected behavior caused by double monkey patching.
         ref_model, _ = get_model_tokenizer(
             args.ref_model_type or args.model_type,
             args.torch_dtype,
             model_kwargs,
-            model_id_or_path=args.ref_model_id_or_path or args.model_id_or_path,
-            revision=args.ref_model_revision or args.model_revision,
             quant_method=args.quant_method,
             **kwargs)
         ref_model.requires_grad_(False).eval()
@@ -327,8 +332,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
     tokenizer = template.tokenizer
     preprocess_func = template.encode
     dataset_info = {}
-    td0, tkwargs0 = preprocess_func(train_dataset[0])
-    print_example(td0, tokenizer, tkwargs0)
     if args.packing:
         from swift.llm.utils.utils import ConstantLengthDataset
         train_dataset = ConstantLengthDataset.get_packed_dataset(
@@ -337,6 +340,7 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
             val_dataset = ConstantLengthDataset.get_packed_dataset(
                 template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
         if not args.lazy_tokenize:
+            print_example(train_dataset[0], tokenizer, {})
             dataset_info['train_dataset'] = stat_dataset(train_dataset)
             if val_dataset is not None:
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
@@ -352,6 +356,8 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
                 else:
                     template.model = None
             logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
         train_dataset = dataset_map(train_dataset, preprocess_func, args.preprocess_num_proc, streaming=args.streaming)
         if val_dataset is not None:
             val_dataset = dataset_map(val_dataset, preprocess_func, args.preprocess_num_proc, streaming=args.streaming)
@@ -371,7 +377,8 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
             if val_dataset is not None:
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
     else:
-
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, preprocess_func)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, preprocess_func)

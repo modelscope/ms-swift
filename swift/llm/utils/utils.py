@@ -400,19 +400,13 @@ def print_example(example: Dict[str, Any],
                   tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
     if tokenizer_kwargs is None:
         tokenizer_kwargs = {}
-    input_ids = example.get('input_ids')
-    chosen_input_ids = example.get('chosen_input_ids')
-    chosen_labels = example.get('chosen_labels')
-    rejected_input_ids = example.get('rejected_input_ids')
-    rejected_labels = example.get('rejected_labels')
-    labels = example.get('labels')
-    for key in ['input_ids', 'chosen_input_ids', 'rejected_input_ids', 'labels', 'chosen_labels', 'rejected_labels']:
-        val = locals()[key]
+    for key in ['input', 'chosen_input', 'rejected_input', 'labels', 'chosen_labels', 'rejected_labels']:
+        val = example.get(key) or example.get(f'{key}_ids')
         if val is not None:
             key_upper = key.upper()
-            logger.info(f'[{key_upper}] {val}')
+            logger.info(f'[{key_upper}_IDS] {val}')
             val_str = safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
-            logger.info(f'[INPUT] {val_str}')
+            logger.info(f'[{key_upper}] {val_str}')
 
 
 def _find_layers(model: Module, module_cls: type) -> List[str]:
