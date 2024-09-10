@@ -326,6 +326,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
                 else:
                     template.model = None
             logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
         if val_dataset is not None:
             val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
@@ -340,8 +342,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
                                  '(1) The dataset contains None for input or labels;\n'
                                  "(2) The 'max_length' setting is too short causing data truncation.")
-        td0, tkwargs0 = template.encode(train_dataset[0]) if not streaming else (next(iter(train_dataset)), {})
-        print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset) if not streaming else None
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset) if not streaming else None
