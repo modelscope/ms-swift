@@ -23,6 +23,8 @@ class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
                  **kwargs):
         from trl.trainer import FDivergenceConstants
         args = kwargs['args']
+        self.label_smoothing = args.label_smoothing
+        self.loss_type = args.loss_type
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}

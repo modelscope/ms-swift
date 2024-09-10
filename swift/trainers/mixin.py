@@ -620,8 +620,6 @@ class RLHFTrainerMixin:
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         args = kwargs['args']
         self.beta = args.beta
-        self.label_smoothing = args.label_smoothing
-        self.loss_type = args.loss_type
         if args.disable_dropout:
             disable_dropout_in_model(model)
             if self.ref_model is not None:
