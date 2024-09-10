@@ -6221,8 +6221,7 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_next_llama3,
     support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
+    support_vllm=False,
     requires=['transformers>=4.41'],
     tags=['multi-modal', 'vision'])
 def get_model_tokenizer_llava_next(*args, **kwargs):
