@@ -239,6 +239,7 @@ class ModelType:
     llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
     llava1_6_vicuna_7b_instruct = 'llava1_6-vicuna-7b-instruct'
     llava1_6_vicuna_13b_instruct = 'llava1_6-vicuna-13b-instruct'
+    llava1_6_llama3_1_8b_instruct = 'llava1_6-llama3_1-8b-instruct'
     llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
     llama3_llava_next_8b_hf = 'llama3-llava-next-8b-hf'
     llava_next_72b_hf = 'llava-next-72b-hf'
@@ -6217,6 +6218,15 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
     requires=['transformers>=4.39'],
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-v1.6-mistral-7b-hf')
+@register_model(
+    ModelType.llava1_6_llama3_1_8b_instruct,
+    'DaozeZhang/llava-llama3.1-8b',
+    LoRATM.llava,
+    TemplateType.llava_next_llama3,
+    support_flash_attn=True,
+    support_vllm=False,
+    requires=['transformers>=4.41'],
+    tags=['multi-modal', 'vision'])
 def get_model_tokenizer_llava_next(*args, **kwargs):
     from transformers import LlavaNextForConditionalGeneration
     kwargs['automodel_class'] = LlavaNextForConditionalGeneration
