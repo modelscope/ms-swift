@@ -7,9 +7,6 @@ from transformers import PreTrainedModel
 from trl import CPOTrainer as HFCPOTrainer
 
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
-from swift.utils import get_logger
-
-logger = get_logger()
 
 del HFCPOTrainer.__init__
 

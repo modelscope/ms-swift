@@ -6,12 +6,8 @@ from transformers import PreTrainedModel
 from trl import ORPOTrainer as HFORPOTrainer
 
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
-from swift.utils import get_logger
-
-logger = get_logger()
 
 del HFORPOTrainer.__init__
-
 
 class ORPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
 
