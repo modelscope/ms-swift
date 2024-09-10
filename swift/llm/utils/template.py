@@ -894,9 +894,7 @@ class Template:
         if self._output_prompt_answer:
             # tokenizer_kwargs: use prompt
             answer_len = len(extra_context_list) + 1
-            for key, _slice in zip(
-                ['answer', 'prompt'],
-                [slice(-answer_len, None), slice(None, -answer_len)]):
+            for key, _slice in zip(['answer', 'prompt'], [slice(-answer_len, None), slice(None, -answer_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
                                                                                   loss_scale_list[_slice], **kwargs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -3317,7 +3315,15 @@ class KTOTemplateMixin:
         return res
 
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        return self._old_data_collator(batch, padding_to)
+        res = {}
+        for prefix in ['', 'KL_']:
+            new_batch = []
+            for b in batch:
+                new_batch.append({'input_ids': b[f'{prefix}input_ids'], 'labels': b[f'{prefix}labels']})
+            for k, v in self._old_data_collator(new_batch, padding_to).items():
+                res[f'{prefix}completion_{k}'] = v
+        res['label'] = [b['label'] for b in batch]
+        return res
 
 
 def get_template(

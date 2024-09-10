@@ -1,15 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import warnings
 from typing import Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 import torch.nn as nn
-import warnings
 from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.llm import LLMDataset
+from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
 del HFKTOTrainer.__init__
 
@@ -22,13 +23,14 @@ def _add_kl_dataset(dataset: LLMDataset) -> LLMDataset:
         KL_input_ids = raw_data['prompt_input_ids'] + kl_raw_data['answer_input_ids']
         KL_labels = raw_data['prompt_labels'] + kl_raw_data['answer_labels']
         new_dataset.append({
-            'completion_input_ids': raw_data['input_ids'],
-            'completion_labels': raw_data['labels'],
-            'KL_completion_input_ids': KL_input_ids,
-            'KL_completion_labels': KL_labels,
+            'input_ids': raw_data['input_ids'],
+            'labels': raw_data['labels'],
+            'KL_input_ids': KL_input_ids,
+            'KL_labels': KL_labels,
+            'label': raw_data['label']
         })
     return LLMDataset(new_dataset)
-    
+
 
 class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
 
@@ -45,20 +47,14 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         self.is_peft_model = isinstance(model, PeftModel)
         # KL datasets
         train_dataset, eval_dataset = kwargs['train_dataset'], kwargs['eval_dataset']
-        total_batch_size = (
-            max(torch.cuda.device_count(), 1) * args.per_device_train_batch_size * args.gradient_accumulation_steps
-        )
-        if total_batch_size <= 1:
-            raise ValueError(
-                "Batch size is 1 (too small). KTO will not work properly because the KL term will be equivalent to the implied reward."
-            )
         random_state = np.random.RandomState(args.data_seed)
         random_state.shuffle(train_dataset.data)
         random_state.shuffle(eval_dataset.data)
         train_dataset = _add_kl_dataset(train_dataset)
         eval_dataset = _add_kl_dataset(eval_dataset)
-        num_desirable = max(sum(train_dataset["label"]), 1)
-        num_undesirable = max(len(train_dataset["label"]) - num_desirable, 1)  # "label" is binary
+        label = train_dataset['label']
+        num_desirable = max(sum(label), 1)
+        num_undesirable = max(len(label) - num_desirable, 1)  # "label" is binary
 
         if num_desirable != num_undesirable:
             # The lower and upper bounds come from Eq. (8) of https://huggingface.co/papers/2402.01306
@@ -82,11 +78,3 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
                 )
         kwargs['train_dataset'], kwargs['eval_dataset'] = train_dataset, eval_dataset
         super().__init__(model, ref_model, *_args, **kwargs)
-
-    def forward(
-        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
-    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
-        batch['KL_completion_input_ids'] = batch['input_ids']
-        batch['KL_completion_attention_mask'] = batch['attention_mask']
-        batch['KL_completion_labels'] = batch['labels']
-        return super().forward(model, batch)
