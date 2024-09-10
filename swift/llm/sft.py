@@ -78,9 +78,9 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     train_dataset, val_dataset = _get_train_val_dataset(args)
     td0, tkwargs0 = template.encode(train_dataset[0])
     print_example(td0, tokenizer, tkwargs0)
-    train_dataset = LazyLLMDataset(train_dataset, template)
+    train_dataset = LazyLLMDataset(train_dataset, template.encode)
     if val_dataset is not None:
-        val_dataset = LazyLLMDataset(val_dataset, template)
+        val_dataset = LazyLLMDataset(val_dataset, template.encode)
 
     res = MegatronArguments.load_megatron_config(tokenizer.model_dir)
     res.update(MegatronArguments.from_sft_args(args, train_dataset, val_dataset))
@@ -326,6 +326,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
                 else:
                     template.model = None
             logger.info(f'Using num_proc: {args.preprocess_num_proc}')
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
         if val_dataset is not None:
             val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=streaming)
@@ -340,8 +342,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
                                  '(1) The dataset contains None for input or labels;\n'
                                  "(2) The 'max_length' setting is too short causing data truncation.")
-        td0, tkwargs0 = train_dataset.data[0] if not streaming else (next(iter(train_dataset)), {})
-        print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset) if not streaming else None
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset) if not streaming else None
@@ -349,9 +349,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         dataset_info = None
         td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, template)
+        train_dataset = LazyLLMDataset(train_dataset, template.encode)
         if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, template)
+            val_dataset = LazyLLMDataset(val_dataset, template.encode)
     if val_dataset is None:
         training_args.evaluation_strategy = IntervalStrategy.NO
         training_args.eval_strategy = IntervalStrategy.NO

@@ -8,7 +8,6 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available
-from trl.models import create_reference_model
 
 from swift.trainers import RLHFTrainerFactory, get_preprocess_func, get_preprocessed_rlhf_dataset, patch_trl
 from swift.utils import (append_to_jsonl, check_json_format, get_dist_setting, get_logger, get_main, get_model_info,
@@ -154,7 +153,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
                 args.ref_model_type or args.model_type,
                 args.torch_dtype,
                 model_kwargs,
-                model_id_or_path=args.ref_model_id_or_path or args.model_id_or_path,
+                model_id_or_path=args.ref_model_id_or_path if args.ref_model_type else args.model_id_or_path,
                 revision=args.model_revision,
                 quant_method=args.quant_method,
                 **kwargs)
@@ -228,9 +227,9 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             is_encoder_decoder=is_encoder_decoder)
         td0, tkwargs0 = preprocess_func(train_dataset[0]), {}
         print_example(td0, tokenizer, tkwargs0)
-        train_dataset = LazyLLMDataset(train_dataset, template, encode_func=preprocess_func)
+        train_dataset = LazyLLMDataset(train_dataset, preprocess_func)
         if val_dataset is not None:
-            val_dataset = LazyLLMDataset(val_dataset, template, encode_func=preprocess_func)
+            val_dataset = LazyLLMDataset(val_dataset, preprocess_func)
     else:
         train_dataset, val_dataset = get_preprocessed_rlhf_dataset(
             train_dataset,
