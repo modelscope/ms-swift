@@ -138,6 +138,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
     logprobs: Optional[int] = None
     random_seed: Optional[int] = None
     skip_special_tokens: bool = False
+    do_sample: bool = True  # compat lmdeploy==0.6
 
     def __post_init__(self):
         if self.stop_words is None:
@@ -147,17 +148,17 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
         super().__post_init__()
 
     def __setattr__(self, key: str, value: str) -> None:
+        if key == 'max_length':
+            raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
+
         if key == 'do_sample' and hasattr(self, '_temperature'):
             assert value in {True, False}
             super().__setattr__('temperature', self._temperature if value else 0)
-        elif key == 'max_length':
-            raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
-        else:
-            if key == 'temperature':
-                self._temperature = value
-            elif key == 'stop_words' and hasattr(self, 'stop_token_ids'):  # compat lmdeploy==0.6
-                self.stop_token_ids = value
-            super().__setattr__(key, value)
+        elif key == 'temperature':
+            self._temperature = value
+        elif key == 'stop_words' and hasattr(self, 'stop_token_ids'):  # compat lmdeploy==0.6
+            self.stop_token_ids = value
+        super().__setattr__(key, value)
 
 
 def _add_stop_word(stop_words: List[int], token: Union[List[int], int, str, None], tokenizer=None) -> None:
