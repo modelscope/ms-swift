@@ -1,14 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from trl import DPOTrainer as HFDPOTrainer
+from typing import Optional, Union
+
+import torch.nn as nn
 from peft import PeftModel
+from transformers import PreTrainedModel
+from trl import DPOTrainer as HFDPOTrainer
+from trl.trainer import FDivergenceConstants
 
 from swift.utils import get_logger
 from .mixin import RLHFTrainerMixin, SwiftMixin
 from .push_to_ms import PushToMsHubMixin
-from typing import  Optional, Union
-import torch.nn as nn
-from trl.trainer import FDivergenceConstants
-from transformers import PreTrainedModel
 
 logger = get_logger()
 
