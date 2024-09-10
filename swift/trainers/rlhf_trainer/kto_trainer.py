@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 
 import torch
 import torch.nn as nn
@@ -19,6 +19,7 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
                  ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
                  *_args,
                  **kwargs):
+        args = kwargs['args']
         self.desirable_weight = args.desirable_weight
         self.undesirable_weight = args.undesirable_weight
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
