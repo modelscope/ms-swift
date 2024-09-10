@@ -1757,7 +1757,11 @@ class RLHFArguments(SftArguments):
     rpo_alpha: Optional[float] = None
     # CPO
     cpo_alpha: Optional[float] = None
+    # SimPO
     simpo_gamma: float = 1
+    # KTO
+    desirable_weight: float = 1.0
+    undesirable_weight: float = 1.0
 
     def __post_init__(self):
         self._check_simpo()

@@ -53,7 +53,7 @@ class TrainerFactory:
     @contextmanager
     def patch_template(args, template):
         from swift.llm import RLHFTemplateMixin
-        if args.train_type == 'sft':
+        if args.train_type in {'sft', 'kto'}:
             return None
         template_mixin = RLHFTemplateMixin
         template.__class__._old_encode = template.__class__.encode
