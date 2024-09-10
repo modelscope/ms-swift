@@ -177,4 +177,4 @@ Multi Modal eval datasets：
 See documentation [LLM Evaluation Documentation](https://swift.readthedocs.io/en/latest/Instruction/LLM-eval.html) for details.
 
 ### Q2: How to use custom evaluation datasets?
-Custom evaluation sets for pure text and multimodal must follow the data format (pattern) of an official evaluation set, see documentation [LLM Evaluation Documentation](https://swift.readthedocs.io/en/latest/Instruction/LLM-eval.html).
+Custom evaluation datasets for NLP and multimodal must follow the data format (pattern) of an official evaluation dataset, see documentation [LLM Evaluation Documentation](https://swift.readthedocs.io/en/latest/Instruction/LLM-eval.html).
