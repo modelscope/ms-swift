@@ -297,7 +297,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     # ref_model
     ref_model = None
-    if args.ref_model_type or args.sft_type == 'full':
+    if hasattr(args.training_args, 'ref_model') and (args.ref_model_type or args.sft_type == 'full'):
         if args.ref_model_type:
             kwargs['model_id_or_path'] = args.ref_model_id_or_path
             kwargs['revision'] = args.ref_model_revision

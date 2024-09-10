@@ -622,16 +622,11 @@ class RLHFTrainerMixin:
         self.beta = args.beta
         self.label_smoothing = args.label_smoothing
         self.loss_type = args.loss_type
-        self.precompute_ref_log_probs = args.precompute_ref_log_probs
-        self.f_divergence_type = args.f_divergence_type
-        self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
         if args.disable_dropout:
             disable_dropout_in_model(model)
             if self.ref_model is not None:
                 disable_dropout_in_model(self.ref_model)
-        self.is_peft_model = isinstance(model, PeftModel)
-        self.ref_adapter_name = args.ref_adapter_name
-        self.reference_free = args.reference_free
+
         self.is_encoder_decoder = kwargs['is_encoder_decoder']
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
@@ -640,7 +635,6 @@ class RLHFTrainerMixin:
         tokenizer = kwargs['tokenizer']
         self.label_pad_token_id = -100
         self.padding_value = tokenizer.pad_token_id
-        self.is_vision_model = False
         self.use_dpo_data_collator = True
 
         super().__init__(model, *_args, **kwargs)

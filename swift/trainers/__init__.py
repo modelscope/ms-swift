@@ -6,6 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig)
     from .dpo_trainer import DPOTrainer
+    from .cpo_trainer import CPOTrainer
     from .orpo_trainer import ORPOTrainer
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
@@ -17,6 +18,7 @@ else:
         'arguments':
         ['Seq2SeqTrainingArguments', 'TrainingArguments', 'DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig'],
         'dpo_trainer': ['DPOTrainer'],
+        'cpo_trainer': ['CPOTrainer'],
         'orpo_trainer': ['ORPOTrainer'],
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
