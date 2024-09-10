@@ -304,7 +304,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
             args.torch_dtype,
             model_kwargs,
             model_id_or_path=args.ref_model_id_or_path or args.model_id_or_path,
-            revision=args.model_revision or args.ref_model_revision,
+            revision=args.ref_model_revision or args.model_revision,
             quant_method=args.quant_method,
             **kwargs)
         ref_model.requires_grad_(False).eval()
