@@ -236,6 +236,7 @@ class Template:
         self._is_vllm = False
         self._is_lmdeploy = False
         self._is_training = False
+        self._compute_per_round_loss = True
         self.padding_side = padding_side
 
     @staticmethod
@@ -604,7 +605,8 @@ class Template:
             system: Optional[str] = None,
             query: Optional[str] = None,
             response: Optional[str] = None,
-            round0: Optional[int] = None) -> None:
+            round0: Optional[int] = None,
+            compute_loss: bool = True) -> None:
         # concat context list and replace placeholder
         round1 = None
         if round0 is not None:
@@ -614,9 +616,12 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(query, response, self.use_loss_scale,
-                                                                     self.response_loss_scale_map,
-                                                                     self.query_loss_scale_map)
+                    if compute_loss:
+                        content_part, weight_part = calculate_loss_scale(query, response, self.use_loss_scale,
+                                                                         self.response_loss_scale_map,
+                                                                         self.query_loss_scale_map)
+                    else:
+                        content_part, weight_part = [response], [0.]
                     res_context_list.extend(content_part)
                     loss_scale_list.extend(weight_part)
                     continue
@@ -874,7 +879,14 @@ class Template:
                 is_suffix = True
             if q or r:
                 self._concat_context_list(
-                    context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
+                    context_list,
+                    res_context_list,
+                    loss_scale_list,
+                    query=q,
+                    response=r,
+                    system=system,
+                    round0=i,
+                    compute_loss=self._compute_per_round_loss or is_suffix)
                 res_context_list += extra_context_list
                 loss_scale_list += ([1.] if is_suffix else [0.]) * len(extra_context_list)
         res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
@@ -3237,15 +3249,6 @@ register_template(TemplateType.atom,
                   Template(['{{SYSTEM}}'], ['<s>Human: {{QUERY}}\n</s><s>Assistant: '], ['</s>'], ['</s>']))
 
 
-def _ignore_labels_not_last(labels) -> None:
-    try:
-        # find last -100
-        index = len(labels) - 1 - labels[::-1].index(-100)
-        labels[:index + 1] = [-100] * (index + 1)
-    except ValueError:
-        pass
-
-
 class RLHFTemplateMixin:
 
     def encode(self: Template,
@@ -3267,8 +3270,6 @@ class RLHFTemplateMixin:
             for prefix in ['chosen', 'rejected']:
                 data = locals()[f'{prefix}_{suffix}']
                 for k, v in data.items():
-                    if k == 'labels':
-                        _ignore_labels_not_last(v)
                     res[f'{prefix}_{k}'] = v
         return inputs, tokenizer_kwargs
 
