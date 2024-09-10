@@ -9,7 +9,6 @@ class TrainerFactory:
     TRAINER_MAPPING = {
         'sft': 'swift.trainers.Seq2SeqTrainer',
         'dpo': 'swift.trainers.DPOTrainer',
-        'simpo': 'swift.trainers.CPOTrainer',
         'orpo': 'swift.trainers.ORPOTrainer',
         'kto': 'swift.trainers.KTOTrainer',
         'cpo': 'swift.trainers.CPOTrainer'
@@ -18,7 +17,6 @@ class TrainerFactory:
     TRAINING_ARGS_MAPPING = {
         'sft': 'swift.trainers.Seq2SeqTrainingArguments',
         'dpo': 'swift.trainers.DPOConfig',
-        'simpo': 'swift.trainers.CPOConfig',
         'orpo': 'swift.trainers.ORPOConfig',
         'kto': 'swift.trainers.KTOConfig',
         'cpo': 'swift.trainers.CPOConfig'

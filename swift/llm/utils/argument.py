@@ -1746,15 +1746,43 @@ class RLHFArguments(SftArguments):
     ref_model_id_or_path: Optional[str] = None
     ref_model_revision: Optional[str] = None
 
-    beta: float = 0.1
+    beta: Optional[float] = None
     label_smoothing: float = 0
-    loss_type: Literal['sigmoid', 'hinge', 'ipo', 'exo_pair', 'nca_pair', 'robust', 'bco_pair', 'sppo_hard', 'aot',
-                       'aot_pair', 'apo_zero', 'apo_down'] = 'sigmoid'
+    # dpo: 'sigmoid', 'hinge', 'ipo', 'exo_pair', 'nca_pair', 'robust', 'bco_pair',
+    #      'sppo_hard', 'aot', 'aot_pair', 'apo_zero', 'apo_down'
+    # cpo: 'sigmoid', 'hinge', 'ipo', 'simpo'
+    loss_type: Optional[str] = None
     # DPO
+    # The alpha parameter from the [RPO](https://huggingface.co/papers/2404.19733) paper V3. The paper recommends `rpo_alpha=1.0`.
     rpo_alpha: Optional[float] = None
     # CPO
-    cpo_alpha: float = 1.0
-    simpo_gamma: float = 0.5
+    cpo_alpha: Optional[float] = None
+    simpo_gamma: float = 1
+
+    def __post_init__(self):
+        self._check_simpo()
+        self._set_default()
+        self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
+        super().__post_init__()
+
+    def _check_simpo(self):
+        if self.rlhf_type != 'simpo':
+            return
+
+        self.rlhf_type = 'cpo'
+        if self.loss_type is None:
+            self.loss_type = 'simpo'
+        if self.cpo_alpha is None:
+            self.cpo_alpha = 0
+        if self.beta is None:
+            self.beta = 2.
+
+    def _set_default(self):
+        if self.beta is None:
+            self.beta = 0.1
+        if self.loss_type is None:
+            if self.rlhf_type in ['dpo', 'cpo']:
+                self.loss_type = 'sigmoid'
 
 
 @dataclass
