@@ -143,24 +143,22 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
 
-    if args.ref_model_type is not None:
+    ref_model = None
+    if args.ref_model_type is not None or not args.ref_model_free and args.sft_type == 'full':
         if args.ref_model_free:
             logger.warning(f"{args.rlhf_type} algorithm don't require ref model,\
                      therefore the ref model will not be loaded here.")
-            ref_model = None
         else:
+            # Be aware of the unexpected behavior caused by double monkey patching.
             ref_model, _ = get_model_tokenizer(
-                args.ref_model_type,
+                args.ref_model_type or args.model_type,
                 args.torch_dtype,
                 model_kwargs,
-                model_id_or_path=args.ref_model_id_or_path,
+                model_id_or_path=args.ref_model_id_or_path or args.model_id_or_path,
                 revision=args.model_revision,
                 quant_method=args.quant_method,
                 **kwargs)
-    elif not args.ref_model_free and args.sft_type == 'full':
-        ref_model = create_reference_model(model)
-    else:
-        ref_model = None
+            ref_model.requires_grad_(False).eval()
 
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model.hf_device_map: {model.hf_device_map}')
