@@ -300,8 +300,6 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
-    td0, tkwargs0 = template.encode(train_dataset[0])
-    print_example(td0, tokenizer, tkwargs0)
     if args.packing:
         from swift.llm.utils.utils import ConstantLengthDataset
         train_dataset = ConstantLengthDataset.get_packed_dataset(
@@ -311,6 +309,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
                 template, val_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
         dataset_info = {}
         if not args.lazy_tokenize:
+            td0 = train_dataset[0]
+            print_example(td0, tokenizer, {})
             dataset_info['train_dataset'] = stat_dataset(train_dataset)
             if val_dataset is not None:
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
@@ -340,11 +340,15 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
             raise AttributeError('Failed to access dataset attributes,train_dataset is None. This might be because:\n'
                                  '(1) The dataset contains None for input or labels;\n'
                                  "(2) The 'max_length' setting is too short causing data truncation.")
+        td0, tkwargs0 = train_dataset.data[0] if not streaming else (next(iter(train_dataset)), {})
+        print_example(td0, tokenizer, tkwargs0)
         dataset_info['train_dataset'] = stat_dataset(train_dataset) if not streaming else None
         if val_dataset is not None:
             dataset_info['val_dataset'] = stat_dataset(val_dataset) if not streaming else None
     else:
         dataset_info = None
+        td0, tkwargs0 = template.encode(train_dataset[0])
+        print_example(td0, tokenizer, tkwargs0)
         train_dataset = LazyLLMDataset(train_dataset, template.encode)
         if val_dataset is not None:
             val_dataset = LazyLLMDataset(val_dataset, template.encode)
