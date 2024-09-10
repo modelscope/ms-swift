@@ -11,7 +11,6 @@ from threading import Thread
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
-from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
 from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
 from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve.async_engine import AsyncEngine
@@ -24,6 +23,12 @@ from .argument import InferArguments
 from .model import get_model_tokenizer
 from .template import Template, get_template
 from .utils import get_max_model_len
+
+try:
+    from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
+except ImportError:
+    # lmdeploy removed EngineGenerationConfig after v0.6.0
+    from lmdeploy import GenerationConfig as _LmdeployGenerationConfig
 
 logger = get_logger()
 
@@ -139,6 +144,11 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
         if max_new_tokens is None:
             max_new_tokens = 64
         self._temperature = temperature
+        if hasattr(_LmdeployGenerationConfig, 'stop_token_ids'):
+            extra_kwargs = dict(stop_token_ids=stop_words, do_sample=True)
+        else:
+            extra_kwargs = dict(stop_words=stop_words)
+
         super().__init__(
             max_new_tokens=max_new_tokens,
             temperature=temperature,
@@ -146,7 +156,7 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
             top_p=top_p,
             repetition_penalty=repetition_penalty,
             n=n,
-            stop_words=stop_words,
+            **extra_kwargs,
             logprobs=logprobs,
             random_seed=random_seed,
             skip_special_tokens=skip_special_tokens,
@@ -195,8 +205,9 @@ def _prepare_lmdeploy_request(lmdeploy_engine: Union[AsyncEngine, VLAsyncEngine]
     template.model = lmdeploy_engine
     tokenizer = template.tokenizer
 
-    _add_stop_word(generation_config.stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
-    _add_stop_word(generation_config.stop_words, template.suffix[-1], tokenizer=tokenizer)
+    stop_words = getattr(generation_config, 'stop_token_ids', getattr(generation_config, 'stop_words'))
+    _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
+    _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
     if generation_config.random_seed is None:
         generation_config.random_seed = get_seed()
 
