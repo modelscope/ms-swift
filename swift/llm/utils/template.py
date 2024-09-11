@@ -475,13 +475,13 @@ class Template:
         if images:
             if example.get('objects') or self.load_medias or self._is_lmdeploy or self._is_vllm:
                 images = load_batch(images, load_image)
-            if not self.load_medias and not self._is_lmdeploy and not self._is_vllm:
-                images = decode_base64(images=images)['images']
             if example.get('objects'):
                 # Normalize grounding bboxes
                 self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
             if self.load_medias and self.grounding_type != 'real':
                 images = [rescale_image(img, self.rescale_image) for img in images]
+            if not self.load_medias and not self._is_lmdeploy and not self._is_vllm:
+                images = decode_base64(images=images)['images']
             example['images'] = images
 
         # Check the example that whether matching the very template's rules
