@@ -1811,8 +1811,6 @@ class InternLMXComposer2Template(Template):
             HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.tokenizer.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
         images = [self.model.vis_processor(image).to(dtype) for image in images]
-        if len(images) > 0:
-            images = torch.stack(images, dim=0)
         inputs['_data'] = {'input_ids': inputs['input_ids'], 'labels': inputs['labels'], 'images': images}
         return inputs, {}
 
@@ -1843,7 +1841,7 @@ class InternLMXComposer2Template(Template):
             internlm2_model = internlm2_model.model
         tok_embeddings = internlm2_model.tok_embeddings
         if len(images) > 0:
-            images = model.img2emb(images)[0]
+            images = torch.concat([model.img2emb(image[None])[0] for image in images], dim=0)
         while i < len(input_ids):
             if input_ids[i] == 2:  # replace_token
                 res_input_ids = torch.tensor([1] + input_ids[pre_i:i], device=device)
