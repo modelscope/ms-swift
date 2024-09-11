@@ -2810,6 +2810,7 @@ def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
     LoRATM.florence,
     TemplateType.florence,
     support_flash_attn=True,
+    torch_dtype=torch.float32,
     hf_model_id='microsoft/Florence-2-base',
     tags=['multi-modal', 'vision'])
 @register_model(
@@ -2818,6 +2819,7 @@ def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
     LoRATM.florence,
     TemplateType.florence,
     support_flash_attn=True,
+    torch_dtype=torch.float32,
     hf_model_id='microsoft/Florence-2-base-ft',
     tags=['multi-modal', 'vision'])
 @register_model(
@@ -2826,6 +2828,7 @@ def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
     LoRATM.florence,
     TemplateType.florence,
     support_flash_attn=True,
+    torch_dtype=torch.float32,
     hf_model_id='microsoft/Florence-2-large',
     tags=['multi-modal', 'vision'])
 @register_model(
@@ -2834,6 +2837,7 @@ def get_model_tokenizer_yi1_5(model_dir, *args, **kwargs):
     LoRATM.florence,
     TemplateType.florence,
     support_flash_attn=True,
+    torch_dtype=torch.float32,
     hf_model_id='microsoft/Florence-2-large-ft',
     tags=['multi-modal', 'vision'])
 def get_model_tokenizer_florence(model_dir: str,
@@ -2849,6 +2853,7 @@ def get_model_tokenizer_florence(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     tokenizer.processor = processor
+    # model.vision_tower.enable_checkpoint = True
     _use_submodel_func(model, 'language_model', ['generate'])
     return model, tokenizer
 

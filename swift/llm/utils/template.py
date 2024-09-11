@@ -2093,7 +2093,7 @@ class FlorenceTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images') or []
-        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values']
+        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
         inputs['_data'] = {
             'input_ids': torch.tensor(inputs['input_ids'])[None],
             'pixel_values': pixel_values,
@@ -2102,7 +2102,7 @@ class FlorenceTemplate(Template):
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         inputs_embeds = model.get_input_embeddings()(data['input_ids'])
-        image_features = model._encode_image(data['pixel_values'].to(model.dtype))
+        image_features = model._encode_image(data['pixel_values'])
         inputs_embeds, _ = model._merge_input_ids_with_image_features(image_features, inputs_embeds)
         return {'inputs_embeds': inputs_embeds[0]}
 
@@ -2124,9 +2124,7 @@ register_template(
     FlorenceTemplate(),
     use_model=True,
     lazy_tokenize=True,
-    infer_media_type='dialogue',
-    dataloader_num_workers=0,
-    dataloader_pin_memory=False)
+    infer_media_type='dialogue')
 
 register_template(TemplateType.xverse,
                   Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']], [['eos_token_id']]))
