@@ -56,23 +56,23 @@ class TrainerFactory:
         if args.train_type == 'sft':
             yield
             return
-        _old_compute_per_round_loss = template._compute_per_round_loss
-        _old_output_prompt_answer = template._output_prompt_answer
+        _old_compute_per_round_loss = template.compute_per_round_loss
+        _old_output_prompt_answer = template.output_prompt_answer
         if args.train_type == 'kto':
             template_mixin = KTOTemplateMixin
-            template._output_prompt_answer = True
+            template.output_prompt_answer = True
         else:
             template_mixin = RLHFTemplateMixin
         if args.train_type != 'orpo':
-            template._compute_per_round_loss = False
+            template.compute_per_round_loss = False
 
         template.__class__._old_encode = template.__class__.encode
         template.__class__._old_data_collator = template.__class__.data_collator
         template.__class__.encode = template_mixin.encode
         template.__class__.data_collator = template_mixin.data_collator
         yield
-        template._compute_per_round_loss = _old_compute_per_round_loss
-        template._output_prompt_answer = _old_output_prompt_answer
+        template.compute_per_round_loss = _old_compute_per_round_loss
+        template.output_prompt_answer = _old_output_prompt_answer
         template.__class__.encode = template.__class__._old_encode
         template.__class__.data_collator = template.__class__._old_data_collator
         del template.__class__._old_encode, template.__class__._old_data_collator

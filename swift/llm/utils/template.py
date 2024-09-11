@@ -238,8 +238,6 @@ class Template:
         self._is_vllm = False
         self._is_lmdeploy = False
         self._is_training = False
-        self._compute_per_round_loss = True
-        self._output_prompt_answer = False
         self.padding_side = padding_side
 
     @staticmethod
