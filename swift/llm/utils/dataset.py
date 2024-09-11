@@ -763,7 +763,7 @@ def _preprocess_vision_dataset2(dataset: DATASET_TYPE) -> DATASET_TYPE:
         if '&&' in d[response_key]:
             d[response_key] = d[response_key].split('&&')[0]
         response = d[response_key]
-        return {'query': query * len(response), 'response': response, 'images': images}
+        return {'query': query, 'response': response, 'images': images}
 
     kwargs = {}
     if not isinstance(dataset, HfIterableDataset):
@@ -2088,7 +2088,7 @@ def _preprocess_capcha_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
     response_key = 'solution'
 
     def _process(d):
-        return {'query': query * len(d[response_key]), 'response': d[response_key]}
+        return {'query': query, 'response': d[response_key]}
 
     return dataset.map(_process).rename_column('image', 'images')
 
