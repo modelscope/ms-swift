@@ -2086,6 +2086,7 @@ register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_mode
 
 
 class FlorenceTemplate(Template):
+    compute_per_round_loss = False
     output_prompt_answer = True
 
     def __init__(self):
@@ -2164,7 +2165,12 @@ class FlorenceTemplate(Template):
 
 
 register_template(
-    TemplateType.florence, FlorenceTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
+    TemplateType.florence,
+    FlorenceTemplate(),
+    use_model=True,
+    lazy_tokenize=True,
+    infer_media_type='dialogue',
+    stream=False)
 
 register_template(TemplateType.xverse,
                   Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']], [['eos_token_id']]))

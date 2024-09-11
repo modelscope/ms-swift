@@ -1533,7 +1533,7 @@ class InferArguments(ArgumentsBase):
             self.lora_request_list, self.use_dora = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
-        if self.num_beams != 1:
+        if self.num_beams != 1 or not template_info.get('stream', True):
             self.stream = False
             logger.info('Setting self.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
