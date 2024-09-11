@@ -2948,12 +2948,7 @@ def get_model_tokenizer_florence(model_dir: str,
 
     # model_config.vision_config.model_type = 'davit'
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        tokenizer=processor.tokenizer,
-        **kwargs)
+        model_dir, torch_dtype, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     tokenizer.processor = processor
     # fix_florence_forward(model)

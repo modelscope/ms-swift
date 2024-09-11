@@ -2054,6 +2054,25 @@ class FlorenceTemplate(Template):
 
     def __init__(self):
         super().__init__(['<s>'], ['{{QUERY}}</s>'], None, ['</s>'])
+        self.task_prompts_without_inputs = {
+            '<OCR>': 'What is the text in the image?',
+            '<OCR_WITH_REGION>': 'What is the text in the image, with regions?',
+            '<CAPTION>': 'What does the image describe?',
+            '<DETAILED_CAPTION>': 'Describe in detail what is shown in the image.',
+            '<MORE_DETAILED_CAPTION>': 'Describe with a paragraph what is shown in the image.',
+            '<OD>': 'Locate the objects with category name in the image.',
+            '<DENSE_REGION_CAPTION>': 'Locate the objects in the image, with their descriptions.',
+            '<REGION_PROPOSAL>': 'Locate the region proposals in the image.'
+        }
+        self.task_prompts_with_input = {
+            '<CAPTION_TO_PHRASE_GROUNDING>': 'Locate the phrases in the caption: {input}',
+            '<REFERRING_EXPRESSION_SEGMENTATION>': 'Locate {input} in the image with mask',
+            '<REGION_TO_SEGMENTATION>': 'What is the polygon mask of region {input}',
+            '<OPEN_VOCABULARY_DETECTION>': 'Locate {input} in the image.',
+            '<REGION_TO_CATEGORY>': 'What is the region {input}?',
+            '<REGION_TO_DESCRIPTION>': 'What does the region {input} describe?',
+            '<REGION_TO_OCR>': 'What text is in the region {input}?',
+        }
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -2062,7 +2081,7 @@ class FlorenceTemplate(Template):
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
         return []
-    
+
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
         x1, y1, x2, y2 = example['objects'][index]['bbox']
         return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
@@ -2075,7 +2094,7 @@ class FlorenceTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images') or []
-        pixel_values = processor.image_processor(images, return_tensors='pt')["pixel_values"]
+        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values']
         inputs['_data'] = {
             'input_ids': torch.tensor(inputs['input_ids'])[None],
             'pixel_values': pixel_values,
@@ -2087,8 +2106,6 @@ class FlorenceTemplate(Template):
         image_features = model._encode_image(data['pixel_values'].to(model.dtype))
         inputs_embeds, _ = model._merge_input_ids_with_image_features(image_features, inputs_embeds)
         return {'inputs_embeds': inputs_embeds[0]}
-        
-
 
     @staticmethod
     def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:

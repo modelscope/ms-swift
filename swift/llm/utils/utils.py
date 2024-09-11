@@ -945,7 +945,7 @@ def messages_join_observation(messages: Messages):
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
-    old_generation_priority_config = ['no_repeat_ngram_size']
+    old_generation_priority_config = ['no_repeat_ngram_size', 'num_beams']
     if old_generation_config is not None:
         for k, old_v in old_generation_config.__dict__.items():
             if k.startswith('_'):
