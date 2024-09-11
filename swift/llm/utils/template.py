@@ -2080,6 +2080,7 @@ register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_mode
 
 class FlorenceTemplate(Template):
     output_prompt_answer = True
+
     def __init__(self):
         super().__init__(['<s>'], ['{{QUERY}}</s>'], None, ['</s>'])
         self.task_prompts_without_inputs = {
@@ -2150,11 +2151,7 @@ class FlorenceTemplate(Template):
 
 
 register_template(
-    TemplateType.florence,
-    FlorenceTemplate(),
-    use_model=True,
-    lazy_tokenize=True,
-    infer_media_type='dialogue')
+    TemplateType.florence, FlorenceTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(TemplateType.xverse,
                   Template(['{{SYSTEM}}'], ['Human: {{QUERY}}\n\nAssistant: '], [['eos_token_id']], [['eos_token_id']]))
