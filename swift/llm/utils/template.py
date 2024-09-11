@@ -893,9 +893,11 @@ class Template:
         inputs = {}
         if self.output_prompt_answer:
             # tokenizer_kwargs: use prompt
-            answer_len = len(extra_context_list) + bool(r is not None)
+            answer_len = len(extra_context_list) + bool(response is not None)
             total_len = len(res_context_list)
-            for key, _slice in zip(['answer', 'prompt'], [slice(total_len - answer_len, total_len), slice(answer_len, total_len)]):
+            for key, _slice in zip(['answer', 'prompt'],
+                                   [slice(total_len - answer_len, total_len),
+                                    slice(answer_len, total_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
                                                                                   loss_scale_list[_slice], **kwargs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -905,6 +907,10 @@ class Template:
                     inputs[f'{key}_loss_scale'] = loss_scale
             input_ids = inputs['prompt_input_ids'] + inputs['answer_input_ids']
             labels = inputs['prompt_labels'] + inputs['answer_labels']
+            if response is None:
+                assert len(inputs['answer_labels']) == 0
+                inputs['answer_labels'] = None
+
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -2124,10 +2130,13 @@ class FlorenceTemplate(Template):
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images') or []
+        labels = inputs['answer_labels']
+        if labels is not None:
+            labels = [0] + labels
         pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
         inputs = {
             'input_ids': input_ids,
-            'labels': inputs['answer_labels'],
+            'labels': labels,
             '_data': {
                 'input_ids': torch.tensor(input_ids)[None],
                 'pixel_values': pixel_values,
