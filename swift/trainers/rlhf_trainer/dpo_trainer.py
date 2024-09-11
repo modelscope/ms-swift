@@ -26,7 +26,7 @@ class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
         self.f_divergence_type = args.f_divergence_type
         self.f_divergence_params = {FDivergenceConstants.ALPHA_DIVERGENCE_COEF_KEY: args.f_alpha_divergence_coef}
         self.is_peft_model = isinstance(model, PeftModel)
-        # not use
+
         self.ref_adapter_name = args.ref_adapter_name
         self.reference_free = args.reference_free
         self.is_vision_model = False

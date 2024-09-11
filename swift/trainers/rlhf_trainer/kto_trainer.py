@@ -45,6 +45,8 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         self.undesirable_weight = args.undesirable_weight
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
         self.is_peft_model = isinstance(model, PeftModel)
+
+        self.ref_adapter_name = args.ref_adapter_name
         # KL datasets
         train_dataset, eval_dataset = kwargs['train_dataset'], kwargs['eval_dataset']
         random_state = np.random.RandomState(args.data_seed)
