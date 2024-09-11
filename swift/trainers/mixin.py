@@ -651,6 +651,9 @@ class RLHFTrainerMixin:
         outputs = model(**model_kwargs, use_cache=False)
         model_kwargs['labels'] = labels
         model_kwargs['chosen_labels'] = torch.zeros(model_kwargs['input_ids'].shape[0] // 2)  # just get shape
+        if outputs.logits.shape[1] != labels.shape[1]:
+            # for llava, the model returns logits for the entire sequence, including the image tokens (placed before the text tokens)
+            outputs.logits = outputs.logits[:, -labels.shape[1]:]
         for key in ['input_ids', 'attention_mask', 'labels']:
             model_kwargs[f'concatenated_{key}'] = model_kwargs.pop(key)
         if self.__class__.__name__ == 'ORPOTrainer':
