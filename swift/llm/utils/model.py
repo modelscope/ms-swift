@@ -2844,9 +2844,9 @@ def get_model_tokenizer_florence(model_dir: str,
                                  **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, torch_dtype, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
+    with ignore_check_imports():
+        model, tokenizer = get_model_tokenizer_with_flash_attn(
+            model_dir, torch_dtype, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     tokenizer.processor = processor
     # model.vision_tower.enable_checkpoint = True
