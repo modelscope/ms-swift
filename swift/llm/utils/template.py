@@ -893,7 +893,7 @@ class Template:
         inputs = {}
         if self.output_prompt_answer:
             # tokenizer_kwargs: use prompt
-            answer_len = len(extra_context_list) + 1
+            answer_len = len(extra_context_list) + bool(r is not None)
             for key, _slice in zip(['answer', 'prompt'], [slice(-answer_len, None), slice(None, -answer_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
                                                                                   loss_scale_list[_slice], **kwargs)
