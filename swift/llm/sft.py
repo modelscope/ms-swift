@@ -288,10 +288,6 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     template._is_training = True
     if args.streaming:
         template.encode = partial(template.encode, streaming=args.streaming)
-    if args.train_type not in {'sft', 'orpo'}:
-        template._compute_per_round_loss = False
-        if args.train_type == 'kto':
-            template._output_prompt_answer = True
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
