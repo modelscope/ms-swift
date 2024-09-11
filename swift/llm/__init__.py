@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
     from .deploy import deploy_main
     from .infer import merge_lora, prepare_model_template, infer_main, merge_lora_main
-    from .rome import rome_main
     from .sft import sft_main, pt_main
     from .export import export_main
     from .eval import eval_main
@@ -21,7 +20,6 @@ else:
         'deploy': ['deploy_main'],
         'rlhf': ['rlhf_main'],
         'infer': ['merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
-        'rome': ['rome_main'],
         'sft': ['sft_main', 'pt_main'],
         'export': ['export_main'],
         'eval': ['eval_main'],

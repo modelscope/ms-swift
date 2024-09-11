@@ -1838,27 +1838,6 @@ class WebuiArguments:
     port: Optional[int] = None
 
 
-@dataclass
-class RomeArguments(InferArguments):
-    rome_request_file: str = field(
-        default=None, metadata={'help': 'The rome request file, please check the documentation '
-                                'to get the format'})
-
-    def __post_init__(self) -> None:
-        self.handle_compatibility()
-        self.handle_path()
-        self.set_model_type()
-        self.check_flash_attn()
-
-        self.torch_dtype, _, _ = self.select_dtype()
-        if self.template_type == 'AUTO':
-            self.template_type = get_default_template_type(self.model_type)
-            logger.info(f'Setting template_type: {self.template_type}')
-
-        if self.max_length == -1:
-            self.max_length = None
-
-
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 
