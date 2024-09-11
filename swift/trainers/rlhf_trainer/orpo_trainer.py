@@ -54,7 +54,7 @@ class ORPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFORPOTrainer)
             return loss
 
         chosen_nll_loss = outputs.loss
-        if chosen_nll_loss is None:
+        if not self.is_vision_model:
             chosen_nll_loss = cross_entropy_loss(all_logits[:len_chosen], labels[:len_chosen])
 
         all_logps = self.get_batch_logps(
