@@ -23,7 +23,7 @@ from torch import dtype as Dtype
 from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
-from transformers.utils import strtobool
+from transformers.utils import is_torch_bf16_gpu_available, strtobool
 from transformers.utils.versions import require_version
 
 from swift import get_logger
@@ -6554,7 +6554,7 @@ def get_torch_dtype(model_dir: str) -> Dtype:
     if isinstance(torch_dtype, str):
         torch_dtype = eval(f'torch.{torch_dtype}')
     if torch_dtype in {torch.float32, None}:
-        torch_dtype = torch.float16
+        torch_dtype = torch.bfloat16 if is_torch_bf16_gpu_available() else torch.float16
     return torch_dtype
 
 
