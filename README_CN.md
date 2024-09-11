@@ -121,7 +121,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 - 2024.04.29: 支持InternVL-Chat-V1.5的推理与微调, 最佳实践可以查看[这里](https://github.com/modelscope/swift/tree/main/docs/source/Multi-Modal/internvl最佳实践.md).
 - 🔥2024.04.26: 支持**LISA** 和 **unsloth**训练！指定 `--lisa_activated_layers=2` 来开启LISA（显存使用降低至全参训练的30%），指定 `--tuner_backend unsloth` 来使用unsloth，用更少的显存（30%或更少）更快的速度（5x）训练一个超大模型！
 - 🔥2024.04.26: 支持Qwen1.5-110B和Qwen1.5-110B-Chat模型的推理与微调, 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/qwen1half_110b_chat/lora_ddp_ds/sft.sh)来开始训练！
-- 2024.04.24: 支持Phi3系列模型的推理与微调. 包括: [phi3-4b-4k-instruct](examples/pytorch/llm/scripts/phi3_4b_4k_instruct/lora), phi3-4b-128k-instruct.
+- 2024.04.24: 支持Phi3系列模型的推理与微调. 包括: [phi3-4b-4k-instruct](legacy/pytorch/llm/scripts/phi3_4b_4k_instruct/lora), phi3-4b-128k-instruct.
 - 2024.04.22: 支持**chinese-llama-alpaca-2**系列模型的推理与微调和部署等. 包括：chinese-llama-2-1.3b, chinese-llama-2-7b, chinese-llama-2-13b, chinese-alpaca-2-1.3b, chinese-alpaca-2-7b和chinese-alpaca-2-13b以及对应的16k和64k长文本模型.
 - 2024.04.22: 支持Llama3 GPTQ-Int4, GPTQ-Int8, AWQ系列模型的推理与微调. 支持chatglm3-6b-128k, Openbuddy-llama3的推理与微调.
 - 2024.04.20: 支持**Atom**系列模型的推理, 微调和部署等. 包括: Atom-7B and Atom-7B-Chat. 使用[这个脚本](https://github.com/modelscope/swift/blob/main/examples/pytorch/llm/scripts/atom_7b_chat/lora/sft.sh)来开始训练！
