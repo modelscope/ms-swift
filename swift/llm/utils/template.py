@@ -197,6 +197,8 @@ class Template:
     grounding_type = 'norm_1000'
     image_placeholder = ['<image>']
     load_medias = True
+    compute_per_round_loss = True
+    output_prompt_answer = False
 
     def __init__(self,
                  prefix: Prompt,
@@ -604,7 +606,8 @@ class Template:
             system: Optional[str] = None,
             query: Optional[str] = None,
             response: Optional[str] = None,
-            round0: Optional[int] = None) -> None:
+            round0: Optional[int] = None,
+            compute_loss: bool = True) -> None:
         # concat context list and replace placeholder
         round1 = None
         if round0 is not None:
@@ -614,9 +617,12 @@ class Template:
             if isinstance(context, str):
                 if '{{RESPONSE}}' == context:
                     assert response is not None
-                    content_part, weight_part = calculate_loss_scale(query, response, self.use_loss_scale,
-                                                                     self.response_loss_scale_map,
-                                                                     self.query_loss_scale_map)
+                    if compute_loss:
+                        content_part, weight_part = calculate_loss_scale(query, response, self.use_loss_scale,
+                                                                         self.response_loss_scale_map,
+                                                                         self.query_loss_scale_map)
+                    else:
+                        content_part, weight_part = [response], [0.]
                     res_context_list.extend(content_part)
                     loss_scale_list.extend(weight_part)
                     continue
@@ -874,13 +880,36 @@ class Template:
                 is_suffix = True
             if q or r:
                 self._concat_context_list(
-                    context_list, res_context_list, loss_scale_list, query=q, response=r, system=system, round0=i)
+                    context_list,
+                    res_context_list,
+                    loss_scale_list,
+                    query=q,
+                    response=r,
+                    system=system,
+                    round0=i,
+                    compute_loss=self.compute_per_round_loss or is_suffix)
                 res_context_list += extra_context_list
                 loss_scale_list += ([1.] if is_suffix else [0.]) * len(extra_context_list)
-        res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
-        input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(res_context_list, loss_scale_list)
-        if labels is not None:
-            self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
+        inputs = {}
+        if self.output_prompt_answer:
+            # tokenizer_kwargs: use prompt
+            answer_len = len(extra_context_list) + 1
+            for key, _slice in zip(['answer', 'prompt'], [slice(-answer_len, None), slice(None, -answer_len)]):
+                _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
+                                                                                  loss_scale_list[_slice], **kwargs)
+                input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
+                    _res_context_list, _loss_scale_list)
+                inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
+                if self.use_loss_scale:
+                    inputs[f'{key}_loss_scale'] = loss_scale
+            input_ids = inputs['prompt_input_ids'] + inputs['answer_input_ids']
+            labels = inputs['prompt_labels'] + inputs['answer_labels']
+        else:
+            res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
+            input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
+                res_context_list, loss_scale_list)
+            if labels is not None:
+                self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
         if response is None:
             labels = None
@@ -895,10 +924,9 @@ class Template:
                 labels = labels[-self.max_length:]
             if loss_scale is not None:
                 loss_scale = loss_scale[-self.max_length:]
-        inputs = {
-            'input_ids': input_ids,
-            'labels': labels,
-        }
+        inputs['input_ids'] = input_ids
+        inputs['labels'] = labels
+
         if self.use_loss_scale:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
@@ -2051,7 +2079,7 @@ register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_mode
 
 
 class FlorenceTemplate(Template):
-
+    output_prompt_answer = True
     def __init__(self):
         super().__init__(['<s>'], ['{{QUERY}}</s>'], None, ['</s>'])
         self.task_prompts_without_inputs = {
@@ -2090,6 +2118,8 @@ class FlorenceTemplate(Template):
         processor = self.tokenizer.processor
         example['query'] = processor._construct_prompts([query])[0]
         inputs, _ = super()._encode(example)
+        inputs['input_ids'] = inputs['prompt_input_ids']
+        inputs['labels'] = inputs['answer_labels']
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images') or []
