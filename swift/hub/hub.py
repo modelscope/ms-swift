@@ -8,10 +8,9 @@ from huggingface_hub.hf_api import api
 from huggingface_hub.hf_api import CommitInfo, future_compatible
 from requests.exceptions import HTTPError
 from transformers.utils import logging, strtobool
+from swift.utils.env import use_hf_hub
 
 logger = logging.get_logger(__name__)
-
-_use_hf_hub = strtobool(os.environ.get('USE_HF', 'False'))
 
 
 class HubOperation:
@@ -136,7 +135,7 @@ def upload_folder(
 class MSHub(HubOperation):
     ms_token = None
 
-    if not _use_hf_hub:
+    if not use_hf_hub():
         import huggingface_hub
         from transformers import trainer
         huggingface_hub.create_repo = create_repo

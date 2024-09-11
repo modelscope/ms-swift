@@ -29,8 +29,8 @@ from .client_utils import get_model_list_client
 from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
                       register_dataset_info_file, sample_dataset)
 from .media import MediaTag
-from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
-                    get_default_template_type)
+from swift.llm.model.model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
+                                   get_default_template_type)
 from .template import TEMPLATE_MAPPING
 from .utils import is_liger_available, is_lmdeploy_available, is_quant_model, is_vllm_available
 

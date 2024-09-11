@@ -1,5 +1,4 @@
 import os
-import shutil
 import time
 import typing
 from dataclasses import fields
@@ -11,7 +10,7 @@ import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm.utils.model import MODEL_MAPPING, ModelType
+from swift.llm.model.model import MODEL_MAPPING, ModelType
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None

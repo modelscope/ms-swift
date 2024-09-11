@@ -16,7 +16,7 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, Samplin
 
 from swift.utils import get_logger
 from .argument import InferArguments
-from .model import get_model_tokenizer
+from swift.llm.model.model import get_model_tokenizer
 from .template import Template, get_template
 
 try:
