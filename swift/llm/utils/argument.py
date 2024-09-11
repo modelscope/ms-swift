@@ -1779,7 +1779,7 @@ class RLHFArguments(SftArguments):
         if self.loss_type is None:
             self.loss_type = 'simpo'
         if self.cpo_alpha is None:
-            self.cpo_alpha = 0
+            self.cpo_alpha = 0.
         if self.beta is None:
             self.beta = 2.
 
@@ -1788,7 +1788,9 @@ class RLHFArguments(SftArguments):
             self.beta = 0.1
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
-                self.loss_type = 'sigmoid'
+                self.loss_type = 'sigmoid'  # else None
+        if self.cpo_alpha is None:
+            self.cpo_alpha = 1.
 
 
 @dataclass
