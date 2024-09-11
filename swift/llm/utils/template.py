@@ -197,8 +197,8 @@ class Template:
     grounding_type = 'norm_1000'
     image_placeholder = ['<image>']
     load_medias = True
-    compute_per_round_loss = True
-    output_prompt_answer = False
+    compute_per_round_loss = True  # for rlhf
+    output_prompt_answer = False  # for encoder-decoder & kto
 
     def __init__(self,
                  prefix: Prompt,
