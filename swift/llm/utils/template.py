@@ -2119,15 +2119,18 @@ class FlorenceTemplate(Template):
         processor = self.tokenizer.processor
         example['query'] = processor._construct_prompts([query])[0]
         inputs, _ = super()._encode(example)
-        inputs['input_ids'] = inputs['prompt_input_ids']
-        inputs['labels'] = inputs['answer_labels']
+        input_ids = inputs['prompt_input_ids']
         if len(inputs) == 0:
             return inputs, {}
         images = example.get('images') or []
         pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(self.model.dtype)
-        inputs['_data'] = {
-            'input_ids': torch.tensor(inputs['input_ids'])[None],
-            'pixel_values': pixel_values,
+        inputs = {
+            'input_ids': input_ids,
+            'labels': inputs['answer_labels'],
+            '_data': {
+                'input_ids': torch.tensor(input_ids)[None],
+                'pixel_values': pixel_values,
+            }
         }
         return inputs, {}
 

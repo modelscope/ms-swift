@@ -2849,7 +2849,7 @@ def get_model_tokenizer_florence(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     tokenizer.processor = processor
-    model.vision_tower.enable_checkpoint = True
+    # model.vision_tower.enable_checkpoint = True
     _use_submodel_func(model, 'language_model', ['generate', 'forward'])
     return model, tokenizer
 
