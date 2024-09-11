@@ -2618,13 +2618,20 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', None)
-    if version.parse(transformers.__version__) >= version.parse('4.36'):
-        if use_flash_attn:
-            model_config._attn_implementation = 'flash_attention_2'
-        elif use_flash_attn is False:
-            model_config._attn_implementation = 'eager'
-    else:
-        model_config._flash_attn_2_enabled = use_flash_attn
+    config_list = [model_config]
+    for k in ['language_config', 'llm_config', 'text_config']:
+        llm_config = getattr(model_config, k, None)
+        if llm_config:
+            config_list.append(llm_config)
+            break
+    for config in config_list:
+        if version.parse(transformers.__version__) >= version.parse('4.36'):
+            if use_flash_attn:
+                config._attn_implementation = 'flash_attention_2'
+            elif use_flash_attn is False:
+                config._attn_implementation = 'eager'
+        else:
+            config._flash_attn_2_enabled = use_flash_attn
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
@@ -2903,7 +2910,6 @@ def fix_florence_forward(model) -> None:
     'AI-ModelScope/Florence-2-base',
     LoRATM.florence,
     TemplateType.florence,
-    support_vllm=False,
     support_flash_attn=True,
     hf_model_id='microsoft/Florence-2-base',
     tags=['multi-modal', 'vision'])
@@ -2912,7 +2918,6 @@ def fix_florence_forward(model) -> None:
     'AI-ModelScope/Florence-2-base-ft',
     LoRATM.florence,
     TemplateType.florence,
-    support_vllm=False,
     support_flash_attn=True,
     hf_model_id='microsoft/Florence-2-base-ft',
     tags=['multi-modal', 'vision'])
@@ -2921,7 +2926,6 @@ def fix_florence_forward(model) -> None:
     'AI-ModelScope/Florence-2-large',
     LoRATM.florence,
     TemplateType.florence,
-    support_vllm=False,
     support_flash_attn=True,
     hf_model_id='microsoft/Florence-2-large',
     tags=['multi-modal', 'vision'])
@@ -2930,7 +2934,6 @@ def fix_florence_forward(model) -> None:
     'AI-ModelScope/Florence-2-large-ft',
     LoRATM.florence,
     TemplateType.florence,
-    support_vllm=False,
     support_flash_attn=True,
     hf_model_id='microsoft/Florence-2-large-ft',
     tags=['multi-modal', 'vision'])
@@ -2942,39 +2945,20 @@ def get_model_tokenizer_florence(model_dir: str,
                                  **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_config.bos_token_id = 0
-    model_config.eos_token_id = 2
-    model_config.pad_token_id = 1
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if version.parse(transformers.__version__) >= version.parse('4.36'):
-        if use_flash_attn:
-            model_config.text_config._attn_implementation = 'flash_attention_2'
-            model_config._attn_implementation = 'flash_attention_2'
-        else:
-            model_config.text_config._attn_implementation = 'sdpa'
-            model_config._attn_implementation = 'sdpa'
-    else:
-        model_config.text_config._flash_attn_2_enabled = use_flash_attn
-        model_config._flash_attn_2_enabled = use_flash_attn
-    model_config.vision_config.model_type = 'davit'
-    model, tokenizer = get_model_tokenizer_from_repo(
+
+    # model_config.vision_config.model_type = 'davit'
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
         torch_dtype,
         model_kwargs,
         load_model,
-        model_config=model_config,
         tokenizer=processor.tokenizer,
         **kwargs)
 
     tokenizer.processor = processor
-    fix_florence_forward(model)
-    tokenizer.bos_token_id = 0
-    tokenizer.eos_token_id = 2
-    tokenizer.pad_token_id = 1
-    model.generation_config = model.language_model.generation_config
-    model.vision_tower.to(model.dtype)
+    # fix_florence_forward(model)
+    # model.vision_tower.to(model.dtype)
+    _use_submodel_func(model, 'language_model', ['generate'])
     return model, tokenizer
 
 
