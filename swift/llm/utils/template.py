@@ -2078,9 +2078,8 @@ class FlorenceTemplate(Template):
         images = example.get('images') or []
         assert len(images) == 1, 'Florence series models only supports input with a single image.'
 
-    def replace_tag(self, media_type, index, example) -> List[Context]:
-        assert media_type == 'image'
-        return []
+    def add_default_tags(self, example: Dict[str, Any]) -> None:
+        return
 
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
         x1, y1, x2, y2 = example['objects'][index]['bbox']
@@ -2115,7 +2114,7 @@ class FlorenceTemplate(Template):
         if isinstance(example['images'], list):
             example['images'] = example['images'][0]
         image = load_image(example['images'])
-        return str(
+        return json.dumps(
             self.tokenizer.processor.post_process_generation(
                 response, task=example['query'], image_size=(image.width, image.height)))
 
