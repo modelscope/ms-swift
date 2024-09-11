@@ -29,5 +29,4 @@ class DPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFDPOTrainer):
 
         self.ref_adapter_name = args.ref_adapter_name
         self.reference_free = args.reference_free
-        self.is_vision_model = False
         super().__init__(model, ref_model, *_args, **kwargs)

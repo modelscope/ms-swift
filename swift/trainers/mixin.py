@@ -629,6 +629,7 @@ class RLHFTrainerMixin:
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = args.generate_during_eval
+        self.is_vision_model = False
         # not use
         tokenizer = kwargs['tokenizer']
         self.label_pad_token_id = -100
@@ -656,8 +657,6 @@ class RLHFTrainerMixin:
             outputs.logits = outputs.logits[:, -labels.shape[1]:]
         for key in ['input_ids', 'attention_mask', 'labels']:
             model_kwargs[f'concatenated_{key}'] = model_kwargs.pop(key)
-        if self.__class__.__name__ == 'ORPOTrainer':
-            model_kwargs['concatenated_input_ids'] = model_kwargs['concatenated_labels']
 
         @contextmanager
         def _patch_concatenated_forward():

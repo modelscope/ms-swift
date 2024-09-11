@@ -438,6 +438,7 @@ def trainer_train(args,
         tokenizer=tokenizer,
         callbacks=callbacks,
         **trainer_kwargs)
+    trainer.is_vision_model = args.is_multimodal
     trainer.sft_args = args
     if use_torchacc():
         trainer.label_names = model.label_names
