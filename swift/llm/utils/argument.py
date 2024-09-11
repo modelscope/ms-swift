@@ -1470,7 +1470,7 @@ class InferArguments(ArgumentsBase):
                 self.eval_human = True
             else:
                 self.eval_human = False
-            logger.info(f'Setting self.eval_human: {self.eval_human}')
+            logger.info(f'Setting args.eval_human: {self.eval_human}')
         elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
             raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
 
@@ -1533,9 +1533,9 @@ class InferArguments(ArgumentsBase):
             self.lora_request_list, self.use_dora = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
-        if self.num_beams != 1:
+        if self.num_beams != 1 or not template_info.get('stream', True):
             self.stream = False
-            logger.info('Setting self.stream: False')
+            logger.info('Setting args.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
         if self.infer_media_type == 'none' and self.is_multimodal:
             self.infer_media_type = 'interleave'

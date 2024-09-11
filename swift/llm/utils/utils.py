@@ -401,7 +401,9 @@ def print_example(example: Dict[str, Any],
     if tokenizer_kwargs is None:
         tokenizer_kwargs = {}
     for key in ['input', 'chosen_input', 'rejected_input', 'labels', 'chosen_labels', 'rejected_labels']:
-        val = example.get(key) or example.get(f'{key}_ids')
+        val = example.get(key)  # fix val is a tensor
+        if val is None:
+            val = example.get(f'{key}_ids')
         if val is not None:
             key_upper = key.upper()
             logger.info(f'[{key_upper}_IDS] {val}')
@@ -589,11 +591,11 @@ def _prepare_inputs(model: PreTrainedModel,
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    if 'input_ids' in inputs:
+    if 'input_ids' in inputs:  # 1d
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
         token_len = input_ids.shape[1]
-    if 'inputs_embeds' in inputs:
+    if 'inputs_embeds' in inputs:  # 2d
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
@@ -943,7 +945,7 @@ def messages_join_observation(messages: Messages):
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
-    old_generation_priority_config = ['no_repeat_ngram_size']
+    old_generation_priority_config = ['no_repeat_ngram_size', 'num_beams']
     if old_generation_config is not None:
         for k, old_v in old_generation_config.__dict__.items():
             if k.startswith('_'):
