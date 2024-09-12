@@ -286,7 +286,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--beta`: KL regularization term coefficient, default is `None`, meaning that for the simpo algorithm, the default is `2`., and for other algorithms, it is `0.1`. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--label_smoothing`: Whether to use DPO smoothing, the default value is `0`, normally set between 0 and 0.5.
 - `--loss_type`: Type of loss, default is `None`. If it's dpo or cpo, it is `'sigmoid'`, and if it's simpo, it is `'simpo'`.
-- `--rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `0.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
+- `--rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `1.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
 - `cpo_alpha`: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - `--simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is `1.`.
 - `--desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is `1.`.

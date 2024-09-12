@@ -1756,7 +1756,7 @@ class RLHFArguments(SftArguments):
     # DPO
     # The alpha parameter from the [RPO](https://huggingface.co/papers/2404.19733) paper V3.
     # The paper recommends `rpo_alpha=1.0`.
-    rpo_alpha: Optional[float] = None
+    rpo_alpha: float = 1.
     # CPO
     cpo_alpha: float = 1.
     # SimPO
