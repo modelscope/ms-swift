@@ -58,9 +58,8 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         world_size = get_dist_setting()[2]
         total_batch_size = (world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps)
         if total_batch_size <= 1:
-            raise ValueError(
-                'Batch size is 1 (too small). KTO will not work properly because the KL term will be equivalent to the implied reward.'
-            )
+            raise ValueError('Batch size is 1 (too small). KTO will not work properly because the KL term '
+                             'will be equivalent to the implied reward.')
         train_dataset, eval_dataset = kwargs['train_dataset'], kwargs['eval_dataset']
         _add_kl_dataset(train_dataset, total_batch_size, args.data_seed)
         _add_kl_dataset(eval_dataset, total_batch_size, args.data_seed)
