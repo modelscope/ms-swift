@@ -1758,7 +1758,7 @@ class RLHFArguments(SftArguments):
     # The paper recommends `rpo_alpha=1.0`.
     rpo_alpha: Optional[float] = None
     # CPO
-    cpo_alpha: Optional[float] = None
+    cpo_alpha: float = 1.
     # SimPO
     simpo_gamma: float = 1
     # KTO
@@ -1778,8 +1778,6 @@ class RLHFArguments(SftArguments):
         self.rlhf_type = 'cpo'
         if self.loss_type is None:
             self.loss_type = 'simpo'
-        if self.cpo_alpha is None:
-            self.cpo_alpha = 0.
         if self.beta is None:
             self.beta = 2.
 
@@ -1789,8 +1787,6 @@ class RLHFArguments(SftArguments):
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
                 self.loss_type = 'sigmoid'  # else None
-        if self.cpo_alpha is None:
-            self.cpo_alpha = 1.
 
 
 @dataclass
