@@ -114,6 +114,20 @@ def patch_device(model: torch.nn.Module):
         return _device_hook
 
 
+
+
+
+def patch_output_clone(module: torch.nn.Module):
+
+    def _clone_hook(module, input, output):
+        if module.training:
+            return output.requires_grad_(True).clone()
+        else:
+            return output
+
+    module.register_forward_hook(_clone_hook)
+
+
 def patch_output_to_input_device(module: torch.nn.Module):
     """Patch the module, to make sure the output is in the same device with the input.
 

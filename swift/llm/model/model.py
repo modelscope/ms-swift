@@ -33,21 +33,12 @@ from .checker import check_awq_ext
 from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING
 from .model_mapping import ModelType
 from .patcher import patch_gptq_model, patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
-    patch_output_to_input_device
+    patch_output_to_input_device, patch_output_clone
 
 logger = get_logger()
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
-
-
-class ModelLoader:
-
-    def __init__(self):
-        pass
-
-    def load_model(self):
-        
 
 
 def register_model(
@@ -359,8 +350,7 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 @register_model(
     ModelType.grok_1,
     'colossalai/grok-1-pytorch',
-    LoRATM.llama,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=False,
     support_flash_attn=False,
     hf_model_id='hpcai-tech/grok-1')
@@ -392,48 +382,42 @@ def get_model_tokenizer_grok(model_dir: str,
 @register_model(
     ModelType.mamba_130m,
     'AI-ModelScope/mamba-130m-hf',
-    LoRATM.mamba,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers>=4.39.0'],
     support_vllm=False,
     hf_model_id='state-spaces/mamba-130m-hf')
 @register_model(
     ModelType.mamba_370m,
     'AI-ModelScope/mamba-370m-hf',
-    LoRATM.mamba,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers>=4.39.0'],
     support_vllm=False,
     hf_model_id='state-spaces/mamba-370m-hf')
 @register_model(
     ModelType.mamba_390m,
     'AI-ModelScope/mamba-390m-hf',
-    LoRATM.mamba,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers>=4.39.0'],
     support_vllm=False,
     hf_model_id='state-spaces/mamba-390m-hf')
 @register_model(
     ModelType.mamba_790m,
     'AI-ModelScope/mamba-790m-hf',
-    LoRATM.mamba,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers>=4.39.0'],
     support_vllm=False,
     hf_model_id='state-spaces/mamba-790m-hf')
 @register_model(
     ModelType.mamba_1_4b,
     'AI-ModelScope/mamba-1.4b-hf',
-    LoRATM.mamba,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers>=4.39.0'],
     support_vllm=False,
     hf_model_id='state-spaces/mamba-1.4b-hf')
 @register_model(
     ModelType.mamba_2_8b,
     'AI-ModelScope/mamba-2.8b-hf',
-    LoRATM.mamba,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers>=4.39.0'],
     support_vllm=False,
     hf_model_id='state-spaces/mamba-2.8b-hf')
@@ -450,8 +434,7 @@ def get_model_tokenizer_mamba(model_dir: str,
 @register_model(
     ModelType.cogvlm_17b_chat,
     'ZhipuAI/cogvlm-chat',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
+    template=TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     requires=['transformers<4.42'],
     tags=['multi-modal', 'vision'],
@@ -459,8 +442,7 @@ def get_model_tokenizer_mamba(model_dir: str,
 @register_model(
     ModelType.cogagent_18b_chat,
     'ZhipuAI/cogagent-chat',
-    LoRATM.cogvlm,
-    TemplateType.cogagent_chat,
+    template=TemplateType.cogagent_chat,
     support_gradient_checkpointing=False,
     requires=['timm'],
     tags=['multi-modal', 'vision'],
@@ -468,8 +450,7 @@ def get_model_tokenizer_mamba(model_dir: str,
 @register_model(
     ModelType.cogagent_18b_instruct,
     'ZhipuAI/cogagent-vqa',
-    LoRATM.cogvlm,
-    TemplateType.cogagent_instruct,
+    template=TemplateType.cogagent_instruct,
     support_gradient_checkpointing=False,
     requires=['timm'],
     tags=['multi-modal', 'vision'],
@@ -485,30 +466,27 @@ def get_model_tokenizer_cogagent(model_dir: str,
                        'to avoid this, please uninstall apex.')
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-    logger.info('Please ignore the unimported warning.')
+    logger.info('Please ignore the un-imported warning.')
     return model, tokenizer
 
 
 @register_model(
     ModelType.internlm_20b_chat,
     'Shanghai_AI_Laboratory/internlm-chat-20b',
-    LoRATM.llama,
-    TemplateType.internlm,
+    template=TemplateType.internlm,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='internlm/internlm-chat-20b')
 @register_model(
     ModelType.internlm_7b_chat_8k,
     'Shanghai_AI_Laboratory/internlm-chat-7b-8k',
-    LoRATM.llama,
-    TemplateType.internlm,
+    template=TemplateType.internlm,
     support_vllm=True,
     support_lmdeploy=True)
 @register_model(
     ModelType.internlm_7b_chat,
     'Shanghai_AI_Laboratory/internlm-chat-7b',
-    LoRATM.llama,
-    TemplateType.internlm,
+    template=TemplateType.internlm,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='internlm/internlm-chat-7b')
@@ -527,8 +505,7 @@ def get_model_tokenizer_internlm_chat(model_dir: str,
 @register_model(
     ModelType.baichuan_13b,
     'baichuan-inc/Baichuan-13B-Base',
-    LoRATM.baichuan,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True,
     support_lmdeploy=True,
@@ -551,8 +528,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_224,
     'AI-ModelScope/paligemma-3b-pt-224',
-    LoRATM.llava,
-    TemplateType.paligemma,
+    template=TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.41'],
@@ -562,8 +538,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_448,
     'AI-ModelScope/paligemma-3b-pt-448',
-    LoRATM.llava,
-    TemplateType.paligemma,
+    template=TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.41'],
@@ -573,8 +548,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_pt_896,
     'AI-ModelScope/paligemma-3b-pt-896',
-    LoRATM.llava,
-    TemplateType.paligemma,
+    template=TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.41'],
@@ -584,8 +558,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_224,
     'AI-ModelScope/paligemma-3b-mix-224',
-    LoRATM.llava,
-    TemplateType.paligemma,
+    template=TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.41'],
@@ -595,8 +568,7 @@ def get_model_tokenizer_baichuan_13b(model_dir: str,
 @register_model(
     ModelType.paligemma_3b_mix_448,
     'AI-ModelScope/paligemma-3b-mix-448',
-    LoRATM.llava,
-    TemplateType.paligemma,
+    template=TemplateType.paligemma,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.41'],
@@ -616,18 +588,10 @@ def get_model_tokenizer_paligemma_vision(model_dir: str,
     return model, tokenizer
 
 
-def _clone_hook(module, input, output):
-    if module.training:
-        return output.requires_grad_(True).clone()
-    else:
-        return output
-
-
 @register_model(
     ModelType.phi3_vision_128k_instruct,
     'LLM-Research/Phi-3-vision-128k-instruct',
-    LoRATM.phi3v,
-    TemplateType.phi3_vl,
+    template=TemplateType.phi3_vl,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.36'],
@@ -636,8 +600,7 @@ def _clone_hook(module, input, output):
 @register_model(
     ModelType.phi3_5_vision_instruct,
     'LLM-Research/Phi-3.5-vision-instruct',
-    LoRATM.phi3v,
-    TemplateType.phi3_vl,
+    template=TemplateType.phi3_vl,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.36'],
@@ -658,7 +621,7 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
     tokenizer.processor = processor
 
     if load_model:
-        model.model.vision_embed_tokens.wte.register_forward_hook(_clone_hook)
+        patch_output_clone(model.model.vision_embed_tokens.wte)
 
     return model, tokenizer
 
@@ -666,16 +629,14 @@ def get_model_tokenizer_phi3_vision(model_dir: str,
 @register_model(
     ModelType.baichuan2_13b_chat,
     'baichuan-inc/Baichuan2-13B-Chat',
-    LoRATM.baichuan,
-    TemplateType.baichuan,
+    template=TemplateType.baichuan,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan2-13B-Chat')
 @register_model(
     ModelType.baichuan2_13b,
     'baichuan-inc/Baichuan2-13B-Base',
-    LoRATM.baichuan,
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='baichuan-inc/Baichuan2-13B-Base')
