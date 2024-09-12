@@ -344,19 +344,26 @@ def dataset_map(dataset: DATASET_TYPE,
     return LLMDataset(data)
 
 
-def stat_dataset(llm_dataset: Dataset) -> str:
-    """Statistical analysis was performed on the dataset"""
-    _token_len = []
-    if isinstance(llm_dataset, HfDataset):
+def _get_token_len(llm_dataset):
+    token_len = []
+    if isinstance(llm_dataset, HfDataset):  # compat hf_dataset
         input_ids = llm_dataset['input_ids']
         for ii in input_ids:
-            _token_len.append(len(ii))
+            token_len.append(len(ii))
     else:
-        for d in llm_dataset:
+        for d in llm_dataset:  # LLMDataset
+            _len = 0
             for k, v in d.items():
                 if k == 'input_ids' or k.endswith('_input_ids'):  # sft, rlhf
-                    _token_len.append(len(v))
-    _, stat_str = stat_array(_token_len)
+                    _len += len(v)
+            token_len.append(_len)
+    return token_len
+
+
+def stat_dataset(llm_dataset: Dataset) -> str:
+    """Statistical analysis was performed on the dataset"""
+    token_len = _get_token_len(llm_dataset)
+    _, stat_str = stat_array(token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
 
@@ -506,8 +513,8 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str, quan
 
 def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
     logger.info('sort by max length...')
-    dataset_len = [len(d['input_ids']) for d in llm_dataset]
-    idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
+    token_len = _get_token_len(llm_dataset)
+    idx = heapq.nlargest(num_dataset, range(len(token_len)), key=lambda i: token_len[i])
     return llm_dataset.select(idx)
 
 

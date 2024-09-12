@@ -628,6 +628,18 @@ class ModelWrapper(nn.Module):
 
 class RLHFTrainerMixin:
 
+    @staticmethod
+    def get_model_config_attr(config, key):
+        for k in [None, 'language_config', 'llm_config', 'text_config']:
+            if k is None:
+                llm_config = config
+            else:
+                llm_config = getattr(config, k, None)
+            if llm_config:
+                val = getattr(llm_config, key)
+                if val is not None:
+                    return val
+
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
                  ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
@@ -648,6 +660,9 @@ class RLHFTrainerMixin:
         self._peft_has_been_casted_to_bf16 = False
         self.generate_during_eval = args.generate_during_eval
         self.is_multimodal = False
+        if self.is_encoder_decoder:
+            self.decoder_start_token_id = self.get_model_config_attr(model.config, 'decoder_start_token_id')
+            self.pad_token_id = self.get_model_config_attr(model.config, 'pad_token_id')
         # not use
         self.is_vision_model = False
         tokenizer = kwargs['tokenizer']
