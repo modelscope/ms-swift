@@ -13,7 +13,6 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
-from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -155,7 +154,7 @@ class StopWordsCriteria(StoppingCriteria):
         self.tokenizer_kwargs = tokenizer_kwargs
         self.start_idx = -1
 
-    def __call__(self, input_ids: Tensor, scores: Tensor, **kwargs) -> bool:
+    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> bool:
         if self.start_idx == -1:
             self.start_idx = len(input_ids[0]) - 1
         tokenizer = self.tokenizer
@@ -946,7 +945,7 @@ class Template:
         assert len(tokenizer_kwargs) == 0
 
     @staticmethod
-    def pad_sequence(sequences: List[Tensor],
+    def pad_sequence(sequences: List[torch.Tensor],
                      padding_value: float = 0.,
                      padding_side: Literal['right', 'left'] = 'right'):
         padding_right = padding_side == 'right'
@@ -1056,8 +1055,8 @@ class Template:
         return res
 
     @classmethod
-    def get_generate_ids(cls, generate_ids: Tensor, input_token_len: int) -> List[int]:
-        if isinstance(generate_ids, Tensor):
+    def get_generate_ids(cls, generate_ids: torch.Tensor, input_token_len: int) -> List[int]:
+        if isinstance(generate_ids, torch.Tensor):
             generate_ids = generate_ids.tolist()
         if len(generate_ids) >= 1 and isinstance(generate_ids[0], (list, tuple)):
             generate_ids = generate_ids[0]

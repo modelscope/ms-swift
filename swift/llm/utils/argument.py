@@ -16,7 +16,6 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets
 from packaging import version
-from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
@@ -144,7 +143,7 @@ class ArgumentsBase:
             logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
                         f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
-    def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
+    def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[torch.dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
             # cpu
             if self.dtype == 'AUTO':
@@ -191,7 +190,7 @@ class ArgumentsBase:
             fp16, bf16 = False, False
         return torch_dtype, fp16, bf16
 
-    def select_bnb(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
+    def select_bnb(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[torch.dtype], bool, bool]:
         if self.bnb_4bit_comp_dtype == 'AUTO':
             self.bnb_4bit_comp_dtype = self.dtype
 
