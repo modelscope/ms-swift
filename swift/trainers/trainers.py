@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from peft import PeftModel
-from torch import Tensor, nn
+from torch import nn
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -197,7 +197,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         masks = labels != -100
         acc_strategy = getattr(self.args, 'acc_strategy', 'token')
-        acc: Optional[Tensor] = None
+        acc: Optional[torch.Tensor] = None
         sft_args = getattr(self, 'sft_args', None)
         acc_steps = 1 if sft_args is None else sft_args.acc_steps
         if self.state.global_step % acc_steps == 0 and preds is not None:
