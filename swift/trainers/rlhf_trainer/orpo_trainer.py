@@ -24,7 +24,7 @@ class ORPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFORPOTrainer)
         model_kwargs = batch.copy()
         labels = model_kwargs.pop('labels', None)
         len_chosen = model_kwargs['input_ids'].shape[0] // 2
-        if self.is_vision_model:
+        if self.is_multimodal:
             # fix llava & multi-round loss computation. (more GPU memory)
             masked_labels = labels.clone()
             masked_labels[len_chosen:] = -100
@@ -54,7 +54,7 @@ class ORPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFORPOTrainer)
             return loss
 
         chosen_nll_loss = outputs.loss
-        if not self.is_vision_model:
+        if not self.is_multimodal:
             chosen_nll_loss = cross_entropy_loss(all_logits[:len_chosen], labels[:len_chosen])
 
         all_logps = self.get_batch_logps(
