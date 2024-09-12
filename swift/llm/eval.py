@@ -4,6 +4,7 @@ import datetime as dt
 import multiprocessing
 import os
 import time
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 import json
@@ -259,61 +260,69 @@ def vlmeval_runner(args: EvalArguments, dataset: List[str], model_type: str, is_
     return Summarizer.get_report_from_cfg(task_cfg=task_cfg)
 
 
-def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
+@contextmanager
+def deploy_context(args):
     from swift.utils.torch_utils import _find_free_port
+    process = None
+    try:
+        if not args.eval_url:
+            port = _find_free_port()
+            args.port = port
+            mp = multiprocessing.get_context('spawn')
+            process = mp.Process(target=run_custom_model, args=(args, ))
+            process.start()
+        yield
+    finally:
+        if process is not None:
+            process.kill()
+            process.join()
+            logger.info('The deployment process has been terminated.')
+
+
+def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
     logger.info(f'args: {args}')
     if args.eval_few_shot:
         logger.warn('OpenCompass does not support `eval_few_shot`')
-    process = None
-    if not args.eval_url:
-        seed_everything(args.seed)
-        port = _find_free_port()
-        args.port = port
-        mp = multiprocessing.get_context('spawn')
-        process = mp.Process(target=run_custom_model, args=(args, ))
-        process.start()
-
-        # health check: try to get model_type until raises
-        get_model_type(port, args.deploy_timeout)
-        model_type = 'default-lora' if args.sft_type in ('lora',
-                                                         'longlora') and not args.merge_lora else args.model_type
-        from .deploy import is_generation_template
-        if is_generation_template(args.template_type):
-            url = f'http://127.0.0.1:{port}/v1/completions'
+    with deploy_context(args):
+        if not args.eval_url:
+            port = args.port
+            # health check: try to get model_type until raises
+            get_model_type(port, args.deploy_timeout)
+            model_type = 'default-lora' if args.sft_type in ('lora',
+                                                             'longlora') and not args.merge_lora else args.model_type
+            from .deploy import is_generation_template
+            if is_generation_template(args.template_type):
+                url = f'http://127.0.0.1:{port}/v1/completions'
+            else:
+                url = f'http://127.0.0.1:{port}/v1/chat/completions'
+            is_chat = not is_generation_template(args.template_type)
         else:
-            url = f'http://127.0.0.1:{port}/v1/chat/completions'
-        is_chat = not is_generation_template(args.template_type)
-    else:
-        url = args.eval_url
-        url = url.rstrip('/')
-        if args.eval_is_chat_model:
-            url += '/chat/completions'
-        else:
-            url += '/completions'
-        model_type = args.model_type
-        is_chat = args.eval_is_chat_model
+            url = args.eval_url
+            url = url.rstrip('/')
+            if args.eval_is_chat_model:
+                url += '/chat/completions'
+            else:
+                url += '/completions'
+            model_type = args.model_type
+            is_chat = args.eval_is_chat_model
 
-    nlp_datasets = set(OpenCompassBackendManager.list_datasets()) & set(args.eval_dataset)
-    mm_datasets = set(VLMEvalKitBackendManager.list_supported_datasets()) & set(args.eval_dataset)
+        nlp_datasets = set(OpenCompassBackendManager.list_datasets()) & set(args.eval_dataset)
+        mm_datasets = set(VLMEvalKitBackendManager.list_supported_datasets()) & set(args.eval_dataset)
 
-    final_report = []
-    for dataset, runner in zip([list(nlp_datasets), list(mm_datasets)], [opencompass_runner, vlmeval_runner]):
-        if not dataset:
-            continue
+        final_report = []
+        for dataset, runner in zip([list(nlp_datasets), list(mm_datasets)], [opencompass_runner, vlmeval_runner]):
+            if not dataset:
+                continue
 
-        report = runner(args, dataset, model_type, is_chat, url)
-        logger.info(f'Final report:{report}\n')
-        final_report.extend(report)
+            report = runner(args, dataset, model_type, is_chat, url)
+            logger.info(f'Final report:{report}\n')
+            final_report.extend(report)
     if not final_report:
         raise ValueError(f'Cannot load final report, please check your dataset: {args.eval_dataset} and the eval log')
-    if process:
-        process.kill()
     return final_report
 
 
 def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
-    logger.info(f'args: {args}')
-    seed_everything(args.seed)
     model_name = args.model_type
     tm = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
     model_name += f'-{args.name or tm}'
@@ -376,6 +385,8 @@ def eval_llmuses(args: EvalArguments) -> List[Dict[str, Any]]:
 
 
 def llm_eval(args: EvalArguments) -> List[Dict[str, Any]]:
+    logger.info(f'args: {args}')
+    seed_everything(args.seed)
     args.eval_output_dir = os.path.join(args.eval_output_dir, args.name or 'default')
     if args.custom_eval_config:
         args.eval_backend = EvalBackend.NATIVE.value
