@@ -1,11 +1,12 @@
 import math
 from typing import Dict, Any
 
+import torch
 import transformers
 from packaging import version
 from swift import get_logger
 
-from swift.llm.utils.utils import set_rope_scaling, get_rope_scaling
+from swift.llm.utils.utils import set_rope_scaling, get_rope_scaling, to_device
 
 from swift.llm import get_max_model_len
 from transformers import GPTQConfig
@@ -50,6 +51,16 @@ def patch_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> N
 
 
 def patch_rope_scaling(model_config, rope_scaling, max_length):
+    """Patch rope scaling, to enable dynamic/linear rope
+
+    Args:
+        model_config:
+        rope_scaling:
+        max_length:
+
+    Returns:
+
+    """
     max_position_embeddings = get_max_model_len(model_config, ignore_rope_scaling=True)
     if rope_scaling and max_position_embeddings:
         max_length = max_length or max_position_embeddings
@@ -59,6 +70,14 @@ def patch_rope_scaling(model_config, rope_scaling, max_length):
 
 
 def patch_tokenizer(tokenizer, eos_token, pad_token, placeholder_tokens):
+    """Patch tokenizer to add extra eos_token/pad_token/placeholder_tokens.
+
+    Args:
+        tokenizer: The tokenizer to be patched
+        eos_token: The eos_token
+        pad_token: The pad_token
+        placeholder_tokens: The placeholder_tokens
+    """
     if isinstance(eos_token, str):
         tokenizer.eos_token = eos_token
     elif isinstance(eos_token, int):
@@ -71,6 +90,11 @@ def patch_tokenizer(tokenizer, eos_token, pad_token, placeholder_tokens):
 
 
 def patch_hidden_size(model_config):
+    """Sometimes model config need `hidden_size` key, this will copy the value in llm domain to the outer config.
+
+    Args:
+        model_config: The model config
+    """
     # multimodal
     llm_config = None
     for k in ['language_config', 'llm_config', 'text_config']:
@@ -79,3 +103,25 @@ def patch_hidden_size(model_config):
             break
     if llm_config and hasattr(llm_config, 'hidden_size') and not hasattr(model_config, 'hidden_size'):
         model_config.hidden_size = llm_config.hidden_size
+
+
+def patch_device(model: torch.nn.Module):
+
+    def get_device_hook(device):
+        def _device_hook(module, input, output):
+            return to_device(output, device)
+
+        return _device_hook
+
+
+def patch_output_to_input_device(module: torch.nn.Module):
+    """Patch the module, to make sure the output is in the same device with the input.
+
+    Args:
+        module: The module to be patched
+    """
+
+    def _output_device_map_hook(module, input, output: torch.Tensor):
+        return output.to(input[0].device)
+
+    module.register_forward_hook(_output_device_map_hook)

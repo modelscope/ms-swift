@@ -30,14 +30,24 @@ from swift.llm.utils.utils import get_max_model_len, to_device
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from swift.utils.module_mapping import get_regex_for_mm_default_lora
 from .checker import check_awq_ext
-from .loader import load_by_unsloth, load_by_transformers
+from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING
 from .model_mapping import ModelType
-from .patcher import patch_gptq_model, patch_rope_scaling, patch_tokenizer, patch_hidden_size
+from .patcher import patch_gptq_model, patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
+    patch_output_to_input_device
 
 logger = get_logger()
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
+
+
+class ModelLoader:
+
+    def __init__(self):
+        pass
+
+    def load_model(self):
+        
 
 
 def register_model(
@@ -62,8 +72,6 @@ def register_model(
         requires = []
     if function_kwargs is None:
         function_kwargs = {}
-    if revision is None:
-        revision = 'master'
     model_info = {
         'model_id_or_path': model_id_or_path,
         'lora_target_modules': lora_target_modules or 'ALL',
@@ -98,102 +106,102 @@ def register_model(
 @register_model(
     ModelType.internlm_20b,
     'Shanghai_AI_Laboratory/internlm-20b',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='internlm/internlm-20b')
 @register_model(
     ModelType.internlm_7b,
     'Shanghai_AI_Laboratory/internlm-7b',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     support_lmdeploy=True,
     hf_model_id='internlm/internlm-7b')
 @register_model(
     ModelType.bluelm_7b_chat_32k,
     'vivo-ai/BlueLM-7B-Chat-32K',
-    TemplateType.bluelm,
+    template=TemplateType.bluelm,
     hf_model_id='vivo-ai/BlueLM-7B-Chat-32K')
 @register_model(
     ModelType.bluelm_7b_chat,
     'vivo-ai/BlueLM-7B-Chat',
-    TemplateType.bluelm,
+    template=TemplateType.bluelm,
     hf_model_id='vivo-ai/BlueLM-7B-Chat')
 @register_model(
     ModelType.bluelm_7b_32k,
     'vivo-ai/BlueLM-7B-Base-32K',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     hf_model_id='vivo-ai/BlueLM-7B-Base-32K')
 @register_model(
     ModelType.bluelm_7b,
     'vivo-ai/BlueLM-7B-Base',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     hf_model_id='vivo-ai/BlueLM-7B-Base')
 @register_model(
     ModelType.seqgpt_560m,
     'damo/nlp_seqgpt-560m',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     hf_model_id='DAMO-NLP/SeqGPT-560M')
 @register_model(
     ModelType.xverse_13b_chat,
     'xverse/XVERSE-13B-Chat',
-    TemplateType.xverse,
+    template=TemplateType.xverse,
     support_vllm=True,
     hf_model_id='xverse/XVERSE-13B-Chat')
 @register_model(
     ModelType.xverse_13b,
     'xverse/XVERSE-13B',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     hf_model_id='xverse/XVERSE-13B')
 @register_model(
     ModelType.xverse_65b,
     'xverse/XVERSE-65B',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     hf_model_id='xverse/XVERSE-65B')
 @register_model(
     ModelType.xverse_65b_v2,
     'xverse/XVERSE-65B-2',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     hf_model_id='xverse/XVERSE-65B-2')
 @register_model(
     ModelType.xverse_65b_chat,
     'xverse/XVERSE-65B-Chat',
-    TemplateType.xverse,
+    template=TemplateType.xverse,
     support_vllm=True,
     hf_model_id='xverse/XVERSE-65B-Chat')
 @register_model(
     ModelType.xverse_13b_256k,
     'xverse/XVERSE-13B-256K',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     revision='v1.0.0',
     support_vllm=True,
     hf_model_id='xverse/XVERSE-13B-256K')
 @register_model(
     ModelType.xverse_7b_chat,
     'xverse/XVERSE-7B-Chat',
-    TemplateType.xverse,
+    template=TemplateType.xverse,
     support_vllm=True,
     hf_model_id='xverse/XVERSE-7B-Chat')
 @register_model(
     ModelType.xverse_7b,
     'xverse/XVERSE-7B',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     support_vllm=True,
     hf_model_id='xverse/XVERSE-7B')
 @register_model(
     ModelType.xverse_moe_a4_2b,
     'xverse/XVERSE-MoE-A4.2B',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     tags=['moe'],
     hf_model_id='xverse/XVERSE-MoE-A4.2B')
 @register_model(
     ModelType.baichuan_13b_chat,
     'baichuan-inc/Baichuan-13B-Chat',
-    TemplateType.baichuan,
+    template=TemplateType.baichuan,
     requires=['transformers<4.34'],
     support_vllm=True,
     support_lmdeploy=True,
@@ -201,7 +209,7 @@ def register_model(
 @register_model(
     ModelType.baichuan_7b,
     'baichuan-inc/baichuan-7B',
-    TemplateType.default_generation,
+    template=TemplateType.default_generation,
     requires=['transformers<4.34'],
     support_vllm=True,
     support_lmdeploy=True,
@@ -209,7 +217,7 @@ def register_model(
 @register_model(
     ModelType.c4ai_command_r_v01,
     'AI-ModelScope/c4ai-command-r-v01',
-    TemplateType.c4ai,
+    template=TemplateType.c4ai,
     requires=['transformers>=4.39.1'],
     support_vllm=True,
     support_flash_attn=True,
@@ -217,7 +225,7 @@ def register_model(
 @register_model(
     ModelType.c4ai_command_r_plus,
     'AI-ModelScope/c4ai-command-r-plus',
-    TemplateType.c4ai,
+    template=TemplateType.c4ai,
     requires=['transformers>4.39'],
     support_vllm=True,
     support_flash_attn=True,
@@ -275,23 +283,10 @@ def get_model_tokenizer_from_repo(model_dir: str,
     return model, tokenizer
 
 
-def get_device_hook(device):
-
-    def _device_hook(module, input, output):
-        return to_device(output, device)
-
-    return _device_hook
-
-
-def _output_device_map_hook(module, input, output):
-    return output.to(input[0].device)
-
-
 @register_model(
     ModelType.cogvlm2_video_13b_chat,
     'ZhipuAI/cogvlm2-video-llama3-chat',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm2_video,
+    template=TemplateType.cogvlm2_video,
     support_gradient_checkpointing=False,
     requires=['decord', 'pytorchvideo', 'transformers>=4.42'],
     placeholder_tokens=['<|reserved_special_token_0|>'],
@@ -300,8 +295,7 @@ def _output_device_map_hook(module, input, output):
 @register_model(
     ModelType.cogvlm2_en_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
+    template=TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     support_lmdeploy=True,
     requires=['transformers<4.42'],
@@ -311,8 +305,7 @@ def _output_device_map_hook(module, input, output):
 @register_model(
     ModelType.cogvlm2_19b_chat,
     'ZhipuAI/cogvlm2-llama3-chinese-chat-19B',
-    LoRATM.cogvlm,
-    TemplateType.cogvlm,
+    template=TemplateType.cogvlm,
     support_gradient_checkpointing=False,
     support_lmdeploy=True,
     requires=['transformers<4.42'],
@@ -324,8 +317,8 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
     if model is not None:
         # fix device map 4
         for layer in model.model.vision.transformer.layers:
-            layer.mlp.register_forward_hook(_output_device_map_hook)
-            layer.post_attention_layernorm.register_forward_hook(_output_device_map_hook)
+            patch_output_to_input_device(layer.mlp)
+            patch_output_to_input_device(layer.post_attention_layernorm)
 
         device = next(model.model.vision.linear_proj.parameters()).device
         model.model.vision.boi.data = model.model.vision.boi.to(device)
@@ -336,8 +329,7 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
 @register_model(
     ModelType.llava_llama3_8b_v1_1,
     'AI-ModelScope/llava-llama-3-8b-v1_1-transformers',
-    LoRATM.llava,
-    TemplateType.llava_llama_instruct,
+    template=TemplateType.llava_llama_instruct,
     support_flash_attn=True,
     support_vllm=True,
     requires=['transformers>=4.36'],
