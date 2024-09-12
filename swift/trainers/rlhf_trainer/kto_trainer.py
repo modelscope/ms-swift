@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import warnings
-from typing import Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch.nn as nn
@@ -10,25 +10,33 @@ from trl import KTOTrainer as HFKTOTrainer
 
 from swift.llm import LLMDataset
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
+from swift.utils import get_dist_setting
 
 del HFKTOTrainer.__init__
 
 
-def _add_kl_dataset(dataset: LLMDataset) -> LLMDataset:
-    raw_dataset = dataset.data
-    new_dataset = []
-    for i in range(len(raw_dataset)):
-        raw_data, kl_raw_data = raw_dataset[i], raw_dataset[(i + 1) % len(dataset)]
-        KL_input_ids = raw_data['prompt_input_ids'] + kl_raw_data['answer_input_ids']
-        KL_labels = raw_data['prompt_labels'] + kl_raw_data['answer_labels']
-        new_dataset.append({
-            'input_ids': raw_data['input_ids'],
-            'labels': raw_data['labels'],
-            'KL_input_ids': KL_input_ids,
-            'KL_labels': KL_labels,
-            'label': raw_data['label']
-        })
-    return LLMDataset(new_dataset)
+def _add_kl_dataset(dataset: LLMDataset, total_batch_size: int, seed: Optional[int] = None) -> None:
+    # Shift one position to the right in each batch.
+    raw_dataset: List[Dict[str, Any]] = dataset.data
+    random_state = np.random.RandomState(seed)
+    random_state.shuffle(raw_dataset)
+    i = 0
+    while i < len(raw_dataset):
+        new_dataset_group = []
+        dataset_group = raw_dataset[i:i + total_batch_size]
+        kl_dataset_group = [dataset_group[-1]] + dataset_group[:-1]
+        for data, kl_data in zip(dataset_group, kl_dataset_group):
+            kl_input_ids = data['prompt_input_ids'] + kl_data['answer_input_ids']
+            kl_labels = data['prompt_labels'] + kl_data['answer_labels']
+            new_dataset_group.append({
+                'input_ids': data['input_ids'],
+                'labels': data['labels'],
+                'KL_input_ids': kl_input_ids,
+                'KL_labels': kl_labels,
+                'label': kl_data['label']
+            })
+        raw_dataset[i:i + total_batch_size] = new_dataset_group
+        i += total_batch_size
 
 
 class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
@@ -46,13 +54,16 @@ class KTOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFKTOTrainer):
         self.is_peft_model = isinstance(model, PeftModel)
 
         self.ref_adapter_name = None
-        # KL datasets
+        # Get KL datasets
+        world_size = get_dist_setting()[2]
+        total_batch_size = (world_size * args.per_device_train_batch_size * args.gradient_accumulation_steps)
+        if total_batch_size <= 1:
+            raise ValueError(
+                'Batch size is 1 (too small). KTO will not work properly because the KL term will be equivalent to the implied reward.'
+            )
         train_dataset, eval_dataset = kwargs['train_dataset'], kwargs['eval_dataset']
-        random_state = np.random.RandomState(args.data_seed)
-        random_state.shuffle(train_dataset.data)
-        random_state.shuffle(eval_dataset.data)
-        train_dataset = _add_kl_dataset(train_dataset)
-        eval_dataset = _add_kl_dataset(eval_dataset)
+        _add_kl_dataset(train_dataset, total_batch_size, args.data_seed)
+        _add_kl_dataset(eval_dataset, total_batch_size, args.data_seed)
         label = train_dataset['label']
         num_desirable = max(sum(label), 1)
         num_undesirable = max(len(label) - num_desirable, 1)  # "label" is binary

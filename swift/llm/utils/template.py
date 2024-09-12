@@ -3277,9 +3277,10 @@ class KTOTemplateMixin:
     def encode(self: Template,
                example: Dict[str, Any],
                streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        res = self._old_encode(example, streaming)
-        res[0]['label'] = example['label']
-        return res
+        inputs, tokenizer_kwargs = self._old_encode(example, streaming)
+        if len(inputs) > 0:
+            inputs['label'] = example['label']
+        return inputs, tokenizer_kwargs
 
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = {}
