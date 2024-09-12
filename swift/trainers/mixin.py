@@ -608,6 +608,24 @@ class SwiftMixin:
             return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
 
 
+class ModelWrapper(nn.Module):
+    # compat zero3 & rlhf
+    def __init__(self, model: nn.Module, ref_model: nn.Module):
+        super().__init__()
+        self.model = model
+        self.ref_model = ref_model
+
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        """Forward missing attributes to the wrapped module."""
+        try:
+            return super().__getattr__(name)  # defer to nn.Module's logic
+        except AttributeError:
+            return getattr(self.model, name)
+
+
 class RLHFTrainerMixin:
 
     def __init__(self,
@@ -636,13 +654,9 @@ class RLHFTrainerMixin:
         self.label_pad_token_id = -100
         self.padding_value = tokenizer.pad_token_id
         self.use_dpo_data_collator = True
-
+        if is_deepspeed_zero3_enabled() and ref_model is not None:
+            model = ModelWrapper(model, ref_model)
         super().__init__(model, *_args, **kwargs)
-        if self.ref_model is not None:
-            if self.is_deepspeed_enabled:
-                self.ref_model = self._prepare_deepspeed(self.ref_model)
-            else:
-                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
@@ -658,7 +672,7 @@ class RLHFTrainerMixin:
             outputs.logits = outputs.logits[:, -labels.shape[1]:]
         for key in ['input_ids', 'attention_mask', 'labels']:
             model_kwargs[f'concatenated_{key}'] = model_kwargs.pop(key)
- 
+
         @contextmanager
         def _patch_concatenated_forward():
             _old_concatenated_inputs = self.concatenated_inputs
