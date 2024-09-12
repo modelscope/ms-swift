@@ -4,6 +4,7 @@ aiohttp
 attrdict
 binpacking
 dacite
+datasets<3.0
 einops
 importlib_metadata
 jieba

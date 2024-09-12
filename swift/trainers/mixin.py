@@ -5,6 +5,8 @@ import os
 import re
 import shutil
 import time
+from collections import defaultdict
+from contextlib import contextmanager
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -13,12 +15,13 @@ import json
 import numpy as np
 import safetensors
 import torch
+import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, trainer
 from transformers.data.data_collator import DataCollator
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
@@ -28,11 +31,13 @@ from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
 
 from swift.hub.check_model import check_local_model_is_latest
-from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_load_optimizer_and_scheduler,
-                                  ta_save_optimizer_and_scheduler, ta_trim_graph)
+from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
+                                  ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler, ta_test_dataloader,
+                                  ta_train_dataloader, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, use_torchacc
 from swift.utils.constants import Invoke
+from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
 
@@ -71,37 +76,27 @@ class SwiftMixin:
         if is_quantized and use_swift:
             model._hf_peft_config_loaded = True
         self.is_encoder_decoder = kwargs.pop('is_encoder_decoder', False)
+
+        self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import init_sequence_parallel_xtuner
+            init_sequence_parallel_xtuner(self.sequence_parallel_size)
+        if not hasattr(self, 'perf'):
+            self.perf = {}
         # mro
-        super_class = kwargs.pop('super_class', None)
-        if super_class is not None:
-            super_class.__init__(
-                self,
-                model=model,
-                args=args,
-                data_collator=data_collator,
-                train_dataset=train_dataset,
-                eval_dataset=eval_dataset,
-                tokenizer=tokenizer,
-                model_init=model_init,
-                compute_metrics=compute_metrics,
-                callbacks=callbacks,
-                optimizers=optimizers,
-                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-                **kwargs)
-        else:
-            super().__init__(
-                model=model,
-                args=args,
-                data_collator=data_collator,
-                train_dataset=train_dataset,
-                eval_dataset=eval_dataset,
-                tokenizer=tokenizer,
-                model_init=model_init,
-                compute_metrics=compute_metrics,
-                callbacks=callbacks,
-                optimizers=optimizers,
-                preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-                **kwargs)
+        super().__init__(
+            model=model,
+            args=args,
+            data_collator=data_collator,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            tokenizer=tokenizer,
+            model_init=model_init,
+            compute_metrics=compute_metrics,
+            callbacks=callbacks,
+            optimizers=optimizers,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            **kwargs)
         if not self.label_names:
             self.label_names = ['labels']
         if is_quantized and use_swift:
@@ -552,3 +547,175 @@ class SwiftMixin:
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
         return self.optimizer
+
+    def get_train_dataloader(self):
+        if self.sequence_parallel_size > 1:
+            from swift.trainers.xtuner import get_xtuner_train_dataloader
+            return get_xtuner_train_dataloader(self)
+        elif use_torchacc():
+            if trainer.is_datasets_available():
+                import datasets
+
+            if self.train_dataset is None:
+                raise ValueError('Trainer: training requires a train_dataset.')
+
+            train_dataset = self.train_dataset
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+                train_dataset = self._remove_unused_columns(train_dataset, description='training')
+            else:
+                data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
+
+            return ta_train_dataloader(train_dataset, data_collator, self._get_train_sampler(), self.args,
+                                       self._train_batch_size)
+        else:
+            return super().get_train_dataloader()
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        if not use_torchacc():
+            return super().get_eval_dataloader(eval_dataset)
+        else:
+            if trainer.is_datasets_available():
+                import datasets
+
+            if eval_dataset is None and self.eval_dataset is None:
+                raise ValueError('Trainer: evaluation requires an eval_dataset.')
+            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
+                eval_dataset = self._remove_unused_columns(eval_dataset, description='evaluation')
+            else:
+                data_collator = self._get_collator_with_removed_columns(data_collator, description='evaluation')
+
+            return ta_eval_dataloader(eval_dataset, data_collator, self._get_eval_sampler(eval_dataset), self.args)
+
+    def get_test_dataloader(self, test_dataset):
+        if not use_torchacc():
+            return super().get_test_dataloader(test_dataset)
+        else:
+            if trainer.is_datasets_available():
+                import datasets
+
+            data_collator = self.data_collator
+
+            if trainer.is_datasets_available() and isinstance(test_dataset, datasets.Dataset):
+                test_dataset = self._remove_unused_columns(test_dataset, description='test')
+            else:
+                data_collator = self._get_collator_with_removed_columns(data_collator, description='test')
+
+            return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
+
+
+class ModelWrapper(nn.Module):
+    # compat zero3 & rlhf
+    def __init__(self, model: nn.Module, ref_model: nn.Module):
+        super().__init__()
+        self.model = model
+        self.ref_model = ref_model
+
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        """Forward missing attributes to the wrapped module."""
+        try:
+            return super().__getattr__(name)  # defer to nn.Module's logic
+        except AttributeError:
+            return getattr(self.model, name)
+
+
+class RLHFTrainerMixin:
+
+    @staticmethod
+    def get_model_config_attr(config, key):
+        for k in [None, 'language_config', 'llm_config', 'text_config']:
+            if k is None:
+                llm_config = config
+            else:
+                llm_config = getattr(config, k, None)
+            if llm_config:
+                val = getattr(llm_config, key)
+                if val is not None:
+                    return val
+
+    def __init__(self,
+                 model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
+                 ref_model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,
+                 *_args,
+                 **kwargs):
+        from trl.trainer import disable_dropout_in_model
+        self.ref_model = ref_model
+        self._stored_metrics = defaultdict(lambda: defaultdict(list))
+        args = kwargs['args']
+        self.beta = args.beta
+        if args.disable_dropout:
+            disable_dropout_in_model(model)
+            if self.ref_model is not None:
+                disable_dropout_in_model(self.ref_model)
+
+        self.is_encoder_decoder = kwargs['is_encoder_decoder']
+        self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
+        self._peft_has_been_casted_to_bf16 = False
+        self.generate_during_eval = args.generate_during_eval
+        self.is_multimodal = False
+        if self.is_encoder_decoder:
+            self.decoder_start_token_id = self.get_model_config_attr(model.config, 'decoder_start_token_id')
+            self.pad_token_id = self.get_model_config_attr(model.config, 'pad_token_id')
+        # not use
+        self.is_vision_model = False
+        tokenizer = kwargs['tokenizer']
+        self.label_pad_token_id = -100
+        self.padding_value = tokenizer.pad_token_id
+        self.use_dpo_data_collator = True
+        if is_deepspeed_zero3_enabled() and ref_model is not None:
+            model = ModelWrapper(model, ref_model)
+        super().__init__(model, *_args, **kwargs)
+
+    def concatenated_forward(
+        self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+
+        model_kwargs = batch.copy()
+        labels = model_kwargs.pop('labels', None)
+        if self.is_encoder_decoder:
+            model_kwargs['labels'] = labels
+
+        if self.aux_loss_enabled:
+            model_kwargs['output_router_logits'] = True
+        outputs = model(**model_kwargs, use_cache=False)
+        model_kwargs['labels'] = labels
+        model_kwargs['chosen_labels'] = torch.zeros(model_kwargs['input_ids'].shape[0] // 2)  # just get shape
+        if outputs.logits.shape[1] != labels.shape[1]:
+            # for llava, the model returns logits for the entire sequence, including the image tokens
+            # (placed before the text tokens)
+            outputs.logits = outputs.logits[:, -labels.shape[1]:]
+        for key in ['input_ids', 'attention_mask', 'labels']:
+            model_kwargs[f'concatenated_{key}'] = model_kwargs.pop(key)
+        if self.__class__.__name__ == 'ORPOTrainer':  # Pass-through labels
+            model_kwargs['concatenated_input_ids'] = model_kwargs['concatenated_labels']
+
+        @contextmanager
+        def _patch_concatenated_forward():
+            _old_concatenated_inputs = self.concatenated_inputs
+            _old_model_call = model.__class__.__call__
+            self.concatenated_inputs = lambda *args, **kwargs: model_kwargs
+            model.__class__.__call__ = lambda *args, **kwargs: outputs
+            yield
+            self.concatenated_inputs = _old_concatenated_inputs
+            model.__class__.__call__ = _old_model_call
+
+        with _patch_concatenated_forward():
+            return super().concatenated_forward(model, model_kwargs)
+
+    def get_batch_logps(self, logits: torch.FloatTensor, labels: torch.LongTensor, *args, **kwargs):
+        if self.is_encoder_decoder:
+            labels = labels.clone()  # fix trl bug
+        return super().get_batch_logps(logits, labels, *args, **kwargs)
+
+
+# monkey patching
+trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
+trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
+trainer.PrinterCallback = PrinterCallbackNew

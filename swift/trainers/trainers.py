@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -8,16 +7,13 @@ from peft import PeftModel
 from torch import Tensor, nn
 from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
 from transformers import Trainer as HfTrainer
-from transformers import trainer
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
-from swift.torchacc_utils import (patch_clip_grad_norm, ta_eval_dataloader, ta_test_dataloader, ta_train_dataloader,
-                                  ta_trim_graph)
+from swift.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
 from swift.utils import use_torchacc
-from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .loss import get_loss_func
 from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
@@ -30,7 +26,6 @@ class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
 class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
-        self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
         super().__init__(*args, **kwargs)
         # performance
         if not hasattr(self, 'perf'):
@@ -40,10 +35,6 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
             'gen_len': 0,
         })
         self._acc = torch.tensor(0.).to(self.args.device)
-        if self.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import init_sequence_parallel_xtuner
-            init_sequence_parallel_xtuner(self.sequence_parallel_size)
-
         if use_torchacc():
             patch_clip_grad_norm(self.accelerator)
 
@@ -229,68 +220,3 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
                     self._custom_metrics['acc'] = self._acc
                 self._custom_metrics['acc'] = self._custom_metrics['acc'] + acc / self.args.gradient_accumulation_steps
         return (loss, outputs) if return_outputs else loss
-
-    def get_train_dataloader(self):
-        if self.sequence_parallel_size > 1:
-            from swift.trainers.xtuner import get_xtuner_train_dataloader
-            return get_xtuner_train_dataloader(self)
-        elif use_torchacc():
-            if trainer.is_datasets_available():
-                import datasets
-
-            if self.train_dataset is None:
-                raise ValueError('Trainer: training requires a train_dataset.')
-
-            train_dataset = self.train_dataset
-            data_collator = self.data_collator
-
-            if trainer.is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
-                train_dataset = self._remove_unused_columns(train_dataset, description='training')
-            else:
-                data_collator = self._get_collator_with_removed_columns(data_collator, description='training')
-
-            return ta_train_dataloader(train_dataset, data_collator, self._get_train_sampler(), self.args,
-                                       self._train_batch_size)
-        else:
-            return super().get_train_dataloader()
-
-    def get_eval_dataloader(self, eval_dataset=None):
-        if not use_torchacc():
-            return super().get_eval_dataloader(eval_dataset)
-        else:
-            if trainer.is_datasets_available():
-                import datasets
-
-            if eval_dataset is None and self.eval_dataset is None:
-                raise ValueError('Trainer: evaluation requires an eval_dataset.')
-            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-            data_collator = self.data_collator
-
-            if trainer.is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
-                eval_dataset = self._remove_unused_columns(eval_dataset, description='evaluation')
-            else:
-                data_collator = self._get_collator_with_removed_columns(data_collator, description='evaluation')
-
-            return ta_eval_dataloader(eval_dataset, data_collator, self._get_eval_sampler(eval_dataset), self.args)
-
-    def get_test_dataloader(self, test_dataset):
-        if not use_torchacc():
-            return super().get_test_dataloader(test_dataset)
-        else:
-            if trainer.is_datasets_available():
-                import datasets
-
-            data_collator = self.data_collator
-
-            if trainer.is_datasets_available() and isinstance(test_dataset, datasets.Dataset):
-                test_dataset = self._remove_unused_columns(test_dataset, description='test')
-            else:
-                data_collator = self._get_collator_with_removed_columns(data_collator, description='test')
-
-            return ta_test_dataloader(test_dataset, data_collator, self._get_eval_sampler(test_dataset), self.args)
-
-
-# monkey patching
-trainer.DEFAULT_PROGRESS_CALLBACK = ProgressCallbackNew
-trainer.DEFAULT_CALLBACKS = [DefaultFlowCallbackNew]
-trainer.PrinterCallback = PrinterCallbackNew
