@@ -664,6 +664,11 @@ class RLHFTrainerMixin:
 
         model_kwargs = batch.copy()
         labels = model_kwargs.pop('labels', None)
+        if self.is_encoder_decoder:
+            model_kwargs["labels"] = labels
+
+        if self.aux_loss_enabled:
+            model_kwargs["output_router_logits"] = True
         outputs = model(**model_kwargs, use_cache=False)
         model_kwargs['labels'] = labels
         model_kwargs['chosen_labels'] = torch.zeros(model_kwargs['input_ids'].shape[0] // 2)  # just get shape
@@ -677,11 +682,16 @@ class RLHFTrainerMixin:
         def _patch_concatenated_forward():
             _old_concatenated_inputs = self.concatenated_inputs
             _old_model_call = model.__class__.__call__
+            # _old_forward = nn.CrossEntropyLoss.forward
             self.concatenated_inputs = lambda *args, **kwargs: model_kwargs
             model.__class__.__call__ = lambda *args, **kwargs: outputs
+            # if self.is_encoder_decoder:
+            #     nn.CrossEntropyLoss.forward = lambda *args, **kwargs: outputs.loss
             yield
             self.concatenated_inputs = _old_concatenated_inputs
             model.__class__.__call__ = _old_model_call
+            # if self.is_encoder_decoder:
+            #     nn.CrossEntropyLoss.forward = _old_forward
 
         with _patch_concatenated_forward():
             return super().concatenated_forward(model, model_kwargs)
