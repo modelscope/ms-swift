@@ -4,13 +4,15 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig)
+    from .arguments import Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig
     from .rlhf_trainer import CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .mixin import SwiftMixin, RLHFTrainerMixin
     from .push_to_ms import PushToMsHubMixin
     from .loss import LOSS_MAPPING, LossName, register_loss_func, get_loss_func
+    from .utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy, SchedulerType,
+                        ShardedDDPOption, TrainerCallback)
 else:
     _import_structure = {
         'arguments':
