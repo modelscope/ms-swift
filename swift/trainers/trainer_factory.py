@@ -4,6 +4,10 @@ import inspect
 from contextlib import contextmanager
 from typing import Dict
 
+from swift.utils import get_logger
+
+logger = get_logger()
+
 
 class TrainerFactory:
     TRAINER_MAPPING = {
@@ -63,9 +67,10 @@ class TrainerFactory:
             template.output_prompt_answer = True
         else:
             template_mixin = RLHFTemplateMixin
-        if args.train_type != 'orpo':
+        if args.train_type != 'orpo' or args.is_multimodal:
             template.compute_per_round_loss = False
-
+        logger.info(f'template.compute_per_round_loss: {template.compute_per_round_loss}')
+        logger.info(f'template.output_prompt_answer: {template.output_prompt_answer}')
         template.__class__._old_encode = template.__class__.encode
         template.__class__._old_data_collator = template.__class__.data_collator
         template.__class__.encode = template_mixin.encode

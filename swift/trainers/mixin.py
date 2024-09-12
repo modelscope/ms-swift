@@ -678,6 +678,8 @@ class RLHFTrainerMixin:
             outputs.logits = outputs.logits[:, -labels.shape[1]:]
         for key in ['input_ids', 'attention_mask', 'labels']:
             model_kwargs[f'concatenated_{key}'] = model_kwargs.pop(key)
+        if self.__class__.__name__ == 'ORPOTrainer':  # Pass-through labels
+            model_kwargs['concatenated_input_ids'] = model_kwargs['concatenated_labels']
 
         @contextmanager
         def _patch_concatenated_forward():
