@@ -3,7 +3,7 @@
 
 import inspect
 from types import FunctionType, MethodType
-from typing import Any, Dict, List, Optional, Union
+from typing import  List, Union
 
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HFIterableDataset
@@ -12,7 +12,6 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import (EvaluationStrategy, FSDPOption, HPSearchBackend, HubStrategy, IntervalStrategy,
                                         SchedulerType)
 
-from swift.llm.utils.template import Context, History, Template
 from swift.utils import get_logger
 
 try:

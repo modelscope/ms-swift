@@ -1,9 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import warnings
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import numpy as np
-import torch
 import torch.nn as nn
 from peft import PeftModel
 from transformers import PreTrainedModel
