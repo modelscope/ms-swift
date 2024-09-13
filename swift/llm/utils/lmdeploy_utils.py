@@ -59,7 +59,7 @@ def _patch_pipeline(tokenizer):
 def get_lmdeploy_engine(
         model_type: str,
         # TODO: https://github.com/InternLM/lmdeploy/issues/1846
-        # torch_dtype: Optional[Dtype] = None,
+        # torch_dtype: Optional[torch.dtype] = None,
         *,
         model_id_or_path: Optional[str] = None,
         revision: Optional[str] = None,

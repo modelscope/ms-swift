@@ -279,19 +279,18 @@ PT parameters inherit from the SFT parameters with some modifications to the def
 
 ## RLHF Parameters
 RLHF parameters are an extension of the sft parameters, with the addition of the following options:
-- `--🔥rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo'. For training scripts with  different algorithms, please refer to [document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
-- `--🔥ref_model_type`: Select the reference model, similar to the model_type parameter, by default consistent with the model being trained. No selection is necessary for `cpo` and `simpo` algorithms.
+- `--🔥rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo', default is 'dpo'. For training scripts with  different algorithms, please refer to [document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
+- `--🔥ref_model_type`: Select reference model, same as the model_type parameter, default is None, consistent with the training model. For `cpo`, `simpo`, and `orpo` algorithms, this selection is not required.
+
 - `--🔥ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
-- `--max_prompt_length`: The maximum length of the prompt. This parameter is passed to the corresponding Trainer to ensure the prompt length does not exceed the set value. The default value is `1024`.
-- `--beta`: Coefficient for the KL regularization term. For `simpo` the default is 2.0, for other algorithms, the default is 0.1. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
-- `--label_smoothing`: Whether to use DPO smoothing, the default value is 0, normally set between 0 and 0.5.
-- `--truncation_mode`: Type of truncation mode, default is `keep_end`, which retains the end of excessively long data.
-- `--loss_type`: Type of loss, default value is 'sigmoid'.
-- `--sft_beta`: Whether to include sft loss in DPO, default is 0.1, supporting the range $[0, 1)$ . The final loss is `(1-sft_beta)*KL_loss + sft_beta * sft_loss`.
-- `--simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is 1.0.
-- `--cpo_alpha`: The coefficient for the NLL loss in the CPO loss, with a default value of 1.0. In SimPO, a mixed NLL loss is employed to enhance training stability.
-- `--desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is 1.0.
-- `--undesirable_weight`: The loss weight for undesirable responses $\lambda_U$ in the KTO paper, default is 1.0. Let $n_d$ and $n_u$ represent the number of desirable and undesirable examples in the dataset, respectively. The paper recommends controlling $\frac{\lambda_D n_D}{\lambda_Un_U} \in [1,\frac{4}{3}]$.
+- `--beta`: KL regularization term coefficient, default is `None`, meaning that for the simpo algorithm, the default is `2`., and for other algorithms, it is `0.1`. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
+- `--label_smoothing`: Whether to use DPO smoothing, the default value is `0`, normally set between 0 and 0.5.
+- `--loss_type`: Type of loss, default is `None`. If it's dpo or cpo, it is `'sigmoid'`, and if it's simpo, it is `'simpo'`.
+- `--rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `1.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
+- `cpo_alpha`: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
+- `--simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is `1.`.
+- `--desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is `1.`.
+- `--undesirable_weight`: The loss weight for undesirable responses $\lambda_U$ in the KTO paper, default is `1.`. Let $n_d$ and $n_u$ represent the number of desirable and undesirable examples in the dataset, respectively. The paper recommends controlling $\frac{\lambda_D n_D}{\lambda_Un_U} \in [1,\frac{4}{3}]$.
 
 ## infer merge-lora Parameters
 

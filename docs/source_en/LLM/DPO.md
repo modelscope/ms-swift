@@ -46,7 +46,6 @@ swift rlhf \
     --dataset  hh-rlhf-cn:harmless_base_cn  \
     --num_train_epochs  3  \
     --max_length  1024  \
-    --max_prompt_length  512  \
     --check_dataset_strategy  none  \
     --lora_rank  8  \
     --lora_alpha  32  \
