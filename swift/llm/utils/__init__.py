@@ -4,10 +4,6 @@ from .argument import (AppUIArguments, DeployArguments, EvalArguments, ExportArg
                        RLHFArguments, SftArguments, WebuiArguments, is_adapter, swift_to_peft_format)
 from .client_utils import (compat_openai, convert_to_base64, decode_base64, get_model_list_client,
                            get_model_list_client_async, inference_client, inference_client_async)
-from .media import MediaCache, MediaTag
-from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor, SwiftPreprocessor,
-                         TextGenerationPreprocessor, preprocess_sharegpt)
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
                        ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                        ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
@@ -16,10 +12,10 @@ from .protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, Cha
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, KTOTemplateMixin, Prompt, RLHFTemplateMixin,
                        StopWords, Template, TemplateType, get_env_args, get_template, register_template)
 from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
-                    find_ln, get_max_model_len, get_time_info, history_to_messages, inference, inference_stream,
+                    find_ln, get_time_info, history_to_messages, inference, inference_stream,
                     is_lmdeploy_available, is_megatron_available, is_quant_model, is_vllm_available,
                     limit_history_length, messages_join_observation, messages_to_history, print_example,
-                    safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset, to_device)
+                    safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 

@@ -5,7 +5,8 @@ import sys
 from contextlib import contextmanager
 from functools import partial, update_wrapper, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import List
 
 import torch
 import torch.utils.checkpoint
@@ -23,12 +24,11 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.llm.utils.template import TemplateType, get_env_args
-from .utils import get_max_model_len, to_device
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING, safe_snapshot_download
-from .patcher import patch_gptq_model, patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
+from .patcher import patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
     patch_output_to_input_device, patch_output_clone, patch_baichuan2_lm_head_forward, patch_fixed_device
-from typing import List
+from .utils import get_max_model_len, to_device
 
 logger = get_logger()
 

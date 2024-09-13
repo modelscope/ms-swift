@@ -10,7 +10,7 @@ from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple, Union, Type
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Type
 
 import accelerate
 import multiprocess
@@ -26,7 +26,7 @@ from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
-from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase,
+from transformers import (GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available, strtobool
@@ -1004,7 +1004,7 @@ class LLMIterableDataset(HfIterableDataset):
         )
         self.dataset = dataset
         self.max_retries = max_retries
-        from .dataset import standard_keys
+        from swift.llm.dataset.dataset import standard_keys
         dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
 
     def __iter__(self):

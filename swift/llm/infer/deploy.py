@@ -19,14 +19,14 @@ from packaging import version
 from peft import PeftModel
 
 from swift.utils import get_logger, get_main, get_seed, seed_everything
-from .agent import split_action_action_input
-from .infer import merge_lora, prepare_model_template
-from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
-                    ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
-                    ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
-                    CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, compat_openai, inference, inference_stream, is_quant_model,
-                    messages_join_observation, messages_to_history, random_uuid, set_generation_config)
+from swift.llm.agent import split_action_action_input
+from swift.llm.infer import merge_lora, prepare_model_template
+from swift.llm.utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
+                             ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
+                             ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
+                             CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
+                             Model, ModelList, Template, UsageInfo, compat_openai, inference, inference_stream, is_quant_model,
+                             messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
 

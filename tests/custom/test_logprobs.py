@@ -45,7 +45,7 @@ def _test(infer_backend):
     os.environ['TIMEOUT'] = '-1'
 
     from swift.llm import DeployArguments
-    from swift.llm.deploy import llm_deploy
+    from swift.llm.infer.deploy import llm_deploy
     import multiprocessing
     mp = multiprocessing.get_context('spawn')
     process = mp.Process(

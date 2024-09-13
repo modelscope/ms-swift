@@ -442,7 +442,7 @@ class Template:
                 example[k] = example.get(k) or [] + medias_path
 
     def _preprocess_media(self, example):
-        from .media import MediaTag
+        from swift.llm.dataset.media import MediaTag
         from .client_utils import decode_base64
         # Format media_keys to list
         for media_key in MediaTag.media_keys.values():

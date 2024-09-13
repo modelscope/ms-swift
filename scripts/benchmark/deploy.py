@@ -4,7 +4,7 @@ def test_benchmark(infer_backend: str) -> None:
     os.environ['TIMEOUT'] = '-1'
     import requests
     from swift.llm import DeployArguments, get_dataset, get_model_list_client, XRequestConfig, inference_client_async
-    from swift.llm.deploy import llm_deploy
+    from swift.llm.infer.deploy import llm_deploy
     import multiprocessing
     import time
     import asyncio

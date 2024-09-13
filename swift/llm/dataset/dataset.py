@@ -7,7 +7,6 @@ from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
-import datasets.fingerprint
 import json
 import numpy as np
 from datasets import Dataset as HfDataset
@@ -20,41 +19,16 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger, get_seed, is_dist, is_local_master
-from swift.utils.torch_utils import _find_local_mac
-from .media import MediaCache, MediaTag
-from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                         ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
-                         TextGenerationPreprocessor, preprocess_sharegpt)
-from .utils import download_dataset
+from swift.llm.dataset.media import MediaCache, MediaTag
+from swift.llm.dataset.preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
+                                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
+                                          TextGenerationPreprocessor, preprocess_sharegpt)
+from swift.llm.utils.utils import download_dataset
 
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-
-def _update_fingerprint_mac(*args, **kwargs):
-    mac = _find_local_mac().replace(':', '')
-    fp = datasets.fingerprint._update_fingerprint(*args, **kwargs)
-    fp += '-' + mac
-    if len(fp) > 64:
-        fp = fp[:64]
-    return fp
-
-
-datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
-datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
-datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
-
-
-def partialed_map(self, *args, **kwargs):
-    if 'num_proc' not in kwargs:
-        num_proc = os.environ.get('DATASET_MAP_NPROC')
-        kwargs['num_proc'] = int(num_proc) if num_proc else num_proc
-    return self._origin_map(*args, **kwargs)
-
-
-datasets.Dataset._origin_map = datasets.Dataset.map
-datasets.Dataset.map = partialed_map
 
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
@@ -2050,7 +2024,6 @@ register_dataset(
 
 
 def _preprocess_latex_ocr_dataset(dataset: DATASET_TYPE) -> DATASET_TYPE:
-    from datasets import Image
     prompt = 'Using LaTeX to perform OCR on the image.'
 
     def _process(d):
@@ -2083,7 +2056,6 @@ register_dataset(
 
 
 def _preprocess_capcha_images(dataset: DATASET_TYPE) -> DATASET_TYPE:
-    from datasets import Image
     query = 'recognize the content.'
     response_key = 'solution'
 

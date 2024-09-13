@@ -25,9 +25,9 @@ from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .client_utils import get_model_list_client
-from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
-                      register_dataset_info_file, sample_dataset)
-from .media import MediaTag
+from swift.llm.dataset.dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_dataset_name,
+                                       register_dataset_info_file, sample_dataset)
+from swift.llm.dataset.media import MediaTag
 from swift.llm.model.model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                                    get_default_template_type)
 from .template import TEMPLATE_MAPPING

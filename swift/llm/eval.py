@@ -169,7 +169,7 @@ class EvalDatasetContext:
 
     @staticmethod
     def prepare_evalscope_dataset():
-        from swift.llm.utils.media import MediaCache
+        from swift.llm.dataset.media import MediaCache
         return MediaCache.download(
             'https://www.modelscope.cn/api/v1/datasets/swift/evalscope_resource/'
             'repo?Revision=master&FilePath=eval.zip', 'evalscope')
@@ -290,7 +290,7 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             get_model_type(port, args.deploy_timeout)
             model_type = 'default-lora' if args.sft_type in ('lora',
                                                              'longlora') and not args.merge_lora else args.model_type
-            from .deploy import is_generation_template
+            from swift.llm.infer.deploy import is_generation_template
             if is_generation_template(args.template_type):
                 url = f'http://127.0.0.1:{port}/v1/completions'
             else:

@@ -9,8 +9,8 @@ from tqdm import tqdm
 from transformers.utils import strtobool
 
 from swift.utils import get_logger
-from .media import MediaTag
-from .template import History
+from swift.llm.dataset.media import MediaTag
+from swift.llm.utils.template import History
 
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
 
