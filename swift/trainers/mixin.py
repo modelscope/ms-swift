@@ -5,9 +5,9 @@ import os
 import re
 import shutil
 import time
-from copy import copy
 from collections import defaultdict
 from contextlib import contextmanager
+from copy import copy
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
