@@ -1811,7 +1811,6 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
         if llm_config:
             config_list.append(llm_config)
             break
-    for config in config_list:
     attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
     for config in config_list:
         attn_type.update_config(config)
