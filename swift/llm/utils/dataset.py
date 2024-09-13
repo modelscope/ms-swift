@@ -19,7 +19,7 @@ from pandas import DataFrame
 from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
-from swift.utils import get_logger, get_seed, is_dist, is_local_master
+from swift.utils import get_logger, get_seed, is_dist, is_local_master, safe_ddp_context
 from swift.utils.torch_utils import _find_local_mac
 from .media import MediaCache, MediaTag
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
@@ -473,8 +473,17 @@ def get_dataset_from_repo(dataset_id: str,
         subset_split_list = split
     else:
         subset_split_list = list(itertools.product(subsets, split))
-    dataset = load_ms_dataset(
-        dataset_id, subset_split_list, use_hf, streaming=streaming, revision=kwargs.get('revision'))
+
+    with safe_ddp_context():
+        for i in range(5):
+            try:
+                dataset = load_ms_dataset(
+                    dataset_id, subset_split_list, use_hf, streaming=streaming, revision=kwargs.get('revision'))
+            except Exception:
+                logger.error(f'Download failed, Attempt {i+1}..')
+            else:
+                break
+
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns, **kwargs)
 

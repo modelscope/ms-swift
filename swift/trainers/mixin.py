@@ -6,7 +6,7 @@ import re
 import shutil
 import time
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -612,18 +612,37 @@ class ModelWrapper(nn.Module):
     # compat zero3 & rlhf
     def __init__(self, model: nn.Module, ref_model: nn.Module):
         super().__init__()
-        self.model = model
-        self.ref_model = ref_model
+        self._model = model
+        self._ref_model = ref_model
 
     def forward(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
+        return self._model(*args, **kwargs)
 
     def __getattr__(self, name: str):
         """Forward missing attributes to the wrapped module."""
         try:
             return super().__getattr__(name)  # defer to nn.Module's logic
         except AttributeError:
-            return getattr(self.model, name)
+            return getattr(self._model, name)
+
+    def load_state_dict(self, *args, **kwargs):
+        return self._model.load_state_dict(*args, **kwargs)
+
+    def parameters(self, *args, **kwargs):
+        return self._model.parameters(*args, **kwargs)
+
+    @contextmanager
+    def _save_load_context(cls, trainer):
+        # fix zero3 & save/load model
+        _model = trainer.deepspeed
+        _new_model = _model._model
+        _model.__dict__['module'] = _new_model
+        _model._modules['module'] = _new_model
+        trainer.model = _new_model
+        yield
+        _model.__dict__['module'] = _model
+        _model._modules['module'] = _model
+        trainer.model = _model
 
 
 class RLHFTrainerMixin:
@@ -672,6 +691,20 @@ class RLHFTrainerMixin:
         if is_deepspeed_zero3_enabled() and ref_model is not None:
             model = ModelWrapper(model, ref_model)
         super().__init__(model, *_args, **kwargs)
+
+    # def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
+    #     from transformers import trainer
+
+    #     def _deepspeed_load_checkpoint(*args, **kwargs)
+    #     trainer.deepspeed_load_checkpoint
+    #     def deepspeed_load_checkpoint
+
+    def _save_checkpoint(self, model, trial, metrics=None):
+        context = nullcontext()
+        if hasattr(model, '_save_load_context'):
+            context = model._save_load_context(self)
+        with context:
+            return super()._save_checkpoint(model, trial, metrics)
 
     def concatenated_forward(
         self, model: nn.Module, batch: Dict[str, Union[List, torch.LongTensor]]

@@ -73,22 +73,6 @@ def download_dataset(model_id: str, files: List[str], force_download: bool = Fal
     return local_dir
 
 
-use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-if not use_hf:
-    from modelscope import MsDataset
-
-    _old_msdataset_load = MsDataset.load
-
-    @wraps(_old_msdataset_load)
-    def _msdataset_ddp_load(*args, **kwargs):
-        with safe_ddp_context():
-            dataset = _old_msdataset_load(*args, **kwargs)
-        return dataset
-
-    # monkey patching
-    MsDataset.load = _msdataset_ddp_load
-
-
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     """add feat in accelerate to support DDP + MP"""
     import psutil
