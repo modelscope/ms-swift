@@ -4,14 +4,15 @@ from typing import Dict, Any
 
 import torch
 import transformers
+from accelerate.utils import find_device
 from packaging import version
 from torch import Tensor
 import torch.nn.functional as F
 from swift import get_logger
 
-from swift.llm.utils.utils import set_rope_scaling, get_rope_scaling, to_device, fetch_one
+from .utils import set_rope_scaling, get_rope_scaling, to_device
 
-from swift.llm import get_max_model_len
+from .utils import get_max_model_len
 from transformers import GPTQConfig
 
 logger = get_logger()
@@ -108,13 +109,16 @@ def patch_hidden_size(model_config):
         model_config.hidden_size = llm_config.hidden_size
 
 
-def patch_device(model: torch.nn.Module):
+def patch_fixed_device(module: torch.nn.Module, device):
+    """Move the output to the specific device"""
 
     def get_device_hook(device):
         def _device_hook(module, input, output):
             return to_device(output, device)
 
         return _device_hook
+
+    module.register_forward_hook(get_device_hook(device))
 
 
 def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
@@ -131,6 +135,7 @@ def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
 
 
 def patch_output_clone(module: torch.nn.Module):
+    """Clone the output, to avoid the inplace problem"""
 
     def _clone_hook(module, input, output):
         if module.training:
@@ -157,8 +162,8 @@ def patch_output_to_input_device(module: torch.nn.Module):
             kwargs = {"device": device}
             return data.to(**kwargs)
 
-    def _output_to_input_device_hook(module, input, output):
-        tensor = fetch_one(input, torch.Tensor)
-        recursive_set_device(output, tensor.device)
+    def _output_to_input_device_hook(module, args, kwargs, output):
+        device = find_device(args) or find_device(kwargs)
+        recursive_set_device(output, device)
 
-    module.register_forward_hook(_output_to_input_device_hook)
+    module.register_forward_hook(_output_to_input_device_hook, with_kwargs=True)

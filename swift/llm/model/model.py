@@ -23,16 +23,610 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.llm.utils.template import TemplateType, get_env_args
-from swift.llm.utils.utils import get_max_model_len, to_device
+from .utils import get_max_model_len, to_device
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
-from swift.utils.module_mapping import get_regex_for_mm_default_lora
-from .checker import check_awq_ext
-from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING
-from .model_mapping import ModelType
+from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING, safe_snapshot_download
 from .patcher import patch_gptq_model, patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
-    patch_output_to_input_device, patch_output_clone, patch_baichuan2_lm_head_forward
+    patch_output_to_input_device, patch_output_clone, patch_baichuan2_lm_head_forward, patch_fixed_device
+from typing import List
 
 logger = get_logger()
+
+
+class MMModelType:
+
+    # qwen-vl
+    qwen_vl = 'qwen-vl'
+    qwen_vl_chat = 'qwen-vl-chat'
+    qwen_vl_chat_int4 = 'qwen-vl-chat-int4'
+
+    #qwen2-vl
+    qwen2_vl_2b_instruct = 'qwen2-vl-2b-instruct'
+    qwen2_vl_2b_instruct_gptq_int4 = 'qwen2-vl-2b-instruct-gptq-int4'
+    qwen2_vl_2b_instruct_gptq_int8 = 'qwen2-vl-2b-instruct-gptq-int8'
+    qwen2_vl_2b_instruct_awq = 'qwen2-vl-2b-instruct-awq'
+    qwen2_vl_7b_instruct = 'qwen2-vl-7b-instruct'
+    qwen2_vl_7b_instruct_gptq_int4 = 'qwen2-vl-7b-instruct-gptq-int4'
+    qwen2_vl_7b_instruct_gptq_int8 = 'qwen2-vl-7b-instruct-gptq-int8'
+    qwen2_vl_7b_instruct_awq = 'qwen2-vl-7b-instruct-awq'
+
+    # qwen-audio
+    qwen_audio = 'qwen-audio'
+    qwen_audio_chat = 'qwen-audio-chat'
+    qwen2_audio_7b = 'qwen2-audio-7b'
+    qwen2_audio_7b_instruct = 'qwen2-audio-7b-instruct'
+
+    # llava-hf
+    llava1_5_7b_instruct = 'llava1_5-7b-instruct'
+    llava1_5_13b_instruct = 'llava1_5-13b-instruct'
+    llava1_6_mistral_7b_instruct = 'llava1_6-mistral-7b-instruct'
+    llava1_6_vicuna_7b_instruct = 'llava1_6-vicuna-7b-instruct'
+    llava1_6_vicuna_13b_instruct = 'llava1_6-vicuna-13b-instruct'
+    llava1_6_llama3_1_8b_instruct = 'llava1_6-llama3_1-8b-instruct'
+    llava1_6_yi_34b_instruct = 'llava1_6-yi-34b-instruct'
+    llama3_llava_next_8b_hf = 'llama3-llava-next-8b-hf'
+    llava_next_72b_hf = 'llava-next-72b-hf'
+    llava_next_110b_hf = 'llava-next-110b-hf'
+
+    llava_onevision_qwen2_0_5b_ov = 'llava-onevision-qwen2-0_5b-ov'
+    llava_onevision_qwen2_7b_ov = 'llava-onevision-qwen2-7b-ov'
+    llava_onevision_qwen2_72b_ov = 'llava-onevision-qwen2-72b-ov'
+
+    # llava
+    llama3_llava_next_8b = 'llama3-llava-next-8b'
+    llava_next_72b = 'llava-next-72b'
+    llava_next_110b = 'llava-next-110b'
+
+    # llava_next_video-hf
+    llava_next_video_7b_instruct = 'llava-next-video-7b-instruct'
+    llava_next_video_7b_32k_instruct = 'llava-next-video-7b-32k-instruct'
+    llava_next_video_7b_dpo_instruct = 'llava-next-video-7b-dpo-instruct'
+    llava_next_video_34b_instruct = 'llava-next-video-34b-instruct'
+
+    # yi-vl
+    yi_vl_6b_chat = 'yi-vl-6b-chat'
+    yi_vl_34b_chat = 'yi-vl-34b-chat'
+
+    # llava-llama (xtuner)
+    llava_llama3_8b_v1_1 = 'llava-llama3-8b-v1_1'
+
+    # glm4v
+    glm4v_9b_chat = 'glm4v-9b-chat'
+
+    # internvl
+    internvl_chat_v1_5 = 'internvl-chat-v1_5'
+    internvl_chat_v1_5_int8 = 'internvl-chat-v1_5-int8'
+    mini_internvl_chat_2b_v1_5 = 'mini-internvl-chat-2b-v1_5'
+    mini_internvl_chat_4b_v1_5 = 'mini-internvl-chat-4b-v1_5'
+
+    # internvl2
+    internvl2_1b = 'internvl2-1b'
+    internvl2_2b = 'internvl2-2b'
+    internvl2_4b = 'internvl2-4b'
+    internvl2_8b = 'internvl2-8b'
+    internvl2_26b = 'internvl2-26b'
+    internvl2_40b = 'internvl2-40b'
+    internvl2_llama3_76b = 'internvl2-llama3-76b'
+    internvl2_2b_awq = 'internvl2-2b-awq'
+    internvl2_8b_awq = 'internvl2-8b-awq'
+    internvl2_26b_awq = 'internvl2-26b-awq'
+    internvl2_40b_awq = 'internvl2-40b-awq'
+    internvl2_llama3_76b_awq = 'internvl2-llama3-76b-awq'
+
+    # deepseek-vl
+    deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
+    deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
+
+    # deepseek-v2
+    deepseek_v2 = 'deepseek-v2'
+    deepseek_v2_chat = 'deepseek-v2-chat'
+    deepseek_v2_lite = 'deepseek-v2-lite'
+    deepseek_v2_lite_chat = 'deepseek-v2-lite-chat'
+
+    # deepseek-v2.5
+    deepseek_v2_5 = 'deepseek-v2_5'
+
+    # paligemma
+    paligemma_3b_pt_224 = 'paligemma-3b-pt-224'
+    paligemma_3b_pt_448 = 'paligemma-3b-pt-448'
+    paligemma_3b_pt_896 = 'paligemma-3b-pt-896'
+    paligemma_3b_mix_224 = 'paligemma-3b-mix-224'
+    paligemma_3b_mix_448 = 'paligemma-3b-mix-448'
+
+    # minicpm-v
+    minicpm_v_3b_chat = 'minicpm-v-3b-chat'
+    minicpm_v_v2_chat = 'minicpm-v-v2-chat'
+    minicpm_v_v2_5_chat = 'minicpm-v-v2_5-chat'
+    minicpm_v_v2_6_chat = 'minicpm-v-v2_6-chat'
+
+    # mplug-owl
+    mplug_owl2_chat = 'mplug-owl2-chat'  # llama
+    mplug_owl2_1_chat = 'mplug-owl2_1-chat'  # qwen
+    mplug_owl3_7b_chat = 'mplug-owl3-7b-chat'
+
+    # phi3-v
+    phi3_vision_128k_instruct = 'phi3-vision-128k-instruct'
+    phi3_5_vision_instruct = 'phi3_5-vision-instruct'
+
+    # cogagent
+    cogvlm_17b_chat = 'cogvlm-17b-chat'
+    cogvlm2_19b_chat = 'cogvlm2-19b-chat'  # chinese
+    cogvlm2_en_19b_chat = 'cogvlm2-en-19b-chat'
+    cogvlm2_video_13b_chat = 'cogvlm2-video-13b-chat'
+    cogagent_18b_chat = 'cogagent-18b-chat'
+    cogagent_18b_instruct = 'cogagent-18b-instruct'
+
+    # florence
+    florence_2_base = 'florence-2-base'
+    florence_2_base_ft = 'florence-2-base-ft'
+    florence_2_large = 'florence-2-large'
+    florence_2_large_ft = 'florence-2-large-ft'
+
+
+class NLPModelType:
+    # qwen
+    qwen_1_8b = 'qwen-1_8b'
+    qwen_1_8b_chat = 'qwen-1_8b-chat'
+    qwen_1_8b_chat_int4 = 'qwen-1_8b-chat-int4'
+    qwen_1_8b_chat_int8 = 'qwen-1_8b-chat-int8'
+    qwen_7b = 'qwen-7b'
+    qwen_7b_chat = 'qwen-7b-chat'
+    qwen_7b_chat_int4 = 'qwen-7b-chat-int4'
+    qwen_7b_chat_int8 = 'qwen-7b-chat-int8'
+    qwen_14b = 'qwen-14b'
+    qwen_14b_chat = 'qwen-14b-chat'
+    qwen_14b_chat_int4 = 'qwen-14b-chat-int4'
+    qwen_14b_chat_int8 = 'qwen-14b-chat-int8'
+    qwen_72b = 'qwen-72b'
+    qwen_72b_chat = 'qwen-72b-chat'
+    qwen_72b_chat_int4 = 'qwen-72b-chat-int4'
+    qwen_72b_chat_int8 = 'qwen-72b-chat-int8'
+
+    # modelscope_agent
+    modelscope_agent_7b = 'modelscope-agent-7b'
+    modelscope_agent_14b = 'modelscope-agent-14b'
+
+    # qwen1.5
+    qwen1half_0_5b = 'qwen1half-0_5b'
+    qwen1half_1_8b = 'qwen1half-1_8b'
+    qwen1half_4b = 'qwen1half-4b'
+    qwen1half_7b = 'qwen1half-7b'
+    qwen1half_14b = 'qwen1half-14b'
+    qwen1half_32b = 'qwen1half-32b'
+    qwen1half_72b = 'qwen1half-72b'
+    qwen1half_110b = 'qwen1half-110b'
+    codeqwen1half_7b = 'codeqwen1half-7b'
+    qwen1half_moe_a2_7b = 'qwen1half-moe-a2_7b'
+    qwen1half_0_5b_chat = 'qwen1half-0_5b-chat'
+    qwen1half_1_8b_chat = 'qwen1half-1_8b-chat'
+    qwen1half_4b_chat = 'qwen1half-4b-chat'
+    qwen1half_7b_chat = 'qwen1half-7b-chat'
+    qwen1half_14b_chat = 'qwen1half-14b-chat'
+    qwen1half_32b_chat = 'qwen1half-32b-chat'
+    qwen1half_72b_chat = 'qwen1half-72b-chat'
+    qwen1half_110b_chat = 'qwen1half-110b-chat'
+    qwen1half_moe_a2_7b_chat = 'qwen1half-moe-a2_7b-chat'
+    codeqwen1half_7b_chat = 'codeqwen1half-7b-chat'
+
+    # qwen1.5 gptq
+    qwen1half_0_5b_chat_int4 = 'qwen1half-0_5b-chat-int4'
+    qwen1half_1_8b_chat_int4 = 'qwen1half-1_8b-chat-int4'
+    qwen1half_4b_chat_int4 = 'qwen1half-4b-chat-int4'
+    qwen1half_7b_chat_int4 = 'qwen1half-7b-chat-int4'
+    qwen1half_14b_chat_int4 = 'qwen1half-14b-chat-int4'
+    qwen1half_32b_chat_int4 = 'qwen1half-32b-chat-int4'
+    qwen1half_72b_chat_int4 = 'qwen1half-72b-chat-int4'
+    qwen1half_110b_chat_int4 = 'qwen1half-110b-chat-int4'
+    qwen1half_0_5b_chat_int8 = 'qwen1half-0_5b-chat-int8'
+    qwen1half_1_8b_chat_int8 = 'qwen1half-1_8b-chat-int8'
+    qwen1half_4b_chat_int8 = 'qwen1half-4b-chat-int8'
+    qwen1half_7b_chat_int8 = 'qwen1half-7b-chat-int8'
+    qwen1half_14b_chat_int8 = 'qwen1half-14b-chat-int8'
+    qwen1half_72b_chat_int8 = 'qwen1half-72b-chat-int8'
+    qwen1half_moe_a2_7b_chat_int4 = 'qwen1half-moe-a2_7b-chat-int4'
+
+    # qwen1.5 awq
+    qwen1half_0_5b_chat_awq = 'qwen1half-0_5b-chat-awq'
+    qwen1half_1_8b_chat_awq = 'qwen1half-1_8b-chat-awq'
+    qwen1half_4b_chat_awq = 'qwen1half-4b-chat-awq'
+    qwen1half_7b_chat_awq = 'qwen1half-7b-chat-awq'
+    qwen1half_14b_chat_awq = 'qwen1half-14b-chat-awq'
+    qwen1half_32b_chat_awq = 'qwen1half-32b-chat-awq'
+    qwen1half_72b_chat_awq = 'qwen1half-72b-chat-awq'
+    qwen1half_110b_chat_awq = 'qwen1half-110b-chat-awq'
+    codeqwen1half_7b_chat_awq = 'codeqwen1half-7b-chat-awq'
+
+    # qwen2
+    qwen2_0_5b = 'qwen2-0_5b'
+    qwen2_0_5b_instruct = 'qwen2-0_5b-instruct'
+    qwen2_0_5b_instruct_int4 = 'qwen2-0_5b-instruct-int4'
+    qwen2_0_5b_instruct_int8 = 'qwen2-0_5b-instruct-int8'
+    qwen2_0_5b_instruct_awq = 'qwen2-0_5b-instruct-awq'
+    qwen2_1_5b = 'qwen2-1_5b'
+    qwen2_1_5b_instruct = 'qwen2-1_5b-instruct'
+    qwen2_1_5b_instruct_int4 = 'qwen2-1_5b-instruct-int4'
+    qwen2_1_5b_instruct_int8 = 'qwen2-1_5b-instruct-int8'
+    qwen2_1_5b_instruct_awq = 'qwen2-1_5b-instruct-awq'
+    qwen2_7b = 'qwen2-7b'
+    qwen2_7b_instruct = 'qwen2-7b-instruct'
+    qwen2_7b_instruct_int4 = 'qwen2-7b-instruct-int4'
+    qwen2_7b_instruct_int8 = 'qwen2-7b-instruct-int8'
+    qwen2_7b_instruct_awq = 'qwen2-7b-instruct-awq'
+    qwen2_72b = 'qwen2-72b'
+    qwen2_72b_instruct = 'qwen2-72b-instruct'
+    qwen2_72b_instruct_int4 = 'qwen2-72b-instruct-int4'
+    qwen2_72b_instruct_int8 = 'qwen2-72b-instruct-int8'
+    qwen2_72b_instruct_awq = 'qwen2-72b-instruct-awq'
+    qwen2_57b_a14b = 'qwen2-57b-a14b'
+    qwen2_57b_a14b_instruct = 'qwen2-57b-a14b-instruct'
+    qwen2_57b_a14b_instruct_int4 = 'qwen2-57b-a14b-instruct-int4'
+
+    qwen2_math_1_5b = 'qwen2-math-1_5b'
+    qwen2_math_1_5b_instruct = 'qwen2-math-1_5b-instruct'
+    qwen2_math_7b = 'qwen2-math-7b'
+    qwen2_math_7b_instruct = 'qwen2-math-7b-instruct'
+    qwen2_math_72b = 'qwen2-math-72b'
+    qwen2_math_72b_instruct = 'qwen2-math-72b-instruct'
+
+    # chatglm
+    chatglm2_6b = 'chatglm2-6b'
+    chatglm2_6b_32k = 'chatglm2-6b-32k'
+    chatglm3_6b_base = 'chatglm3-6b-base'
+    chatglm3_6b = 'chatglm3-6b'
+    chatglm3_6b_32k = 'chatglm3-6b-32k'
+    chatglm3_6b_128k = 'chatglm3-6b-128k'
+    codegeex2_6b = 'codegeex2-6b'
+    glm4_9b = 'glm4-9b'
+    glm4_9b_chat = 'glm4-9b-chat'
+    glm4_9b_chat_1m = 'glm4-9b-chat-1m'
+    codegeex4_9b_chat = 'codegeex4-9b-chat'
+
+    # llama2
+    llama2_7b = 'llama2-7b'
+    llama2_7b_chat = 'llama2-7b-chat'
+    llama2_13b = 'llama2-13b'
+    llama2_13b_chat = 'llama2-13b-chat'
+    llama2_70b = 'llama2-70b'
+    llama2_70b_chat = 'llama2-70b-chat'
+    llama2_7b_aqlm_2bit_1x16 = 'llama2-7b-aqlm-2bit-1x16'  # aqlm
+
+    # llama3
+    llama3_8b = 'llama3-8b'
+    llama3_8b_instruct = 'llama3-8b-instruct'
+    llama3_8b_instruct_int4 = 'llama3-8b-instruct-int4'
+    llama3_8b_instruct_int8 = 'llama3-8b-instruct-int8'
+    llama3_8b_instruct_awq = 'llama3-8b-instruct-awq'
+    llama3_70b = 'llama3-70b'
+    llama3_70b_instruct = 'llama3-70b-instruct'
+    llama3_70b_instruct_int4 = 'llama3-70b-instruct-int4'
+    llama3_70b_instruct_int8 = 'llama3-70b-instruct-int8'
+    llama3_70b_instruct_awq = 'llama3-70b-instruct-awq'
+
+    # llama3.1
+    llama3_1_8b = 'llama3_1-8b'
+    llama3_1_8b_instruct = 'llama3_1-8b-instruct'
+    llama3_1_8b_instruct_awq = 'llama3_1-8b-instruct-awq'
+    llama3_1_8b_instruct_gptq_int4 = 'llama3_1-8b-instruct-gptq-int4'
+    llama3_1_8b_instruct_bnb = 'llama3_1-8b-instruct-bnb'
+    llama3_1_70b = 'llama3_1-70b'
+    llama3_1_70b_instruct = 'llama3_1-70b-instruct'
+    llama3_1_70b_instruct_fp8 = 'llama3_1-70b-instruct-fp8'
+    llama3_1_70b_instruct_awq = 'llama3_1-70b-instruct-awq'
+    llama3_1_70b_instruct_gptq_int4 = 'llama3_1-70b-instruct-gptq-int4'
+    llama3_1_70b_instruct_bnb = 'llama3_1-70b-instruct-bnb'
+    llama3_1_405b = 'llama3_1-405b'
+    llama3_1_405b_instruct = 'llama3_1-405b-instruct'
+    llama3_1_405b_instruct_fp8 = 'llama3_1-405b-instruct-fp8'
+    llama3_1_405b_instruct_awq = 'llama3_1-405b-instruct-awq'
+    llama3_1_405b_instruct_gptq_int4 = 'llama3_1-405b-instruct-gptq-int4'
+    llama3_1_405b_instruct_bnb = 'llama3_1-405b-instruct-bnb'
+
+    # reflection
+    reflection_llama_3_1_70b = 'reflection-llama_3_1-70b'
+
+    # long writer
+    longwriter_glm4_9b = 'longwriter-glm4-9b'
+    longwriter_llama3_1_8b = 'longwriter-llama3_1-8b'
+
+    # chinese-llama-alpaca
+    chinese_llama_2_1_3b = 'chinese-llama-2-1_3b'
+    chinese_llama_2_7b = 'chinese-llama-2-7b'
+    chinese_llama_2_7b_16k = 'chinese-llama-2-7b-16k'
+    chinese_llama_2_7b_64k = 'chinese-llama-2-7b-64k'
+    chinese_llama_2_13b = 'chinese-llama-2-13b'
+    chinese_llama_2_13b_16k = 'chinese-llama-2-13b-16k'
+    chinese_alpaca_2_1_3b = 'chinese-alpaca-2-1_3b'
+    chinese_alpaca_2_7b = 'chinese-alpaca-2-7b'
+    chinese_alpaca_2_7b_16k = 'chinese-alpaca-2-7b-16k'
+    chinese_alpaca_2_7b_64k = 'chinese-alpaca-2-7b-64k'
+    chinese_alpaca_2_13b = 'chinese-alpaca-2-13b'
+    chinese_alpaca_2_13b_16k = 'chinese-alpaca-2-13b-16k'
+    llama_3_chinese_8b = 'llama-3-chinese-8b'
+    llama_3_chinese_8b_instruct = 'llama-3-chinese-8b-instruct'
+
+    # idefics
+    idefics3_8b_llama3 = 'idefics3-8b-llama3'
+
+    # atom
+    atom_7b = 'atom-7b'
+    atom_7b_chat = 'atom-7b-chat'
+
+    # yi
+    yi_6b = 'yi-6b'
+    yi_6b_200k = 'yi-6b-200k'
+    yi_6b_chat = 'yi-6b-chat'
+    yi_6b_chat_awq = 'yi-6b-chat-awq'
+    yi_6b_chat_int8 = 'yi-6b-chat-int8'
+    yi_9b = 'yi-9b'
+    yi_9b_200k = 'yi-9b-200k'
+    yi_34b = 'yi-34b'
+    yi_34b_200k = 'yi-34b-200k'
+    yi_34b_chat = 'yi-34b-chat'
+    yi_34b_chat_awq = 'yi-34b-chat-awq'
+    yi_34b_chat_int8 = 'yi-34b-chat-int8'
+    # yi1.5
+    yi_1_5_6b = 'yi-1_5-6b'
+    yi_1_5_6b_chat = 'yi-1_5-6b-chat'
+    yi_1_5_9b = 'yi-1_5-9b'
+    yi_1_5_9b_chat = 'yi-1_5-9b-chat'
+    yi_1_5_9b_chat_16k = 'yi-1_5-9b-chat-16k'
+    yi_1_5_34b = 'yi-1_5-34b'
+    yi_1_5_34b_chat = 'yi-1_5-34b-chat'
+    yi_1_5_34b_chat_16k = 'yi-1_5-34b-chat-16k'
+    yi_1_5_6b_chat_awq_int4 = 'yi-1_5-6b-chat-awq-int4'
+    yi_1_5_6b_chat_gptq_int4 = 'yi-1_5-6b-chat-gptq-int4'
+    yi_1_5_9b_chat_awq_int4 = 'yi-1_5-9b-chat-awq-int4'
+    yi_1_5_9b_chat_gptq_int4 = 'yi-1_5-9b-chat-gptq-int4'
+    yi_1_5_34b_chat_awq_int4 = 'yi-1_5-34b-chat-awq-int4'
+    yi_1_5_34b_chat_gptq_int4 = 'yi-1_5-34b-chat-gptq-int4'
+
+    # yi-coder
+    yi_coder_1_5b = 'yi-coder-1_5b'
+    yi_coder_1_5b_chat = 'yi-coder-1_5b-chat'
+    yi_coder_9b = 'yi-coder-9b'
+    yi_coder_9b_chat = 'yi-coder-9b-chat'
+
+    # internlm
+    internlm_7b = 'internlm-7b'
+    internlm_7b_chat = 'internlm-7b-chat'
+    internlm_7b_chat_8k = 'internlm-7b-chat-8k'
+    internlm_20b = 'internlm-20b'
+    internlm_20b_chat = 'internlm-20b-chat'
+
+    # internlm2
+    internlm2_1_8b = 'internlm2-1_8b'
+    internlm2_1_8b_sft_chat = 'internlm2-1_8b-sft-chat'
+    internlm2_1_8b_chat = 'internlm2-1_8b-chat'
+    internlm2_7b_base = 'internlm2-7b-base'
+    internlm2_7b = 'internlm2-7b'
+    internlm2_7b_sft_chat = 'internlm2-7b-sft-chat'
+    internlm2_7b_chat = 'internlm2-7b-chat'
+    internlm2_20b_base = 'internlm2-20b-base'
+    internlm2_20b = 'internlm2-20b'
+    internlm2_20b_sft_chat = 'internlm2-20b-sft-chat'
+    internlm2_20b_chat = 'internlm2-20b-chat'
+
+    # internlm2.5
+    internlm2_5_1_8b = 'internlm2_5-1_8b'
+    internlm2_5_1_8b_chat = 'internlm2_5-1_8b-chat'
+    internlm2_5_7b = 'internlm2_5-7b'
+    internlm2_5_7b_chat = 'internlm2_5-7b-chat'
+    internlm2_5_7b_chat_1m = 'internlm2_5-7b-chat-1m'
+    internlm2_5_20b = 'internlm2_5-20b'
+    internlm2_5_20b_chat = 'internlm2_5-20b-chat'
+
+    # internlm2-math
+    internlm2_math_7b = 'internlm2-math-7b'
+    internlm2_math_7b_chat = 'internlm2-math-7b-chat'
+    internlm2_math_20b = 'internlm2-math-20b'
+    internlm2_math_20b_chat = 'internlm2-math-20b-chat'
+
+    # internlm-xcomposer2
+    internlm_xcomposer2_7b_chat = 'internlm-xcomposer2-7b-chat'
+    internlm_xcomposer2_4khd_7b_chat = 'internlm-xcomposer2-4khd-7b-chat'
+    internlm_xcomposer2_5_7b_chat = 'internlm-xcomposer2_5-7b-chat'
+
+    # deepseek
+    deepseek_7b = 'deepseek-7b'
+    deepseek_7b_chat = 'deepseek-7b-chat'
+    deepseek_moe_16b = 'deepseek-moe-16b'
+    deepseek_moe_16b_chat = 'deepseek-moe-16b-chat'
+    deepseek_67b = 'deepseek-67b'
+    deepseek_67b_chat = 'deepseek-67b-chat'
+
+    # deepseek-coder
+    deepseek_coder_1_3b = 'deepseek-coder-1_3b'
+    deepseek_coder_1_3b_instruct = 'deepseek-coder-1_3b-instruct'
+    deepseek_coder_6_7b = 'deepseek-coder-6_7b'
+    deepseek_coder_6_7b_instruct = 'deepseek-coder-6_7b-instruct'
+    deepseek_coder_33b = 'deepseek-coder-33b'
+    deepseek_coder_33b_instruct = 'deepseek-coder-33b-instruct'
+
+    # deepseek2-coder
+    deepseek_coder_v2_instruct = 'deepseek-coder-v2-instruct'
+    deepseek_coder_v2_lite_instruct = 'deepseek-coder-v2-lite-instruct'
+    deepseek_coder_v2 = 'deepseek-coder-v2'
+    deepseek_coder_v2_lite = 'deepseek-coder-v2-lite'
+
+    # deepseek-math
+    deepseek_math_7b = 'deepseek-math-7b'
+    deepseek_math_7b_instruct = 'deepseek-math-7b-instruct'
+    deepseek_math_7b_chat = 'deepseek-math-7b-chat'
+
+    # numina-math
+    numina_math_7b = 'numina-math-7b'
+
+    # gemma
+    gemma_2b = 'gemma-2b'
+    gemma_7b = 'gemma-7b'
+    gemma_2b_instruct = 'gemma-2b-instruct'
+    gemma_7b_instruct = 'gemma-7b-instruct'
+    gemma2_2b = 'gemma2-2b'
+    gemma2_9b = 'gemma2-9b'
+    gemma2_27b = 'gemma2-27b'
+    gemma2_2b_instruct = 'gemma2-2b-instruct'
+    gemma2_9b_instruct = 'gemma2-9b-instruct'
+    gemma2_27b_instruct = 'gemma2-27b-instruct'
+
+    # minicpm
+    minicpm_1b_sft_chat = 'minicpm-1b-sft-chat'
+    minicpm_2b_sft_chat = 'minicpm-2b-sft-chat'
+    minicpm_2b_chat = 'minicpm-2b-chat'
+    minicpm_2b_128k = 'minicpm-2b-128k'
+    minicpm_moe_8x2b = 'minicpm-moe-8x2b'
+    minicpm3_4b = 'minicpm3-4b'
+
+    # openbuddy
+    openbuddy_llama_65b_chat = 'openbuddy-llama-65b-chat'
+    openbuddy_llama2_13b_chat = 'openbuddy-llama2-13b-chat'
+    openbuddy_llama2_70b_chat = 'openbuddy-llama2-70b-chat'
+    openbuddy_llama3_8b_chat = 'openbuddy-llama3-8b-chat'
+    openbuddy_llama3_70b_chat = 'openbuddy-llama3-70b-chat'
+    openbuddy_mistral_7b_chat = 'openbuddy-mistral-7b-chat'
+    openbuddy_zephyr_7b_chat = 'openbuddy-zephyr-7b-chat'
+    openbuddy_deepseek_67b_chat = 'openbuddy-deepseek-67b-chat'
+    openbuddy_mixtral_moe_7b_chat = 'openbuddy-mixtral-moe-7b-chat'
+    openbuddy_llama3_1_8b_chat = 'openbuddy-llama3_1-8b-chat'
+
+    # mistral
+    mistral_7b = 'mistral-7b'
+    mistral_7b_v2 = 'mistral-7b-v2'
+    mistral_7b_instruct = 'mistral-7b-instruct'
+    mistral_7b_instruct_v2 = 'mistral-7b-instruct-v2'
+    mistral_7b_instruct_v3 = 'mistral-7b-instruct-v3'
+    mistral_nemo_base_2407 = 'mistral-nemo-base-2407'
+    mistral_nemo_instruct_2407 = 'mistral-nemo-instruct-2407'
+    mistral_large_instruct_2407 = 'mistral-large-instruct-2407'
+    mixtral_moe_7b = 'mixtral-moe-7b'
+    mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
+    mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
+    mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
+
+    # wizardlm
+    wizardlm2_7b_awq = 'wizardlm2-7b-awq'
+    wizardlm2_8x22b = 'wizardlm2-8x22b'
+
+    # baichuan
+    baichuan_7b = 'baichuan-7b'
+    baichuan_13b = 'baichuan-13b'
+    baichuan_13b_chat = 'baichuan-13b-chat'
+
+    # baichuan2
+    baichuan2_7b = 'baichuan2-7b'
+    baichuan2_7b_chat = 'baichuan2-7b-chat'
+    baichuan2_7b_chat_int4 = 'baichuan2-7b-chat-int4'
+    baichuan2_13b = 'baichuan2-13b'
+    baichuan2_13b_chat = 'baichuan2-13b-chat'
+    baichuan2_13b_chat_int4 = 'baichuan2-13b-chat-int4'
+
+    # yuan
+    yuan2_2b_instruct = 'yuan2-2b-instruct'
+    yuan2_2b_janus_instruct = 'yuan2-2b-janus-instruct'
+    yuan2_51b_instruct = 'yuan2-51b-instruct'
+    yuan2_102b_instruct = 'yuan2-102b-instruct'
+    yuan2_m32 = 'yuan2-m32'
+
+    # xverse
+    xverse_7b = 'xverse-7b'
+    xverse_7b_chat = 'xverse-7b-chat'
+    xverse_13b = 'xverse-13b'
+    xverse_13b_chat = 'xverse-13b-chat'
+    xverse_65b = 'xverse-65b'
+    xverse_65b_v2 = 'xverse-65b-v2'
+    xverse_65b_chat = 'xverse-65b-chat'
+    xverse_13b_256k = 'xverse-13b-256k'
+    xverse_moe_a4_2b = 'xverse-moe-a4_2b'
+
+    # orion
+    orion_14b = 'orion-14b'
+    orion_14b_chat = 'orion-14b-chat'
+
+    # vivo
+    bluelm_7b = 'bluelm-7b'
+    bluelm_7b_32k = 'bluelm-7b-32k'
+    bluelm_7b_chat = 'bluelm-7b-chat'
+    bluelm_7b_chat_32k = 'bluelm-7b-chat-32k'
+
+    # ziya
+    ziya2_13b = 'ziya2-13b'
+    ziya2_13b_chat = 'ziya2-13b-chat'
+
+    # skywork
+    skywork_13b = 'skywork-13b'
+    skywork_13b_chat = 'skywork-13b-chat'
+
+    # zephyr
+    zephyr_7b_beta_chat = 'zephyr-7b-beta-chat'
+
+    # other
+    polylm_13b = 'polylm-13b'
+    seqgpt_560m = 'seqgpt-560m'
+    sus_34b_chat = 'sus-34b-chat'
+
+    # tongyi-finance
+    tongyi_finance_14b = 'tongyi-finance-14b'
+    tongyi_finance_14b_chat = 'tongyi-finance-14b-chat'
+    tongyi_finance_14b_chat_int4 = 'tongyi-finance-14b-chat-int4'
+
+    # codefuse
+    codefuse_codellama_34b_chat = 'codefuse-codellama-34b-chat'
+    codefuse_codegeex2_6b_chat = 'codefuse-codegeex2-6b-chat'
+    codefuse_qwen_14b_chat = 'codefuse-qwen-14b-chat'
+
+    # phi
+    phi2_3b = 'phi2-3b'
+    phi3_4b_4k_instruct = 'phi3-4b-4k-instruct'
+    phi3_4b_128k_instruct = 'phi3-4b-128k-instruct'
+    phi3_small_8k_instruct = 'phi3-small-8k-instruct'
+    phi3_medium_4k_instruct = 'phi3-medium-4k-instruct'
+    phi3_small_128k_instruct = 'phi3-small-128k-instruct'
+    phi3_medium_128k_instruct = 'phi3-medium-128k-instruct'
+
+    phi3_5_mini_instruct = 'phi3_5-mini-instruct'
+    phi3_5_moe_instruct = 'phi3_5-moe-instruct'
+
+    # mamba
+    mamba_130m = 'mamba-130m'
+    mamba_370m = 'mamba-370m'
+    mamba_390m = 'mamba-390m'
+    mamba_790m = 'mamba-790m'
+    mamba_1_4b = 'mamba-1.4b'
+    mamba_2_8b = 'mamba-2.8b'
+
+    # teleAI
+    telechat_7b = 'telechat-7b'
+    telechat_12b = 'telechat-12b'
+    telechat_12b_v2 = 'telechat-12b-v2'
+    telechat_12b_v2_gptq_int4 = 'telechat-12b-v2-gptq-int4'
+
+    # grok-1
+    grok_1 = 'grok-1'
+
+    # dbrx
+    dbrx_instruct = 'dbrx-instruct'
+    dbrx_base = 'dbrx-base'
+
+    # mengzi
+    mengzi3_13b_base = 'mengzi3-13b-base'
+
+    # c4ai
+    c4ai_command_r_v01 = 'c4ai-command-r-v01'
+    c4ai_command_r_plus = 'c4ai-command-r-plus'
+
+    # codestral
+    codestral_22b = 'codestral-22b'
+
+
+class ModelType(NLPModelType, MMModelType):
+
+    @classmethod
+    def get_model_name_list(cls) -> List[str]:
+        res = []
+        for k in cls.__dict__.keys():
+            if k.startswith('__') or k == 'get_model_name_list':
+                continue
+            res.append(cls.__dict__[k])
+        return res
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -128,6 +722,16 @@ class AttentionType:
             config._attn_implementation = self.to_impl(attn_version=2)
         else:
             config._flash_attn_2_enabled = self.to_bool()
+
+
+def check_awq_ext() -> None:
+    try:
+        from awq.utils.packing_utils import dequantize_gemm
+        import awq_ext  # with CUDA kernels (AutoAWQ_kernels)
+    except ImportError as e:
+        raise ImportError('You are training awq models, remember installing awq_ext by '
+                          '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
+                          '&& cd AutoAWQ_kernels && pip install -e .`') from e
 
 
 @register_model(
@@ -268,20 +872,20 @@ def get_model_tokenizer_from_repo(model_dir: str,
     """load from an independent repository"""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-
     patch_hidden_size(model_config)
 
-    # quant
-    is_awq = kwargs.pop('is_awq', False)
-    is_aqlm = kwargs.pop('is_aqlm', False)
-    gptq_bits = kwargs.pop('gptq_bits', 0)
-    is_gptq = True if gptq_bits > 0 else kwargs.pop('is_gptq', False)
+    quantization_config = getattr(model_config, 'quantization_config', None)
+    quant_method = None
+    if quantization_config is not None:
+        quant_method = quantization_config.quant_method
+        quant_bits = quantization_config.bits
+
     is_training = kwargs.pop('is_training', False)
 
-    if is_awq and is_training:
-        check_awq_ext()
-    if is_gptq and is_training:
-        patch_gptq_model(gptq_bits, model_config, model_kwargs)
+    # if quant_method == 'awq' and is_training:
+    #     check_awq_ext()
+    # if quant_method == 'gptq' and is_training:
+    #     patch_gptq_model(quant_bits, model_config, model_kwargs)
 
     if torch_dtype is not None:
         model_config.torch_dtype = torch_dtype
@@ -300,11 +904,11 @@ def get_model_tokenizer_from_repo(model_dir: str,
         else:
             logger.info(f'model_kwargs: {model_kwargs}')
             model = load_by_transformers(automodel_class, model_dir, model_config, torch_dtype,
-                      is_aqlm, is_training, model_kwargs, **kwargs)
+                      quant_method=='aqlm', is_training, model_kwargs, **kwargs)
 
-        model.is_gptq = is_gptq
-        model.is_awq = is_awq
-        model.is_aqlm = is_aqlm
+        # model.is_gptq = is_gptq
+        # model.is_awq = is_awq
+        # model.is_aqlm = is_aqlm
     else:
         model = None
     return model, tokenizer
@@ -1157,7 +1761,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     torch_dtype=torch.float16,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'is_awq': True},
     hf_model_id='MaziyarPanahi/WizardLM-2-7B-AWQ')
 @register_model(
     ModelType.gemma_2b,
@@ -1499,7 +2102,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|im_end|>',
     requires=['autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -1511,7 +2113,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|im_end|>',
     requires=['auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-6B-Chat-8bits')
@@ -1531,7 +2132,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|im_end|>',
     requires=['autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -1543,7 +2143,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     eos_token='<|im_end|>',
     requires=['auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='01-ai/Yi-34B-Chat-8bits')
@@ -1861,7 +2460,6 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     template=TemplateType.chatml,
     requires=['autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -1871,7 +2469,6 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     'AI-ModelScope/Yi-1.5-6B-Chat-GPTQ',
     template=TemplateType.chatml,
     requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
     support_vllm=True,
@@ -1882,7 +2479,6 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     template=TemplateType.chatml,
     requires=['autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -1892,7 +2488,6 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     'AI-ModelScope/Yi-1.5-9B-Chat-GPTQ',
     template=TemplateType.chatml,
     requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
     support_vllm=True,
@@ -1903,7 +2498,6 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     template=TemplateType.chatml,
     requires=['autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -1913,7 +2507,6 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     'AI-ModelScope/Yi-1.5-34B-Chat-GPTQ',
     template=TemplateType.chatml,
     requires=['auto_gptq>=0.5'],
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     support_flash_attn=True,
     hf_model_id='modelscope/Yi-1.5-34B-Chat-GPTQ',
@@ -2132,7 +2725,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     tags=['moe'],
     requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     hf_model_id='Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4')
 @register_model(
     ModelType.qwen2_57b_a14b_instruct,
@@ -2149,7 +2741,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B-Instruct-GPTQ-Int4')
@@ -2159,7 +2750,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-0.5B-Instruct-GPTQ-Int8')
@@ -2169,7 +2759,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4')
@@ -2179,7 +2768,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-1_5B-Instruct-GPTQ-Int8')
@@ -2189,7 +2777,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B-Instruct-GPTQ-Int4')
@@ -2199,7 +2786,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-7B-Instruct-GPTQ-Int8')
@@ -2209,7 +2795,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-GPTQ-Int4')
@@ -2219,7 +2804,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     template=TemplateType.qwen,
     support_flash_attn=True,
     support_vllm=True,
-    function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-GPTQ-Int8')
@@ -2230,7 +2814,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=False,
-    function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen2-0.5B-Instruct-AWQ')
@@ -2241,7 +2824,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen2-1.5B-Instruct-AWQ')
@@ -2252,7 +2834,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen2-7B-Instruct-AWQ')
@@ -2263,7 +2844,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     requires=['transformers>=4.37', 'autoawq'],
     hf_model_id='Qwen/Qwen2-72B-Instruct-AWQ')
@@ -2314,7 +2894,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=False,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-AWQ')
@@ -2325,7 +2904,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-AWQ')
@@ -2336,7 +2914,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-AWQ')
@@ -2347,7 +2924,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-AWQ')
@@ -2358,7 +2934,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-AWQ')
@@ -2369,7 +2944,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-32B-Chat-AWQ')
@@ -2380,7 +2954,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-AWQ')
@@ -2391,7 +2964,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen1.5-110B-Chat-AWQ')
@@ -2402,7 +2974,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    function_kwargs={'is_awq': True},
     requires=['transformers>=4.37', 'autoawq'],
     torch_dtype=torch.float16,
     hf_model_id='Qwen/CodeQwen1.5-7B-Chat-AWQ')
@@ -2559,7 +3130,6 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
     tags=['multi-modal', 'vision'],
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4')
 @register_model(
@@ -2570,7 +3140,6 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
     tags=['multi-modal', 'vision'],
-    function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8')
 @register_model(
@@ -2581,7 +3150,6 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
     tags=['multi-modal', 'vision'],
-    function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen2-VL-7B-Instruct-AWQ')
 @register_model(
@@ -2601,7 +3169,6 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
     tags=['multi-modal', 'vision'],
-    function_kwargs={'gptq_bits': 4},
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4')
 @register_model(
@@ -2612,7 +3179,6 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
     tags=['multi-modal', 'vision'],
-    function_kwargs={'gptq_bits': 8},
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8')
 @register_model(
@@ -2623,7 +3189,6 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
     requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
     tags=['multi-modal', 'vision'],
-    function_kwargs={'is_awq': True},
     torch_dtype=torch.float16,
     hf_model_id='Qwen/Qwen2-VL-2B-Instruct-AWQ')
 def get_model_tokenizer_qwen2_vl(model_dir: str,
@@ -2664,7 +3229,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4')
@@ -2674,7 +3238,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8')
@@ -2684,7 +3247,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4')
@@ -2694,7 +3256,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8')
@@ -2704,7 +3265,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int4')
@@ -2714,7 +3274,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-4B-Chat-GPTQ-Int8')
@@ -2724,7 +3283,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int4')
@@ -2734,7 +3292,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-7B-Chat-GPTQ-Int8')
@@ -2744,7 +3301,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int4')
@@ -2754,7 +3310,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-14B-Chat-GPTQ-Int8')
@@ -2764,7 +3319,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-32B-Chat-GPTQ-Int4')
@@ -2774,7 +3328,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int4')
@@ -2784,7 +3337,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-110B-Chat-GPTQ-Int4')
@@ -2794,7 +3346,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.37'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen1.5-72B-Chat-GPTQ-Int8')
@@ -2804,7 +3355,6 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5', 'transformers>=4.40'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     tags=['moe'],
     hf_model_id='Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4')
@@ -3283,7 +3833,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     support_lmdeploy=True,
     support_vllm=False,
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-2B-AWQ')
@@ -3297,7 +3846,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     support_lmdeploy=True,
     support_vllm=False,
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-8B-AWQ')
@@ -3311,7 +3859,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     support_lmdeploy=True,
     support_vllm=False,
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-26B-AWQ')
@@ -3325,7 +3872,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     support_lmdeploy=True,
     support_vllm=False,
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-40B-AWQ')
@@ -3339,7 +3885,6 @@ def get_model_tokenizer_deepseek2(model_dir: str,
     support_lmdeploy=True,
     support_vllm=False,
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     placeholder_tokens=['<IMG_CONTEXT>'],
     tags=['multi-modal', 'vision', 'video'],
     hf_model_id='OpenGVLab/InternVL2-Llama3-76B-AWQ')
@@ -3421,7 +3966,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             **kwargs):
     version = kwargs.pop('version', 'v2')
     model_config = None
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
     if version == 'v2-4khd':
         from transformers import CLIPVisionModel
 
@@ -3435,12 +3980,12 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         CLIPVisionTower.load_model = load_model
     elif version == 'v2':
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-        model_config._flash_attn_2_enabled = use_flash_attn
+        model_config._flash_attn_2_enabled = attn_type.to_bool()
 
     model, tokenizer = get_model_tokenizer_internlm2(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     if model is not None:
-        if version == 'v2' and use_flash_attn:
+        if version == 'v2' and attn_type.to_bool():
             # fix AttributeError: no attribute 'attention_dropout'
             model.model.layers[0].attention.__class__.attention_dropout = 0.
 
@@ -3550,18 +4095,14 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     tokenizer = processor.tokenizer
     # flash_attn
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    if version.parse(transformers.__version__) >= version.parse('4.36'):
-        if use_flash_attn:
-            model_config.language_config._attn_implementation = 'flash_attention_2'
-    else:
-        model_config.language_config._flash_attn_2_enabled = use_flash_attn
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    attn_type.update_config(model_config)
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, tokenizer=tokenizer, **kwargs)
     tokenizer.processor = processor
     if load_model:
-        model.language_model.model.embed_tokens.register_forward_hook(_clone_hook)
-        model.language_model.model.embed_tokens.register_forward_hook(_output_device_map_hook)
+        patch_output_clone(model.language_model.model.embed_tokens)
+        patch_output_to_input_device(model.language_model.model.embed_tokens)
         func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
         _use_submodel_func(model, 'language_model', func_list)
         model.generation_config = model.language_model.generation_config
@@ -3593,7 +4134,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.43', 'auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     hf_model_id='hugging-quants/Meta-Llama-3.1-405B-Instruct-GPTQ-INT4')
 @register_model(
     ModelType.llama3_1_405b_instruct_awq,
@@ -3604,7 +4144,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_lmdeploy=True,
     requires=['transformers>=4.43', 'autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     hf_model_id='hugging-quants/Meta-Llama-3.1-405B-Instruct-AWQ-INT4')
 @register_model(
     ModelType.llama3_1_405b_instruct_fp8,
@@ -3659,7 +4198,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.43', 'auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4')
 @register_model(
     ModelType.llama3_1_70b_instruct_awq,
@@ -3670,7 +4208,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_lmdeploy=True,
     requires=['transformers>=4.43', 'autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     hf_model_id='hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4')
 @register_model(
     ModelType.llama3_1_70b_instruct_fp8,
@@ -3717,7 +4254,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.43', 'auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     hf_model_id='hugging-quants/Meta-Llama-3.1-8B-Instruct-GPTQ-INT4')
 @register_model(
     ModelType.llama3_1_8b_instruct_awq,
@@ -3727,7 +4263,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_vllm=True,
     requires=['transformers>=4.43', 'autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     hf_model_id='hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4')
 @register_model(
     ModelType.llama3_1_8b_instruct,
@@ -3755,7 +4290,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     template=TemplateType.llama3,
     requires=['autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -3766,7 +4300,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     template=TemplateType.llama3,
     requires=['auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int8')
@@ -3776,7 +4309,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     template=TemplateType.llama3,
     requires=['auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='study-hjt/Meta-Llama-3-70B-Instruct-GPTQ-Int4')
@@ -3786,7 +4318,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     template=TemplateType.llama3,
     requires=['autoawq'],
     torch_dtype=torch.float16,
-    function_kwargs={'is_awq': True},
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -3797,7 +4328,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     template=TemplateType.llama3,
     requires=['auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int8')
@@ -3807,7 +4337,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     template=TemplateType.llama3,
     requires=['auto_gptq'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='study-hjt/Meta-Llama-3-8B-Instruct-GPTQ-Int4')
@@ -3867,7 +4396,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_flash_attn=True,
     requires=['transformers>=4.38', 'aqlm', 'torch>=2.2.0'],
     support_vllm=False,
-    function_kwargs={'is_aqlm': True},
     hf_model_id='ISTA-DASLab/Llama-2-7b-AQLM-2Bit-1x16-hf')
 @register_model(
     ModelType.mixtral_moe_7b_aqlm_2bit_1x16,
@@ -3877,7 +4405,6 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_flash_attn=True,
     support_vllm=False,
     tags=['moe'],
-    function_kwargs={'is_aqlm': True},
     hf_model_id='ISTA-DASLab/Mixtral-8x7b-AQLM-2Bit-1x16-hf')
 @register_model(
     ModelType.llama2_7b,
@@ -4108,7 +4635,8 @@ def get_model_tokenizer_qwen(model_dir: str,
                                                                          BitsAndBytesConfig):
         # not (quantization + bnb)
         torch_dtype = None
-    use_flash_attn = kwargs.pop('use_flash_attn', None)
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    use_flash_attn = attn_type.attn_type
     if use_flash_attn is None:
         use_flash_attn = 'auto'
     model_config.use_flash_attn = use_flash_attn
@@ -4258,7 +4786,7 @@ def fix_qwen_inplace_bug(model) -> None:
     first_drop = model.transformer.drop
     if first_drop.p == 0.:
         # fix in-place operation bug
-        first_drop.register_forward_hook(_clone_hook)
+        patch_output_clone(first_drop)
 
 
 def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> str:
@@ -4330,7 +4858,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
         # fix images cuda:1 bug
-        model.transformer.visual.register_forward_hook(get_device_hook(0))
+        patch_fixed_device(model.transformer.visual, 0)
     return model, tokenizer
 
 
@@ -4377,7 +4905,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-1_8B-Chat-Int8')
@@ -4387,7 +4914,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-1_8B-Chat-Int4')
@@ -4397,7 +4923,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-72B-Chat-Int8')
@@ -4407,7 +4932,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-72B-Chat-Int4')
@@ -4417,7 +4941,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     tags=['financial'],
@@ -4429,8 +4952,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
     function_kwargs={
-        'get_qwen_function': get_model_tokenizer_qwen_vl,
-        'gptq_bits': 4
+        'get_qwen_function': get_model_tokenizer_qwen_vl
     },
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
@@ -4441,7 +4963,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-14B-Chat-Int8')
@@ -4451,7 +4972,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 8},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-7B-Chat-Int8')
@@ -4461,7 +4981,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-14B-Chat-Int4')
@@ -4471,7 +4990,6 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={'gptq_bits': 4},
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='Qwen/Qwen-7B-Chat-Int4')
@@ -4489,7 +5007,7 @@ register_model(
     ModelType.skywork_13b,
     'skywork/Skywork-13B-base',
     template=TemplateType.default_generation,
-    get_model_tokenizer_from_repo,
+    get_function=get_model_tokenizer_from_repo,
     hf_model_id='Skywork/Skywork-13B-base')
 
 
@@ -4553,16 +5071,15 @@ def get_model_tokenizer_codellama(model_dir: str,
     template=TemplateType.telechat_v2,
     eos_token=2,
     requires=['auto_gptq>=0.5'],
-    support_flash_attn=True,
-    function_kwargs={'gptq_bits': 4})
+    support_flash_attn=True)
 def get_model_tokenizer_phi(model_dir: str,
                             torch_dtype: torch.dtype,
                             model_kwargs: Dict[str, Any],
                             load_model: bool = True,
                             **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.flash_attn = use_flash_attn
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    model_config.flash_attn = attn_type.to_bool()
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
@@ -4582,8 +5099,8 @@ def get_model_tokenizer_telechat(model_dir: str,
         logger.info('telechat-7b does not support the bf16 dtype; the dtype is converted to fp16.')
         torch_dtype = torch.float16
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.flash_attn = use_flash_attn
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    model_config.flash_attn = attn_type.to_bool()
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
@@ -4669,8 +5186,8 @@ def get_model_tokenizer_yuan(model_dir: str,
                              load_model: bool = True,
                              **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    use_flash_attention = kwargs.pop('use_flash_attn', False)
-    model_config.use_flash_attention = use_flash_attention
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    model_config.use_flash_attention = attn_type.to_bool()
     tokenizer = AutoTokenizer.from_pretrained(
         model_dir, add_eos_token=False, add_bos_token=False, eos_token='<eod>', legacy=True)
     addi_tokens = [
@@ -4703,7 +5220,8 @@ def get_model_tokenizer_orion(model_dir: str,
                               load_model: bool = True,
                               **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    model_config._flash_attn_2_enabled = kwargs.pop('use_flash_attn', False)
+    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    model_config._flash_attn_2_enabled = attn_type.to_bool()
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
@@ -4781,7 +5299,7 @@ def _patch_minicpm_v_device_map(model) -> None:
         model.__class__.get_vision_embedding = _get_vision_embedding
 
     if hasattr(model, 'resampler'):  # minicpm-v-v2_5-chat
-        model.resampler.register_forward_hook(get_device_hook(device))
+        patch_fixed_device(model.resampler, device)
 
 
 @register_model(
@@ -4865,7 +5383,7 @@ def get_model_tokenizer_minicpm_v_2_x(model_dir: str,
     tokenizer.processor = processor
     if load_model:
         embedding = model.get_input_embeddings()
-        embedding.register_forward_hook(_clone_hook)
+        patch_output_clone(embedding)
 
     return model, tokenizer
 
@@ -5283,14 +5801,13 @@ def get_torch_dtype(model_dir: str) -> torch.dtype:
     return torch_dtype
 
 
-def get_model_tokenizer(model_type: str,
+def get_model_tokenizer(model_type: Optional[str] = None,
                         torch_dtype: Optional[torch.dtype] = None,
                         model_kwargs: Optional[Dict[str, Any]] = None,
                         load_model: bool = True,
                         *,
                         model_id_or_path: Optional[str] = None,
                         revision: Optional[str] = None,
-                        quant_method: Literal['gptq', 'awq', 'aqlm', None] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
@@ -5301,22 +5818,21 @@ def get_model_tokenizer(model_type: str,
     model_dir = safe_snapshot_download(
         model_type, model_id_or_path, revision=revision, download_model=download_model, model_dir=model_dir)
 
-    model_info = MODEL_MAPPING[model_type]
-    requires = model_info['requires']
+    model_info = MODEL_MAPPING.get(model_type, {})
+    requires = model_info.get('requires', [])
     for require in requires:
         require_version(require)
-    get_function = model_info['get_function']
+    get_function = model_info.get('get_function', get_model_tokenizer_from_repo)
     if model_kwargs is None:
         model_kwargs = {}
 
     if load_model:
+        # Decide device_map
         if 'device_map' not in model_kwargs and not use_torchacc():
             model_kwargs['device_map'] = 'auto'
-        for k in ['gptq', 'awq', 'aqlm']:
-            if quant_method == k:
-                kwargs[f'is_{k}'] = True
-                break
+
         if model_info.get('torch_dtype') is not None:
+            # Validate torch_dtype with config.torch_dtype
             model_torch_dtype = model_info['torch_dtype']
             if torch_dtype is None:
                 torch_dtype = model_torch_dtype
@@ -5333,17 +5849,22 @@ def get_model_tokenizer(model_type: str,
                     quantization_config.bnb_4bit_compute_dtype = torch_dtype
                     logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
 
-    kwargs['eos_token'] = model_info['eos_token']
+    eos_token = model_info.get('eos_token')
+    if eos_token:
+        kwargs['eos_token'] = eos_token
     pad_token = model_info.get('pad_token')
     if pad_token is not None:
         kwargs['pad_token'] = pad_token
     placeholder_tokens = model_info.get('placeholder_tokens')
     if placeholder_tokens is not None:
         kwargs['placeholder_tokens'] = placeholder_tokens
+
     if 'is_training' not in kwargs:
         kwargs['is_training'] = False
+
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     is_multimodal = 'multi-modal' in model_info.get('tags', [])
+
     if model is not None:
         model.max_model_len = get_max_model_len(model.config)
         logger.info(f'model.max_model_len: {model.max_model_len}')
@@ -5354,12 +5875,14 @@ def get_model_tokenizer(model_type: str,
 
     is_moe = '-moe' in model_type or 'moe' in model_info.get('tags', [])
     fix_gradient_checkpointing_warning(is_moe)
+
     tokenizer.model_type = model_type
     tokenizer.model_dir = model_dir
     tokenizer.is_multimodal = is_multimodal
     assert tokenizer.eos_token is not None, 'tokenizer.eos_token has not been set.'
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
     if model is not None and model_dir is not None:
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
         generation_config = getattr(model, 'generation_config', None)
@@ -5374,25 +5897,6 @@ def get_model_tokenizer(model_type: str,
     return model, tokenizer
 
 
-def get_additional_saved_files(model_type: str) -> List[str]:
-    files_mapping = {
-        'qwen-vl': ['SimSun.ttf'],
-        'qwen-audio': ['mel_filters.npz'],
-        'yi-vl': ['vit'],
-        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py']
-    }
-    for key, files_list in files_mapping.items():
-        if key in model_type:
-            return files_list
-    return []
-
-
 def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')
 
-
-def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, None]:
-    res = MODEL_MAPPING[model_type].get('lora_target_modules')
-    if isinstance(res, str):
-        res = get_regex_for_mm_default_lora(res)
-    return res
