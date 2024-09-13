@@ -1,12 +1,15 @@
 import math
+from collections.abc import Mapping
 from typing import Dict, Any
 
 import torch
 import transformers
 from packaging import version
+from torch import Tensor
+import torch.nn.functional as F
 from swift import get_logger
 
-from swift.llm.utils.utils import set_rope_scaling, get_rope_scaling, to_device
+from swift.llm.utils.utils import set_rope_scaling, get_rope_scaling, to_device, fetch_one
 
 from swift.llm import get_max_model_len
 from transformers import GPTQConfig
@@ -114,7 +117,17 @@ def patch_device(model: torch.nn.Module):
         return _device_hook
 
 
-
+def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
+    # patch: baichuan2 lm_head (fp32 bug)
+    if self.training:
+        norm_weight = F.normalize(self.weight).to(self.weight.dtype)
+    elif self.first_flag:
+        self.first_flag = False
+        self.weight.data = F.normalize(self.weight).to(self.weight.dtype)
+        norm_weight = self.weight
+    else:
+        norm_weight = self.weight
+    return F.linear(hidden_states, norm_weight)
 
 
 def patch_output_clone(module: torch.nn.Module):
@@ -135,7 +148,17 @@ def patch_output_to_input_device(module: torch.nn.Module):
         module: The module to be patched
     """
 
-    def _output_device_map_hook(module, input, output: torch.Tensor):
-        return output.to(input[0].device)
+    def recursive_set_device(data, device):
+        if isinstance(data, Mapping):
+            return type(data)({k: recursive_set_device(v, device) for k, v in data.items()})
+        elif isinstance(data, (tuple, list)):
+            return type(data)(recursive_set_device(v, device) for v in data)
+        elif isinstance(data, torch.Tensor):
+            kwargs = {"device": device}
+            return data.to(**kwargs)
 
-    module.register_forward_hook(_output_device_map_hook)
+    def _output_to_input_device_hook(module, input, output):
+        tensor = fetch_one(input, torch.Tensor)
+        recursive_set_device(output, tensor.device)
+
+    module.register_forward_hook(_output_to_input_device_hook)
