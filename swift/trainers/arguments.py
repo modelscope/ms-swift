@@ -50,3 +50,30 @@ class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
     @property
     def place_model_on_device(self):
         return False if use_torchacc() else super().place_model_on_device
+
+
+try:
+    from trl import (DPOConfig as HfDPOConfig, CPOConfig as HfCPOConfig, ORPOConfig as HfORPOConfig, KTOConfig as
+                     HfKTOConfig)
+
+    @dataclass
+    class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
+        pass
+
+    @dataclass
+    class CPOConfig(SwiftArgumentsMixin, HfCPOConfig):
+        pass
+
+    @dataclass
+    class ORPOConfig(SwiftArgumentsMixin, HfORPOConfig):
+        pass
+
+    @dataclass
+    class KTOConfig(SwiftArgumentsMixin, HfKTOConfig):
+        pass
+
+except ImportError:
+    DPOConfig = None
+    CPOConfig = None
+    ORPOConfig = None
+    KTOConfig = None

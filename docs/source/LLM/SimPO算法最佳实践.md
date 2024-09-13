@@ -58,6 +58,7 @@ swift rlhf \
     --gradient_checkpointing  true  \
     --learning_rate  2e-6
 ```
+
 **提示**:
 - 测试发现SimPO+LoRA表现不佳，推荐使用全量微调。
 - 如果用带有history的数据训练base模型，需要指定支持多轮对话的template(base模型往往不支持多轮对话)，对于这种情况我们默认设置了`chatml`template，你也可以支持--model_type 来选择训练模型的template
