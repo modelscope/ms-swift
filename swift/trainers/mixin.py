@@ -5,10 +5,11 @@ import os
 import re
 import shutil
 import time
+from copy import copy
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from copy import copy
+
 import json
 import numpy as np
 import safetensors
@@ -201,7 +202,6 @@ class SwiftMixin:
                     path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
                 )
                 model.peft_config['default'] = config
-                # config.init_lora_weights = init_lora_weights
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         if not (use_torchacc() and self.sft_args.fsdp_num > 1):
