@@ -7,6 +7,7 @@ import shutil
 import time
 from collections import defaultdict
 from contextlib import contextmanager
+from copy import copy
 from pathlib import Path
 from types import MethodType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -189,11 +190,13 @@ class SwiftMixin:
             config = model.peft_config.get('default', {})
             init_lora_weights = getattr(config, 'init_lora_weights', '')
             if isinstance(init_lora_weights, str) and ('pissa' in init_lora_weights or 'olora' in init_lora_weights):
+                config = copy(config)
+                os.makedirs(os.path.join(output_dir, 'converted'), exist_ok=True)
                 model.save_pretrained(
-                    os.path.join(output_dir, 'converted'),
+                    os.path.join(output_dir, 'converted', 'default'),
                     path_initial_model_for_weight_conversion=os.path.join(os.path.dirname(output_dir), 'initial_model'),
                 )
-                config.init_lora_weights = init_lora_weights
+                model.peft_config['default'] = config
 
     def _load_optimizer_and_scheduler(self, checkpoint):
         if not (use_torchacc() and self.sft_args.fsdp_num > 1):
