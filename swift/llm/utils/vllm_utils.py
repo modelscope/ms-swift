@@ -9,7 +9,6 @@ import torch
 import vllm
 from modelscope import GenerationConfig
 from packaging import version
-from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
@@ -29,7 +28,7 @@ logger = get_logger()
 
 def get_vllm_engine(
         model_type: str,
-        torch_dtype: Optional[Dtype] = None,
+        torch_dtype: Optional[torch.dtype] = None,
         *,
         model_id_or_path: Optional[str] = None,
         revision: Optional[str] = None,
@@ -141,12 +140,15 @@ def get_vllm_engine(
     if os.path.isfile(generation_config_path):
         generation_config = GenerationConfig.from_pretrained(model_dir)
         kwargs = generation_config.to_dict()
+        max_new_tokens = kwargs.get('max_new_tokens')
+        if max_new_tokens is not None:
+            kwargs['max_tokens'] = max_new_tokens
         if version.parse(vllm.__version__) < version.parse('0.5.5'):
             parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
         else:
             parameters = VllmGenerationConfig.__annotations__
-        for k in kwargs.copy().keys():
-            if k not in parameters:
+        for k, v in kwargs.copy().items():
+            if k not in parameters or v is None:
                 kwargs.pop(k)
         llm_engine.generation_config = VllmGenerationConfig(**kwargs)
     else:
@@ -159,7 +161,7 @@ class _VllmGenerationConfigMixin:
     def __setattr__(self, key: str, value: str) -> None:
         if key == 'max_new_tokens':
             self.max_tokens = value
-        elif key == 'do_sample':
+        elif key == 'do_sample' and hasattr(self, '_temperature'):
             assert value in {True, False}
             super().__setattr__('temperature', self._temperature if value else 0)
         elif key == 'max_length':
@@ -176,7 +178,7 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
 
         def __init__(
             self,
-            max_new_tokens: Optional[int] = 64,  # max_tokens
+            max_tokens: int = 64,  # max_tokens
             temperature: float = 1.,
             top_k: int = 50,  # -1: all
             top_p: float = 1.,
@@ -184,15 +186,17 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             num_beams: int = 1,
             *,
             n: int = 1,
+            logprobs: Optional[int] = None,
             seed: Optional[int] = None,
             length_penalty: float = 1.,
             stop: Optional[List[str]] = None,
             skip_special_tokens: bool = False,
             **kwargs,
         ) -> None:
-            # The parameter design is similar to transformers.GenerationConfig.
-            if max_new_tokens is None:
-                max_new_tokens = 64
+            # compat
+            max_new_tokens = kwargs.pop('max_new_tokens', None)
+            if max_new_tokens is not None:
+                max_tokens = max_new_tokens
             if num_beams > 1:
                 top_k = -1
                 top_p = 1
@@ -203,7 +207,7 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
                 top_k = -1
             if stop is None:
                 stop = []
-            kwargs['max_tokens'] = max_new_tokens
+            kwargs['max_tokens'] = max_tokens
             kwargs['temperature'] = temperature
             kwargs['top_k'] = top_k
             kwargs['top_p'] = top_p
@@ -214,6 +218,7 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
                 kwargs['use_beam_search'] = True
                 kwargs['best_of'] = num_beams
             kwargs['n'] = n
+            kwargs['logprobs'] = logprobs
             kwargs['seed'] = seed
             kwargs['length_penalty'] = length_penalty
             kwargs['stop'] = stop
@@ -229,23 +234,20 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
 else:
 
     class VllmGenerationConfig(_VllmGenerationConfigMixin, SamplingParams):
-        max_new_tokens: Optional[int] = 64  # max_tokens
+        max_tokens: int = 64
         temperature: float = 1.
         top_k: int = 50  # -1: all
         top_p: float = 1.
         repetition_penalty: float = 1.
         num_beams: int = 1
         n: int = 1
+        logprobs: Optional[int] = None
         seed: Optional[int] = None
         length_penalty: float = 1.
         stop: Optional[List[str]] = None
         skip_special_tokens: bool = False
 
         def __post_init__(self):
-            if self.max_new_tokens is None:
-                self.max_new_tokens = 64
-            if self.max_tokens == 16:
-                self.max_tokens = self.max_new_tokens
             if self.num_beams > 1:
                 self.top_k = -1
                 self.top_p = 1
@@ -254,7 +256,7 @@ else:
                                'the output of num_beams in transformers.')
                 assert self.best_of is None
                 self.use_beam_search = True
-                self.best_of = num_beams
+                self.best_of = self.num_beams
             if self.top_k == 0:
                 self.top_k = -1
             if self.stop is None:
@@ -378,7 +380,7 @@ def inference_stream_vllm(
         return
     start_runtime = time.perf_counter()
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -511,7 +513,7 @@ def inference_vllm(llm_engine: LLMEngine,
         return resp_list
 
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -591,7 +593,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         enable_lora=args.vllm_enable_lora,
         max_loras=max(len(args.lora_modules), 1),
         max_lora_rank=args.vllm_max_lora_rank)
-    setattr(llm_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
+    setattr(llm_engine.generation_config, 'max_tokens', args.max_new_tokens)
     for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
         val = getattr(args, k, None)
         if val is not None:

@@ -163,7 +163,7 @@ CUDA_VISIBLE_DEVICES=0,1 swift sft \
     --ddp_find_unused_parameters true
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) supports json, jsonl styles. The following is an example of a custom dataset:
+[Custom datasets](../Instruction/Customization.md#-Recommended-Command-line-arguments) supports json, jsonl styles. The following is an example of a custom dataset:
 
 (Supports multi-turn dialogue, support for multi-image or non-image per turn, supports input of local path or URL.)
 

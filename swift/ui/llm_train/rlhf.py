@@ -43,12 +43,6 @@ class RLHF(BaseUI):
                 'en': 'The actual model id or path'
             }
         },
-        'max_prompt_length': {
-            'label': {
-                'zh': 'prompt最大token长度',
-                'en': 'Max prompt length'
-            },
-        },
         'beta': {
             'label': {
                 'zh': 'KL正则项系数',
@@ -61,7 +55,7 @@ class RLHF(BaseUI):
                 'en': 'Loss type'
             },
         },
-        'sft_beta': {
+        'rpo_alpha': {
             'label': {
                 'zh': 'DPO中混合sft交叉熵的系数',
                 'en': 'DPO Cross Entropy ratio'
@@ -101,9 +95,8 @@ class RLHF(BaseUI):
                     model_state = gr.State({})
                 with gr.Row():
                     loss_type = gr.Dropdown(elem_id='loss_type')
-                    gr.Textbox(elem_id='max_prompt_length', lines=1, scale=20)
                     beta = gr.Slider(elem_id='beta', minimum=0., maximum=5.0, step=0.1, scale=20)
-                    gr.Slider(elem_id='sft_beta', minimum=0., maximum=0.95, step=0.05, scale=20)
+                    gr.Slider(elem_id='rpo_alpha', minimum=0., maximum=2, step=0.1, scale=20)
                     gr.Slider(elem_id='simpo_gamma', minimum=0., maximum=2.0, step=0.1, scale=20)
                     gr.Slider(elem_id='desirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)
                     gr.Slider(elem_id='undesirable_weight', minimum=0., maximum=2.0, step=0.1, scale=20)

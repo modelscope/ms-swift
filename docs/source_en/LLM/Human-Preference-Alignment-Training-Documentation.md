@@ -34,7 +34,7 @@ For example, ![kto_data](../../resources/kto_data.png)
 **Training Tips**:
 
 - If you are training a base model with history data, you need to specify a template that supports multi-turn dialogue (base models often do not support multi-turn dialogue); for this situation, we have set the default chatml template, but you can also use --model_type to select the template for the training model
-- For training with a custom dataset, please refer to [Customization](Customization.md)
+- For training with a custom dataset, please refer to [Customization](../Instruction/Customization.md)
 - The following training scripts use --lora_target_modules ALL to train all linear layers of the model, but you can set --lora_target_modules DEFAULT to only train the model's QKV matrices
 
 ## DPO
@@ -45,7 +45,7 @@ Hyperparameters
 
 It is recommended to train with the preferred answer part of the preference dataset before starting DPO training to ensure data fits the distribution requirements of the DPO algorithm.
 
-We also mix sft loss in the DPO loss to stabilize training; you can adjust the sft loss coefficient by setting the hyperparameter `sft_beta`, the default is 0.1
+We also mix sft loss in the DPO loss to stabilize training; you can adjust the sft loss coefficient by setting the hyperparameter `rpo_alpha`, the default is `1.`.
 
 For training script, we provide single card/multi-card device map/multi-card ddp versions, for brevity, only the single card version is given for subsequent algorithms.
 
@@ -57,7 +57,7 @@ swift rlhf \
     --rlhf_type dpo \
     --model_type  llama3-8b-instruct \
     --beta 0.1 \
-    --sft_beta 0.1 \
+    --rpo_alpha 0.1 \
     --sft_type  lora \
     --dataset shareai-llama3-dpo-zh-en-emoji \
     --num_train_epochs  2  \
@@ -76,7 +76,7 @@ swift rlhf \
     --rlhf_type dpo \
     --model_type  llama3-8b-instruct \
     --beta 0.1 \
-    --sft_beta 0.1 \
+    --rpo_alpha 0.1 \
     --sft_type  lora \
     --dataset shareai-llama3-dpo-zh-en-emoji \
     --num_train_epochs  2  \
@@ -99,7 +99,7 @@ swift rlhf \
     --rlhf_type dpo \
     --model_type  llama3-8b-instruct \
     --beta 0.1 \
-    --sft_beta 0.1 \
+    --rpo_alpha 0.1 \
     --sft_type  lora \
     --dataset shareai-llama3-dpo-zh-en-emoji \
     --num_train_epochs  2  \

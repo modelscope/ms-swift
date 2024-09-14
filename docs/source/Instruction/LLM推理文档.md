@@ -1,5 +1,5 @@
 # LLM推理文档
-如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](VLLM推理加速与部署.md#推理加速)
+如果你要使用vllm进行推理加速, 可以查看[VLLM推理加速与部署](../LLM/VLLM推理加速与部署.md#推理加速)
 
 ## 目录
 - [环境准备](#环境准备)
@@ -15,7 +15,7 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip install 'ms-swift[llm]' -U
 
 # 如果你想要使用基于auto_gptq的模型进行推理.
-# 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/LLM/支持的模型和数据集.md#模型`
+# 使用auto_gptq的模型: `https://github.com/modelscope/swift/blob/main/docs/source/Instruction/支持的模型和数据集.md#模型`
 # auto_gptq和cuda版本有对应关系，请按照`https://github.com/PanQiWei/AutoGPTQ#quick-installation`选择版本
 pip install auto_gptq -U
 

@@ -153,6 +153,7 @@ def decode_base64(*,
                   prompt: Optional[str] = None,
                   images: Optional[List[str]] = None,
                   tmp_dir: str = 'tmp') -> Dict[str, Any]:
+    # base64 -> local_path
     os.makedirs(tmp_dir, exist_ok=True)
     res = {}
     if messages is not None:
@@ -230,7 +231,12 @@ def _pre_inference_client(model_type: str,
         else:
             raise ValueError(f'model_type: {model_type}, model_list: {[model.id for model in model_list.data]}')
     assert is_chat_request is not None and is_multimodal is not None
-    data = {k: v for k, v in request_config.__dict__.items() if not k.startswith('__')}
+    data = {}
+    request_config_origin = XRequestConfig()
+    for k, v in request_config.__dict__.items():
+        v_origin = getattr(request_config_origin, k)
+        if v != v_origin:
+            data[k] = v
     url = kwargs.pop('url', None)
     if url is None:
         url = f'http://{host}:{port}/v1'
@@ -253,9 +259,9 @@ def _pre_inference_client(model_type: str,
         if medias:
             medias = convert_to_base64(images=medias)['images']
             data[media_key] = medias
-    if tools and len(tools) > 0:
+    if tools:
         data['tools'] = tools
-    if tool_choice:
+    if tool_choice and tool_choice != 'auto':
         data['tool_choice'] = tool_choice
     return url, data, is_chat_request
 

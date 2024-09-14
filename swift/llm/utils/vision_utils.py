@@ -7,6 +7,7 @@ from typing import Any, Callable, List, TypeVar, Union
 import numpy as np
 import requests
 import torch
+from packaging import version
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -239,9 +240,7 @@ def load_video_llava(video_io: BytesIO) -> np.ndarray:
 
 
 @load_file_decorator
-def load_video_minicpmv(video_io: BytesIO):
-    MAX_NUM_FRAMES = 64
-
+def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
     from PIL import Image
     from decord import VideoReader, cpu  # pip install decord
 
@@ -254,8 +253,8 @@ def load_video_minicpmv(video_io: BytesIO):
     sample_fps = round(vr.get_avg_fps() / 1)  # FPS
     frame_idx = [i for i in range(0, len(vr), sample_fps)]
 
-    if len(frame_idx) > MAX_NUM_FRAMES:
-        frame_idx = uniform_sample(frame_idx, MAX_NUM_FRAMES)
+    if len(frame_idx) > max_num_frames:
+        frame_idx = uniform_sample(frame_idx, max_num_frames)
     frames = vr.get_batch(frame_idx).asnumpy()
     frames = [Image.fromarray(v.astype('uint8')) for v in frames]
     return frames
@@ -267,17 +266,19 @@ def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
     return librosa.load(audio_io, sr=sampling_rate)[0]
 
 
-@load_file_decorator
-def load_video_qwen2(video_io: BytesIO):
+def load_video_qwen2(video_path: str):
     from .template import get_env_args
+    import torchvision
     from torchvision import io, transforms
     from qwen_vl_utils.vision_process import (round_by_factor, FPS, FRAME_FACTOR, FPS_MIN_FRAMES, FPS_MAX_FRAMES,
                                               VIDEO_MIN_PIXELS, VIDEO_MAX_PIXELS, VIDEO_TOTAL_PIXELS, smart_resize,
                                               ceil_by_factor, floor_by_factor)
     from torchvision.transforms import InterpolationMode
 
+    if version.parse(torchvision.__version__) >= version.parse('0.19'):
+        video_path = load_file(video_path)
     video, _, info = io.read_video(
-        video_io,
+        video_path,
         pts_unit='sec',
         output_format='TCHW',
     )

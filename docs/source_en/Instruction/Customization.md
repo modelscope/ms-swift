@@ -165,7 +165,7 @@ Format 2
 {"tools":"{API_LIST}","messages": [{"role": "user", "content": "aaaaa"}, {"role": "assistant", "content": "bbbbb"}, {"role": "tool", "content": "ccccc"}, {"role": "assistant", "content": "ddddd"}]}
 {"tools":"{API_LIST}","messages": [{"role": "user", "content": "AAAAA"}, {"role": "assistant", "content": "BBBBB"}, {"role": "tool", "content": "CCCCC"}, {"role": "assistant", "content": "DDDDD"}]}
 ```
-For the tools format, please refer to [Agent-Deoloyment Document](./Agent-deployment-best-practice.md) You can choose the corresponding prompt by setting `--tools_prompt`.
+For the tools format, please refer to [Agent-Deoloyment Document](../LLM/Agent-deployment-best-practice.md) You can choose the corresponding prompt by setting `--tools_prompt`.
 
 The `tool` field represents the return result of the tool calling.
 
@@ -275,10 +275,10 @@ The following is an example of **custom models**. The complete py file can be vi
 
 ```python
 from typing import Any, Dict
+import torch
 
 from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
 from swift.llm import LoRATM, TemplateType, get_model_tokenizer, register_model
@@ -307,7 +307,7 @@ class CustomTemplateType:
                 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama,
                 CustomTemplateType.tigerbot)
 def get_tigerbot_model_tokenizer(model_dir: str,
-                                 torch_dtype: Dtype,
+                                 torch_dtype: torch.dtype,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):

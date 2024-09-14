@@ -111,7 +111,7 @@ CUDA_VISIBLE_DEVICES=0 swift sft \
     --dataset video-chatgpt \
 ```
 
-[Custom datasets](../LLM/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
+[Custom datasets](../Instruction/Customization.md#-Recommended-Command-line-arguments) support json, jsonl formats. Here is an example of a custom dataset:
 
 (Each round of conversation needs to include a video/image or not include a video/image, supports local path or URL input.)
 

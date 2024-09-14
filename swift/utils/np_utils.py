@@ -1,11 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from numpy import ndarray
 from numpy.random import RandomState
 from pandas import DataFrame
-from torch import Tensor
 
 
 def transform_jsonl_to_df(dict_list: List[Dict[str, Any]]) -> DataFrame:
@@ -21,13 +20,15 @@ def transform_jsonl_to_df(dict_list: List[Dict[str, Any]]) -> DataFrame:
     return DataFrame.from_dict(data_dict)
 
 
-def get_seed(random_state: RandomState) -> int:
+def get_seed(random_state: Optional[RandomState] = None) -> int:
+    if random_state is None:
+        random_state = RandomState()
     seed_max = np.iinfo(np.int32).max
     seed = random_state.randint(0, seed_max)
     return seed
 
 
-def stat_array(array: Union[ndarray, List[int], Tensor]) -> Tuple[Dict[str, float], str]:
+def stat_array(array: Union[ndarray, List[int], 'torch.Tensor']) -> Tuple[Dict[str, float], str]:
     if isinstance(array, list):
         array = np.array(array)
     mean = array.mean().item()

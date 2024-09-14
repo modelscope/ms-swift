@@ -4,6 +4,7 @@ aiohttp
 attrdict
 binpacking
 dacite
+datasets<3.0
 einops
 importlib_metadata
 jieba
@@ -21,4 +22,4 @@ tensorboard
 tqdm
 transformers>=4.33,<4.46
 transformers_stream_generator
-trl>=0.9.6
+trl>=0.10.1

@@ -16,7 +16,6 @@ import transformers
 from datasets import Dataset as HfDataset
 from modelscope import Model, MsDataset, snapshot_download
 from packaging import version
-from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoConfig, AutoTokenizer
 
@@ -330,7 +329,6 @@ class TestRun(unittest.TestCase):
                         rlhf_type=rlhf_type,
                         model_type=model,
                         dataset=dataset_name,
-                        max_length=4096,
                         train_dataset_sample=100,
                         eval_steps=5))
                 best_model_checkpoint = output['best_model_checkpoint']
@@ -381,7 +379,7 @@ class TestRun(unittest.TestCase):
                 lazy_tokenize=False))
 
 
-def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, Tensor]:
+def data_collate_fn(batch: List[Dict[str, Any]], tokenizer) -> Dict[str, torch.Tensor]:
     # text-classification
     assert tokenizer.pad_token_id is not None
     input_ids = [torch.tensor(b['input_ids']) for b in batch]
