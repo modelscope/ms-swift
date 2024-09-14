@@ -353,20 +353,21 @@ def load_ms_dataset(dataset_id: str,
             else:
                 force_redownload = strtobool(os.environ.get('FORCE_REDOWNLOAD', 'False'))
             download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
-            try:
-                dataset = MsDataset.load(
-                    dataset_id,
-                    subset_name=subset_name,
-                    split=split,
-                    version=revision or 'master',
-                    download_mode=download_mode,
-                    use_streaming=streaming)
-            except ValueError as e:
-                logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
-                             f'split={split} with error: {e}')
-                continue
-            except Exception:
-                raise
+            with safe_ddp_context():
+                for i in range(5):
+                    try:
+                        dataset = MsDataset.load(
+                            dataset_id,
+                            subset_name=subset_name,
+                            split=split,
+                            version=revision or 'master',
+                            download_mode=download_mode,
+                            use_streaming=streaming)
+                    except Exception as e:
+                        logger.error(f'Dataset {dataset_id} load failed: subset_name={subset_name},'
+                                     f'split={split} with error: {e}')
+                    else:
+                        break
             if streaming and hasattr(dataset, '_hf_ds'):
                 dataset = dataset._hf_ds
                 if not isinstance(dataset, HfIterableDataset):
@@ -474,15 +475,8 @@ def get_dataset_from_repo(dataset_id: str,
     else:
         subset_split_list = list(itertools.product(subsets, split))
 
-    with safe_ddp_context():
-        for i in range(5):
-            try:
-                dataset = load_ms_dataset(
-                    dataset_id, subset_split_list, use_hf, streaming=streaming, revision=kwargs.get('revision'))
-            except Exception:
-                logger.error(f'Download failed, Attempt {i+1}..')
-            else:
-                break
+    dataset = load_ms_dataset(
+        dataset_id, subset_split_list, use_hf, streaming=streaming, revision=kwargs.get('revision'))
 
     return _post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
                             remove_useless_columns, **kwargs)
