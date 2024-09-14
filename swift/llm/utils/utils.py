@@ -29,11 +29,10 @@ from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
-from transformers.utils import is_torch_npu_available, strtobool
+from transformers.utils import is_torch_npu_available
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, safe_ddp_context, stat_array, upper_bound,
-                         use_torchacc)
+from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, stat_array, upper_bound, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
 
@@ -71,22 +70,6 @@ def download_dataset(model_id: str, files: List[str], force_download: bool = Fal
             shutil.copy2(temp_fpath, local_fpath)
 
     return local_dir
-
-
-use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-if not use_hf:
-    from modelscope import MsDataset
-
-    _old_msdataset_load = MsDataset.load
-
-    @wraps(_old_msdataset_load)
-    def _msdataset_ddp_load(*args, **kwargs):
-        with safe_ddp_context():
-            dataset = _old_msdataset_load(*args, **kwargs)
-        return dataset
-
-    # monkey patching
-    MsDataset.load = _msdataset_ddp_load
 
 
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
