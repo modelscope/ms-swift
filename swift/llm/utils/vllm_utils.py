@@ -9,7 +9,6 @@ import torch
 import vllm
 from modelscope import GenerationConfig
 from packaging import version
-from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
@@ -29,7 +28,7 @@ logger = get_logger()
 
 def get_vllm_engine(
         model_type: str,
-        torch_dtype: Optional[Dtype] = None,
+        torch_dtype: Optional[torch.dtype] = None,
         *,
         model_id_or_path: Optional[str] = None,
         revision: Optional[str] = None,
@@ -148,8 +147,8 @@ def get_vllm_engine(
             parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
         else:
             parameters = VllmGenerationConfig.__annotations__
-        for k in kwargs.copy().keys():
-            if k not in parameters:
+        for k, v in kwargs.copy().items():
+            if k not in parameters or v is None:
                 kwargs.pop(k)
         llm_engine.generation_config = VllmGenerationConfig(**kwargs)
     else:
@@ -162,7 +161,7 @@ class _VllmGenerationConfigMixin:
     def __setattr__(self, key: str, value: str) -> None:
         if key == 'max_new_tokens':
             self.max_tokens = value
-        elif key == 'do_sample':
+        elif key == 'do_sample' and hasattr(self, '_temperature'):
             assert value in {True, False}
             super().__setattr__('temperature', self._temperature if value else 0)
         elif key == 'max_length':
@@ -381,7 +380,7 @@ def inference_stream_vllm(
         return
     start_runtime = time.perf_counter()
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -514,7 +513,7 @@ def inference_vllm(llm_engine: LLMEngine,
         return resp_list
 
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)

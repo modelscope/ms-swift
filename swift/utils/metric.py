@@ -3,7 +3,7 @@
 from typing import Dict, Literal
 
 import numpy as np
-from torch import Tensor
+import torch
 from transformers.trainer_utils import EvalPrediction
 
 from .logger import get_logger
@@ -52,7 +52,7 @@ def compute_nlg_metrics(prediction, tokenizer):
 
 def compute_acc_metrics(eval_prediction: EvalPrediction,
                         acc_strategy: Literal['token', 'sentence'] = 'token',
-                        is_encoder_decoder: bool = False) -> Dict[str, Tensor]:
+                        is_encoder_decoder: bool = False) -> Dict[str, torch.Tensor]:
     if is_encoder_decoder:
         labels = eval_prediction.label_ids[..., :]
         predictions = eval_prediction.predictions[..., :]
@@ -72,7 +72,7 @@ def compute_acc_metrics(eval_prediction: EvalPrediction,
     return {'acc': acc}
 
 
-def preprocess_logits_for_metrics(logits: Tensor, labels: Tensor) -> Tensor:
+def preprocess_logits_for_metrics(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     if isinstance(logits, (list, tuple)):
         logits = logits[0]
     preds = logits.argmax(dim=-1)

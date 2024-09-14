@@ -16,12 +16,11 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets
 from packaging import version
-from torch import dtype as Dtype
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
-from swift.trainers import LOSS_MAPPING, Seq2SeqTrainingArguments
+from swift.trainers import LOSS_MAPPING, TrainerFactory
 from swift.tuners import Swift
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
@@ -144,7 +143,7 @@ class ArgumentsBase:
             logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
                         f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
-    def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
+    def select_dtype(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[torch.dtype], bool, bool]:
         if not is_torch_cuda_available() and not is_torch_npu_available():
             # cpu
             if self.dtype == 'AUTO':
@@ -191,7 +190,7 @@ class ArgumentsBase:
             fp16, bf16 = False, False
         return torch_dtype, fp16, bf16
 
-    def select_bnb(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[Dtype], bool, bool]:
+    def select_bnb(self: Union['SftArguments', 'InferArguments']) -> Tuple[Optional[torch.dtype], bool, bool]:
         if self.bnb_4bit_comp_dtype == 'AUTO':
             self.bnb_4bit_comp_dtype = self.dtype
 
@@ -1173,15 +1172,16 @@ class SftArguments(ArgumentsBase):
         self.handle_generation_config()
 
     def _init_training_args(self) -> None:
+        self.train_type = self.rlhf_type if hasattr(self, 'rlhf_type') else 'sft'
+        training_args_cls, kwargs = TrainerFactory.get_training_args_info(self)
         additional_saved_files = []
         if self.sft_type == 'full':
             additional_saved_files = get_additional_saved_files(self.model_type)
 
-        kwargs = {}
         if self.neftune_backend != 'swift':
             kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
-        parameters = inspect.signature(Seq2SeqTrainingArguments.__init__).parameters
+        parameters = inspect.signature(training_args_cls.__init__).parameters
         for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size']:
             if k in parameters:
                 kwargs[k] = getattr(self, k)
@@ -1193,7 +1193,7 @@ class SftArguments(ArgumentsBase):
         if 'accelerator_config' in parameters:
             kwargs['accelerator_config'] = {'dispatch_batches': False}
 
-        training_args = Seq2SeqTrainingArguments(
+        training_args = training_args_cls(
             output_dir=self.output_dir,
             logging_dir=self.logging_dir,
             per_device_train_batch_size=self.batch_size,
@@ -1220,7 +1220,6 @@ class SftArguments(ArgumentsBase):
             metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
             greater_is_better=self.predict_with_generate,
             full_determinism=self.full_determinism,
-            sortish_sampler=True,
             optim=self.optim,
             adam_beta1=self.adam_beta1,
             adam_beta2=self.adam_beta2,
@@ -1234,7 +1233,6 @@ class SftArguments(ArgumentsBase):
             ignore_data_skip=self.ignore_data_skip,
             ddp_backend=self.ddp_backend,
             gradient_checkpointing=self.gradient_checkpointing,
-            predict_with_generate=self.predict_with_generate,
             local_rank=self.local_rank,
             save_only_model=self.save_only_model,
             train_sampler_random=self.train_sampler_random,
@@ -1251,6 +1249,7 @@ class SftArguments(ArgumentsBase):
             fsdp_config=self.fsdp_config,
             dataloader_drop_last=self.dataloader_drop_last,
             seed=self.seed,
+            data_seed=self.dataset_seed,
             loss_name=self.loss_name,
             **kwargs)
 
@@ -1471,7 +1470,7 @@ class InferArguments(ArgumentsBase):
                 self.eval_human = True
             else:
                 self.eval_human = False
-            logger.info(f'Setting self.eval_human: {self.eval_human}')
+            logger.info(f'Setting args.eval_human: {self.eval_human}')
         elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
             raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
 
@@ -1534,9 +1533,9 @@ class InferArguments(ArgumentsBase):
             self.lora_request_list, self.use_dora = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
-        if self.num_beams != 1:
+        if self.num_beams != 1 or not template_info.get('stream', True):
             self.stream = False
-            logger.info('Setting self.stream: False')
+            logger.info('Setting args.stream: False')
         self.infer_media_type = template_info.get('infer_media_type', 'none')
         if self.infer_media_type == 'none' and self.is_multimodal:
             self.infer_media_type = 'interleave'
@@ -1639,10 +1638,10 @@ class EvalArguments(InferArguments):
             super().handle_infer_backend()
 
     def _is_multimodal(self, model_type: Optional[str] = None) -> bool:
-        return False
+        return False if self.eval_url is not None else super()._is_multimodal(model_type)
 
     def _is_vision(self, model_type: Optional[str] = None) -> bool:
-        return False
+        return False if self.eval_url is not None else super()._is_vision(model_type)
 
 
 @dataclass
@@ -1744,91 +1743,49 @@ class RLHFArguments(SftArguments):
     rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-
     ref_model_id_or_path: Optional[str] = None
-    ref_model_free: bool = False
-    max_prompt_length: Optional[int] = None
+    ref_model_revision: Optional[str] = None
+
     beta: Optional[float] = None
-    label_smoothing: float = 0.0
+    label_smoothing: float = 0
+    # dpo: 'sigmoid', 'hinge', 'ipo', 'exo_pair', 'nca_pair', 'robust', 'bco_pair',
+    #      'sppo_hard', 'aot', 'aot_pair', 'apo_zero', 'apo_down'
+    # cpo: 'sigmoid', 'hinge', 'ipo', 'simpo'
     loss_type: Optional[str] = None
-    truncation_mode: Literal['keep_end', 'keep_start'] = 'keep_end'
     # DPO
-    sft_beta: float = 0.1
+    # The alpha parameter from the [RPO](https://huggingface.co/papers/2404.19733) paper V3.
+    # The paper recommends `rpo_alpha=1.0`.
+    rpo_alpha: float = 1.
+    # CPO
+    cpo_alpha: float = 1.
     # SimPO
-    simpo_gamma: float = 1.0  # reward margin hyperparameter in SimPO
-    cpo_alpha: float = 1.0
+    simpo_gamma: float = 1
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
+        self._check_simpo()
+        self._set_default()
+        self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
         super().__post_init__()
-        # without reference model
-        self.ref_model_free = self.rlhf_type in ['orpo', 'simpo', 'cpo']
-        if self.rlhf_type == 'simpo':
-            self.loss_type = 'simpo'
-        self.set_default_beta()
-        self.set_default_loss_type()
-        self.set_default_config()
-        self.check_loss_type()
-        self.set_default_max_prompt_length()
 
-    def set_default_beta(self):
-        if self.beta is None:
-            if self.rlhf_type in ['dpo', 'orpo', 'kto', 'cpo']:
-                self.beta = 0.1
-            elif self.rlhf_type == 'simpo':
-                self.beta = 2.0
-
-    def set_default_config(self):
-        from importlib import import_module
-        from dataclasses import fields, MISSING
-        CONFIG_MAPPING = {
-            'orpo': 'trl.trainer.orpo_config.ORPOConfig',
-            'kto': 'trl.trainer.kto_config.KTOConfig',
-            'simpo': 'trl.trainer.cpo_config.CPOConfig',
-            'cpo': 'trl.trainer.cpo_config.CPOConfig',
-            'dpo': 'trl.trainer.dpo_config.DPOConfig'
-        }
-        if self.rlhf_type in CONFIG_MAPPING:
-            config_path = CONFIG_MAPPING[self.rlhf_type]
-            module_path, config_name = config_path.rsplit('.', 1)
-            config_module = import_module(module_path)
-            cls = getattr(config_module, config_name, None)
-            assert cls is not None
-            for f in fields(cls):
-                if hasattr(self.training_args, f.name):
-                    continue
-                elif hasattr(self, f.name):
-                    setattr(self.training_args, f.name, getattr(self, f.name))
-                elif f.default != MISSING:
-                    setattr(self.training_args, f.name, f.default)
-                elif f.default_factory != MISSING:
-                    setattr(self.training_args, f.name, f.default_factory())
-
-    def check_loss_type(self):
-        supported_loss_types = {
-            'dpo':
-            ['sigmoid', 'hinge', 'ipo', 'bco_pair', 'sppo_hard', 'nca_pair', 'robust', 'aot', 'aot_pair', 'exo_pair'],
-            'cpo': ['sigmoid', 'hinge', 'ipo', 'simpo'],
-            'kto': ['kto', 'bco']
-        }
-        if self.rlhf_type in supported_loss_types:
-            assert self.loss_type in supported_loss_types.get(self.rlhf_type), \
-                f"algo {self.rlhf_type} doesn't support loss type {self.loss_type}"
-
-    def set_default_loss_type(self):
-        if self.loss_type is not None:
+    def _check_simpo(self):
+        if self.rlhf_type != 'simpo':
             return
-        if self.rlhf_type in ['dpo', 'cpo']:
-            self.loss_type = 'sigmoid'
-        elif self.rlhf_type == 'kto':
-            self.loss_type = 'kto'
 
-    def set_default_max_prompt_length(self):
-        if self.max_prompt_length is None:
-            self.max_prompt_length = 4096 if self.is_vision else 512
-            logger.info(f'setting default max_prompt_length: {self.max_prompt_length}')
+        self.rlhf_type = 'cpo'
+        if self.loss_type is None:
+            self.loss_type = 'simpo'
+        if self.beta is None:
+            self.beta = 2.
+
+    def _set_default(self):
+        if self.beta is None:
+            self.beta = 0.1
+        if self.loss_type is None:
+            if self.rlhf_type in ['dpo', 'cpo']:
+                self.loss_type = 'sigmoid'  # else None
 
 
 @dataclass
