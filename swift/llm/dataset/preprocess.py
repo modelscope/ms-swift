@@ -8,8 +8,8 @@ from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 from transformers.utils import strtobool
 
+from swift.llm.dataset.media import MediaMixin
 from swift.utils import get_logger
-from swift.llm.dataset.media import MediaTag
 from swift.llm.utils.template import History
 
 dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False'))
@@ -59,53 +59,6 @@ def _reduce_columns(cls: type) -> type:
     cls.preprocess = new_preprocess
 
     return cls
-
-
-def parse_medias(d: Dict[str, Any], media_key=None):
-    if isinstance(media_key, str):
-        if media_key in d:
-            medias = d[media_key]
-        else:
-            medias = None
-    elif media_key:  # function
-        medias = media_key(d)
-    else:
-        medias = None
-    return medias
-
-
-class MediaMixin:
-
-    def __init__(self,
-                 media_key: Union[str, Callable] = 'image',
-                 media_tag: str = '<image>',
-                 media_type: Literal['image', 'audio', 'video'] = None):
-        self.media_key = media_key
-        self.media_tag = media_tag
-        self.media_type = media_type
-        self.media_replacer = MediaTag(media_type, media_tag)
-
-    @property
-    def media_name(self):
-        if not self.media_type:
-            return None
-        return self.media_replacer.media_keys[self.media_type]
-
-    def parse_medias(self, d: Dict[str, Any]):
-        return parse_medias(d, self.media_key)
-
-    @property
-    def empty_row(self):
-        empty_row = {
-            'query': None,
-            'response': None,
-            'tools': None,
-            'system': None,
-            'history': None,
-        }
-        if self.media_type and not isinstance(self.media_key, str):
-            empty_row[self.media_name] = None
-        return empty_row
 
 
 class RowPreprocessMixin:

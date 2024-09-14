@@ -1,7 +1,7 @@
 import hashlib
 import os
 import shutil
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union, Callable
 
 import numpy as np
 from modelscope.hub.utils.utils import get_cache_dir
@@ -11,9 +11,9 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
-class MediaTag:
+class MediaProcessor:
 
-    task_prompts = {
+    grounding_prompts = {
         'ref_grounding': {
             'en': [('<ref-object>', '<bbox>'), ('The positions of <ref-object> is', '<bbox>'),
                    ('Find the positions of <ref-object>', '<bbox>'), ('Where is <ref-object>', '<bbox>'),
@@ -68,32 +68,15 @@ class MediaTag:
         self.task_type = task_type
         self.media_tag = media_tag or '<unused_tag>'
 
-    def __call__(self, d: Dict[str, Any], medias: Union[tuple, list]) -> None:
-        """Format the query/response/history with medias
+    def construct_grounding_prompt(self):
+        lang = np.random.choice(['en', 'zh'], p=[0.8, 0.2])
+        prompts = self.grounding_prompts[self.task_type][lang]
+        query, response = prompts[np.random.choice(range(len(prompts)))]
+        return query, response
 
-        Args:
-            d: A dict contains history/query/response
-            medias: A list of medias(one round, multiple medias),
-                    a single media(one round, one media), or a tuple of media list(multiple rounds)
-        """
-        if not self.media_type:
-            return
-
+    def replace_standard_tag(self, query, response, history, medias):
         media_cnt = len(medias) if isinstance(medias, (tuple, list)) else 1 if medias else 0
-
-        history = d.get('history') or []
-        query = d.get('query')
-        response = d.get('response')
-        if self.task_type == 'caption_with_grounding':
-            pass
-        elif self.task_type in ('ref_grounding', 'grounding_caption'):
-            lang = np.random.choice(['en', 'zh'], p=[0.8, 0.2])
-            prompts = self.task_prompts[self.task_type][lang]
-            query, response = prompts[np.random.choice(range(len(prompts)))]
-        elif self.task_type == 'ocr':
-            raise NotImplementedError
-        else:
-            pass
+        # like <image>, etc
         standard_tag = self.standard_tags[self.media_type]
 
         all_queries = ''.join([h[0] for h in history]) + query
@@ -103,6 +86,28 @@ class MediaTag:
                 h[0] = h[0].replace(self.media_tag, standard_tag)
 
             query = query.replace(self.media_tag, standard_tag)
+        return query, response, history
+
+    def preprocess_media_prompts(self, d: Dict[str, Any], medias: Union[tuple, list]) -> None:
+        """Format the query/response/history with medias:
+        1. Construct the ref_grounding/grounding_caption
+
+        Args:
+            d: A dict contains history/query/response, this dict will be inplace changed
+            medias: A list of medias(one round, multiple medias),
+                    a single media(one round, one media), or a tuple of media list(multiple rounds)
+        """
+        if not self.media_type:
+            return
+
+        history = d.get('history') or []
+        query = d.get('query')
+        response = d.get('response')
+
+        if self.task_type in ('ref_grounding', 'grounding_caption'):
+            query, response = self.construct_grounding_prompt()
+
+        query, response, history = self.replace_standard_tag(query, response, history, medias)
 
         if 'history' in d:
             d['history'] = history
@@ -110,7 +115,7 @@ class MediaTag:
         d['response'] = response
 
 
-class MediaCache:
+class MediaResource:
 
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
     lock_dir = os.path.join(get_cache_dir(), 'lockers')
@@ -126,7 +131,7 @@ class MediaCache:
     def get_url(media_type):
         is_ocr_vqa = (media_type == 'ocr_vqa')
         extension = 'tar' if is_ocr_vqa else 'zip'
-        return f'{MediaCache.URL_PREFIX}{media_type}.{extension}'
+        return f'{MediaResource.URL_PREFIX}{media_type}.{extension}'
 
     @staticmethod
     def download(media_type_or_url: str, local_alias: Optional[str] = None):
@@ -146,20 +151,20 @@ class MediaCache:
         from swift.utils import safe_ddp_context
         from datasets.utils.filelock import FileLock
         file_path = hashlib.md5(media_type_or_url.encode('utf-8')).hexdigest() + '.lock'
-        file_path = os.path.join(MediaCache.lock_dir, file_path)
-        os.makedirs(MediaCache.lock_dir, exist_ok=True)
+        file_path = os.path.join(MediaResource.lock_dir, file_path)
+        os.makedirs(MediaResource.lock_dir, exist_ok=True)
         with safe_ddp_context():
             with FileLock(file_path):
-                return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias)
+                return MediaResource._safe_download(media_type=media_type_or_url, media_name=local_alias)
 
     @staticmethod
     def _safe_download(media_type, media_name=None):
         media_name = media_name or media_type
-        if media_type in MediaCache.media_type_urls:
-            media_type = MediaCache.get_url(media_type)
+        if media_type in MediaResource.media_type_urls:
+            media_type = MediaResource.get_url(media_type)
 
         from datasets.download.download_manager import DownloadManager, DownloadConfig
-        final_folder = os.path.join(MediaCache.cache_dir, media_name)
+        final_folder = os.path.join(MediaResource.cache_dir, media_name)
         if os.path.exists(final_folder):
             return final_folder
 
@@ -171,17 +176,61 @@ class MediaCache:
                     'you can manually download the resources and extracting to the local dir.')
         logger.info('Now begin.')
         local_dirs = DownloadManager(download_config=DownloadConfig(
-            cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
+            cache_dir=MediaResource.cache_dir)).download_and_extract(media_type)
         shutil.move(str(local_dirs), final_folder)
         logger.info('# #################Resource downloading finished#################')
         return final_folder
 
     @staticmethod
     def safe_save(image, file_name, folder, format='JPEG'):
-        folder = os.path.join(MediaCache.cache_dir, folder)
+        folder = os.path.join(MediaResource.cache_dir, folder)
         os.makedirs(folder, exist_ok=True)
         file = os.path.join(folder, file_name)
         if os.path.exists(file):
             return file
         image.save(file, format=format)
         return file
+
+
+class MediaMixin:
+
+    def __init__(self,
+                 media_key: Union[str, Callable] = 'image',
+                 media_tag: str = '<image>',
+                 media_type: Literal['image', 'audio', 'video'] = None):
+        self.media_key = media_key
+        self.media_tag = media_tag
+        self.media_type = media_type
+        self.media_processor = MediaProcessor(media_type, media_tag)
+
+    @property
+    def media_name(self):
+        if not self.media_type:
+            return None
+        return self.media_processor.media_keys[self.media_type]
+
+    def parse_media_from_row(self, d: Dict[str, Any]):
+        media_key = self.media_key
+        if isinstance(media_key, str):
+            if media_key in d:
+                medias = d[media_key]
+            else:
+                medias = None
+        elif media_key:  # function
+            medias = media_key(d)
+        else:
+            medias = None
+        return medias
+
+    @property
+    def empty_row(self):
+        empty_row = {
+            'query': None,
+            'response': None,
+            'tools': None,
+            'system': None,
+            'history': None,
+        }
+        if self.media_type and not isinstance(self.media_key, str):
+            empty_row[self.media_name] = None
+        return empty_row
