@@ -368,6 +368,8 @@ def load_ms_dataset(dataset_id: str,
                                      f'split={split} with error: {e}')
                     else:
                         break
+                else:
+                    continue
             if streaming and hasattr(dataset, '_hf_ds'):
                 dataset = dataset._hf_ds
                 if not isinstance(dataset, HfIterableDataset):
