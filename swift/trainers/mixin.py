@@ -695,13 +695,6 @@ class RLHFTrainerMixin:
             model = ModelWrapper(model, ref_model)
         super().__init__(model, *_args, **kwargs)
 
-    # def train(self, resume_from_checkpoint: Optional[Union[str, bool]] = None, *args, **kwargs) -> torch.Tensor:
-    #     from transformers import trainer
-
-    #     def _deepspeed_load_checkpoint(*args, **kwargs)
-    #     trainer.deepspeed_load_checkpoint
-    #     def deepspeed_load_checkpoint
-
     def _save_checkpoint(self, model, trial, metrics=None):
         context = nullcontext()
         if hasattr(model, '_save_load_context'):

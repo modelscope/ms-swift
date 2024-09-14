@@ -29,11 +29,10 @@ from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
-from transformers.utils import is_torch_npu_available, strtobool
+from transformers.utils import is_torch_npu_available
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, safe_ddp_context, stat_array, upper_bound,
-                         use_torchacc)
+from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, stat_array, upper_bound, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
 
