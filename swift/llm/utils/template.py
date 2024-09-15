@@ -740,10 +740,19 @@ class Template:
                 if to_type == 'real':
                     continue
                 width, height = image.width, image.height
-                object['bbox'] = [
-                    int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
-                    for coord, dim in zip(bbox, [width, height, width, height])
-                ]
+                if isinstance(bbox[0], list):
+                    bboxes = []
+                    for _box in bbox:
+                        bboxes.append([
+                            int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
+                            for coord, dim in zip(_box, [width, height, width, height])
+                        ])
+                    object['bbox'] = bboxes
+                else:
+                    object['bbox'] = [
+                        int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
+                        for coord, dim in zip(bbox, [width, height, width, height])
+                    ]
                 object['bbox_type'] = to_type
             elif bbox_type == 'norm_1000':
                 if to_type == 'norm_1000':
