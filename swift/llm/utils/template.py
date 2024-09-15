@@ -715,7 +715,14 @@ class Template:
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [f'({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})']
+            if isinstance(object_['bbox'][0], list):
+                all_objects = ''
+                for sub_object in object_['bbox']:
+                    all_objects += (f'[({sub_object[0]},{sub_object[1]}),' f'({sub_object[2]},{sub_object[3]})],')
+                all_objects = all_objects[:-1]
+                return [all_objects]
+            else:
+                return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
         else:
             return ['<bbox>']
 
@@ -1230,7 +1237,16 @@ class _QwenVLTemplateMixin:
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
         object_ = objects[index]
-        return [f'<box>({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})</box>']
+        if isinstance(object_['bbox'][0], list):
+            all_objects = ''
+            for sub_object in object_['bbox']:
+                all_objects += (f'<box>({sub_object[0]},{sub_object[1]}),' f'({sub_object[2]},{sub_object[3]})</box>')
+            return [all_objects]
+        else:
+            return [
+                f'<box>({object_["bbox"][0]},{object_["bbox"][1]}),'
+                f'({object_["bbox"][2]},{object_["bbox"][3]})</box>'
+            ]
 
 
 register_template(TemplateType.qwen, QwenTemplate())
@@ -1402,10 +1418,17 @@ class Qwen2VLTemplate(QwenTemplate):
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [
-                f'<|box_start|>({object_["bbox"][0]},{object_["bbox"][1]}),'
-                f'({object_["bbox"][2]},{object_["bbox"][3]})<|box_end|>'
-            ]
+            if isinstance(object_['bbox'][0], list):
+                all_objects = ''
+                for sub_object in object_['bbox']:
+                    all_objects += (f'<|box_start|>({sub_object[0]},{sub_object[1]}),'
+                                    f'({sub_object[2]},{sub_object[3]})<|box_end|>')
+                return [all_objects]
+            else:
+                return [
+                    f'<|box_start|>({object_["bbox"][0]},{object_["bbox"][1]}),'
+                    f'({object_["bbox"][2]},{object_["bbox"][3]})<|box_end|>'
+                ]
         else:
             return ['<bbox>']
 
@@ -2010,10 +2033,18 @@ class Internvl2Template(InternvlTemplate):
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
-            return [
-                f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, '
-                f'{object_["bbox"][2]}, {object_["bbox"][3]}]] </box>'
-            ]
+            if isinstance(object_['bbox'][0], list):
+                all_objects = '<box> ['
+                for sub_object in object_['bbox']:
+                    all_objects += (f'[{sub_object[0]}, {sub_object[1]}, ' f'{sub_object[2]}, {sub_object[3]}],')
+                all_objects = all_objects[:-1]
+                all_objects += '] </box>'
+                return [all_objects]
+            else:
+                return [
+                    f'<box> [[{object_["bbox"][0]}, {object_["bbox"][1]}, '
+                    f'{object_["bbox"][2]}, {object_["bbox"][3]}]] </box>'
+                ]
         else:
             return ['<bbox>']
 
@@ -2116,8 +2147,16 @@ class FlorenceTemplate(Template):
         return
 
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
-        x1, y1, x2, y2 = example['objects'][index]['bbox']
-        return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
+        object_ = example['objects'][index]
+        if isinstance(object_['bbox'][0], list):
+            all_objects = ''
+            for sub_object in object_['bbox']:
+                x1, y1, x2, y2 = sub_object
+                all_objects += f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>,'
+            return [all_objects[:-1]]
+        else:
+            x1, y1, x2, y2 = object_['bbox']
+            return [f'<loc_{x1}><loc_{y1}><loc_{x2}><loc_{y2}>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         query = example['query']
@@ -2637,8 +2676,8 @@ register_template(TemplateType.phi3_vl, Phi3VisionTemplate(), lazy_tokenize=True
 
 class Llama3LlavaNextTemplate(Llama3TemplateMixin, LLavaTemplate):
     system = 'You are a helpful language and vision assistant. ' \
-                     'You are able to understand the visual content that the user provides, ' \
-                     'and assist the user with a variety of tasks using natural language.'
+             'You are able to understand the visual content that the user provides, ' \
+             'and assist the user with a variety of tasks using natural language.'
 
 
 register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=True, lazy_tokenize=True)
@@ -3215,6 +3254,16 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         image_embeds = model.forward_image(data['pixel_values'])
         return {'image_embeds': image_embeds}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to)
+        image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        if image_embeds:
+            res['image_embeds'] = torch.concat(image_embeds)
+        media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+        if media_offset:
+            res['media_offset'] = torch.concat(media_offset)
+        return res
 
 
 register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)
