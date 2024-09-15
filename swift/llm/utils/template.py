@@ -1683,6 +1683,7 @@ class Llama3TemplateMixin:
                 '<|start_header_id|>assistant<|end_header_id|>\n\n'
             ], ['<|eot_id|>'], ['<|eot_id|>'],
             self.system, ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'],
+            tools_prompt='toolbench',
             tool_prompt=[
                 '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
                 '<|start_header_id|>assistant<|end_header_id|>\n\n'
