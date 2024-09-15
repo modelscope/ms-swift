@@ -1,14 +1,14 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import os
+from copy import copy
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
+import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 from transformers.utils import strtobool
-
-from swift.llm.dataset.media import MediaMixin
 from swift.utils import get_logger
 from swift.llm.utils.template import History
 
@@ -20,79 +20,162 @@ PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 
 
-def _reduce_columns(cls: type) -> type:
-    # Remove unnecessary columns from the output dataset.
-    if getattr(cls, '_patching', False):
-        return cls
+class GroundingMixin:
 
-    call_func = cls.__call__
-    preprocess = cls.preprocess
-    cls._patching = True
+    _grounding_task_type = None
 
-    def new_call_func(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        self.column_state = set(['images', 'videos', 'audios'])
-        dataset = call_func(self, dataset)
-        if isinstance(dataset, HfIterableDataset) and dataset.features is None:
-            features = next(iter(dataset)).keys()
+    _grounding_prompts = {
+        'grounding': {
+            'en': [('<ref-object>', '<bbox>'), ('The positions of <ref-object> is', '<bbox>'),
+                   ('Find the positions of <ref-object>', '<bbox>'), ('Where is <ref-object>', '<bbox>'),
+                   ('Find <ref-object>', '<bbox>'), ('Show me <ref-object>', '<bbox>'),
+                   ('Detect <ref-object>', '<bbox>'), ('Locate <ref-object>', '<bbox>'),
+                   ('Tell me the location of <ref-object>', '<bbox>'), ('Give the location of <ref-object>', '<bbox>'),
+                   ('Provide the bounding box coordinate of <ref-object>', '<bbox>')],
+            'zh': [('<ref-object>', '<bbox>'), ('<ref-object>的位置在图片中', '<bbox>'),
+                   ('<ref-object>在图片中', '<bbox>'),
+                   ('<ref-object>在', '<bbox>'), ('找到<ref-object>的位置', '<bbox>'), ('<ref-object>在哪里', '<bbox>'),
+                   ('提供<ref-object>的坐标位置', '<bbox>')]
+        },
+        'caption': {
+            'en': [
+                ('<bbox>', '<ref-object>'),
+                ('The object at position <bbox>', '<ref-object>'),
+                ('This <bbox> is', '<ref-object>'),
+                ('What is the object at <bbox>', '<ref-object>'),
+                ('Describe <bbox>', '<ref-object>'),
+                ('<bbox> is', '<ref-object>'),
+                ('The bounding box coordinate <bbox> contains', '<ref-object>'),
+            ],
+            'zh': [
+                ('<bbox>', '<ref-object>'),
+                ('<bbox>是什么', '<ref-object>'),
+                ('<bbox>的位置包含', '<ref-object>'),
+                ('描述<bbox>', '<ref-object>'),
+                ('<bbox>中是', '<ref-object>'),
+                ('坐标<bbox>描述了什么', '<ref-object>'),
+                ('描述<bbox>中的事物', '<ref-object>'),
+            ]
+        },
+    }
+
+    @classmethod
+    def construct_grounding_prompt(cls):
+        lang = np.random.choice(['en', 'zh'], p=[0.8, 0.2])
+        prompts = cls._grounding_prompts[cls._grounding_prompts][lang]
+        query, response = prompts[np.random.choice(range(len(prompts)))]
+        return query, response
+
+
+class RowPreprocessor(GroundingMixin):
+
+    _has_history = False
+    _has_system = False
+    _has_tool = False
+    _column_mapping = {}
+    _mapping_kwargs = {
+        'load_from_cache_file': False,
+        'num_proc': 8,
+    }
+
+    _modals = []
+    _modal_tags = []
+    _modal_keys = []
+    _grounding_language_mixin = [0.8, 0.2]
+    _standard_tags = {
+        'image': '<image>',
+        'audio': '<audio>',
+        'video': '<video>',
+    }
+    _standard_keys = {
+        'audio': 'audios',
+        'image': 'images',
+        'video': 'videos',
+    }
+
+    @classmethod
+    def replace_standard_tag(cls, messages, medias, modal):
+        assert len(cls._modal_tags) == len(cls._modals)
+        _modal_tag = None
+        for _modal, _tag in zip(cls._modals, cls._modal_tags):
+            if modal == _modal:
+                _modal_tag = _tag
+        assert _modal_tag is not None
+        media_cnt = len(medias) if isinstance(medias, (tuple, list)) else 1 if medias else 0
+        # like <image>, etc
+        standard_tag = cls._standard_tags[modal]
+        all_content = ''.join([m['content'] for m in messages])
+        if _modal_tag in all_content:
+            # If the messages already have placeholders like `<image>`
+            assert all_content.count(_modal_tag) == media_cnt
+            for m in messages:
+                # Replace to standard tag
+                m['content'] = m['content'].replace(_modal_tag, standard_tag)
         else:
-            features = dataset.features.keys()
-        for k in features:
-            if k not in self.column_state:
-                dataset = dataset.remove_columns([k])
-        return dataset
+            for m in messages:
+                if m['role'] not in ('tool', 'system', 'assistant'):
+                    m['content'] = ''.join([standard_tag] * media_cnt) + m['content']
 
-    def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row = preprocess(self, row)
-        for k, v in row.items():
-            if k == 'query_role':
-                if k not in self.column_state and v and v != 'user':
-                    self.column_state.add(k)
-            elif k == 'history_roles':
-                if k not in self.column_state and v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
-                    self.column_state.add(k)
+        return messages
+
+    @classmethod
+    def parse_media_from_row(cls, row: Dict[str, Any], modal):
+        modal_key = cls._modal_keys[modal]
+        if isinstance(modal_key, str):
+            if modal_key in row:
+                medias = row[modal_key]
             else:
-                if v:
-                    self.column_state.add(k)
+                medias = None
+        elif modal_key:  # function
+            medias = modal_key(row)
+        else:
+            medias = None
+        return medias
+
+    @classmethod
+    def preprocess(cls, row: Dict[str, Any]) -> Dict[str, Any]:
         return row
 
-    cls.__call__ = new_call_func
-    cls.preprocess = new_preprocess
+    @classmethod
+    def filter(cls, row: Dict[str, Any]) -> Dict[str, Any]:
+        return True
 
-    return cls
+    @classmethod
+    def rename_columns(cls, dataset: HfDataset, column_mapping: Dict[str, str]):
+        return dataset.rename_columns(column_mapping)
 
+    @classmethod
+    def __call__(cls, dataset: HfDataset, **kwargs):
+        if cls._modal_keys or cls._modals:
+            assert len(cls._modal_keys) == len(cls._modals)
 
-class RowPreprocessMixin:
+        column_mapping = copy(cls._column_mapping)
+        # Replace un-standard media keys to standard keys
+        for idx, _modal in enumerate(cls._modals):
+            modal_key = cls._modal_keys[idx]
+            standard_key = cls._standard_keys[idx]
+            column_mapping[modal_key] = standard_key
 
-    def preprocess(self, d: Dict[str, Any]) -> Dict[str, Any]:
-        raise NotImplementedError
-
-
-class SwiftPreprocessor:
-
-    def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        if isinstance(dataset, HfIterableDataset):
-            return dataset
-        if 'history' in dataset.features:
-            old_history = dataset['history']
-            has_history = False
-            history: List[History] = []
-            for h in tqdm(old_history):
-                if isinstance(h, str):
-                    h = ast.literal_eval(h)
-                elif h is None:
-                    h = []
-                if len(h) > 0:
-                    has_history = True
-                history.append(h)
-            dataset = dataset.remove_columns(['history'])
-            if has_history:
-                dataset = dataset.add_column('history', history)
-        if 'system' in dataset.features:
-            system = dataset['system']
-            has_system = len([sys for sys in system if sys not in {None, ''}]) > 0
-            if not has_system:
-                dataset = dataset.remove_columns(['system'])
+        if column_mapping:
+            dataset = cls.rename_columns(dataset, column_mapping)
+        if cls.preprocess is not RowPreprocessor.preprocess:
+            dataset = dataset.map(cls.preprocess, **kwargs)
+        if cls.filter is not RowPreprocessor.filter:
+            dataset = dataset.filter(cls.filter, **kwargs)
         return dataset
+
+
+class SwiftPreprocessor(RowPreprocessor):
+
+    @classmethod
+    def preprocess(cls, row: Dict[str, Any]) -> Dict[str, Any]:
+        output = {}
+        if cls._has_history:
+            history = row['history']
+            if isinstance(history, str):
+                history = ast.literal_eval(history)
+                output['history'] = history
+        return output
 
 
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
