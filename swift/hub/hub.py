@@ -391,7 +391,7 @@ class HFHub(HubOperation):
             model_id_or_path, repo_type='model', revision=revision, ignore_patterns=ignore_file_pattern)
 
 
-if _use_hf_hub:
+if use_hf_hub():
     hub = HFHub
 else:
     hub = MSHub
