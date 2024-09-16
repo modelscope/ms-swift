@@ -740,10 +740,19 @@ class Template:
                 if to_type == 'real':
                     continue
                 width, height = image.width, image.height
-                object['bbox'] = [
-                    int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
-                    for coord, dim in zip(bbox, [width, height, width, height])
-                ]
+                if isinstance(bbox[0], list):
+                    bboxes = []
+                    for _box in bbox:
+                        bboxes.append([
+                            int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
+                            for coord, dim in zip(_box, [width, height, width, height])
+                        ])
+                    object['bbox'] = bboxes
+                else:
+                    object['bbox'] = [
+                        int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
+                        for coord, dim in zip(bbox, [width, height, width, height])
+                    ]
                 object['bbox_type'] = to_type
             elif bbox_type == 'norm_1000':
                 if to_type == 'norm_1000':
@@ -1677,11 +1686,17 @@ class Llama3TemplateMixin:
     system = None
 
     def __init__(self):
-        Template.__init__(self, ['<|begin_of_text|>'], [
-            '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-            '<|start_header_id|>assistant<|end_header_id|>\n\n'
-        ], ['<|eot_id|>'], ['<|eot_id|>'], self.system,
-                          ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
+        Template.__init__(
+            self, ['<|begin_of_text|>'], [
+                '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+                '<|start_header_id|>assistant<|end_header_id|>\n\n'
+            ], ['<|eot_id|>'], ['<|eot_id|>'],
+            self.system, ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'],
+            tools_prompt='toolbench',
+            tool_prompt=[
+                '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+                '<|start_header_id|>assistant<|end_header_id|>\n\n'
+            ])
 
 
 class Llama3Template(Llama3TemplateMixin, Template):
