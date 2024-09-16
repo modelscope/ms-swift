@@ -10,6 +10,7 @@ import numpy as np
 from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
 from numpy.random import RandomState
+from swift.llm import get_dataset_from_repo
 from swift.llm.utils.dataset import get_local_dataset
 from tqdm import tqdm
 
@@ -99,6 +100,13 @@ def register_local_dataset(
         # Convert relative path to absolute path
         base_dir: Optional[str] = None,
         **kwargs) -> None:
+    """Register local data files to data mapping
+
+    Args:
+        dataset_name: The dataset name
+        dataset_path: The dataset file path
+        base_dir: The base dir of the dataset files
+    """
     if dataset_path is None:
         dataset_path = []
     elif isinstance(dataset_path, str):
@@ -114,12 +122,11 @@ def register_local_dataset(
 
 
 def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
-    """Register dataset to dataset mapping
+    """Register a single dataset to dataset mapping
 
     Args:
         dataset_name: The dataset name
         d_info: The dataset info
-
     """
     if 'columns' in d_info:
         preprocess_func = RenameColumnsPreprocessor(d_info['columns'])
@@ -131,21 +138,23 @@ def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs)
         d_info['preprocess_func'] = preprocess_func
 
     if 'dataset_path' in d_info:
+        # register local dataset
         base_dir = kwargs.pop('base_dir', None)
         register_local_dataset(dataset_name, d_info.pop('dataset_path', None), base_dir, **d_info)
         return
+    else:
+        # register dataset from hub
+        assert 'dataset_id' in d_info or 'hf_dataset_id' in d_info
+        dataset_id = d_info.pop('dataset_id', None)
+        subsets = d_info.pop('subsets', None)
+        preprocess_func = d_info.pop('preprocess_func', None)
+        register_dataset(dataset_name, dataset_id, subsets, preprocess_func, get_dataset_from_repo, **d_info,
+                         exist_ok=True)
 
-    assert 'dataset_id' in d_info or 'hf_dataset_id' in d_info
 
-    dataset_id = d_info.pop('dataset_id', None)
-    subsets = d_info.pop('subsets', None)
-    preprocess_func = d_info.pop('preprocess_func', None)
-    register_dataset(dataset_name, dataset_id, subsets, preprocess_func, get_dataset_from_repo, **d_info,
-                     exist_ok=True)
-
-
-def register_dataset_from_file(dataset_info_path: Optional[str] = None) -> None:
+def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:
     """Register dataset from the `dataset_info.json` or a custom dataset info file
+    This is used to deal with the datasets defined in the json info file.
 
     Args:
         dataset_info_path: The dataset info path
@@ -172,4 +181,4 @@ def register_dataset_from_file(dataset_info_path: Optional[str] = None) -> None:
     logger.info(f'Successfully registered `{dataset_info_path}`')
 
 
-register_dataset_from_file()
+register_dataset_info_file()

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Literal
 
 import numpy as np
 import torch.distributed as dist
@@ -87,6 +87,27 @@ def format_time(seconds):
         time_str = f'{seconds}s'
 
     return time_str
+
+
+def _safe_split(s: str,
+                sep: str,
+                use_0: bool,
+                split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
+    # use_0: When the length of the part is 1, is it considered as part0 or part1.
+    if s is None or len(s) == 0:
+        return None, None
+    if split_mode == 'left':
+        part = s.split(sep, 1)
+    else:
+        part = s.rsplit(sep, 1)
+    if len(part) == 1:
+        if use_0:
+            part = part[0], None
+        else:
+            part = None, part[0]
+    else:
+        assert len(part) == 2
+    return part
 
 
 def seed_everything(seed: Optional[int] = None, full_determinism: bool = False, *, verbose: bool = True) -> int:
