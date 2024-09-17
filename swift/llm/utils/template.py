@@ -329,7 +329,6 @@ class Template:
                 if 'inputs_embeds' in kwargs:
                     kwargs.pop('input_ids', None)
 
-            
             if isinstance(module, PeftModel):
                 parameters = inspect.signature(module.base_model.model.forward).parameters
             else:
