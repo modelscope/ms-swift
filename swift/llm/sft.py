@@ -54,6 +54,7 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
             streaming_buffer_size=args.streaming_buffer_size)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
+    # The random shuffling of the training set occurs in the dataloader of the trainer.
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     return train_dataset, val_dataset
