@@ -1,14 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import itertools
 import os
+import shutil
 from abc import ABC, abstractmethod
+from tempfile import TemporaryDirectory
 from typing import List, Literal, Optional, Tuple, Union, Dict, Any, Callable
 
 import numpy as np
 from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
+from modelscope.utils.config_ds import MS_CACHE_HOME
 from numpy.random import RandomState
 from pandas import DataFrame
+from swift.llm.utils.utils import download_files
+
+from swift.hub import ModelScopeConfig
 from tqdm import tqdm
 from transformers.utils import strtobool
 
@@ -186,6 +192,38 @@ class DatasetLoader(ABC):
                 dataset = cls.remove_useless_columns(dataset)
             res.append(dataset)
         return tuple(res)
+
+    @classmethod
+    def download_dataset(cls, dataset_id: str, files: List[str], force_download: bool = False) -> str:
+        """Download dataset from repo manually
+
+        Args:
+            dataset_id: The dataset id of ModelScope
+            files: Which files to download
+            force_download: Force download or not
+
+        Returns:
+            The dataset dir
+        """
+        assert isinstance(files, list)
+        url = f'http://www.modelscope.cn/api/v1/datasets/{dataset_id}/repo?Revision=master&FilePath={{fpath}}'
+        cache_dir = os.path.join(MS_CACHE_HOME, 'datasets', dataset_id, 'master')
+        local_dir = os.path.join(cache_dir, 'raw')
+        tmp_dir = os.path.join(cache_dir, 'tmp')
+        os.makedirs(local_dir, exist_ok=True)
+        os.makedirs(tmp_dir, exist_ok=True)
+        cookies = ModelScopeConfig.get_cookies()
+        with TemporaryDirectory(dir=tmp_dir) as temp_dir:
+            for remote_fpath in files:
+                url = url.format(fpath=remote_fpath)
+                temp_fpath = os.path.join(temp_dir, remote_fpath)
+                local_fpath = os.path.join(local_dir, remote_fpath)
+                if not force_download and os.path.exists(local_fpath):
+                    continue
+                download_files(url, temp_fpath, cookies)
+                shutil.copy2(temp_fpath, local_fpath)
+
+        return local_dir
 
     @classmethod
     def load_dataset(

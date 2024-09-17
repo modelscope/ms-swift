@@ -50,28 +50,6 @@ def download_files(url: str, local_path: str, cookies) -> None:
             f.write(data)
 
 
-def download_dataset(model_id: str, files: List[str], force_download: bool = False) -> str:
-    assert isinstance(files, list)
-    url = f'http://www.modelscope.cn/api/v1/datasets/{model_id}/repo?Revision=master&FilePath={{fpath}}'
-    cache_dir = os.path.join(MS_CACHE_HOME, 'datasets', model_id, 'master')
-    local_dir = os.path.join(cache_dir, 'raw')
-    tmp_dir = os.path.join(cache_dir, 'tmp')
-    os.makedirs(local_dir, exist_ok=True)
-    os.makedirs(tmp_dir, exist_ok=True)
-    cookies = ModelScopeConfig.get_cookies()
-    with TemporaryDirectory(dir=tmp_dir) as temp_dir:
-        for remote_fpath in files:
-            url = url.format(fpath=remote_fpath)
-            temp_fpath = os.path.join(temp_dir, remote_fpath)
-            local_fpath = os.path.join(local_dir, remote_fpath)
-            if not force_download and os.path.exists(local_fpath):
-                continue
-            download_files(url, temp_fpath, cookies)
-            shutil.copy2(temp_fpath, local_fpath)
-
-    return local_dir
-
-
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     """add feat in accelerate to support DDP + MP"""
     import psutil

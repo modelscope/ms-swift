@@ -1,17 +1,13 @@
 import hashlib
 import os
 import shutil
-from typing import Any, Dict, Literal, Optional, Union, Callable
+from typing import Optional
 
-import numpy as np
 from modelscope.hub.utils.utils import get_cache_dir
 
 from swift.utils import get_logger
 
 logger = get_logger()
-
-
-class MediaProcessor:
 
 
 class MediaResource:

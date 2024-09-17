@@ -14,12 +14,13 @@ from swift.llm.utils.template import History
 
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
-PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
+PreprocessFunc = Callable[[DATASET_TYPE, ...], DATASET_TYPE]
 
 logger = get_logger()
 
 
 class GroundingMixin:
+    task_type: Optional[str] = None
 
     _grounding_prompts = {
         'grounding': {
@@ -56,12 +57,10 @@ class GroundingMixin:
         },
     }
 
-    def __init__(self, grounding_task_type: Optional[str] = None):
-        self._grounding_task_type = grounding_task_type
-
     def construct_grounding_prompt(self):
+        # TODO Only support one bbox to one object
         lang = np.random.choice(['en', 'zh'], p=[0.8, 0.2])
-        prompts = self._grounding_prompts[self._grounding_prompts][lang]
+        prompts = GroundingMixin._grounding_prompts[self.task_type][lang]
         query, response = prompts[np.random.choice(range(len(prompts)))]
         return query, response
 
@@ -85,30 +84,28 @@ class RowPreprocessor(GroundingMixin):
         'video': 'videos',
     }
 
-    def __init__(self,
-                 *,
-                 history: bool = False,
-                 system: bool = False,
-                 tool: bool = False,
-                 column_mapping: Optional[Dict[str, str]] = None,
-                 modals: Optional[List[str]] = None,
-                 modal_tags: Optional[List[str]] = None,
-                 modal_keys: Optional[List[str]] = None,
-                 grounding_task_type: Optional[str] = None,
-                 ):
-        super().__init__(grounding_task_type)
-        self._has_history = history
-        self._has_system = system
-        self._has_tool = tool
-        self._column_mapping = column_mapping
-        self._modals = modals or []
-        self._modal_tags = modal_tags or []
-        self._modal_keys = modal_keys or []
+    has_tool: bool = False
+    column_mapping: Dict[str, str] = {}
+    modals: List[str] = []
+    modal_tags: List[str] = []
+    modal_keys: List[str] = []
+
+    def __init__(self, **kwargs):
+        if 'has_tool' in kwargs:
+            self.has_tool = kwargs.pop('has_tool')
+        if 'column_mapping' in kwargs:
+            self.column_mapping = kwargs.pop('column_mapping')
+        if 'modals' in kwargs:
+            self.modals = kwargs.pop('modals')
+        if 'modal_tags' in kwargs:
+            self.modal_tags = kwargs.pop('modal_tags')
+        if 'modal_keys' in kwargs:
+            self.modal_keys = kwargs.pop('modal_keys')
 
     def replace_standard_tag(self, messages, medias, modal):
-        assert len(self._modal_tags) == len(self._modals)
+        assert len(self.modal_tags) == len(self.modals)
         _modal_tag = None
-        for _modal, _tag in zip(self._modals, self._modal_tags):
+        for _modal, _tag in zip(self.modals, self.modal_tags):
             if modal == _modal:
                 _modal_tag = _tag
         assert _modal_tag is not None
@@ -129,8 +126,18 @@ class RowPreprocessor(GroundingMixin):
 
         return messages
 
+    def query_to_message(self, row):
+        messages = []
+        if 'query' in row:
+            messages.append({'role': 'user', 'content': row['query']})
+        if 'response' in row:
+            messages.append({'role': 'assistant', 'content': row['response']})
+        old_messages = row.get('messages', [])
+        old_messages.extend(messages)
+        row['messages'] = old_messages
+
     def parse_media_from_row(self, row: Dict[str, Any], modal):
-        modal_key = self._modal_keys[modal]
+        modal_key = self.modal_keys[modal]
         if isinstance(modal_key, str):
             if modal_key in row:
                 medias = row[modal_key]
@@ -147,36 +154,37 @@ class RowPreprocessor(GroundingMixin):
 
     def empty_row(self):
         row = {'messages': None}
-        if self._has_tool:
+        if self.has_tool:
             row['tools'] = None
-        for _modal in self._modals:
+        for _modal in self.modals:
             row[self._standard_keys[_modal]] = None
         return row
 
     def map(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        if self._has_history:
-            history = row['history']
-            if isinstance(history, str):
-                history = ast.literal_eval(history)
-                row['history'] = history
-        return self.preprocess(row)
+        row = self.preprocess(row)
+        self.query_to_message(row)
+        return row
 
     def filter(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        return True
+        return row.get('messages')
 
     def rename_columns(self, dataset: HfDataset, column_mapping: Dict[str, str]):
         return dataset.rename_columns(column_mapping)
 
     def prepare_multi_modal(self, row):
-        for modal in self._modals:
+        for modal in self.modals:
             medias = self.parse_media_from_row(row, modal)
             if medias:
                 row['messages'] = self.replace_standard_tag(row['messages'], medias, modal)
-                modal_key = self._modal_keys[modal]
+                modal_key = self.modal_keys[modal]
                 if not isinstance(modal_key, str):
                     row[modal_key] = medias
                 else:
                     row[self._standard_keys[modal]] = medias
+        if self.task_type in self._grounding_prompts.keys():
+            query, response = self.construct_grounding_prompt()
+            row['messages'][-2]['content'] = query
+            row['messages'][-1]['content'] = response
         return row
 
     def prepare_map_kwargs(self, dataset: DATASET_TYPE, **kwargs):
@@ -186,20 +194,37 @@ class RowPreprocessor(GroundingMixin):
         _kwargs.update(kwargs)
         return _kwargs
 
-    def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
+    def prepare_downloading(self, dataset):
+        pass
+
+    def __call__(self,
+                 dataset: DATASET_TYPE,
+                 *,
+                 history: bool = False,
+                 system: bool = False,
+                 tool: bool = False,
+                 column_mapping: Optional[Dict[str, str]] = None,
+                 modals: Optional[List[str]] = None,
+                 modal_tags: Optional[List[str]] = None,
+                 modal_keys: Optional[List[str]] = None,
+                 grounding_task_type: Optional[str] = None,
+                 **kwargs) -> DATASET_TYPE:
         kwargs = self.prepare_map_kwargs(**kwargs)
-        if self._modal_keys or self._modals:
-            assert len(self._modal_keys) == len(self._modals)
+        self.prepare_downloading(dataset)
+        if self.modal_keys or self.modals:
+            assert len(self.modal_keys) == len(self.modals)
 
         if self.preprocess is not RowPreprocessor.preprocess:
             dataset = dataset.map(self.preprocess, **kwargs)
+        if self.modals:
+            dataset = dataset.map(self.prepare_multi_modal, **kwargs)
         if self.filter is not RowPreprocessor.filter:
             dataset = dataset.filter(self.filter, **kwargs)
 
-        column_mapping = copy(self._column_mapping)
+        column_mapping = copy(self.column_mapping)
         # Replace un-standard media keys to standard keys
-        for idx, _modal in enumerate(self._modals):
-            modal_key = self._modal_keys[idx]
+        for idx, _modal in enumerate(self.modals):
+            modal_key = self.modal_keys[idx]
             standard_key = self._standard_keys[idx]
             if standard_key not in dataset.features:
                 column_mapping[modal_key] = standard_key
@@ -213,7 +238,7 @@ class SwiftPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         output = {}
-        if self._has_history:
+        if self.has_history:
             history = row['history']
             if isinstance(history, str):
                 history = ast.literal_eval(history)
@@ -239,15 +264,9 @@ class AlpacaPreprocessor(RowPreprocessor):
         instruction = row['instruction']
         input = row.get('input', None)
         output = row['output']
-        history = []
-        if self._has_history:
-            history = row['history'] or []
-        system = None
-        tools = None
-        if self._has_system:
-            system = row['system']
-        if self._has_tool:
-            tools = row['tools']
+        history = row.get('history', [])
+        system = row.get('system', None)
+        tools = row.get('tools', None)
         if output is None:
             return self.empty_row()
         if not input or not instruction:
@@ -261,7 +280,7 @@ class AlpacaPreprocessor(RowPreprocessor):
             query = f'{instruction}\n{input}'
 
         messages = []
-        if self._has_system:
+        if system:
             messages.append({
                 'role': 'system',
                 'content': system
@@ -287,10 +306,8 @@ class AlpacaPreprocessor(RowPreprocessor):
         row = {
             'messages': messages,
         }
-        if self._has_tool:
+        if tools:
             row['tools'] = tools
-
-        row = self.prepare_multi_modal(row)
         return row
 
 
@@ -361,10 +378,8 @@ class ConversationsPreprocessor(RowPreprocessor):
                 'messages': messages,
             }
 
-            if self._has_tool:
+            if self.has_tool:
                 row['tools'] = row['tools']
-
-            row = self.prepare_multi_modal(row)
             return row
         except (AssertionError, SyntaxError) as e:
             logger.error(e)
@@ -404,7 +419,7 @@ class ListPreprocessor(RowPreprocessor):
             if self.inner_key is not None:
                 conversations = conversations[self.inner_key]
             messages = []
-            if self._has_system:
+            if self.system_key and row.get(self.system_key):
                 messages.append({
                     'role': 'system',
                     'content': row[self.system_key]
@@ -435,10 +450,8 @@ class ListPreprocessor(RowPreprocessor):
                 'messages': messages,
             }
 
-            if self._has_tool:
+            if self.has_tool:
                 row['tools'] = row['tools']
-
-            row = self.prepare_multi_modal(row)
             return row
         except Exception:
             if self.error_strategy == 'raise':
@@ -452,9 +465,9 @@ class ComposePreprocessor:
     def __init__(self, preprocessor_list: List[PreprocessFunc]) -> None:
         self.preprocessor_list = preprocessor_list
 
-    def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+    def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
         for preprocessor in self.preprocessor_list:
-            dataset = preprocessor(dataset)
+            dataset = preprocessor(dataset, **kwargs)
         return dataset
 
 
@@ -463,10 +476,22 @@ class RenameColumnsPreprocessor:
     def __init__(self, rename_mapping: Dict[str, str]) -> None:
         self.rename_mapping = rename_mapping
 
-    def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
+    def query_to_message(self, row):
+        messages = []
+        if 'query' in row:
+            messages.append({'role': 'user', 'content': row['query']})
+        if 'response' in row:
+            messages.append({'role': 'assistant', 'content': row['response']})
+        old_messages = row.get('messages', [])
+        old_messages.extend(messages)
+        row['messages'] = old_messages
+
+    def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
         for old_name, new_name in self.rename_mapping.items():
             if old_name in dataset.features:
                 dataset = dataset.rename_column(old_name, new_name)
+        if 'query' in dataset.features or 'response' in dataset.features:
+            dataset = dataset.map(self.query_to_message, **kwargs)
         return dataset
 
 
@@ -517,9 +542,9 @@ class SmartPreprocessor:
         raise ValueError(f'dataset.features.keys(): {dataset.features.keys()} '
                          f'required_keys_mapping: {required_keys_mapping}')
 
-    def __call__(self, dataset: HfDataset) -> HfDataset:
+    def __call__(self, dataset: HfDataset, **kwargs) -> HfDataset:
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset)
+        return preprocessor(dataset, **kwargs)
 
 
 class TextGenerationPreprocessor(RowPreprocessor):
