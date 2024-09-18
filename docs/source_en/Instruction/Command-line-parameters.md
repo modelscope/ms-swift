@@ -280,13 +280,12 @@ PT parameters inherit from the SFT parameters with some modifications to the def
 ## RLHF Parameters
 RLHF parameters are an extension of the sft parameters, with the addition of the following options:
 - `--🔥rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo', default is 'dpo'. For training scripts with  different algorithms, please refer to [document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
-- `--🔥ref_model_type`: Select reference model, same as the model_type parameter, default is None, consistent with the training model. For `cpo`, `simpo`, and `orpo` algorithms, this selection is not required.
-
-- `--🔥ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
+- `--ref_model_type`: Select reference model, same as the model_type parameter, default is None, consistent with the training model. For `cpo`, `simpo`, and `orpo` algorithms, this selection is not required. Typically, no setup is needed.
+- `--ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
 - `--beta`: KL regularization term coefficient, default is `None`, meaning that for the simpo algorithm, the default is `2`., and for other algorithms, it is `0.1`. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--label_smoothing`: Whether to use DPO smoothing, the default value is `0`, normally set between 0 and 0.5.
 - `--loss_type`: Type of loss, default is `None`. If it's dpo or cpo, it is `'sigmoid'`, and if it's simpo, it is `'simpo'`.
-- `--rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `1.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
+- `--🔥rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `1.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
 - `cpo_alpha`: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - `--simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is `1.`.
 - `--desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is `1.`.
