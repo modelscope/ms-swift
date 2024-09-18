@@ -81,7 +81,8 @@ def get_vllm_engine(
     if 'limit_mm_per_prompt' in parameters and limit_mm_per_prompt:
         engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
     else:
-        assert not limit_mm_per_prompt, 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.'
+        assert not limit_mm_per_prompt, (
+            'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
     engine_args = engine_args_cls(
         model=model_dir,
@@ -279,7 +280,8 @@ def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_
         images = inputs.get('images') or []
         if images:
             if version.parse(vllm.__version__) < version.parse('0.6'):
-                assert len(images) == 1, 'Currently, only one image is supported.'
+                assert len(images) == 1, (
+                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.')
                 llm_inputs['multi_modal_data'] = {'image': images[0]}
             else:
                 llm_inputs['multi_modal_data'] = {'image': images}
