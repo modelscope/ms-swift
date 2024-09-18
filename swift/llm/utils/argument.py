@@ -1799,7 +1799,7 @@ class WebuiArguments:
     share: bool = False
     lang: str = 'zh'
     host: str = '127.0.0.1'
-    port: Optional[int] = None
+    port: int = 7860
 
 
 @dataclass
