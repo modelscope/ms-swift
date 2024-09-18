@@ -712,6 +712,10 @@
         "tags": ["long", "chat", "sft", "🔥"],
         "hf_dataset_id": "THUDM/LongWriter-6k"
     },
+    "longwriter-6k-filtered": {
+        "dataset_id": "swift/longwriter-6k-filtered",
+        "tags": ["long", "chat", "sft", "🔥"]
+    },
     "qwen2-pro-filtered": {
         "dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-300K-Filtered",
         "tags": ["chat", "sft", "🔥"],

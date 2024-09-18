@@ -48,7 +48,7 @@ Hyperparameters
 
 It is recommended to train with the preferred answer part of the preference dataset before starting DPO training to ensure data fits the distribution requirements of the DPO algorithm.
 
-We also mix sft loss in the DPO loss to stabilize training; you can adjust the sft loss coefficient by setting the hyperparameter `sft_beta`, the default is 0.1
+We also mix sft loss in the DPO loss to stabilize training; you can adjust the sft loss coefficient by setting the hyperparameter `rpo_alpha`, the default is `1.`.
 
 For training script, we provide single card/multi-card device map/multi-card ddp versions, for brevity, only the single card version is given for subsequent algorithms.
 
@@ -59,7 +59,7 @@ swift rlhf \
     --rlhf_type dpo \
     --model_type llava1_6-mistral-7b-instruct \
     --beta 0.1 \
-    --sft_beta 0.1 \
+    --rpo_alpha 0.1 \
     --sft_type  lora \
     --dataset rlaif-v#1000 \
     --num_train_epochs  2  \
@@ -77,7 +77,7 @@ swift rlhf \
     --rlhf_type dpo \
     --model_type llava1_6-mistral-7b-instruct \
     --beta 0.1 \
-    --sft_beta 0.1 \
+    --rpo_alpha 0.1 \
     --sft_type  lora \
     --dataset rlaif-v#1000 \
     --num_train_epochs  2  \
@@ -99,7 +99,7 @@ swift rlhf \
     --rlhf_type dpo \
     --model_type llava1_6-mistral-7b-instruct \
     --beta 0.1 \
-    --sft_beta 0.1 \
+    --rpo_alpha 0.1 \
     --sft_type  lora \
     --dataset rlaif-v#1000 \
     --num_train_epochs  2  \

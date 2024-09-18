@@ -9,7 +9,6 @@ import torch
 import vllm
 from modelscope import GenerationConfig
 from packaging import version
-from torch import dtype as Dtype
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
@@ -29,7 +28,7 @@ logger = get_logger()
 
 def get_vllm_engine(
         model_type: str,
-        torch_dtype: Optional[Dtype] = None,
+        torch_dtype: Optional[torch.dtype] = None,
         *,
         model_id_or_path: Optional[str] = None,
         revision: Optional[str] = None,
@@ -39,6 +38,7 @@ def get_vllm_engine(
         max_model_len: Optional[int] = None,
         disable_custom_all_reduce: bool = True,  # Default values different from vllm
         enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         use_async: bool = False,
         # lora
@@ -77,6 +77,12 @@ def get_vllm_engine(
         engine_kwargs['max_lora_rank'] = max_lora_rank
     else:
         assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
+
+    if 'limit_mm_per_prompt' in parameters and limit_mm_per_prompt:
+        engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
+    else:
+        assert not limit_mm_per_prompt, (
+            'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
     engine_args = engine_args_cls(
         model=model_dir,
@@ -148,8 +154,8 @@ def get_vllm_engine(
             parameters = inspect.signature(VllmGenerationConfig.__init__).parameters
         else:
             parameters = VllmGenerationConfig.__annotations__
-        for k in kwargs.copy().keys():
-            if k not in parameters:
+        for k, v in kwargs.copy().items():
+            if k not in parameters or v is None:
                 kwargs.pop(k)
         llm_engine.generation_config = VllmGenerationConfig(**kwargs)
     else:
@@ -162,7 +168,7 @@ class _VllmGenerationConfigMixin:
     def __setattr__(self, key: str, value: str) -> None:
         if key == 'max_new_tokens':
             self.max_tokens = value
-        elif key == 'do_sample':
+        elif key == 'do_sample' and hasattr(self, '_temperature'):
             assert value in {True, False}
             super().__setattr__('temperature', self._temperature if value else 0)
         elif key == 'max_length':
@@ -273,8 +279,12 @@ def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_
         llm_inputs = {'prompt_token_ids': input_ids}
         images = inputs.get('images') or []
         if images:
-            assert len(images) == 1, 'Currently, only one image is supported.'
-            llm_inputs['multi_modal_data'] = {'image': images[0]}
+            if version.parse(vllm.__version__) < version.parse('0.6'):
+                assert len(images) == 1, (
+                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.0')
+                llm_inputs['multi_modal_data'] = {'image': images[0]}
+            else:
+                llm_inputs['multi_modal_data'] = {'image': images}
         llm_engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
     else:
         llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
@@ -381,7 +391,7 @@ def inference_stream_vllm(
         return
     start_runtime = time.perf_counter()
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -514,7 +524,7 @@ def inference_vllm(llm_engine: LLMEngine,
         return resp_list
 
     if generation_config is None:
-        generation_config = getattr(llm_engine, 'generation_config', VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -589,6 +599,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         max_model_len=args.max_model_len,
         disable_custom_all_reduce=args.disable_custom_all_reduce,
         enforce_eager=args.enforce_eager,
+        limit_mm_per_prompt=args.limit_mm_per_prompt,
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,

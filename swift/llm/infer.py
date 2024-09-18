@@ -206,6 +206,9 @@ def prepare_model_template(args: InferArguments,
     set_generation_config(model, generation_config)
     logger.info(f'model.generation_config: {model.generation_config}')
 
+    if model.generation_config.num_beams != 1:
+        args.stream = False
+        logger.info('Setting args.stream: False')
     if model.max_model_len is None:
         model.max_model_len = args.max_model_len
     elif args.max_model_len is not None:
