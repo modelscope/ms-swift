@@ -1227,7 +1227,7 @@ class _QwenVLTemplateMixin:
     load_medias = False
 
     def check_example(self, example):
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             return
         images = example.get('images') or []
         from .utils import fetch_one
@@ -1237,12 +1237,15 @@ class _QwenVLTemplateMixin:
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type == 'image'
         if self._is_lmdeploy:
-            return [f'Picture {index + 1}:', [-100], '\n']
+            return [f'Picture {index + 1}: ', [-100], '\n']
         else:
             images = example.get('images') or []
             image = images[index]
-            assert isinstance(image, str)
-            return [f'Picture {index + 1}:<img>{image}</img>\n']
+            if self._is_vllm:
+                return [f'Picture {index + 1}: <img></img>\n']
+            else:
+                assert isinstance(image, str)
+                return [f'Picture {index + 1}: <img>{image}</img>\n']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']

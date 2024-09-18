@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -45,25 +45,29 @@ def is_adapter(sft_type: str) -> bool:
 
 class ArgumentsBase:
 
+    def _load_json_or_path(self, key) -> None:
+        value = getattr(self, key)
+        if isinstance(value, str):
+            if os.path.exists(value):  # local path
+                with open(value, 'r') as f:
+                    value = json.load(f)
+            else:  # json str
+                value = json.loads(value)
+        setattr(self, key, value)
+
     def __post_init__(self) -> None:
         if self.max_length == -1:
             self.max_length = None
-        model_kwargs = self.model_kwargs
-        if model_kwargs is None:
-            model_kwargs = {}
-        if isinstance(model_kwargs, str):
-            model_kwargs = json.loads(model_kwargs)
-        for k, v in model_kwargs.items():
+        if self.model_kwargs is None:
+            self.model_kwargs = {}
+        self._load_json_or_path('model_kwargs')
+        for k, v in self.model_kwargs.items():
             k = k.upper()
             os.environ[k] = str(v)
 
-        if isinstance(self.device_map_config, str):
-            if os.path.exists(self.device_map_config):  # local path
-                with open(self.device_map_config, 'r') as f:
-                    self.device_map_config = json.load(f)
-            else:  # json str
-                self.device_map_config = json.loads(self.device_map_config)
+        self._load_json_or_path('device_map_config')
         _, local_rank, _, local_world_size = get_dist_setting()
+        # compat mp&ddp
         if local_world_size > 1 and isinstance(self.device_map_config, dict) and local_rank > 0:
             for k, v in self.device_map_config.items():
                 if isinstance(v, int):
@@ -1407,6 +1411,7 @@ class InferArguments(ArgumentsBase):
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
     enforce_eager: bool = False
+    limit_mm_per_prompt: Optional[str] = None
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
@@ -1492,6 +1497,7 @@ class InferArguments(ArgumentsBase):
 
         self.handle_infer_backend()
         self.handle_generation_config()
+        self._load_json_or_path('limit_mm_per_prompt')
 
     def handle_infer_backend(self):
         model_info = MODEL_MAPPING[self.model_type]
