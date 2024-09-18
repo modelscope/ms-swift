@@ -3650,7 +3650,7 @@ for model_size in ['2B', '7B', '72B']:
             get_model_tokenizer_qwen2_vl,
             support_flash_attn=True,
             placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-            requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],  # 'pyav'
+            requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
             tags=['multi-modal', 'vision'],
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
@@ -3664,7 +3664,7 @@ for model_size in ['2B', '7B', '72B']:
         get_model_tokenizer_qwen2_vl,
         support_flash_attn=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],  # 'pyav'
+        requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
         tags=['multi-modal', 'vision'],
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
