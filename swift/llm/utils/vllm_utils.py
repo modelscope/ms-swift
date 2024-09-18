@@ -281,7 +281,7 @@ def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_
         if images:
             if version.parse(vllm.__version__) < version.parse('0.6'):
                 assert len(images) == 1, (
-                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.')
+                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.0')
                 llm_inputs['multi_modal_data'] = {'image': images[0]}
             else:
                 llm_inputs['multi_modal_data'] = {'image': images}
