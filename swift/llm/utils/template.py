@@ -1493,8 +1493,9 @@ class Qwen2VLTemplate(QwenTemplate):
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
         if 'input_ids' in res:
             # fix https://github.com/huggingface/transformers/pull/33487
-            res['position_ids'], _ = self.model.get_rope_index(res['input_ids'], res.get('image_grid_thw'),
-                                                               res.get('video_grid_thw'), res['attention_mask'])
+            position_ids, _ = self.model.get_rope_index(res['input_ids'], res.get('image_grid_thw'),
+                                                        res.get('video_grid_thw'), res['attention_mask'])
+            res['position_ids'] = position_ids.contiguous()
         return res
 
 
