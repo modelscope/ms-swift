@@ -55,7 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
-- 2024.09.18: Supports the qwen2.5, qwen2.5-math, and qwen2.5-coder series models. Supports the qwen2-vl-72b series models.
+- 🔥2024.09.19: Supports the qwen2.5, qwen2.5-math, and qwen2.5-coder series models. Supports the qwen2-vl-72b series models.
 - 2024.09.07: Support the `Reflection-llama3-70b` model, use by `swift sft/infer --model_type reflection-llama_3_1-70b`.
 - 2024.09.06: Support fine-tuning and inference for mplug-owl3. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/1969).
 - 2024.09.05: Support for the minicpm3-4b model. Experience it using `swift infer --model_type minicpm3-4b`.
