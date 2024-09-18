@@ -567,7 +567,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | 模型类型                                                                                            | 模型介绍                                                                      | 语言       | 模型大小                | 模型类型                                      |
 |-------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|----------|---------------------|-------------------------------------------|
-| Qwen<br>Qwen1.5<br>Qwen2                                                                        | [通义千问1.0和1.5系列模型](https://github.com/QwenLM)                              | 中文<br>英文 | 0.5B-110B<br>包含量化版本 | base模型<br>chat模型<br>MoE模型<br>代码模型         |                          |
+| Qwen<br>Qwen1.5<br>Qwen2<br>Qwen2.5                                           | [通义千问系列模型](https://github.com/QwenLM)                              | 中文<br>英文 | 0.5B-110B<br>包含量化版本 | base模型<br>chat模型<br>MoE模型<br>代码模型         |                          |
 | ChatGLM2<br>ChatGLM3<br>Codegeex2<br>GLM4<br>Codegeex4                                          | [智谱ChatGLM系列模型](https://github.com/THUDM/)                                | 中文<br>英文 | 6B-9B               | base模型<br>chat模型<br>代码模型<br>长文本模型         |
 | Baichuan<br>Baichuan2                                                                           | [百川1和百川2](https://github.com/baichuan-inc)                                | 中文<br>英文 | 7B-13B<br>包含量化版本    | base模型<br>chat模型                          |
 | Yuan2                                                                                           | [浪潮源系列模型](https://github.com/IEIT-Yuan)                                   | 中文<br>英文 | 2B-102B             | instruct模型                                |
@@ -609,7 +609,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 | 模型类型                                                    | 模型介绍                                                                       | 语言       | 模型大小             | 模型类型             |
 |---------------------------------------------------------|----------------------------------------------------------------------------|----------|------------------|------------------|
-| Qwen-VL<br>Qwen2-VL                        | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B<br>包含量化版本     | base模型<br>chat模型 |
+| Qwen-VL<br>Qwen2-VL                        | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 2B-72B<br>包含量化版本     | base模型<br>chat模型 |
 | Qwen-Audio<br>Qwen2-Audio                       | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B               | base模型<br>chat模型 |
 | YI-VL                                                   | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B           | chat模型           |
 | XComposer2<br>XComposer2.5                              | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)            | 中文<br>英文 | 7B               | chat模型           |
