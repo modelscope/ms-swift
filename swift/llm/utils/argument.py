@@ -72,7 +72,6 @@ class ArgumentsBase:
             for k, v in self.device_map_config.items():
                 if isinstance(v, int):
                     self.device_map_config[k] += local_rank
-        self._load_json_or_path('limit_mm_per_prompt')
 
     @classmethod
     def _check_path(cls,
@@ -1498,6 +1497,7 @@ class InferArguments(ArgumentsBase):
 
         self.handle_infer_backend()
         self.handle_generation_config()
+        self._load_json_or_path('limit_mm_per_prompt')
 
     def handle_infer_backend(self):
         model_info = MODEL_MAPPING[self.model_type]
