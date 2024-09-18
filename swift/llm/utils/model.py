@@ -2625,76 +2625,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_vllm=True,
     tags=['moe'],
     hf_model_id='databricks/dbrx-instruct')
-@register_model(
-    ModelType.qwen2_5_0_5b,
-    'qwen/Qwen2.5-0.5B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-0.5B')
-@register_model(
-    ModelType.qwen2_5_1_5b,
-    'qwen/Qwen2.5-1.5B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-1.5B')
-@register_model(
-    ModelType.qwen2_5_3b,
-    'qwen/Qwen2.5-3B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-3B')
-@register_model(
-    ModelType.qwen2_5_7b,
-    'qwen/Qwen2.5-7B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-7B')
-@register_model(
-    ModelType.qwen2_5_14b,
-    'qwen/Qwen2.5-14B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-14B')
-@register_model(
-    ModelType.qwen2_5_32b,
-    'qwen/Qwen2.5-32B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-32B')
-@register_model(
-    ModelType.qwen2_5_72b,
-    'qwen/Qwen2.5-72B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-72B')
 def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         torch_dtype: torch.dtype,
                                         model_kwargs: Dict[str, Any],
@@ -3474,16 +3404,6 @@ def get_model_tokenizer_phi3_small(model_dir: str,
     support_lmdeploy=True,
     requires=['transformers>=4.37'],
     hf_model_id='Qwen/CodeQwen1.5-7B-Chat')
-@register_model(
-    ModelType.qwen2_5_0_5b_instruct,
-    'qwen/Qwen2.5-0.5B-Instruct',
-    LoRATM.llama,
-    TemplateType.qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2-0.5B-Instruct')
 def get_model_tokenizer_qwen2_chat(model_dir: str,
                                    torch_dtype: torch.dtype,
                                    model_kwargs: Dict[str, Any],
@@ -3491,6 +3411,61 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
                                    **kwargs):
     kwargs['eos_token'] = '<|im_end|>'
     return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+
+
+for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
+    model_size_lower = model_size.lower().replace('.', '_')
+    register_model(
+        f'qwen2_5-{model_size_lower}-instruct',
+        f'qwen/Qwen2.5-{model_size}-Instruct',
+        LoRATM.llama,
+        TemplateType.qwen,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct')
+    register_model(
+        f'qwen2_5-{model_size_lower}',
+        f'qwen/Qwen2.5-{model_size}',
+        LoRATM.llama,
+        TemplateType.default_generation,
+        get_model_tokenizer_with_flash_attn,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}')
+
+    for quant_bits in [4, 8]:
+        quant_type = f'GPTQ-Int{quant_bits}'
+        quant_type_lower = quant_type.lower()
+        register_model(
+            f'qwen2_5-{model_size_lower}-{quant_type_lower}',
+            f'qwen/Qwen2.5-{model_size}-Instruct-{quant_type}',
+            LoRATM.llama,
+            TemplateType.qwen,
+            get_model_tokenizer_qwen2_chat,
+            support_flash_attn=True,
+            support_vllm=True,
+            function_kwargs={'gptq_bits': quant_bits},
+            torch_dtype=torch.float16,
+            requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+            hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-{quant_type}')
+
+    register_model(
+        f'qwen2_5-{model_size_lower}-awq',
+        f'qwen/Qwen2.5-{model_size}-Instruct-AWQ',
+        LoRATM.llama,
+        TemplateType.qwen,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        function_kwargs={'is_awq': True},
+        torch_dtype=torch.float16,
+        requires=['transformers>=4.37', 'autoawq'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-AWQ')
 
 
 @register_model(
