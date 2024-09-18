@@ -182,6 +182,9 @@ class ModelType:
     qwen2_5_math_1_5b_instruct = 'qwen2_5-math-1_5b-instruct'
     qwen2_5_math_7b_instruct = 'qwen2_5-math-7b-instruct'
     qwen2_5_math_72b_instruct = 'qwen2_5-math-72b-instruct'
+    # qwen2.5 coder
+    qwen2_5_coder_7b = 'qwen2_5-coder-7b'
+    qwen2_5_coder_7b_instruct = 'qwen2_5-coder-7b-instruct'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -3498,7 +3501,6 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
         requires=['transformers>=4.37', 'autoawq'],
         hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-AWQ')
 
-
 for model_size in ['1.5B', '7B', '72B']:
     model_size_lower = model_size.lower().replace('.', '_')
     register_model(
@@ -3523,6 +3525,29 @@ for model_size in ['1.5B', '7B', '72B']:
         support_lmdeploy=True,
         requires=['transformers>=4.37'],
         hf_model_id=f'Qwen/Qwen2.5-Math-{model_size}-Instruct')
+
+register_model(
+    'qwen2_5-coder-7b',
+    'qwen/Qwen2.5-Coder-7B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    get_model_tokenizer_with_flash_attn,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2.5-Coder-7B')
+register_model(
+    'qwen2_5-coder-7b-instruct',
+    'qwen/Qwen2.5-Coder-7B-Instruct',
+    LoRATM.llama,
+    TemplateType.qwen,
+    get_model_tokenizer_qwen2_chat,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.37'],
+    hf_model_id='Qwen/Qwen2.5-Coder-7B-Instruct')
 
 
 @register_model(
