@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from peft import PeftModel
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -49,6 +50,7 @@ class TemplateType:
     qwen2_audio = 'qwen2-audio'
     qwen2_audio_generation = 'qwen2-audio-generation'
     qwen2_vl = 'qwen2-vl'
+    qwen2_vl_generation = 'qwen2-vl-generation'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
@@ -328,7 +330,11 @@ class Template:
                 if 'inputs_embeds' in kwargs:
                     kwargs.pop('input_ids', None)
 
-            parameters = inspect.signature(module.forward).parameters
+            if isinstance(module, PeftModel):
+                parameters = inspect.signature(module.base_model.model.forward).parameters
+            else:
+                parameters = inspect.signature(module.forward).parameters
+
             if 'position_ids' not in parameters:
                 kwargs.pop('position_ids', None)
             return args, kwargs
@@ -1377,6 +1383,9 @@ class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTe
 
 register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
 
+register_template(
+    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+
 
 def _process_image_qwen(image):
     from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
@@ -1405,7 +1414,7 @@ def _process_image_qwen(image):
     return image
 
 
-class Qwen2VLTemplate(QwenTemplate):
+class _Qwen2VLTemplateMixin:
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -1486,13 +1495,25 @@ class Qwen2VLTemplate(QwenTemplate):
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        if 'input_ids' in res:
+            # fix https://github.com/huggingface/transformers/pull/33487
+            position_ids, _ = self.model.get_rope_index(res['input_ids'], res.get('image_grid_thw'),
+                                                        res.get('video_grid_thw'), res['attention_mask'])
+            res['position_ids'] = position_ids.contiguous()
         return res
+
+
+class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):
+    pass
+
+
+class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate):
+    pass
 
 
 register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
-register_template(
-    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
 
 class YiCoderTemplate(ChatmlTemplate):
