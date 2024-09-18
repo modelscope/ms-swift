@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import time
 import typing
 from dataclasses import fields
@@ -94,6 +95,7 @@ class BaseUI:
     bool_regex = r'^(T|t)rue$|^(F|f)alse$'
     cache_dir = os.path.join(get_cache_dir(), 'swift-web-ui')
     os.makedirs(cache_dir, exist_ok=True)
+    quote = '\'' if sys.platform != 'win32' else '"'
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):

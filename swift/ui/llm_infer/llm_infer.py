@@ -273,7 +273,7 @@ class LLMInfer(BaseUI):
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
-                params += f'--{e} \'{kwargs[e]}\' '
+                params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         if 'port' not in kwargs:
             params += f'--port "{deploy_args.port}" '
         params += more_params_cmd + ' '
