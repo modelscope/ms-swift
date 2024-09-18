@@ -17,9 +17,10 @@ pip install git+https://github.com/huggingface/transformers.git
 pip install pyav qwen_vl_utils
 ```
 
-Model:
+Model: (Supports base/instruct/gptq-int4/gptq-int8/awq fine-tuning)
 - qwen2-vl-2b-instruct: [https://modelscope.cn/models/qwen/Qwen2-VL-2B-Instruct](https://modelscope.cn/models/qwen/Qwen2-VL-2B-Instruct)
 - qwen2-vl-7b-instruct: [https://modelscope.cn/models/qwen/Qwen2-VL-7B-Instruct](https://modelscope.cn/models/qwen/Qwen2-VL-7B-Instruct)
+- qwen2-vl-72b-instruct: [https://modelscope.cn/models/qwen/Qwen2-VL-72B-Instruct](https://modelscope.cn/models/qwen/Qwen2-VL-72B-Instruct)
 
 ## Inference
 
