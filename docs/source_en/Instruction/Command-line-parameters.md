@@ -437,6 +437,6 @@ deploy parameters inherit from infer parameters, with the following added parame
 ## web-ui Parameters
 
 - `--🔥host`: Default `'127.0.0.1'`. To make it accessible on the local network, you can set it to '0.0.0.0'.
-- `--port`: Default `None`.
+- `--port`: Default `7860`.
 - `--lang`: Default `'zh'`.
 - `--share`: Default `False`.
