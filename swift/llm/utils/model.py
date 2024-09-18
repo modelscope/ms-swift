@@ -3573,6 +3573,10 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
         model.model.embed_tokens.register_forward_hook(_output_device_map_hook)
     return model, tokenizer
 
+for model_size in ['2B', '7B', '72B']:
+    pass
+
+
 
 @register_model(
     ModelType.qwen1half_0_5b_chat_int4,
