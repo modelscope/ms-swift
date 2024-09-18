@@ -139,6 +139,42 @@ class ModelType:
     qwen2_math_72b = 'qwen2-math-72b'
     qwen2_math_72b_instruct = 'qwen2-math-72b-instruct'
 
+    # qwen2.5
+    qwen2_5_0_5b = 'qwen2_5-0_5b'
+    qwen2_5_1_5b = 'qwen2_5-1_5b'
+    qwen2_5_3b = 'qwen2_5-3b'
+    qwen2_5_7b = 'qwen2_5-7b'
+    qwen2_5_14b = 'qwen2_5-14b'
+    qwen2_5_32b = 'qwen2_5-32b'
+    qwen2_5_72b = 'qwen2_5-72b'
+    qwen2_5_0_5b_instruct = 'qwen2_5-0_5b-instruct'
+    qwen2_5_1_5b_instruct = 'qwen2_5-1_5b-instruct'
+    qwen2_5_3b_instruct = 'qwen2_5-3b-instruct'
+    qwen2_5_7b_instruct = 'qwen2_5-7b-instruct'
+    qwen2_5_14b_instruct = 'qwen2_5-14b-instruct'
+    qwen2_5_32b_instruct = 'qwen2_5-32b-instruct'
+    qwen2_5_72b_instruct = 'qwen2_5-72b-instruct'
+    qwen2_5_0_5b_instruct_gptq_int4 = 'qwen2_5-0_5b-instruct-gptq-int4'
+    qwen2_5_1_5b_instruct_gptq_int4 = 'qwen2_5-1_5b-instruct-gptq-int4'
+    qwen2_5_3b_instruct_gptq_int4 = 'qwen2_5-3b-instruct-gptq-int4'
+    qwen2_5_7b_instruct_gptq_int4 = 'qwen2_5-7b-instruct-gptq-int4'
+    qwen2_5_14b_instruct_gptq_int4 = 'qwen2_5-14b-instruct-gptq-int4'
+    qwen2_5_32b_instruct_gptq_int4 = 'qwen2_5-32b-instruct-gptq-int4'
+    qwen2_5_72b_instruct_gptq_int4 = 'qwen2_5-72b-instruct-gptq-int4'
+    qwen2_5_0_5b_instruct_gptq_int8 = 'qwen2_5-0_5b-instruct-gptq-int8'
+    qwen2_5_1_5b_instruct_gptq_int8 = 'qwen2_5-1_5b-instruct-gptq-int8'
+    qwen2_5_3b_instruct_gptq_int8 = 'qwen2_5-3b-instruct-gptq-int8'
+    qwen2_5_7b_instruct_gptq_int8 = 'qwen2_5-7b-instruct-gptq-int8'
+    qwen2_5_14b_instruct_gptq_int8 = 'qwen2_5-14b-instruct-gptq-int8'
+    qwen2_5_32b_instruct_gptq_int8 = 'qwen2_5-32b-instruct-gptq-int8'
+    qwen2_5_72b_instruct_gptq_int8 = 'qwen2_5-72b-instruct-gptq-int8'
+    qwen2_5_0_5b_instruct_awq = 'qwen2_5-0_5b-instruct-awq'
+    qwen2_5_1_5b_instruct_awq = 'qwen2_5-1_5b-instruct-awq'
+    qwen2_5_3b_instruct_awq = 'qwen2_5-3b-instruct-awq'
+    qwen2_5_7b_instruct_awq = 'qwen2_5-7b-instruct-awq'
+    qwen2_5_14b_instruct_awq = 'qwen2_5-14b-instruct-awq'
+    qwen2_5_32b_instruct_awq = 'qwen2_5-32b-instruct-awq'
+    qwen2_5_72b_instruct_awq = 'qwen2_5-72b-instruct-awq'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -3395,6 +3431,60 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
                                    **kwargs):
     kwargs['eos_token'] = '<|im_end|>'
     return get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+
+
+for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
+    model_size_lower = model_size.lower().replace('.', '_')
+    register_model(
+        f'qwen2_5-{model_size_lower}',
+        f'qwen/Qwen2.5-{model_size}',
+        LoRATM.llama,
+        TemplateType.default_generation,
+        get_model_tokenizer_with_flash_attn,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}')
+    register_model(
+        f'qwen2_5-{model_size_lower}-instruct',
+        f'qwen/Qwen2.5-{model_size}-Instruct',
+        LoRATM.llama,
+        TemplateType.qwen,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct')
+    for quant_bits in [4, 8]:
+        quant_type = f'GPTQ-Int{quant_bits}'
+        quant_type_lower = quant_type.lower()
+        register_model(
+            f'qwen2_5-{model_size_lower}-instruct-{quant_type_lower}',
+            f'qwen/Qwen2.5-{model_size}-Instruct-{quant_type}',
+            LoRATM.llama,
+            TemplateType.qwen,
+            get_model_tokenizer_qwen2_chat,
+            support_flash_attn=True,
+            support_vllm=True,
+            function_kwargs={'gptq_bits': quant_bits},
+            torch_dtype=torch.float16,
+            requires=['auto_gptq>=0.5', 'transformers>=4.37'],
+            hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-{quant_type}')
+
+    register_model(
+        f'qwen2_5-{model_size_lower}-instruct-awq',
+        f'qwen/Qwen2.5-{model_size}-Instruct-AWQ',
+        LoRATM.llama,
+        TemplateType.qwen,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        function_kwargs={'is_awq': True},
+        torch_dtype=torch.float16,
+        requires=['transformers>=4.37', 'autoawq'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-AWQ')
 
 
 @register_model(
