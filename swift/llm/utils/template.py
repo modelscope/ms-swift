@@ -50,6 +50,7 @@ class TemplateType:
     qwen2_audio = 'qwen2-audio'
     qwen2_audio_generation = 'qwen2-audio-generation'
     qwen2_vl = 'qwen2-vl'
+    qwen2_vl_generation = 'qwen2-vl-generation'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
@@ -1382,6 +1383,9 @@ class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTe
 
 register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
 
+register_template(
+    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+
 
 def _process_image_qwen(image):
     from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
@@ -1410,7 +1414,7 @@ def _process_image_qwen(image):
     return image
 
 
-class Qwen2VLTemplate(QwenTemplate):
+class _Qwen2VLTemplateMixin:
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -1499,10 +1503,17 @@ class Qwen2VLTemplate(QwenTemplate):
         return res
 
 
+class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):
+    pass
+
+
+class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate):
+    pass
+
+
 register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
-register_template(
-    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
 
 class YiCoderTemplate(ChatmlTemplate):

@@ -148,6 +148,8 @@ class ModelType:
     qwen_audio_chat = 'qwen-audio-chat'
     qwen2_audio_7b = 'qwen2-audio-7b'
     qwen2_audio_7b_instruct = 'qwen2-audio-7b-instruct'
+    qwen2_vl_2b = 'qwen2-vl-2b'
+    qwen2_vl_7b = 'qwen2-vl-7b'
     qwen2_vl_2b_instruct = 'qwen2-vl-2b-instruct'
     qwen2_vl_2b_instruct_gptq_int4 = 'qwen2-vl-2b-instruct-gptq-int4'
     qwen2_vl_2b_instruct_gptq_int8 = 'qwen2-vl-2b-instruct-gptq-int8'
@@ -3427,6 +3429,26 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.qwen2_vl_2b,
+    'qwen/Qwen2-VL-2B',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='Qwen/Qwen2-VL-2B')
+@register_model(
+    ModelType.qwen2_vl_7b,
+    'qwen/Qwen2-VL-7B',
+    LoRATM.qwen2_vl,
+    TemplateType.qwen2_vl,
+    support_flash_attn=True,
+    placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
+    requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='Qwen/Qwen2-VL-7B')
 @register_model(
     ModelType.qwen2_vl_7b_instruct,
     'qwen/Qwen2-VL-7B-Instruct',
