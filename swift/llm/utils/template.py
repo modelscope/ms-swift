@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from peft import PeftModel
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -328,7 +329,11 @@ class Template:
                 if 'inputs_embeds' in kwargs:
                     kwargs.pop('input_ids', None)
 
-            parameters = inspect.signature(module.forward).parameters
+            if isinstance(module, PeftModel):
+                parameters = inspect.signature(module.base_model.model.forward).parameters
+            else:
+                parameters = inspect.signature(module.forward).parameters
+
             if 'position_ids' not in parameters:
                 kwargs.pop('position_ids', None)
             return args, kwargs
@@ -1486,6 +1491,11 @@ class Qwen2VLTemplate(QwenTemplate):
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        if 'input_ids' in res:
+            # fix https://github.com/huggingface/transformers/pull/33487
+            position_ids, _ = self.model.get_rope_index(res['input_ids'], res.get('image_grid_thw'),
+                                                        res.get('video_grid_thw'), res['attention_mask'])
+            res['position_ids'] = position_ids.contiguous()
         return res
 
 
