@@ -1740,14 +1740,14 @@ class PtArguments(SftArguments):
 
 @dataclass
 class RLHFArguments(SftArguments):
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     ref_model_id_or_path: Optional[str] = None
     ref_model_revision: Optional[str] = None
 
     beta: Optional[float] = None
-    label_smoothing: float = 0
+    label_smoothing: float = 0.0
     # dpo: 'sigmoid', 'hinge', 'ipo', 'exo_pair', 'nca_pair', 'robust', 'bco_pair',
     #      'sppo_hard', 'aot', 'aot_pair', 'apo_zero', 'apo_down'
     # cpo: 'sigmoid', 'hinge', 'ipo', 'simpo'
@@ -1767,7 +1767,7 @@ class RLHFArguments(SftArguments):
     def __post_init__(self):
         self._check_simpo()
         self._set_default()
-        self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
+        self.ref_model_free = self.rlhf_type in ['cpo', 'orpo', 'rm']
         super().__post_init__()
 
     def _check_simpo(self):

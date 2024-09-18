@@ -240,7 +240,12 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
-
+    if args.rlhf_type == 'rm':
+        # value head wrapper
+        from trl import AutoModelForCausalLMWithValueHead
+        model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+        # patch_reward_model(model) # not implemented
+        
     show_layers(model)
     logger.info(model)
     model_info = get_model_info(model)
