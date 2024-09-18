@@ -183,6 +183,8 @@ class ModelType:
     qwen2_5_math_7b_instruct = 'qwen2_5-math-7b-instruct'
     qwen2_5_math_72b_instruct = 'qwen2_5-math-72b-instruct'
     # qwen2.5 coder
+    qwen2_5_coder_1_5b = 'qwen2_5-coder-1_5b'
+    qwen2_5_coder_1_5b_instruct = 'qwen2_5-coder-1_5b-instruct'
     qwen2_5_coder_7b = 'qwen2_5-coder-7b'
     qwen2_5_coder_7b_instruct = 'qwen2_5-coder-7b-instruct'
     # qwen-vl
@@ -3526,28 +3528,30 @@ for model_size in ['1.5B', '7B', '72B']:
         requires=['transformers>=4.37'],
         hf_model_id=f'Qwen/Qwen2.5-Math-{model_size}-Instruct')
 
-register_model(
-    'qwen2_5-coder-7b',
-    'qwen/Qwen2.5-Coder-7B',
-    LoRATM.llama,
-    TemplateType.default_generation,
-    get_model_tokenizer_with_flash_attn,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-Coder-7B')
-register_model(
-    'qwen2_5-coder-7b-instruct',
-    'qwen/Qwen2.5-Coder-7B-Instruct',
-    LoRATM.llama,
-    TemplateType.qwen,
-    get_model_tokenizer_qwen2_chat,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    requires=['transformers>=4.37'],
-    hf_model_id='Qwen/Qwen2.5-Coder-7B-Instruct')
+for model_size in ['1.5B', '7B']:
+    model_size_lower = model_size.lower().replace('.', '_')
+    register_model(
+        f'qwen2_5-coder-{model_size_lower}',
+        f'qwen/Qwen2.5-Coder-{model_size}',
+        LoRATM.llama,
+        TemplateType.default_generation,
+        get_model_tokenizer_with_flash_attn,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-Coder-{model_size}')
+    register_model(
+        f'qwen2_5-coder-{model_size_lower}-instruct',
+        f'qwen/Qwen2.5-Coder-{model_size}-Instruct',
+        LoRATM.llama,
+        TemplateType.qwen,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-Coder-{model_size}-Instruct')
 
 
 @register_model(
