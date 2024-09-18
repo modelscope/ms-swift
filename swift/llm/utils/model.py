@@ -154,7 +154,27 @@ class ModelType:
     qwen2_5_14b_instruct = 'qwen2_5-14b-instruct'
     qwen2_5_32b_instruct = 'qwen2_5-32b-instruct'
     qwen2_5_72b_instruct = 'qwen2_5-72b-instruct'
-
+    qwen2_5_0_5b_instruct_gptq_int4 = 'qwen2_5-0_5b-instruct-gptq-int4'
+    qwen2_5_1_5b_instruct_gptq_int4 = 'qwen2_5-1_5b-instruct-gptq-int4'
+    qwen2_5_3b_instruct_gptq_int4 = 'qwen2_5-3b-instruct-gptq-int4'
+    qwen2_5_7b_instruct_gptq_int4 = 'qwen2_5-7b-instruct-gptq-int4'
+    qwen2_5_14b_instruct_gptq_int4 = 'qwen2_5-14b-instruct-gptq-int4'
+    qwen2_5_32b_instruct_gptq_int4 = 'qwen2_5-32b-instruct-gptq-int4'
+    qwen2_5_72b_instruct_gptq_int4 = 'qwen2_5-72b-instruct-gptq-int4'
+    qwen2_5_0_5b_instruct_gptq_int8 = 'qwen2_5-0_5b-instruct-gptq-int8'
+    qwen2_5_1_5b_instruct_gptq_int8 = 'qwen2_5-1_5b-instruct-gptq-int8'
+    qwen2_5_3b_instruct_gptq_int8 = 'qwen2_5-3b-instruct-gptq-int8'
+    qwen2_5_7b_instruct_gptq_int8 = 'qwen2_5-7b-instruct-gptq-int8'
+    qwen2_5_14b_instruct_gptq_int8 = 'qwen2_5-14b-instruct-gptq-int8'
+    qwen2_5_32b_instruct_gptq_int8 = 'qwen2_5-32b-instruct-gptq-int8'
+    qwen2_5_72b_instruct_gptq_int8 = 'qwen2_5-72b-instruct-gptq-int8'
+    qwen2_5_0_5b_instruct_awq = 'qwen2_5-0_5b-instruct-awq'
+    qwen2_5_1_5b_instruct_awq = 'qwen2_5-1_5b-instruct-awq'
+    qwen2_5_3b_instruct_awq = 'qwen2_5-3b-instruct-awq'
+    qwen2_5_7b_instruct_awq = 'qwen2_5-7b-instruct-awq'
+    qwen2_5_14b_instruct_awq = 'qwen2_5-14b-instruct-awq'
+    qwen2_5_32b_instruct_awq = 'qwen2_5-32b-instruct-awq'
+    qwen2_5_72b_instruct_awq = 'qwen2_5-72b-instruct-awq'
     # qwen-vl
     qwen_vl = 'qwen-vl'
     qwen_vl_chat = 'qwen-vl-chat'
@@ -3416,17 +3436,6 @@ def get_model_tokenizer_qwen2_chat(model_dir: str,
 for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
     model_size_lower = model_size.lower().replace('.', '_')
     register_model(
-        f'qwen2_5-{model_size_lower}-instruct',
-        f'qwen/Qwen2.5-{model_size}-Instruct',
-        LoRATM.llama,
-        TemplateType.qwen,
-        get_model_tokenizer_qwen2_chat,
-        support_flash_attn=True,
-        support_vllm=True,
-        support_lmdeploy=True,
-        requires=['transformers>=4.37'],
-        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct')
-    register_model(
         f'qwen2_5-{model_size_lower}',
         f'qwen/Qwen2.5-{model_size}',
         LoRATM.llama,
@@ -3437,12 +3446,22 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
         support_lmdeploy=True,
         requires=['transformers>=4.37'],
         hf_model_id=f'Qwen/Qwen2.5-{model_size}')
-
+    register_model(
+        f'qwen2_5-{model_size_lower}-instruct',
+        f'qwen/Qwen2.5-{model_size}-Instruct',
+        LoRATM.llama,
+        TemplateType.qwen,
+        get_model_tokenizer_qwen2_chat,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        requires=['transformers>=4.37'],
+        hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct')
     for quant_bits in [4, 8]:
         quant_type = f'GPTQ-Int{quant_bits}'
         quant_type_lower = quant_type.lower()
         register_model(
-            f'qwen2_5-{model_size_lower}-{quant_type_lower}',
+            f'qwen2_5-{model_size_lower}-instruct-{quant_type_lower}',
             f'qwen/Qwen2.5-{model_size}-Instruct-{quant_type}',
             LoRATM.llama,
             TemplateType.qwen,
@@ -3455,7 +3474,7 @@ for model_size in ['0.5B', '1.5B', '3B', '7B', '14B', '32B', '72B']:
             hf_model_id=f'Qwen/Qwen2.5-{model_size}-Instruct-{quant_type}')
 
     register_model(
-        f'qwen2_5-{model_size_lower}-awq',
+        f'qwen2_5-{model_size_lower}-instruct-awq',
         f'qwen/Qwen2.5-{model_size}-Instruct-AWQ',
         LoRATM.llama,
         TemplateType.qwen,
