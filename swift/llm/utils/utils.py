@@ -6,7 +6,7 @@ import os
 import shutil
 import time
 from copy import deepcopy
-from functools import partial, update_wrapper, wraps
+from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
