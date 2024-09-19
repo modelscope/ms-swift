@@ -139,7 +139,7 @@ class ArgumentsBase:
         if self.temperature == 0:
             self.do_sample = False
         if self.do_sample is False and (isinstance(self, InferArguments) and self.infer_backend == 'pt'
-                                        and isinstance(self, SftArguments)):
+                                        or isinstance(self, SftArguments)):
             # fix warning
             self.temperature = 1.
             self.top_p = 1.

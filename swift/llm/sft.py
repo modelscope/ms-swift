@@ -115,7 +115,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     return {}
 
 
-def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
+def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
 
     if args.gpu_memory_fraction is not None:
         for device_id in range(torch.cuda.device_count()):
@@ -501,7 +501,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     if args.train_backend == 'megatron':
         return llm_sft_megatron(args)
     msg = {}
-    model, template, callbacks = prepare_train_model_template(args, msg)
+    model, template, callbacks = prepare_model_template_train(args, msg)
     train_dataset, val_dataset = prepare_dataset(args, template, msg)
     return trainer_train(args, model, template, train_dataset, val_dataset, callbacks=callbacks, msg=msg)
 

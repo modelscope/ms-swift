@@ -637,15 +637,16 @@ class ModelWrapper(nn.Module):
     @contextmanager
     def _save_load_context(cls, trainer):
         # fix zero3 & save/load model
-        _model = trainer.deepspeed
-        _new_model = _model._model
-        _model.__dict__['module'] = _new_model
-        _model._modules['module'] = _new_model
+        deepspeed_model = trainer.deepspeed
+        _new_model = deepspeed_model._model
+        _old_model = deepspeed_model.__dict__['module']
+        deepspeed_model.__dict__['module'] = _new_model
+        deepspeed_model._modules['module'] = _new_model
         trainer.model = _new_model
         yield
-        _model.__dict__['module'] = _model
-        _model._modules['module'] = _model
-        trainer.model = _model
+        deepspeed_model.__dict__['module'] = _old_model
+        deepspeed_model._modules['module'] = _old_model
+        trainer.model = deepspeed_model
 
 
 class RLHFTrainerMixin:
