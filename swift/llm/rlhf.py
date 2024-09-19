@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 from swift.trainers import TrainerFactory
 from swift.utils import get_logger, get_main, seed_everything
-from .sft import prepare_dataset, prepare_train_model_template, trainer_train
+from .sft import prepare_dataset, prepare_model_template_train, trainer_train
 from .utils import TEMPLATE_MAPPING, RLHFArguments
 
 logger = get_logger()
@@ -18,7 +18,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct.")
 
     msg = {}
-    model, ref_model, template, callbacks = prepare_train_model_template(args)
+    model, ref_model, template, callbacks = prepare_model_template_train(args)
     with TrainerFactory.patch_template(args, template):
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
 

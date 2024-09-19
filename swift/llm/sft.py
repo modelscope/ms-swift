@@ -22,8 +22,8 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, PtArguments, RLHFArguments, SftArguments, Template, dataset_map,
-                    get_dataset, get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    dynamic_vit_gradient_checkpointing, get_dataset, get_model_tokenizer, get_template, get_time_info,
+                    print_example, set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -115,7 +115,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     return {}
 
 
-def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
+def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
 
     if args.gpu_memory_fraction is not None:
         for device_id in range(torch.cuda.device_count()):
@@ -239,6 +239,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         model.label_names = label_names
         model.return_loss = return_loss
 
+    if args.is_multimodal:
+        dynamic_vit_gradient_checkpointing(model, args.model_type)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
@@ -501,7 +503,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     if args.train_backend == 'megatron':
         return llm_sft_megatron(args)
     msg = {}
-    model, template, callbacks = prepare_train_model_template(args, msg)
+    model, template, callbacks = prepare_model_template_train(args, msg)
     train_dataset, val_dataset = prepare_dataset(args, template, msg)
     return trainer_train(args, model, template, train_dataset, val_dataset, callbacks=callbacks, msg=msg)
 

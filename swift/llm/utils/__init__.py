@@ -22,11 +22,12 @@ from .protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, Cha
                        ModelList, UsageInfo, XRequestConfig, random_uuid)
 from .template import (DEFAULT_SYSTEM, TEMPLATE_MAPPING, History, KTOTemplateMixin, Prompt, RLHFTemplateMixin,
                        StopWords, Template, TemplateType, get_env_args, get_template, register_template)
-from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, find_all_linears, find_embedding,
-                    find_ln, get_max_model_len, get_time_info, history_to_messages, inference, inference_stream,
-                    is_lmdeploy_available, is_megatron_available, is_quant_model, is_vllm_available,
-                    limit_history_length, messages_join_observation, messages_to_history, print_example,
-                    safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset, to_device)
+from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, dynamic_vit_gradient_checkpointing,
+                    find_all_linears, find_embedding, find_ln, get_max_model_len, get_time_info, history_to_messages,
+                    inference, inference_stream, is_lmdeploy_available, is_megatron_available, is_quant_model,
+                    is_vllm_available, limit_history_length, messages_join_observation, messages_to_history,
+                    print_example, safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset,
+                    to_device)
 
 logger = get_logger()
 
