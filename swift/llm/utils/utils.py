@@ -451,6 +451,13 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
+def deep_getattr(model, attr: str):
+    attrs = attr.split('.')
+    for a in attrs:
+        model = getattr(model, a)
+    return model
+
+
 def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
     from swift.utils.module_mapping import MODEL_KEYS_MAPPING
     from .model import MODEL_MAPPING
@@ -461,7 +468,7 @@ def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
         return
     vision_tower_list = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
     for vision_tower_name in vision_tower_list:
-        vision_tower = getattr(model, vision_tower_name)
+        vision_tower = deep_getattr(model, vision_tower_name)
         module_list = _find_module_list(vision_tower)
         if module_list is None:
             continue
