@@ -377,7 +377,7 @@ class LLMTrain(BaseUI):
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
-                params += f'--{e} \'{kwargs[e]}\' '
+                params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         params += more_params_cmd + ' '
         params += f'--add_output_dir_suffix False --output_dir {sft_args.output_dir} ' \
                   f'--logging_dir {sft_args.logging_dir} --ignore_args_error True'
