@@ -7,7 +7,6 @@ NPROC_PER_NODE=$nproc_per_node \
 MASTER_PORT=29500 \
 swift dpo \
     --model_type  yi-6b-chat \
-    --ref_model_type  yi-6b-chat \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \
