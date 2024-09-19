@@ -427,6 +427,8 @@ def find_ln(model: Module) -> List[str]:
 def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
     module_lists = []
     for m in vision_tower.modules():
+        if getattr(m, 'gradient_checkpointing', False):
+            return
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
             module_lists.append(m)
     if module_lists is not None:
