@@ -3340,6 +3340,8 @@ class RLHFTemplateMixin:
             chosen_inputs, chosen_tokenizer_kwargs = template_encode(chosen_example)
             rejected_inputs, rejected_tokenizer_kwargs = template_encode(rejected_example)
 
+        if len(chosen_inputs) == 0 or len(rejected_inputs) == 0:
+            return {}, {}
         for suffix, res in zip(['inputs', 'tokenizer_kwargs'], [inputs, tokenizer_kwargs]):
             for prefix in ['chosen', 'rejected']:
                 data = locals()[f'{prefix}_{suffix}']
