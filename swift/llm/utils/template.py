@@ -137,6 +137,8 @@ class TemplateType:
     chatml = 'chatml'
     # compatibility. (Deprecated)
     default_generation_bos = 'default-generation-bos'
+    yi = 'yi'
+    yi1_5 = 'yi1_5'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -1282,6 +1284,8 @@ register_template(TemplateType.qwen_vl, QwenVLTemplate())
 register_template(TemplateType.qwen_vl_generation, QwenVLGenerationTemplate())
 
 register_template(TemplateType.chatml, ChatmlTemplate())
+register_template(TemplateType.yi, ChatmlTemplate())
+register_template(TemplateType.yi1_5, ChatmlTemplate())
 
 register_template(
     TemplateType.modelscope_agent,
