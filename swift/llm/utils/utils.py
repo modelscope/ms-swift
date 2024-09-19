@@ -427,7 +427,7 @@ def find_ln(model: Module) -> List[str]:
 def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
     module_lists = []
     for m in vision_tower.modules():
-        if getattr(m, 'gradient_checkpointing', False):
+        if hasattr(m, 'gradient_checkpointing'):
             return
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
             module_lists.append(m)
@@ -438,7 +438,7 @@ def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
 def _add_gradient_checkpointing(module_list):
 
     def _new_forward(self, *args, **kwargs):
-        layer_ret = torch.utils.checkpoint.checkpoint(self.__old_forward, *args, **kwargs, use_reentrant=False)
+        layer_ret = torch.utils.checkpoint.checkpoint(self.__old_forward, *args, **kwargs)
         return layer_ret
 
     for module in module_list:
