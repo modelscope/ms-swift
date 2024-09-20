@@ -198,8 +198,8 @@ sft_args = SftArguments(
     model_name=['小黄', 'Xiao Huang'],
     model_author=['魔搭', 'ModelScope'])
 output = sft_main(sft_args)
-best_model_checkpoint = output['best_model_checkpoint']
-print(f'best_model_checkpoint: {best_model_checkpoint}')
+last_model_checkpoint = output['last_model_checkpoint']
+print(f'last_model_checkpoint: {last_model_checkpoint}')
 ```
 
 如果你想要在3090的机器中进行训练, 你可以**降低max_length**为1024, 使用模型并行, 或者使用deepspeed-zero3.
