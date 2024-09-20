@@ -22,8 +22,8 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, PtArguments, RLHFArguments, SftArguments, Template, dataset_map,
-                    get_dataset, get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    dynamic_vit_gradient_checkpointing, get_dataset, get_model_tokenizer, get_template, get_time_info,
+                    print_example, set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -239,6 +239,8 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
         model.label_names = label_names
         model.return_loss = return_loss
 
+    if args.is_multimodal and args.gradient_checkpointing and args.vit_use_gc:
+        dynamic_vit_gradient_checkpointing(model, args.model_type)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
 
