@@ -156,7 +156,7 @@ class LLMEval(BaseUI):
             elif e in kwargs_is_list and kwargs_is_list[e]:
                 params += f'--{e} {kwargs[e]} '
             else:
-                params += f'--{e} \'{kwargs[e]}\' '
+                params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         params += more_params_cmd + ' '
         devices = other_kwargs['gpu_id']
         devices = [d for d in devices if d]

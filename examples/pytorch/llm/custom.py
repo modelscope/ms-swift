@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, Optional, Tuple
 
+import torch
 from datasets import Dataset as HfDataset
 from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer, MsDataset
-from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
 from swift.llm import (LoRATM, Template, TemplateType, dataset_map, get_dataset, get_dataset_from_repo,
@@ -35,7 +35,7 @@ class CustomDatasetName:
 @register_model(CustomModelType.tigerbot_13b_chat, 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama2,
                 CustomTemplateType.tigerbot)
 def get_tigerbot_model_tokenizer(model_dir: str,
-                                 torch_dtype: Dtype,
+                                 torch_dtype: torch.dtype,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):

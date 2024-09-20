@@ -164,7 +164,8 @@ Currently, two types of custom grounding tasks are supported:
 2. For tasks asking about the bounding box for a given target, specify `<ref-object>` in the query, `<bbox>` in the response, and provide the target and bounding box details in objects.
 ```jsonl
 {"query": "Find <bbox>", "response": "<ref-object>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
-{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [138, 136, 235, 359], \"bbox_type\": \"real\", \"image\": 0}]" }
+# mapping to multiple bboxes
+{"query": "Find <ref-object>", "response": "<bbox>", "images": ["/coco2014/train2014/COCO_train2014_000000001507.jpg"], "objects": "[{\"caption\": \"guy in red\", \"bbox\": [[138, 136, 235, 359],[1,2,3,4]], \"bbox_type\": \"real\", \"image\": 0}]" }
 ```
 The `objects` field contains a JSON string with four fields:
   1. `caption`: Description of the object corresponding to the bounding box (bbox)

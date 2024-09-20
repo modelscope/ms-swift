@@ -153,6 +153,7 @@ def decode_base64(*,
                   prompt: Optional[str] = None,
                   images: Optional[List[str]] = None,
                   tmp_dir: str = 'tmp') -> Dict[str, Any]:
+    # base64 -> local_path
     os.makedirs(tmp_dir, exist_ok=True)
     res = {}
     if messages is not None:

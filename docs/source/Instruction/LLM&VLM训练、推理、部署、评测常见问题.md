@@ -1,0 +1,179 @@
+# LLM&VLM训练、推理、部署、评测常见问题
+
+下面是swift使用过程中遇到的一些常见问题。
+
+## 训练
+
+### Q1: Swift微调支持的模型和数据集有哪些？
+详见文档[支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)。
+
+### Q2: 使用自定义数据集训练时支持的数据格式有哪些？
+llm自定义数据集格式见文档[自定义与拓展](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.html)；vlm自定义数据集格式，不同模型对图像数量的支持不同, 具体参考模型对应的最佳实践文档[Multi-Modal文档](https://swift.readthedocs.io/zh-cn/latest/Multi-Modal/index.html)。
+
+### Q3: 自定义数据集dataset_info.json格式，如何通过这种方式使用自定义数据集？
+dataset_info.json格式见文档[自定义与拓展](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.html)。命令行，`--custom_dataset_info xxx.json`，`--dataset dataset_name`。
+
+### Q4: 如何在界面训练使用自定义数据集？
+界面训练使用自定义数据集与命令行一致，参考文档[自定义与拓展](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.html)。
+
+### Q5: 数据集jsonl文件里的一行能不能写成这样？{"index": "00000", "query": "11111", "response": "22222", 'source':'qqq'}
+可以有额外字段的，这些字段不会被使用。
+
+### Q6: 命令行参数在哪个文档中查看？
+详见文档[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+
+### Q7: 离线环境训练需要配置的参数有哪些？
+`--model_id_or_path 本地路径`，`--check_model_is_latest false`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+
+### Q8: model_type在哪儿查看？
+查看文档[支持的模型和数据集](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%92%8C%E6%95%B0%E6%8D%AE%E9%9B%86.html)。
+
+### Q9: 模型训练完能直接转gguf格式吗？
+目前只支持导出ModelFile，详见文档[OLLaMA导出文档](https://swift.readthedocs.io/zh-cn/latest/LLM/OLLAMA%E5%AF%BC%E5%87%BA%E6%96%87%E6%A1%A3.html)。
+
+### Q10: swift支持预训练吗，我看只有sft？
+支持，命令行`swift pt`，数据集格式见[自定义与拓展](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%8E%E6%8B%93%E5%B1%95.html)。
+
+### Q11: 想问一下用lora微调的模型，如果想断点续训的话，是应该先把它合成一整个模型吗，还是可以不合起来，直接通过路径来指定原模型和lora块
+不合并，`--resume_from_checkpoint output/xxx/vx-xxx/checkpoint-xxx`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+
+### Q12: 我想控制一下从网上下载下来的原始模型权重的位置，怎么才能做到把原始的模型放在指定的文件夹里呢？
+可以配置环境变量`MODELSCOPE_CACHE=your_path`将原始的模型存到指定路径；如果用sdk下载，通过`cache_dir="本地地址"`；也可以使用`modelscope download`命令行工具或`git`下载，详见modelscope文档[模型下载](https://modelscope.cn/docs/%E6%A8%A1%E5%9E%8B%E7%9A%84%E4%B8%8B%E8%BD%BD)。训练时`--model_id_or_path`配置本地路径即可。如果需要在离线环境训练，配置`--check_model_is_latest false`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+
+### Q13: 有人在用ms-swift遇到过这个问题？
+```text
+[rank6]: pydantic_core._pydantic_core.ValidationError: 1 validation error for DeepSpeedZeroConfig
+[rank6]: stage3_prefetch_bucket_size
+[rank6]: Input should be a valid integer, got a number with a fractional part [type=int_from_float,input_value=11560550.4，in put_type=float]
+[rank6]: For further information visit https://errors.pydantic.dev/2.8/v/int_fro_float
+```
+`deepspeed`版本降到`0.14.*`。
+
+### Q14: 有微调qwen-2-vl的完整的教程和命令行吗？
+[Qwen2-VL 最佳实践](https://swift.readthedocs.io/zh-cn/latest/Multi-Modal/qwen2-vl%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.html)。
+
+### Q15: 多模态大模型微调有什么支持的trick吗，类似llm的neftune?
+`piassa/olora/dora`这些`lora`的变种或者`fourierft`都可以尝试。参考`sft`参数里面的各种trick，有一些不一定在多模态上适用。
+
+### Q16: 训练过程中eval得到的acc和对应保存的ckpt去重新推理一遍计算得到的acc不是一致的
+训练时候的eval_acc和推理时候的acc 计算方式不一样的。`acc_strategy`: 默认为`'token'`, 可选择的值包括: `'token'`, `'sentence'`.
+
+### Q17: 魔搭官方镜像与swift环境
+`docker run`命令启动容器即可，如：`docker run --gpus all -p 8000:8000 -it -d --name ms registry.cn-beijing.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.1.0-py310-torch2.3.0-tf2.16.1-1.16.0 /bin/bash`，启动容器后拉最新代码安装swift。
+
+### Q18: 多机多卡训练命令行
+```shell
+# 多机多卡
+# 如果非共用磁盘请在各机器sh中额外指定`--save_on_each_node true`.
+# node0
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NNODES=2 \
+NODE_RANK=0 \
+MASTER_ADDR=127.0.0.1 \
+NPROC_PER_NODE=4 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --dataset AI-ModelScope/blossom-math-v2 \
+    --output_dir output \
+# node1
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NNODES=2 \
+NODE_RANK=1 \
+MASTER_ADDR=xxx.xxx.xxx.xxx \
+NPROC_PER_NODE=4 \
+swift sft \
+    --model_id_or_path qwen/Qwen-7B-Chat \
+    --dataset AI-ModelScope/blossom-math-v2 \
+    --output_dir output \
+```
+详见[LLM微调文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.html)
+
+### Q19: 如何选择template?
+见[issue](https://github.com/modelscope/ms-swift/issues/1813)。
+
+### Q20: 多卡训练torchrun和swift sft如何使用？
+`swift sft`走的就是`torchrun`。
+
+### Q21: 有个问题，因为我的sft数据集太大了，然后每次tokenize都需要很久，有解决方案吗？
+使用`lazy_tokenize`，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+
+### Q22: 训练时，如果两个数据集直接追加一起放在训练集中，模型在训练的时候内部会有shuffle的流程吗？还是按顺序取数据去训练？
+trainer中会随机。
+
+## 推理
+
+### Q1:swift推理有文档吗？
+swift支持python脚本、命令行、ui界面推理，详见[LLM推理文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3.html)。
+
+### Q2: 训练后的模型如何使用数据集推理？
+参数`--load_dataset_config true`或`--val_dataset <your-val-dataset>`，见文档[LLM微调文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E5%BE%AE%E8%B0%83%E6%96%87%E6%A1%A3.html#%E5%BE%AE%E8%B0%83%E5%90%8E%E6%A8%A1%E5%9E%8B)。
+
+### Q3: swift推理的时候可以指定下载好的模型吗？
+`--model_id_or_path`配置本地路径即可，详见[命令行参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0.html)。
+
+### Q4: 我想在一个没有label的数据集上推理，怎么做呢？我看文档里面的数据集格式都是训练集
+配置参数`--val_dataset <your-val-dataset>`。
+
+### Q5: 遇到报错ValueError: Input length of input_ids is 35, but `max_length` is set to 20.如何解决？
+```text
+raise ValueError(
+ValueError: Input length of input_ids is 35, but `max_length` is set to 20. This can lead to unexpected behavior. You should consider increasing `max_length` or, better yet, setting `max_new_tokens`.
+```
+设置model.generation_config.max_new_tokens。
+
+### Q6: qwen2-vl推理爆显存
+设置环境变量，SIZE_FACTOR=8 MAX_PIXELS=602112，见文档[Qwen2-VL 最佳实践](https://swift.readthedocs.io/zh-cn/latest/Multi-Modal/qwen2-vl%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.html)。
+
+## 部署
+
+### Q1: 如何部署训练后的模型？
+`swift deploy --ckpt_dir xxx`，见文档[VLLM推理加速与部署](https://swift.readthedocs.io/zh-cn/latest/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.html)。
+
+### Q2: 如何使用vllm部署进行多卡部署？
+`RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift deploy --model_type qwen-7b --tensor_parallel_size 4`，见文档[VLLM推理加速与部署](https://swift.readthedocs.io/zh-cn/latest/LLM/VLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E4%B8%8E%E9%83%A8%E7%BD%B2.html)。
+
+### Q3: 请问用vllm部署的时候，客户端怎么传入图片？
+详见多模态文档，[vLLM推理加速文档](https://swift.readthedocs.io/zh-cn/latest/Multi-Modal/vLLM%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F%E6%96%87%E6%A1%A3.html)。
+
+### Q4: 有个问题想问一下，qwen2-7b部署后使用客户端时，调用openai的api要使用client.completions.create，不能使用client.chat.completions.create，但是使用qwen2-7b-instruct-q5_k_m.gguf的时候可以使用client.chat.completions.create，这是为什么呀？
+base模型可以用client.chat.completions.create的，不过这个是兼容行为。
+
+### Q5: 使用两张卡用swift deploy启动服务端后，用Ctrl+C退出后，会一直有一个python进程，一直占用一张卡的显存，这是正常现象吗？
+需要kill 一下, 这是vllm的问题。
+
+## 评测
+
+### Q1: swift支持的评测集有哪些？
+纯文本评测：
+```text
+'obqa', 'cmb', 'AX_b', 'siqa', 'nq', 'mbpp', 'winogrande', 'mmlu', 'BoolQ', 'cluewsc', 'ocnli', 'lambada',
+'CMRC', 'ceval', 'csl', 'cmnli', 'bbh', 'ReCoRD', 'math', 'humaneval', 'eprstmt', 'WSC', 'storycloze',
+'MultiRC', 'RTE', 'chid', 'gsm8k', 'AX_g', 'bustm', 'afqmc', 'piqa', 'lcsts', 'strategyqa', 'Xsum', 'agieval',
+'ocnli_fc', 'C3', 'tnews', 'race', 'triviaqa', 'CB', 'WiC', 'hellaswag', 'summedits', 'GaokaoBench',
+'ARC_e', 'COPA', 'ARC_c', 'DRCD'
+```
+
+多模态评测：
+```text
+'COCO_VAL', 'MME', 'HallusionBench', 'POPE', 'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN',
+'MMBench', 'MMBench_CN', 'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11',
+'MMBench_TEST_CN_V11', 'MMBench_V11', 'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2',
+'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST', 'MMT-Bench_ALL_MI', 'MMT-Bench_ALL',
+'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL', 'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar',
+'RealWorldQA', 'MLLMGuard_DS', 'BLINK', 'OCRVQA_TEST', 'OCRVQA_TESTCORE', 'TextVQA_VAL', 'DocVQA_VAL',
+'DocVQA_TEST', 'InfoVQA_VAL', 'InfoVQA_TEST', 'ChartQA_TEST', 'MathVision', 'MathVision_MINI',
+'MMMU_DEV_VAL', 'MMMU_TEST', 'OCRBench', 'MathVista_MINI', 'LLaVABench', 'MMVet', 'MTVQA_TEST',
+'MMLongBench_DOC', 'VCR_EN_EASY_500', 'VCR_EN_EASY_100', 'VCR_EN_EASY_ALL', 'VCR_EN_HARD_500',
+'VCR_EN_HARD_100', 'VCR_EN_HARD_ALL', 'VCR_ZH_EASY_500', 'VCR_ZH_EASY_100', 'VCR_ZH_EASY_ALL',
+'VCR_ZH_HARD_500', 'VCR_ZH_HARD_100', 'VCR_ZH_HARD_ALL', 'MMDU', 'MMBench-Video', 'Video-MME',
+'MMBench_DEV_EN', 'MMBench_TEST_EN', 'MMBench_DEV_CN', 'MMBench_TEST_CN', 'MMBench', 'MMBench_CN',
+'MMBench_DEV_EN_V11', 'MMBench_TEST_EN_V11', 'MMBench_DEV_CN_V11', 'MMBench_TEST_CN_V11', 'MMBench_V11',
+'MMBench_CN_V11', 'SEEDBench_IMG', 'SEEDBench2', 'SEEDBench2_Plus', 'ScienceQA_VAL', 'ScienceQA_TEST',
+'MMT-Bench_ALL_MI', 'MMT-Bench_ALL', 'MMT-Bench_VAL_MI', 'MMT-Bench_VAL', 'AesBench_VAL',
+'AesBench_TEST', 'CCBench', 'AI2D_TEST', 'MMStar', 'RealWorldQA', 'MLLMGuard_DS', 'BLINK'
+```
+
+详见文档[LLM评测文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html)。
+
+### Q2: 如何使用自定义评测集？
+纯文本、多模态自定义评测集必须和某个官方评测集数据格式（pattern）保持一致，见文档[LLM评测文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/LLM%E8%AF%84%E6%B5%8B%E6%96%87%E6%A1%A3.html)。
