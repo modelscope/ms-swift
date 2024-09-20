@@ -1,3 +1,14 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+import os
+from dataclasses import dataclass
+from typing import Literal, Optional
+
+import torch.distributed as dist
+
+from swift.utils import (is_dist, get_logger)
+from .infer_args import InferArguments
+
+logger = get_logger()
 
 
 @dataclass

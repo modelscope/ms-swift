@@ -1,3 +1,10 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
+from typing import List, Literal, Optional
+
+from swift.llm import get_model_list_client
+
+from swift.llm.argument.infer_args import InferArguments
 
 
 @dataclass
@@ -56,8 +63,5 @@ class EvalArguments(InferArguments):
         if self.eval_url is None:
             super().handle_infer_backend()
 
-    def _is_multimodal(self, model_type: Optional[str] = None) -> bool:
-        return False if self.eval_url is not None else super()._is_multimodal(model_type)
-
-    def _is_vision(self, model_type: Optional[str] = None) -> bool:
-        return False if self.eval_url is not None else super()._is_vision(model_type)
+    def is_multimodal(self, model_type: Optional[str] = None) -> bool:
+        return False if self.eval_url is not None else super().is_multimodal(model_type)
