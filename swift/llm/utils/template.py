@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from packaging import version
+from peft import PeftModel
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -44,11 +45,13 @@ class TemplateType:
     # chat
     default = 'default'
     qwen = 'qwen'
+    qwen2_5 = 'qwen2_5'
     qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
     qwen2_audio = 'qwen2-audio'
     qwen2_audio_generation = 'qwen2-audio-generation'
     qwen2_vl = 'qwen2-vl'
+    qwen2_vl_generation = 'qwen2-vl-generation'
     modelscope_agent = 'modelscope-agent'
     baichuan = 'baichuan'
     chatglm2 = 'chatglm2'
@@ -135,6 +138,8 @@ class TemplateType:
     chatml = 'chatml'
     # compatibility. (Deprecated)
     default_generation_bos = 'default-generation-bos'
+    yi = 'yi'
+    yi1_5 = 'yi1_5'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -328,7 +333,11 @@ class Template:
                 if 'inputs_embeds' in kwargs:
                     kwargs.pop('input_ids', None)
 
-            parameters = inspect.signature(module.forward).parameters
+            if isinstance(module, PeftModel):
+                parameters = inspect.signature(module.base_model.model.forward).parameters
+            else:
+                parameters = inspect.signature(module.forward).parameters
+
             if 'position_ids' not in parameters:
                 kwargs.pop('position_ids', None)
             return args, kwargs
@@ -1221,7 +1230,7 @@ class _QwenVLTemplateMixin:
     load_medias = False
 
     def check_example(self, example):
-        if self._is_lmdeploy:
+        if self._is_lmdeploy or self._is_vllm:
             return
         images = example.get('images') or []
         from .utils import fetch_one
@@ -1231,12 +1240,15 @@ class _QwenVLTemplateMixin:
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type == 'image'
         if self._is_lmdeploy:
-            return [f'Picture {index + 1}:', [-100], '\n']
+            return [f'Picture {index + 1}: ', [-100], '\n']
         else:
             images = example.get('images') or []
             image = images[index]
-            assert isinstance(image, str)
-            return [f'Picture {index + 1}:<img>{image}</img>\n']
+            if self._is_vllm:
+                return [f'Picture {index + 1}: <img></img>\n']
+            else:
+                assert isinstance(image, str)
+                return [f'Picture {index + 1}: <img>{image}</img>\n']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
         objects = example['objects']
@@ -1258,7 +1270,12 @@ class _QwenVLTemplateMixin:
             ]
 
 
+class Qwen2_5Template(QwenTemplate):
+    system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
+
+
 register_template(TemplateType.qwen, QwenTemplate())
+register_template(TemplateType.qwen2_5, Qwen2_5Template())
 
 
 class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
@@ -1273,6 +1290,8 @@ register_template(TemplateType.qwen_vl, QwenVLTemplate())
 register_template(TemplateType.qwen_vl_generation, QwenVLGenerationTemplate())
 
 register_template(TemplateType.chatml, ChatmlTemplate())
+register_template(TemplateType.yi, ChatmlTemplate())
+register_template(TemplateType.yi1_5, ChatmlTemplate())
 
 register_template(
     TemplateType.modelscope_agent,
@@ -1377,6 +1396,9 @@ class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTe
 
 register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
 
+register_template(
+    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+
 
 def _process_image_qwen(image):
     from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
@@ -1405,7 +1427,7 @@ def _process_image_qwen(image):
     return image
 
 
-class Qwen2VLTemplate(QwenTemplate):
+class _Qwen2VLTemplateMixin:
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -1486,13 +1508,25 @@ class Qwen2VLTemplate(QwenTemplate):
             grid_thw = [b[f'{media_type}_grid_thw'] for b in batch if b.get(f'{media_type}_grid_thw') is not None]
             if grid_thw:
                 res[f'{media_type}_grid_thw'] = torch.concat(grid_thw)
+        if 'input_ids' in res:
+            # fix https://github.com/huggingface/transformers/pull/33487
+            position_ids, _ = self.model.get_rope_index(res['input_ids'], res.get('image_grid_thw'),
+                                                        res.get('video_grid_thw'), res['attention_mask'])
+            res['position_ids'] = position_ids.contiguous()
         return res
+
+
+class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):
+    pass
+
+
+class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate):
+    pass
 
 
 register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
-register_template(
-    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
 
 class YiCoderTemplate(ChatmlTemplate):
@@ -3312,6 +3346,8 @@ class RLHFTemplateMixin:
             chosen_inputs, chosen_tokenizer_kwargs = template_encode(chosen_example)
             rejected_inputs, rejected_tokenizer_kwargs = template_encode(rejected_example)
 
+        if len(chosen_inputs) == 0 or len(rejected_inputs) == 0:
+            return {}, {}
         for suffix, res in zip(['inputs', 'tokenizer_kwargs'], [inputs, tokenizer_kwargs]):
             for prefix in ['chosen', 'rejected']:
                 data = locals()[f'{prefix}_{suffix}']

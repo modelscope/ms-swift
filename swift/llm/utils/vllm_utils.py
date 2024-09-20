@@ -38,6 +38,7 @@ def get_vllm_engine(
         max_model_len: Optional[int] = None,
         disable_custom_all_reduce: bool = True,  # Default values different from vllm
         enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
         engine_kwargs: Optional[Dict[str, Any]] = None,
         use_async: bool = False,
         # lora
@@ -76,6 +77,12 @@ def get_vllm_engine(
         engine_kwargs['max_lora_rank'] = max_lora_rank
     else:
         assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
+
+    if 'limit_mm_per_prompt' in parameters and limit_mm_per_prompt:
+        engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
+    else:
+        assert not limit_mm_per_prompt, (
+            'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
     engine_args = engine_args_cls(
         model=model_dir,
@@ -272,8 +279,12 @@ def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_
         llm_inputs = {'prompt_token_ids': input_ids}
         images = inputs.get('images') or []
         if images:
-            assert len(images) == 1, 'Currently, only one image is supported.'
-            llm_inputs['multi_modal_data'] = {'image': images[0]}
+            if version.parse(vllm.__version__) < version.parse('0.6'):
+                assert len(images) == 1, (
+                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.0')
+                llm_inputs['multi_modal_data'] = {'image': images[0]}
+            else:
+                llm_inputs['multi_modal_data'] = {'image': images}
         llm_engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
     else:
         llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
@@ -588,6 +599,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         max_model_len=args.max_model_len,
         disable_custom_all_reduce=args.disable_custom_all_reduce,
         enforce_eager=args.enforce_eager,
+        limit_mm_per_prompt=args.limit_mm_per_prompt,
         use_async=use_async,
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,

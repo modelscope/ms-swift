@@ -1435,7 +1435,7 @@ register_dataset(
     'swift/TextCaps', [],
     preprocess_func=preprocess_text_caps,
     get_function=get_dataset_from_repo,
-    split=['train', 'val'],
+    split=['train', 'validation'],
     hf_dataset_id='HuggingFaceM4/TextCaps',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'caption', 'quality'])

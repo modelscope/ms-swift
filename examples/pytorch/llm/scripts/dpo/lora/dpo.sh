@@ -4,7 +4,6 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift dpo \
     --model_type  yi-6b-chat \
-    --ref_model_type  yi-6b-chat \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \

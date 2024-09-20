@@ -10,6 +10,7 @@ from functools import partial, wraps
 from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Thread
+from types import MethodType
 from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 import accelerate
@@ -18,6 +19,8 @@ import numpy as np
 import requests
 import torch
 import torch.distributed as dist
+import torch.nn as nn
+import torch.utils.checkpoint
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
@@ -419,6 +422,57 @@ def find_ln(model: Module) -> List[str]:
             module_name = '.'.join(name.split('.')[-1:])
             module_names.add(module_name)
     return list(module_names)
+
+
+def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
+    module_lists = []
+    for m in vision_tower.modules():
+        if hasattr(m, 'gradient_checkpointing'):
+            return
+        if isinstance(m, nn.ModuleList) and len(m) >= 10:
+            module_lists.append(m)
+    if module_lists is not None:
+        return max(module_lists, key=lambda x: len(x))
+
+
+def _add_gradient_checkpointing(module_list):
+
+    def _new_forward(self, *args, **kwargs):
+        layer_ret = torch.utils.checkpoint.checkpoint(self.__old_forward, *args, **kwargs)
+        return layer_ret
+
+    for module in module_list:
+        if hasattr(module, '_old_forward'):  # device_map
+            __old_forward = module._old_forward
+            module._old_forward = MethodType(_new_forward, module)
+        else:
+            __old_forward = module.forward
+            module.forward = MethodType(_new_forward, module)
+        module.__old_forward = __old_forward
+
+
+def deep_getattr(model, attr: str):
+    attrs = attr.split('.')
+    for a in attrs:
+        model = getattr(model, a)
+    return model
+
+
+def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
+    from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+    from .model import MODEL_MAPPING
+    model_info = MODEL_MAPPING[model_type]
+    lora_target_modules = model_info.get('lora_target_modules')
+
+    if not isinstance(lora_target_modules, str):
+        return
+    vision_tower_list = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
+    for vision_tower_name in vision_tower_list:
+        vision_tower = deep_getattr(model, vision_tower_name)
+        module_list = _find_module_list(vision_tower)
+        if module_list is None:
+            continue
+        _add_gradient_checkpointing(module_list)
 
 
 def find_embedding(model: Module) -> List[str]:
