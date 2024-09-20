@@ -1,20 +1,20 @@
 
-# Qwen1.5全流程最佳实践
+# Qwen2.5全流程最佳实践
 
-这里介绍对**Qwen1.5-7B-Chat**和对**Qwen1.5-72B-Chat**进行推理, 自我认知微调, 量化, 部署. 分别对应**低配置和高配置**环境.
+这里介绍对**Qwen2.5-7B-Instruct**和对**Qwen2.5-72B-Instruct**进行推理, 自我认知微调, 量化, 部署. 分别对应**低配置和高配置**环境.
 
 使用双卡80GiB A100对**Qwen2-72B-Instruct**进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
 
 
 ## 目录
 - [环境准备](#环境准备)
-- [Qwen1.5-7B-Chat](#qwen15-7b-chat)
+- [Qwen2.5-7B-Instruct](#qwen25-7b-instruct)
   - [推理](#推理)
   - [自我认知微调](#自我认知微调)
   - [微调后推理](#微调后推理)
   - [量化](#量化)
   - [部署](#部署)
-- [Qwen1.5-72B-Chat](#qwen15-72b-chat)
+- [Qwen2.5-72B-Instruct](#qwen25-72b-instruct)
   - [推理](#推理-1)
   - [自我认知微调](#自我认知微调-1)
   - [微调后推理](#微调后推理-1)
@@ -33,13 +33,13 @@ pip install vllm
 pip install openai
 ```
 
-## Qwen1.5-7B-Chat
+## Qwen2.5-7B-Instruct
 
 ### 推理
 
-这里我们会对Qwen1.5-7B-Chat及其**awq-int4量化**版本进行**流式**推理, 并展示使用**可视化**方式推理.
+这里我们会对Qwen2.5-7B-Instruct及其**awq-int4量化**版本进行**流式**推理, 并展示使用**可视化**方式推理.
 
-使用python推理`qwen1half-7b-chat`:
+使用python推理`qwen2_5-7b-instruct`:
 ```python
 # Experimental environment: 3090
 import os
@@ -52,7 +52,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.qwen1half_7b_chat
+model_type = ModelType.qwen2_5_7b_instruct
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: qwen
 
@@ -90,12 +90,17 @@ print(f'history: {history}')
 query: 浙江的省会在哪里？
 response: 浙江省的省会是杭州市。
 query: 这有什么好吃的？
-response: 浙江有很多美食，比如杭州的西湖醋鱼、东坡肉、龙井虾仁，宁波的汤圆、奉化芋头羹，温州的鱼饼、楠溪江豆腐干，嘉兴的南湖菱角等等。每一道菜都有其独特的风味和历史背景，值得一试。
-history: [['浙江的省会在哪里？', '浙江省的省会是杭州市。'], ['这有什么好吃的？', '浙江有很多美食，比如杭州的西湖醋鱼、东坡肉、龙井虾仁，宁波的汤圆、奉化芋头羹，温州的鱼饼、楠溪江豆腐干，嘉兴的南湖菱角等等。每一道菜都有其独特的风味和历史背景，值得一试。']]
+response: 浙江有很多美食，以下是一些著名的菜肴和小吃：
+
+1. **西湖醋鱼**：一道传统的杭州菜，以草鱼为主料，用米醋、白糖等调味品烹制而成，酸甜可口。
+2. **龙井虾仁**：选用新鲜的虾仁与龙井茶叶一起炒制，清香鲜美。
+3. **东坡肉**：这是浙江的一道名菜，选自五花肉，经过长时间炖煮，肥而不腻。
+4. **绍兴黄酒**：虽然严格意义上不算食物，但绍兴黄酒是浙江非常有名的一种传统
+history: [['浙江的省会在哪里？', '浙江省的省会是杭州市。'], ['这有什么好吃的？', '浙江有很多美食，以下是一些著名的菜肴和小吃：\n\n1. **西湖醋鱼**：一道传统的杭州菜，以草鱼为主料，用米醋、白糖等调味品烹制而成，酸甜可口。\n2. **龙井虾仁**：选用新鲜的虾仁与龙井茶叶一起炒制，清香鲜美。\n3. **东坡肉**：这是浙江的一道名菜，选自五花肉，经过长时间炖煮，肥而不腻。\n4. **绍兴黄酒**：虽然严格意义上不算食物，但绍兴黄酒是浙江非常有名的一种传统']]
 """
 ```
 
-使用python推理`qwen1half-7b-chat-awq`, 这里我们使用**VLLM**进行推理加速:
+使用python推理`qwen2_5-7b-instruct-awq`, 这里我们使用**vLLM**进行推理加速:
 ```python
 # Experimental environment: 3090
 import os
@@ -107,7 +112,7 @@ from swift.llm import (
 )
 import torch
 
-model_type = ModelType.qwen1half_7b_chat_awq
+model_type = ModelType.qwen2_5_7b_instruct_awq
 model_id_or_path = None
 llm_engine = get_vllm_engine(model_type, torch.float16, model_id_or_path=model_id_or_path, max_model_len=4096)
 template_type = get_default_template_type(model_type)
@@ -167,7 +172,7 @@ history: [('浙江的省会在哪？', '浙江省的省会是杭州市。'), ('�
 使用可视化方式推理, 并使用VLLM:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift app-ui \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --infer_backend vllm --max_model_len 4096
 ```
 效果如下:
@@ -188,7 +193,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
-    model_type=ModelType.qwen1half_7b_chat,
+    model_type=ModelType.qwen2_5_7b_instruct,
     dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500',
              f'{DatasetName.self_cognition}#500'],
     max_length=2048,
@@ -210,7 +215,7 @@ print(f'best_model_checkpoint: {best_model_checkpoint}')
 # 2 * 18GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 2048 \
     --learning_rate 1e-4 \
@@ -227,7 +232,7 @@ swift sft \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instructt \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 2048 \
     --learning_rate 1e-4 \
@@ -262,8 +267,8 @@ from swift.tuners import Swift
 
 seed_everything(42)
 
-ckpt_dir = 'output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx'
-model_type = ModelType.qwen1half_7b_chat
+ckpt_dir = 'output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx'
+model_type = ModelType.qwen2_5_7b_instruct
 template_type = get_default_template_type(model_type)
 model_id_or_path = None
 model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
@@ -287,7 +292,7 @@ history: [('你是qwen吗？', '不是，我是魔搭的人工智能助手小黄
 ```shell
 # Experimental environment: 3090
 CUDA_VISIBLE_DEVICES=0 swift app-ui \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx \
     --infer_backend vllm --max_model_len 4096 \
     --merge_lora true
 ```
@@ -302,7 +307,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui \
 # Experimental environment: 3090
 # 14GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx \
     --quant_bits 4 --quant_method awq \
     --merge_lora true
 ```
@@ -319,8 +324,8 @@ from swift.llm import (
 )
 import torch
 
-model_type = ModelType.qwen1half_7b_chat
-model_id_or_path = 'output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4'
+model_type = ModelType.qwen2_5_7b_instruct
+model_id_or_path = 'output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4'
 llm_engine = get_vllm_engine(model_type,
                              model_id_or_path=model_id_or_path,
                              max_model_len=4096)
@@ -368,7 +373,7 @@ history: [('浙江的省会在哪？', '浙江省的省会是杭州市。'), ('�
 ```shell
 # Experimental environment: 3090
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4 \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4 \
     --infer_backend vllm --max_model_len 4096
 ```
 
@@ -416,7 +421,7 @@ for query in ['78654+657=?', '晚上睡不着觉怎么办']:
     messages.append({'role': 'assistant', 'content': response})
 
 """
-model_type: qwen1half-7b-chat
+model_type: qwen2_5-7b-instruct
 query: 你是谁？
 response: 我是魔搭的人工智能助手，我的名字叫小黄。我可以回答各种问题，提供信息和帮助。有什么我可以帮助你的吗？
 query: what's your name?
@@ -439,7 +444,7 @@ response: 晚上睡不着觉可能是因为压力、焦虑、环境因素等。�
 """
 ```
 
-## Qwen1.5-72B-Chat
+## Qwen2.5-72B-Instruct
 
 
 ### 推理
@@ -448,7 +453,7 @@ response: 晚上睡不着觉可能是因为压力、焦虑、环境因素等。�
 ```shell
 # Experimental environment: 4 * A100
 RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
-    --model_type qwen1half-72b-chat \
+    --model_type qwen2_5-72b-instruct \
     --infer_backend vllm --tensor_parallel_size 4
 ```
 
@@ -475,7 +480,7 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
-    --model_type qwen1half-72b-chat \
+    --model_type qwen2_5-72b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 4096 \
     --learning_rate 1e-4 \
@@ -491,7 +496,7 @@ swift sft \
 ```shell
 # Experimental environment: 4 * A100
 RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx \
     --infer_backend vllm --tensor_parallel_size 4 \
     --merge_lora true
 ```
@@ -517,7 +522,7 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
 # Experimental environment: A100
 # 30GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx \
     --quant_bits 4 --quant_method awq \
     --merge_lora true
 ```
@@ -529,7 +534,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 ```shell
 # Experimental environment: A100
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4 \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4 \
     --infer_backend vllm --max_model_len 8192
 ```
 
@@ -577,7 +582,7 @@ for query in ['78654+657=?', '晚上睡不着觉怎么办']:
     messages.append({'role': 'assistant', 'content': response})
 
 """
-model_type: qwen1half-72b-chat
+model_type: qwen2_5-72b-instruct
 query: 你是谁？
 response: 我是由魔搭开发的人工智能语言模型，可以回答问题、提供信息、进行对话和解决问题。有什么我可以帮助你的吗？
 query: what's your name?
