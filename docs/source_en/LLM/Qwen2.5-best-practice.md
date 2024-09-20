@@ -1,19 +1,19 @@
-# Qwen1.5 Full Process Best Practices
+# Qwen2.5 Full Process Best Practices
 
-This introduces how to perform inference, self-cognition fine-tuning, quantization, and deployment on **Qwen1.5-7B-Chat** and **Qwen1.5-72B-Chat**, corresponding to **low-resource and high-resource** environments respectively.
+This introduces how to perform inference, self-cognition fine-tuning, quantization, and deployment on **Qwen2.5-7B-Instruct** and **Qwen2.5-72B-Instruct**, corresponding to **low-resource and high-resource** environments respectively.
 
 The best practice for self-cognition fine-tuning, inference and deployment of Qwen2-72B-Instruct using dual-card 80GiB A100 can be found [here](https://github.com/modelscope/swift/issues/1092).
 
 
 ## Table of Contents
 - [Environment Preparation](#environment-preparation)
-- [Qwen1.5-7B-Chat](#qwen15-7b-chat)
+- [Qwen2.5-7B-Instruct](#qwen25-7b-instruct)
   - [Inference](#inference)
   - [Self-Cognition Fine-tuning](#self-cognition-fine-tuning)
   - [Post-Tuning Inference](#post-tuning-inference)
   - [Quantization](#quantization)
   - [Deployment](#deployment)
-- [Qwen1.5-72B-Chat](#qwen15-72b-chat)
+- [Qwen2.5-72B-Instruct](#qwen25-72b-instruct)
   - [Inference](#inference-1)
   - [Self-Cognition Fine-tuning](#self-cognition-fine-tuning-1)
   - [Post-Tuning Inference](#post-tuning-inference-1)
@@ -32,13 +32,13 @@ pip install vllm
 pip install openai
 ```
 
-## Qwen1.5-7B-Chat
+## Qwen2.5-7B-Instruct
 
 ### Inference
 
-Here we perform **streaming** inference on Qwen1.5-7B-Chat and its **awq-int4 quantized** version, and demonstrate inference using a **visualization** method.
+Here we perform **streaming** inference on Qwen2.5-7B-Instruct and its **awq-int4 quantized** version, and demonstrate inference using a **visualization** method.
 
-Using Python for inference on `qwen1half-7b-chat`:
+Using Python for inference on `qwen2_5-7b-instruct`:
 ```python
 # Experimental environment: 3090
 import os
@@ -51,7 +51,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.qwen1half_7b_chat
+model_type = ModelType.qwen2_5_7b_instruct
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: qwen
 
@@ -94,7 +94,7 @@ history: [['Where is the capital of Zhejiang located?', 'The capital of Zhejiang
 """
 ```
 
-Using Python to infer `qwen1half-7b-chat-awq`, here we use **VLLM** for inference acceleration:
+Using Python to infer `qwen2_5-7b-instruct-awq`, here we use **VLLM** for inference acceleration:
 ```python
 # Experimental environment: 3090
 import os
@@ -106,7 +106,7 @@ from swift.llm import (
 )
 import torch
 
-model_type = ModelType.qwen1half_7b_chat_awq
+model_type = ModelType.qwen2_5_7b_instruct_awq
 model_id_or_path = None
 llm_engine = get_vllm_engine(model_type, torch.float16, model_id_or_path=model_id_or_path, max_model_len=4096)
 template_type = get_default_template_type(model_type)
@@ -166,7 +166,7 @@ history: [('Where is the capital of Zhejiang?', 'The capital of Zhejiang Provinc
 Using a visualization method for inference, and using VLLM:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift app-ui \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --infer_backend vllm --max_model_len 4096
 ```
 The effect is as follows:
@@ -186,7 +186,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
-    model_type=ModelType.qwen1half_7b_chat,
+    model_type=ModelType.qwen2_5_7b_instruct,
     dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500',
              f'{DatasetName.self_cognition}#500'],
     max_length=2048,
@@ -209,7 +209,7 @@ Using model parallelism:
 # 2 * 18GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 2048 \
     --learning_rate 1e-4 \
@@ -226,7 +226,7 @@ script for distributed training using **zero2**:
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 2048 \
     --learning_rate 1e-4 \
@@ -263,8 +263,8 @@ from swift.tuners import Swift
 
 seed_everything(42)
 
-ckpt_dir = 'output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx'
-model_type = ModelType.qwen1half_7b_chat
+ckpt_dir = 'output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx'
+model_type = ModelType.qwen2_5_7b_instruct
 template_type = get_default_template_type(model_type)
 model_id_or_path = None
 model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
@@ -289,7 +289,7 @@ Using the interface method for inference:
 ```shell
 # Experimental environment: 3090
 CUDA_VISIBLE_DEVICES=0 swift app-ui \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx \
     --infer_backend vllm --max_model_len 4096 \
     --merge_lora true
 ```
@@ -305,7 +305,7 @@ Next, we introduce how to perform **awq-int4 quantization** on the fine-tuned mo
 # Experimental environment: 3090
 # 14GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx \
     --quant_bits 4 --quant_method awq \
     --merge_lora true
 ```
@@ -322,8 +322,8 @@ from swift.llm import (
 )
 import torch
 
-model_type = ModelType.qwen1half_7b_chat
-model_id_or_path = 'output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4'
+model_type = ModelType.qwen2_5_7b_instruct
+model_id_or_path = 'output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4'
 llm_engine = get_vllm_engine(model_type,
                              model_id_or_path=model_id_or_path,
                              max_model_len=4096)
@@ -371,7 +371,7 @@ Start the server:
 ```shell
 # Experimental environment: 3090
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4 \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4 \
     --infer_backend vllm --max_model_len 4096
 ```
 
@@ -419,7 +419,7 @@ for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
     messages.append({'role': 'assistant', 'content': response})
 
 """
-model_type: qwen1half-7b-chat
+model_type: qwen2_5-7b-instruct
 query: Who are you?
 response: I am an AI assistant developed by ModelScope. My name is Xiao Huang. I can answer various questions, provide information and help. Is there anything I can help you with?
 query: what's your name?
@@ -442,7 +442,7 @@ I hope these suggestions are helpful to you.
 """
 ```
 
-## Qwen1.5-72B-Chat
+## Qwen2.5-72B-Instruct
 
 ### Inference
 Different from the previous 7B demonstration, here we use the **CLI** method for inference:
@@ -450,7 +450,7 @@ Different from the previous 7B demonstration, here we use the **CLI** method for
 ```shell
 # Experimental environment: 4 * A100
 RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
-    --model_type qwen1half-72b-chat \
+    --model_type qwen2_5-72b-instruct \
     --infer_backend vllm --tensor_parallel_size 4
 ```
 
@@ -477,7 +477,7 @@ Here we use deepspeed-**zero3** for fine-tuning, which takes about **30 minutes*
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
-    --model_type qwen1half-72b-chat \
+    --model_type qwen2_5-72b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 4096 \
     --learning_rate 1e-4 \
@@ -493,7 +493,7 @@ Similarly, here we use the CLI method for inference:
 ```shell
 # Experimental environment: 4 * A100
 RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx \
     --infer_backend vllm --tensor_parallel_size 4 \
     --merge_lora true
 ```
@@ -519,7 +519,7 @@ Perform awq-int4 quantization on the fine-tuned model. The entire quantization p
 # Experimental environment: A100
 # 30GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx \
     --quant_bits 4 --quant_method awq \
     --merge_lora true
 ```
@@ -531,7 +531,7 @@ Start the server:
 ```shell
 # Experimental environment: A100
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4 \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4 \
     --infer_backend vllm --max_model_len 8192
 ```
 
@@ -579,7 +579,7 @@ for query in ['78654+657=?', "What to do if I can't fall asleep at night"]:
     messages.append({'role': 'assistant', 'content': response})
 
 """
-model_type: qwen1half-72b-chat
+model_type: qwen2_5-72b-instruct
 query: Who are you?
 response: I am an artificial intelligence language model developed by ModelScope. I can answer questions, provide information, have conversations, and solve problems. What can I help you with?
 query: what's your name?

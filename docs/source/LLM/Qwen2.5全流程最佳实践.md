@@ -234,6 +234,7 @@ swift sft \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
+    --system "You are a helpful assistant."
 ```
 
 使用**zero2**进行分布式训练的脚本:
@@ -243,7 +244,7 @@ swift sft \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
-    --model_type qwen2_5-7b-instructt \
+    --model_type qwen2_5-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 2048 \
     --learning_rate 1e-4 \
@@ -252,6 +253,7 @@ swift sft \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
     --deepspeed default-zero2 \
+    --system "You are a helpful assistant."
 ```
 
 如果你想要使用**界面的方式进行训练**, 可以输入以下命令, 并填入相应的值:
