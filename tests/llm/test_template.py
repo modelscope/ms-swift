@@ -1,14 +1,15 @@
-if __name__ == '__main__':
-    import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-import os
 import unittest
 
+import json
 import torch
 from modelscope import GenerationConfig
 
-from swift.llm import (ModelType, get_default_template_type, get_model_tokenizer, get_template, inference,
-                       messages_to_history)
+from swift.llm import (TEMPLATE_MAPPING, ModelType, Template, get_default_template_type, get_model_tokenizer,
+                       get_template, inference, messages_to_history)
+
+if __name__ == '__main__':
+    import os
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 SKPT_TEST = True
 
@@ -77,6 +78,85 @@ you are a helpful assistant!<|im_end|>
         ] + [30910, 13]
         input_ids_swift = template.encode({'query': query, 'system': system})[0]['input_ids']
         self.assertTrue(input_ids_swift == input_ids_official)
+
+    def test_template_grounding(self):
+        example_single = {
+            'query':
+            'Where is the <ref-object>',
+            'response':
+            'At <bbox>',
+            'images': ['/mnt/workspace/output.png'],
+            'objects':
+            json.loads("[{\"caption\": \"guy in red\", \"bbox\": [1, 2, 3, 4], "
+                       "\"bbox_type\": \"real\", \"image\": 0}]")
+        }
+
+        example_single2 = {
+            'query':
+            'Where is the <ref-object>',
+            'response':
+            'At <bbox>',
+            'images': ['/mnt/workspace/output.png'],
+            'objects':
+            json.loads("[{\"caption\": \"guy in red\", \"bbox\": [[1, 2, 3, 4]], "
+                       "\"bbox_type\": \"real\", \"image\": 0}]")
+        }
+
+        example_multi = {
+            'query':
+            'Where is the <ref-object>',
+            'response':
+            'At <bbox>',
+            'images': ['/mnt/workspace/output.png'],
+            'objects':
+            json.loads("[{\"caption\": \"guy in red\", \"bbox\": [[6, 7, 8, 9],[1, 2, 3, 4]], "
+                       "\"bbox_type\": \"real\", \"image\": 0}]")
+        }
+
+        # qwen-vl
+        template_dict: dict = TEMPLATE_MAPPING['qwen-vl']
+        output = template_dict['template'].replace_box(0, example_single)
+        self.assertTrue(output[0] == '<box>(1,2),(3,4)</box>')
+        output = template_dict['template'].replace_box(0, example_single2)
+        self.assertTrue(output[0] == '<box>(1,2),(3,4)</box>')
+        output = template_dict['template'].replace_box(0, example_multi)
+        self.assertTrue(output[0] == '<box>(6,7),(8,9)</box><box>(1,2),(3,4)</box>')
+
+        # qwen2-vl
+        template_dict: dict = TEMPLATE_MAPPING['qwen2-vl']
+        output = template_dict['template'].replace_box(0, example_single)
+        self.assertTrue(output[0] == '<|box_start|>(1,2),(3,4)<|box_end|>')
+        output = template_dict['template'].replace_box(0, example_single2)
+        self.assertTrue(output[0] == '<|box_start|>(1,2),(3,4)<|box_end|>')
+        output = template_dict['template'].replace_box(0, example_multi)
+        self.assertTrue(output[0] == '<|box_start|>(6,7),(8,9)<|box_end|><|box_start|>(1,2),(3,4)<|box_end|>')
+
+        # florence
+        template_dict: dict = TEMPLATE_MAPPING['florence']
+        output = template_dict['template'].replace_box(0, example_single)
+        self.assertTrue(output[0] == '<loc_1><loc_2><loc_3><loc_4>')
+        output = template_dict['template'].replace_box(0, example_single2)
+        self.assertTrue(output[0] == '<loc_1><loc_2><loc_3><loc_4>')
+        output = template_dict['template'].replace_box(0, example_multi)
+        self.assertTrue(output[0] == '<loc_6><loc_7><loc_8><loc_9>,<loc_1><loc_2><loc_3><loc_4>')
+
+        # internvl2
+        template_dict: dict = TEMPLATE_MAPPING['internvl2']
+        output = template_dict['template'].replace_box(0, example_single)
+        self.assertTrue(output[0] == '<box> [[1, 2, 3, 4]] </box>')
+        output = template_dict['template'].replace_box(0, example_single2)
+        self.assertTrue(output[0] == '<box> [[1, 2, 3, 4]] </box>')
+        output = template_dict['template'].replace_box(0, example_multi)
+        self.assertTrue(output[0] == '<box> [[6, 7, 8, 9],[1, 2, 3, 4]] </box>')
+
+        # minicpm-v
+        template_dict: dict = TEMPLATE_MAPPING['minicpm-v']
+        output = template_dict['template'].replace_box(0, example_single)
+        self.assertTrue(output[0] == '[(1,2),(3,4)]')
+        output = template_dict['template'].replace_box(0, example_single2)
+        self.assertTrue(output[0] == '[(1,2),(3,4)]')
+        output = template_dict['template'].replace_box(0, example_multi)
+        self.assertTrue(output[0] == '[(6,7),(8,9)],[(1,2),(3,4)]')
 
     @unittest.skipIf(SKPT_TEST, 'To avoid excessive testing time caused by downloading models and '
                      'to prevent OOM (Out of Memory) errors.')

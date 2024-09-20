@@ -109,6 +109,7 @@ venv.bak/
 
 .vscode
 .idea
+.run
 
 # custom
 *.pkl
