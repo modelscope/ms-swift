@@ -5,7 +5,6 @@ import numpy as np
 from numpy import ndarray
 from numpy.random import RandomState
 from pandas import DataFrame
-from torch import Tensor
 
 
 def transform_jsonl_to_df(dict_list: List[Dict[str, Any]]) -> DataFrame:
@@ -29,7 +28,7 @@ def get_seed(random_state: Optional[RandomState] = None) -> int:
     return seed
 
 
-def stat_array(array: Union[ndarray, List[int], Tensor]) -> Tuple[Dict[str, float], str]:
+def stat_array(array: Union[ndarray, List[int], 'torch.Tensor']) -> Tuple[Dict[str, float], str]:
     if isinstance(array, list):
         array = np.array(array)
     mean = array.mean().item()

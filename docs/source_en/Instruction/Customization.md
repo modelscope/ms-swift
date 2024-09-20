@@ -275,10 +275,10 @@ The following is an example of **custom models**. The complete py file can be vi
 
 ```python
 from typing import Any, Dict
+import torch
 
 from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
-from torch import dtype as Dtype
 from transformers.utils.versions import require_version
 
 from swift.llm import LoRATM, TemplateType, get_model_tokenizer, register_model
@@ -307,7 +307,7 @@ class CustomTemplateType:
                 'TigerResearch/tigerbot-13b-chat-v4', LoRATM.llama,
                 CustomTemplateType.tigerbot)
 def get_tigerbot_model_tokenizer(model_dir: str,
-                                 torch_dtype: Dtype,
+                                 torch_dtype: torch.dtype,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):

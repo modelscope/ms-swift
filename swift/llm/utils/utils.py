@@ -29,11 +29,10 @@ from tqdm.auto import tqdm
 from transformers import (GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase,
                           StoppingCriteriaList, TextStreamer, trainer)
 from transformers.generation.streamers import BaseStreamer
-from transformers.utils import is_torch_npu_available, strtobool
+from transformers.utils import is_torch_npu_available
 
 from swift.hub import ModelScopeConfig
-from swift.utils import (get_dist_setting, get_logger, is_ddp_plus_mp, safe_ddp_context, stat_array, upper_bound,
-                         use_torchacc)
+from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, stat_array, upper_bound, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .template import History, StopWords, StopWordsCriteria, Template
 
@@ -71,22 +70,6 @@ def download_dataset(model_id: str, files: List[str], force_download: bool = Fal
             shutil.copy2(temp_fpath, local_fpath)
 
     return local_dir
-
-
-use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-if not use_hf:
-    from modelscope import MsDataset
-
-    _old_msdataset_load = MsDataset.load
-
-    @wraps(_old_msdataset_load)
-    def _msdataset_ddp_load(*args, **kwargs):
-        with safe_ddp_context():
-            dataset = _old_msdataset_load(*args, **kwargs)
-        return dataset
-
-    # monkey patching
-    MsDataset.load = _msdataset_ddp_load
 
 
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
@@ -344,19 +327,26 @@ def dataset_map(dataset: DATASET_TYPE,
     return LLMDataset(data)
 
 
-def stat_dataset(llm_dataset: Dataset) -> str:
-    """Statistical analysis was performed on the dataset"""
-    _token_len = []
-    if isinstance(llm_dataset, HfDataset):
+def _get_token_len(llm_dataset):
+    token_len = []
+    if isinstance(llm_dataset, HfDataset):  # compat hf_dataset
         input_ids = llm_dataset['input_ids']
         for ii in input_ids:
-            _token_len.append(len(ii))
+            token_len.append(len(ii))
     else:
-        for d in llm_dataset:
+        for d in llm_dataset:  # LLMDataset
+            _len = 0
             for k, v in d.items():
                 if k == 'input_ids' or k.endswith('_input_ids'):  # sft, rlhf
-                    _token_len.append(len(v))
-    _, stat_str = stat_array(_token_len)
+                    _len += len(v)
+            token_len.append(_len)
+    return token_len
+
+
+def stat_dataset(llm_dataset: Dataset) -> str:
+    """Statistical analysis was performed on the dataset"""
+    token_len = _get_token_len(llm_dataset)
+    _, stat_str = stat_array(token_len)
     logger.info(f'Dataset Token Length: {stat_str}')
     return stat_str
 
@@ -401,7 +391,9 @@ def print_example(example: Dict[str, Any],
     if tokenizer_kwargs is None:
         tokenizer_kwargs = {}
     for key in ['input', 'chosen_input', 'rejected_input', 'labels', 'chosen_labels', 'rejected_labels']:
-        val = example.get(key) or example.get(f'{key}_ids')
+        val = example.get(key)  # fix val is a tensor
+        if val is None:
+            val = example.get(f'{key}_ids')
         if val is not None:
             key_upper = key.upper()
             logger.info(f'[{key_upper}_IDS] {val}')
@@ -504,8 +496,8 @@ def find_all_linears(model: Module, quantization_bit: int, model_type: str, quan
 
 def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
     logger.info('sort by max length...')
-    dataset_len = [len(d['input_ids']) for d in llm_dataset]
-    idx = heapq.nlargest(num_dataset, range(len(dataset_len)), key=lambda i: dataset_len[i])
+    token_len = _get_token_len(llm_dataset)
+    idx = heapq.nlargest(num_dataset, range(len(token_len)), key=lambda i: token_len[i])
     return llm_dataset.select(idx)
 
 
@@ -589,11 +581,11 @@ def _prepare_inputs(model: PreTrainedModel,
     inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    if 'input_ids' in inputs:
+    if 'input_ids' in inputs:  # 1d
         input_ids = torch.tensor(inputs['input_ids'])[None]
         inputs['input_ids'] = input_ids
         token_len = input_ids.shape[1]
-    if 'inputs_embeds' in inputs:
+    if 'inputs_embeds' in inputs:  # 2d
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
@@ -943,7 +935,7 @@ def messages_join_observation(messages: Messages):
 
 def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
     old_generation_config = getattr(model, 'generation_config', None)
-    old_generation_priority_config = ['no_repeat_ngram_size']
+    old_generation_priority_config = ['no_repeat_ngram_size', 'num_beams']
     if old_generation_config is not None:
         for k, old_v in old_generation_config.__dict__.items():
             if k.startswith('_'):

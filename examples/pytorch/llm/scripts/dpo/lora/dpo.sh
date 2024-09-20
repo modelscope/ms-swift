@@ -4,7 +4,6 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift dpo \
     --model_type  yi-6b-chat \
-    --ref_model_type  yi-6b-chat \
     --model_revision  master \
     --sft_type  lora \
     --tuner_backend  swift \
@@ -13,7 +12,6 @@ swift dpo \
     --dataset  hh-rlhf-cn:harmless_base_cn  \
     --num_train_epochs  3  \
     --max_length  1024  \
-    --max_prompt_length  512  \
     --check_dataset_strategy  none  \
     --lora_rank  8  \
     --lora_alpha  32  \
