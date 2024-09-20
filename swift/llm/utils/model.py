@@ -484,6 +484,7 @@ class ModelType:
     mistral_nemo_base_2407 = 'mistral-nemo-base-2407'
     mistral_nemo_instruct_2407 = 'mistral-nemo-instruct-2407'
     mistral_large_instruct_2407 = 'mistral-large-instruct-2407'
+    mistral_small_instruct_2409 = 'mistral-small-instruct-2409'
     mixtral_moe_7b = 'mixtral-moe-7b'
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
@@ -2623,6 +2624,16 @@ def get_model_tokenizer_glm4v(model_dir: str,
     support_flash_attn=True,
     support_vllm=True,
     hf_model_id='mistralai/Mistral-Large-Instruct-2407')
+@register_model(
+    ModelType.mistral_small_instruct_2409,
+    'AI-ModelScope/Mistral-Small-Instruct-2409',
+    LoRATM.llama,
+    TemplateType.mistral_nemo,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=['^consolidated'],
+    support_flash_attn=True,
+    support_vllm=True,
+    hf_model_id='mistralai/Mistral-Small-Instruct-2409')
 @register_model(
     ModelType.mistral_nemo_instruct_2407,
     'AI-ModelScope/Mistral-Nemo-Instruct-2407',
