@@ -780,6 +780,7 @@ class SftArguments(ArgumentsBase):
     use_liger: bool = False
 
     gradient_checkpointing: Optional[bool] = None
+    vit_use_gc: bool = True  # vit use gradient_checkpointing
     # e.g. 'default-zero3', 'default-zero2', 'ds_config/zero2.json', 'zero2-offload', 'zero3-offload'
     deepspeed: Optional[str] = None
     batch_size: int = 1

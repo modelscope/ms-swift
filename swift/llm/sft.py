@@ -239,7 +239,7 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
         model.label_names = label_names
         model.return_loss = return_loss
 
-    if args.is_multimodal and args.gradient_checkpointing:
+    if args.is_multimodal and args.gradient_checkpointing and args.vit_use_gc:
         dynamic_vit_gradient_checkpointing(model, args.model_type)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
