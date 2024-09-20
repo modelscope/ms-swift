@@ -1270,7 +1270,7 @@ class _QwenVLTemplateMixin:
             ]
 
 
-class Qwen2_5Template():
+class Qwen2_5Template(QwenTemplate):
     system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
 
 register_template(TemplateType.qwen2_5, Qwen2_5Template())
