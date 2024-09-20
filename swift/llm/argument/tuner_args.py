@@ -81,7 +81,6 @@ class TunerArguments:
 
     # neftune
     neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
-    neftune_backend: Literal['swift', 'transformers'] = None
 
     # lisa
     lisa_activated_layers: int = 0
@@ -98,3 +97,8 @@ class TunerArguments:
 
     # use_liger
     use_liger: bool = False
+
+    def is_adapter(self) -> bool:
+        return self.sft_type in {
+            'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
+        }

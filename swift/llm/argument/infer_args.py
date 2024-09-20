@@ -1,15 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import json
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union, Tuple, Any
 
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
+
+from swift.llm.dataset.dataset import standard_keys
+from swift.llm.utils.argument import swift_to_peft_format
 from transformers.utils.versions import require_version
 
 from swift.llm import TEMPLATE_MAPPING, is_vllm_available, is_lmdeploy_available
 from swift.llm.argument.data_args import DataArguments, TemplateArguments
-from swift.llm.argument.model_args import QuantizeArguments, ModelArguments, GenerationArguments, ArgumentsBase
+from swift.llm.argument.model_args import QuantizeArguments, ModelArguments, GenerationArguments, ArgumentsBase, \
+    load_from_ckpt_dir, prepare_ms_hub
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.utils import (get_logger)
 
@@ -71,36 +76,25 @@ class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeA
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if self.ckpt_dir is not None and not self.check_ckpt_dir_correct(self.ckpt_dir):
-            logger.warning(f'The checkpoint dir {self.ckpt_dir} passed in is invalid, please make sure'
-                           'the dir contains a `configuration.json` file.')
-        self.handle_compatibility()
-        if len(self.val_dataset) > 0:
-            self.dataset_test_ratio = 0.0
-            logger.info('Using val_dataset, ignoring dataset_test_ratio')
         self.handle_path()
-        logger.info(f'ckpt_dir: {self.ckpt_dir}')
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
             logger.info('Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.')
         if self.load_args_from_ckpt_dir:
-            self.load_from_ckpt_dir()
+            load_from_ckpt_dir(self, False)
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
 
-        if self.rope_scaling:
-            logger.info(f'rope_scaling is set to {self.rope_scaling}, '
-                        f'please remember to set max_length, which is supposed to be the same as training')
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         self._handle_dataset_sample()
-        self._register_self_cognition()
+        self.register_self_cognition()
         self.handle_custom_register()
         self.handle_custom_dataset_info()
         self.set_model_type()
         self.check_flash_attn()
-        self.is_multimodal = self._is_multimodal(self.model_type)
-        self.prepare_ms_hub()
+        self.is_multimodal = self.is_multimodal()
+        prepare_ms_hub(self)
 
         self.torch_dtype, _, _ = self.select_dtype()
         self.prepare_template()
@@ -133,7 +127,7 @@ class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeA
         self.handle_generation_config()
 
     def handle_infer_backend(self):
-        model_info = MODEL_MAPPING[self.model_type]
+        model_info = MODEL_MAPPING.get(self.model_type, {})
         support_vllm = model_info.get('support_vllm', False)
         support_lmdeploy = model_info.get('support_lmdeploy', False)
         self.lora_request_list = None
@@ -169,7 +163,7 @@ class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeA
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
-            self.lora_request_list, self.use_dora = _parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
+            self.lora_request_list, self.use_dora = self._parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1 or not template_info.get('stream', True):
@@ -179,9 +173,43 @@ class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeA
         if self.infer_media_type == 'none' and self.is_multimodal:
             self.infer_media_type = 'interleave'
         self.media_type = template_info.get('media_type', 'image')
-        self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
+        self.media_key = standard_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
+
+    @staticmethod
+    def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> Tuple[List[Any], bool]:
+        VllmLoRARequest = None
+        if use_vllm:
+            try:
+                from .vllm_utils import LoRARequest as VllmLoRARequest
+            except ImportError:
+                logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
+                raise
+
+        @dataclass
+        class PtLoRARequest:
+            lora_name: str
+            lora_int_id: int
+            lora_local_path: str
+
+        LoRARequest = VllmLoRARequest if use_vllm else PtLoRARequest
+        lora_request_list = []
+        use_dora_list = []
+        for i, lora_module in enumerate(lora_modules):
+            lora_name, lora_local_path = lora_module.split('=')
+            lora_local_path = swift_to_peft_format(lora_local_path)
+            with open(os.path.join(lora_local_path, 'adapter_config.json'), 'r') as f:
+                _json = json.load(f)
+                use_dora_list.append(_json.get('use_dora', False))
+            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
+        if any(use_dora_list) and len(lora_modules) > 1:
+            raise ValueError('Dora does not support inference with other loras')
+        elif not any(use_dora_list):
+            use_dora = False
+        else:
+            use_dora = True
+        return lora_request_list, use_dora
 
     @staticmethod
     def check_ckpt_dir_correct(ckpt_dir) -> bool:

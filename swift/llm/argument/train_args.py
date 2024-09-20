@@ -5,22 +5,30 @@ import math
 import os
 import platform
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Optional
 
 import torch
 import torch.distributed as dist
-import transformers
-from packaging import version
+from modelscope import HubApi
+from modelscope.hub.api import ModelScopeConfig
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
+from swift.llm import TEMPLATE_MAPPING
+from swift.llm.utils.utils import is_liger_available
 from swift.trainers import LOSS_MAPPING, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
+from swift.utils import get_logger
+from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .data_args import TemplateArguments, DataArguments
-from .model_args import ModelArguments, QuantizeArguments, GenerationArguments, ArgumentsBase
+from .model_args import ModelArguments, QuantizeArguments, GenerationArguments, ArgumentsBase, load_from_ckpt_dir, \
+    prepare_ms_hub
 from .tuner_args import TunerArguments
+from ..model.loader import MODEL_MAPPING
+
+logger = get_logger()
 
 
 class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
@@ -47,7 +55,18 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
 
 @dataclass
-class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
+class MegatronArguments:
+
+    # megatron
+    train_backend: Literal['transformers', 'megatron'] = 'transformers'
+    tp: int = 1
+    pp: int = 1
+    min_lr: Optional[float] = None
+    sequence_parallel: bool = False
+
+
+@dataclass
+class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
@@ -57,18 +76,11 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
     resume_only_model: bool = False
 
     packing: bool = False
-    # megatron
-    train_backend: Literal['transformers', 'megatron'] = 'transformers'
-    tp: int = 1
-    pp: int = 1
-    min_lr: Optional[float] = None
-    sequence_parallel: bool = False
 
     # multimodal
     loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     use_loss_scale: bool = False  # for agent
-    loss_scale_config_path: str = 'DEFAULT'
 
     # streaming dataset
     streaming: bool = False
@@ -88,7 +100,6 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
         })
     lazy_tokenize: Optional[bool] = None
     preprocess_num_proc: int = 1
-    use_flash_attn: Optional[bool] = None
     ignore_args_error: bool = False  # True: notebook compatibility
     check_model_is_latest: bool = True
 
@@ -103,58 +114,13 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
     metric_warmup_step: Optional[float] = 0
     fsdp_num: int = 1
 
-    def _prepare_target_modules(self, target_modules) -> Union[List[str], str]:
-        if isinstance(target_modules, str):
-            target_modules = [target_modules]
-        if len(target_modules) == 0:
-            return target_modules
-        elif len(target_modules) == 1:
-            if ',' in target_modules[0]:
-                target_modules = target_modules[0].split(',')
-        if 'AUTO' in target_modules:
-            target_modules.remove('AUTO')
-            target_modules.append('DEFAULT')
-        if 'DEFAULT' in target_modules:
-            target_modules.remove('DEFAULT')
-            default_lora_tm = get_default_lora_target_modules(self.model_type)
-            if isinstance(default_lora_tm, str):
-                return default_lora_tm
-            target_modules += default_lora_tm
-        if 'EMBEDDING' in target_modules:
-            self.lora_use_embedding = True
-        if 'ALL' in target_modules:
-            self.lora_use_all = True
-        return target_modules
-
     def handle_lr_scheduler_kwargs(self):
         if self.lr_scheduler_kwargs is None:
             self.lr_scheduler_kwargs = {}
         elif isinstance(self.lr_scheduler_kwargs, str):
             self.lr_scheduler_kwargs = json.loads(self.lr_scheduler_kwargs)
 
-    def _prepare_modules_to_save(self, modules_to_save) -> List[str]:
-        if isinstance(modules_to_save, str):
-            modules_to_save = [modules_to_save]
-        if len(modules_to_save) == 0:
-            return modules_to_save
-        if 'EMBEDDING' in modules_to_save:
-            modules_to_save.remove('EMBEDDING')
-            self.lora_m2s_use_embedding = True
-        if 'LN' in modules_to_save:
-            modules_to_save.remove('LN')
-            self.lora_m2s_use_ln = True
-        return modules_to_save
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.handle_compatibility()
-        if self.preprocess_num_proc and self.preprocess_num_proc > 1:
-            os.environ['DATASET_MAP_NPROC'] = str(self.preprocess_num_proc)
-        if len(self.val_dataset) > 0:
-            self.dataset_test_ratio = 0.0
-            logger.info('Using val_dataset, ignoring dataset_test_ratio')
-        if is_pai_training_job():
-            self._handle_pai_compat()
+    def prepare_deepspeed(self):
         ds_config_folder = os.path.abspath(os.path.join(__file__, '..', '..', 'ds_config'))
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
@@ -166,55 +132,19 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
             if self.deepspeed == ds_name:
                 self.deepspeed = os.path.join(ds_config_folder, ds_config)
                 break
-        if self.loss_scale_config_path:
-            if self.loss_scale_config_path == 'DEFAULT':
-                self.loss_scale_config_path = os.path.abspath(
-                    os.path.join(__file__, '..', '..', 'agent', 'default_loss_scale_config.json'))
-            elif self.loss_scale_config_path == 'alpha-umi':  # https://arxiv.org/pdf/2401.07324
-                self.loss_scale_config_path = os.path.abspath(
-                    os.path.join(__file__, '..', '..', 'agent', 'alpha_umi_loss_scale_config.json'))
-            elif self.loss_scale_config_path == 'agent-flan':  # https://arxiv.org/abs/2403.12881
-                self.loss_scale_config_path = os.path.abspath(
-                    os.path.join(__file__, '..', '..', 'agent', 'agentflan.json'))
-        if self.train_backend == 'megatron' and self.resume_from_checkpoint is None:
-            self.resume_from_checkpoint = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
-        self.handle_path()
-        self._handle_dataset_sample()
-        self._register_self_cognition()
-        self.handle_custom_register()
-        self.handle_custom_dataset_info()
-        if self.resume_from_checkpoint:
-            self.load_from_ckpt_dir(True)
-            if self.sft_type == 'full' or self.train_backend == 'megatron':
-                self.model_id_or_path = self.resume_from_checkpoint
 
-        if self.rope_scaling:
-            logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
+        if self.deepspeed is not None:
+            if is_mp():
+                raise ValueError('DeepSpeed is not compatible with MP. '
+                                 f'n_gpu: {torch.cuda.device_count()}, '
+                                 f'local_world_size: {self.local_world_size}.')
+            require_version('deepspeed')
+            if self.deepspeed.endswith('.json') or os.path.isfile(self.deepspeed):
+                with open(self.deepspeed, 'r', encoding='utf-8') as f:
+                    self.deepspeed = json.load(f)
+            logger.info(f'Using deepspeed: {self.deepspeed}')
 
-        if self.dataset_seed is None:
-            self.dataset_seed = self.seed
-        self.set_model_type()
-        self.check_flash_attn()
-        self.handle_lr_scheduler_kwargs()
-        self.is_multimodal = self._is_multimodal(self.model_type)
-        self.is_vision = self._is_vision(self.model_type)
-
-        self.lora_use_embedding = False
-        self.lora_use_all = False
-        self.lora_m2s_use_embedding = False
-        self.lora_m2s_use_ln = False
-        self.target_modules = self._prepare_target_modules(self.target_modules)
-        self.modules_to_save = self._prepare_modules_to_save(self.modules_to_save)
-        if self.use_self_cognition and self.sft_type == 'lora' and not self.lora_use_all:
-            logger.warning('Due to knowledge editing involved, it is recommended to add LoRA on MLP. '
-                           'For example: `--lora_target_modules ALL`. '
-                           'If you have already added LoRA on MLP, please ignore this warning.')
-
-        if self.sft_type in {'adalora', 'ia3'} and self.lora_use_embedding:
-            raise ValueError('`adalora` and `ia3` do not support setting embedding as target_modules.')
-
-        self.torch_dtype, self.fp16, self.bf16 = self.select_dtype()
-        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
+    def prepare_ddp_backend(self):
         if is_dist():
             if is_torch_npu_available():
                 torch.npu.set_device(self.local_rank)
@@ -226,17 +156,13 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
             if self.ddp_backend == 'gloo' and self.quantization_bit != 0:
                 raise ValueError('not supported, please use `nccl`')
 
-        if self.train_backend == 'megatron' and self.sft_type == 'lora':
-            logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
-            self.sft_type = 'full'
-
-        model_info = MODEL_MAPPING[self.model_type]
-        if is_adapter(self.sft_type):
+    def prepare_train_type(self):
+        if self.is_adapter():
             assert self.freeze_parameters_ratio == 0., (
                 'lora does not support `freeze_parameters_ratio`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
-            if is_quant_model(self.model_type):
+            if self.is_quant_model(self.model_type, self.model_id_or_path or self.ckpt_dir, self.model_revision):
                 assert self.quantization_bit == 0, (
                     f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
@@ -245,13 +171,10 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
                 self.eval_steps = 50
         elif self.sft_type == 'full':
             if self.freeze_vit:
-                from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-                lora_target_modules = model_info.get('lora_target_modules')
-                vision_tower = None
-                if isinstance(lora_target_modules, str):
-                    vision_tower = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
-                if vision_tower:
-                    self.freeze_parameters += vision_tower
+                if self.get_model_group():
+                    vision_tower = MODEL_KEYS_MAPPING[self.get_model_group()].vision_tower
+                    if vision_tower:
+                        self.freeze_parameters += vision_tower
             assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
@@ -265,19 +188,14 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
         else:
             raise ValueError(f'sft_type: {self.sft_type}')
 
-        self.prepare_template()
-        if len(self.dataset) == 0:
-            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
-
-        if self.save_steps is None:
-            self.save_steps = self.eval_steps
-
+    def prepare_liger(self):
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
             if self.use_loss_scale:
                 logger.warn('use_liger is not compatible with `use_loss_scale`, setting to False...')
                 self.use_loss_scale = False
 
+    def prepare_quantization(self):
         # compatibility
         if self.quantization_bit > 0 and self.quant_method is None:
             if self.quantization_bit == 4 or self.quantization_bit == 8:
@@ -291,38 +209,8 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
 
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
-        if self.neftune_backend is None:
-            self.neftune_backend = 'swift' if version.parse(transformers.__version__) < version.parse('4.35') \
-                else 'transformers'
-
-        self.prepare_ms_hub()
-        self.train_sampler_random = not self.test_oom_error
-        if self.eval_batch_size is None:
-            if self.predict_with_generate:
-                self.eval_batch_size = 1
-            else:
-                self.eval_batch_size = self.batch_size
-        if self.save_total_limit == -1:
-            self.save_total_limit = None
-
-        if self.deepspeed is not None:
-            if is_mp():
-                raise ValueError('DeepSpeed is not compatible with MP. '
-                                 f'n_gpu: {torch.cuda.device_count()}, '
-                                 f'local_world_size: {self.local_world_size}.')
-            require_version('deepspeed')
-            if self.deepspeed.endswith('.json') or os.path.isfile(self.deepspeed):
-                with open(self.deepspeed, 'r', encoding='utf-8') as f:
-                    self.deepspeed = json.load(f)
-            logger.info(f'Using deepspeed: {self.deepspeed}')
-
-        if self.gradient_accumulation_steps is None:
-            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
+    def prepare_dataloader(self):
         template_info = TEMPLATE_MAPPING[self.template_type]
-        self._handle_streaming_args()
-        if self.lazy_tokenize is None and not self.streaming:
-            self.lazy_tokenize = template_info.get('lazy_tokenize', False)
-            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         if self.dataloader_num_workers is None:
             if 'dataloader_num_workers' in template_info:
                 self.dataloader_num_workers = template_info['dataloader_num_workers']
@@ -334,24 +222,88 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
         if 'dataloader_pin_memory' in template_info:
             self.dataloader_pin_memory = template_info['dataloader_pin_memory']
             logger.info(f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}')
-        if 'qwen-audio' in self.model_type:
-            assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
+
+    def prepare_gradient_checkpointing(self):
+        model_info = MODEL_MAPPING.get(self.model_type, {})
         support_gradient_checkpointing = model_info.get('support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
             self.gradient_checkpointing = support_gradient_checkpointing
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(f'{self.model_type} not support gradient_checkpointing.')
 
+    def prepare_torchacc(self):
         if use_torchacc():
             self.dataloader_drop_last = True
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if is_pai_training_job():
+            self._handle_pai_compat()
+        self.prepare_deepspeed()
+        self.handle_path()
+        self.handle_dataset_sample()
+        self.register_self_cognition()
+        self.handle_custom_register()
+        self.handle_custom_dataset_info()
+        if self.resume_from_checkpoint:
+            load_from_ckpt_dir(self, True, False)
+
+        if self.dataset_seed is None:
+            self.dataset_seed = self.seed
+        if self.save_steps is None:
+            self.save_steps = self.eval_steps
+        self.train_sampler_random = not self.test_oom_error
+        self.set_model_type()
+        self.check_flash_attn()
+        self.handle_lr_scheduler_kwargs()
+        self.is_multimodal = self.is_multimodal()
+
+        self.torch_dtype, self.fp16, self.bf16 = self.select_dtype(True, self.sft_type)
+        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
+
+        if self.train_backend == 'megatron' and self.sft_type == 'lora':
+            logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
+            self.sft_type = 'full'
+
+        if len(self.dataset) == 0:
+            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
+
+        self.prepare_train_type()
+        self.prepare_template(self.model_type)
+        self.prepare_liger()
+        self.prepare_quantization()
+        prepare_ms_hub(self)
+
+        if self.eval_batch_size is None:
+            if self.predict_with_generate:
+                self.eval_batch_size = 1
+            else:
+                self.eval_batch_size = self.batch_size
+        if self.save_total_limit == -1:
+            self.save_total_limit = None
+
+        if self.gradient_accumulation_steps is None:
+            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
+
+        self._handle_streaming_args()
+        if self.lazy_tokenize is None and not self.streaming:
+            self.lazy_tokenize = self.is_multimodal
+            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        self.prepare_dataloader()
+        if 'qwen-audio' in self.model_type:
+            assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
+
+        self.prepare_gradient_checkpointing()
+
         if self.train_backend == 'transformers':
-            self._init_training_args()
+            self.init_transformers()
         else:
-            assert is_dist(), 'Please start in distributed mode.'
-            dist.init_process_group(backend=self.ddp_backend)
-            if self.min_lr is None:
-                self.min_lr = self.learning_rate * 0.1
+            self.init_megatron()
+
+        self.prepare_output()
+        self.handle_generation_config()
+
+    def prepare_output(self):
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
@@ -370,17 +322,21 @@ class SftArguments(ArgumentsBase, Seq2SeqTrainingOverrideArguments, ModelArgumen
             self.logging_dir = f'{self.output_dir}/runs'
             if self.train_backend == 'transformers':
                 self.training_args.logging_dir = self.logging_dir
-        self.handle_generation_config()
 
-    def _init_training_args(self) -> None:
+    def init_megatron(self):
+        assert is_dist(), 'Please start in distributed mode.'
+        dist.init_process_group(backend=self.ddp_backend)
+        if self.min_lr is None:
+            self.min_lr = self.learning_rate * 0.1
+
+    def init_transformers(self) -> None:
         self.train_type = self.rlhf_type if hasattr(self, 'rlhf_type') else 'sft'
         training_args_cls, kwargs = TrainerFactory.get_training_args_info(self)
         additional_saved_files = []
         if self.sft_type == 'full':
-            additional_saved_files = get_additional_saved_files(self.model_type)
+            additional_saved_files = self.get_additional_saved_files(self.model_type)
 
-        if self.neftune_backend != 'swift':
-            kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
+        kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
         parameters = inspect.signature(training_args_cls.__init__).parameters
         for k in ['lr_scheduler_kwargs', 'include_num_input_tokens_seen', 'auto_find_batch_size']:

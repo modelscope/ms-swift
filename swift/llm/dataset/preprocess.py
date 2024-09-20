@@ -65,6 +65,18 @@ class GroundingMixin:
         return query, response
 
 
+standard_tags = {
+    'image': '<image>',
+    'audio': '<audio>',
+    'video': '<video>',
+}
+standard_keys = {
+    'audio': 'audios',
+    'image': 'images',
+    'video': 'videos',
+}
+
+
 class RowPreprocessor(GroundingMixin):
 
     _mapping_kwargs = {
@@ -73,16 +85,6 @@ class RowPreprocessor(GroundingMixin):
     }
 
     _grounding_language_mixin = [0.8, 0.2]
-    _standard_tags = {
-        'image': '<image>',
-        'audio': '<audio>',
-        'video': '<video>',
-    }
-    _standard_keys = {
-        'audio': 'audios',
-        'image': 'images',
-        'video': 'videos',
-    }
 
     has_tool: bool = False
     column_mapping: Dict[str, str] = {}
@@ -111,7 +113,7 @@ class RowPreprocessor(GroundingMixin):
         assert _modal_tag is not None
         media_cnt = len(medias) if isinstance(medias, (tuple, list)) else 1 if medias else 0
         # like <image>, etc
-        standard_tag = self._standard_tags[modal]
+        standard_tag = standard_tags[modal]
         all_content = ''.join([m['content'] for m in messages])
         if _modal_tag in all_content:
             # If the messages already have placeholders like `<image>`
@@ -157,7 +159,7 @@ class RowPreprocessor(GroundingMixin):
         if self.has_tool:
             row['tools'] = None
         for _modal in self.modals:
-            row[self._standard_keys[_modal]] = None
+            row[standard_keys[_modal]] = None
         return row
 
     def map(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -180,7 +182,7 @@ class RowPreprocessor(GroundingMixin):
                 if not isinstance(modal_key, str):
                     row[modal_key] = medias
                 else:
-                    row[self._standard_keys[modal]] = medias
+                    row[standard_keys[modal]] = medias
         if self.task_type in self._grounding_prompts.keys():
             query, response = self.construct_grounding_prompt()
             row['messages'][-2]['content'] = query
@@ -225,7 +227,7 @@ class RowPreprocessor(GroundingMixin):
         # Replace un-standard media keys to standard keys
         for idx, _modal in enumerate(self.modals):
             modal_key = self.modal_keys[idx]
-            standard_key = self._standard_keys[idx]
+            standard_key = standard_keys[idx]
             if standard_key not in dataset.features:
                 column_mapping[modal_key] = standard_key
 

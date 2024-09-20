@@ -334,24 +334,3 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('phi3', PHI3_KEYS),
     ('minicpm', LLAMA_KEYS),
 ])
-
-
-def get_regex_for_mm_default_lora(model_type: str):
-    if not model_type:
-        return None
-    if model_type not in MODEL_KEYS_MAPPING:
-        return None
-
-    mapping: Union[MultiModelKeys, ModelKeys] = MODEL_KEYS_MAPPING[model_type]
-    if not isinstance(mapping, MultiModelKeys):
-        return None
-    llm = mapping.language_model
-    connector = mapping.connector
-    assert isinstance(llm, (list, tuple)) and isinstance(connector,
-                                                         (list, tuple)), f'llm: {llm}, connector: {connector}'
-    _regex = []
-    for module in llm + connector:
-        _regex.append(f'{module}')
-    regex = '|'.join(_regex)
-    regex = f'^({regex})(?!.*(lm_head|output|emb|wte|shared)).*'
-    return regex

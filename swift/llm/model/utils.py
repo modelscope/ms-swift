@@ -75,16 +75,3 @@ def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Op
             and config.rope_scaling.get('factor')):
         max_model_len = max(int(max_model_len * config.rope_scaling.get('factor')), max_model_len)
     return max_model_len
-
-
-def get_additional_saved_files(model_type: str) -> List[str]:
-    files_mapping = {
-        'qwen-vl': ['SimSun.ttf'],
-        'qwen-audio': ['mel_filters.npz'],
-        'yi-vl': ['vit'],
-        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py']
-    }
-    for key, files_list in files_mapping.items():
-        if key in model_type:
-            return files_list
-    return []
