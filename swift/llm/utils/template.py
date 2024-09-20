@@ -45,6 +45,7 @@ class TemplateType:
     # chat
     default = 'default'
     qwen = 'qwen'
+    qwen2_5 = 'qwen2_5'
     qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
     qwen2_audio = 'qwen2-audio'
@@ -1269,7 +1270,12 @@ class _QwenVLTemplateMixin:
             ]
 
 
+class Qwen2_5Template(QwenTemplate):
+    system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
+
+
 register_template(TemplateType.qwen, QwenTemplate())
+register_template(TemplateType.qwen2_5, Qwen2_5Template())
 
 
 class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
