@@ -23,7 +23,7 @@ from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, PtArguments, RLHFArguments, SftArguments, Template, dataset_map,
                     get_dataset, get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+                    sort_by_max_length, stat_dataset, load_reward_model)
 
 logger = get_logger()
 
@@ -243,6 +243,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     model, callbacks = prepare_model(model, args)
     if args.rlhf_type == 'rm':
         # value head wrapper
+        load_reward_model(model)
+        patch_reward_model(model)
         from trl import AutoModelForCausalLMWithValueHead
         model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
         # patch_reward_model(model) # not implemented

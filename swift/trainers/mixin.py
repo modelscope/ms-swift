@@ -671,8 +671,8 @@ class RLHFTrainerMixin:
         self.ref_model = ref_model
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
         args = kwargs['args']
-        self.beta = args.beta
-        if args.disable_dropout:
+        self.beta = getattr(args, 'beta', 0.0)
+        if getattr(args, 'disable_dropout', False):
             disable_dropout_in_model(model)
             if self.ref_model is not None:
                 disable_dropout_in_model(self.ref_model)
@@ -680,7 +680,7 @@ class RLHFTrainerMixin:
         self.is_encoder_decoder = kwargs['is_encoder_decoder']
         self.aux_loss_enabled = getattr(model.config, 'output_router_logits', False)
         self._peft_has_been_casted_to_bf16 = False
-        self.generate_during_eval = args.generate_during_eval
+        self.generate_during_eval = getattr(args, 'generate_during_eval', False)
         self.is_multimodal = False
         if self.is_encoder_decoder:
             self.decoder_start_token_id = self.get_model_config_attr(model.config, 'decoder_start_token_id')

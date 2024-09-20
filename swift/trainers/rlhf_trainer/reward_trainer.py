@@ -6,7 +6,10 @@ import torch.amp as amp
 import torch.nn as nn
 from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
-from contextlib import nullcontext
+from trl.trainer.utils import print_rich_table
+from accelerate.utils import gather_object
+from collections import defaultdict
+import pandas as pd
 
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
@@ -16,11 +19,11 @@ del HFRewardTrainer.__init__
 class RewardTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFRewardTrainer):
 
     def __init__(self,model: Optional[Union[PreTrainedModel, nn.Module, str]] = None,*_args,**kwargs):
-        ref_model = kwargs.get('ref_model')
+        ref_model = kwargs.pop('ref_model')
         assert ref_model is None, 'RM does not require a ref_model.'
         self.args = kwargs['args'] # use in `compute_loss` and `visuualize_samples`
         self.use_reward_data_collator = True # disable warning
-        super().__init__(model, ref_model, *_args, **kwargs)
+        super().__init__(model, *_args, **kwargs)
         
         
     def compute_loss(
@@ -29,32 +32,51 @@ class RewardTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFRewardTrai
         inputs: Dict[str, Union[torch.Tensor, Any]],
         return_outputs=False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
-        compute_loss_context_manager = amp.autocast("cuda") if self._peft_has_been_casted_to_bf16 else nullcontext()
-        with compute_loss_context_manager:
-            loss, metrics = self.get_batch_loss_metrics(model, inputs)
-
-        # Make sure to move the loss to the device the original accumulating loss is at back in the `Trainer` class:
-        loss = loss.to(self.args.device)
-
-        if return_outputs:
-            return (loss, metrics)
-        return loss
-    
-    def get_batch_loss_metrics(
-        self,
-        model,
-        batch: Dict[str, Union[List, torch.LongTensor]]
-        ):
-        """Compute the DPO loss and other metrics for the given batch of inputs for train or test."""
-        model_kwargs = batch.copy()
+        model_kwargs = inputs.copy()
         labels = model_kwargs.pop('labels', None)
         if self.is_encoder_decoder:
             model_kwargs['labels'] = labels
-        
-        outputs = model(**model_kwargs, use_cache=False)
-        model_kwargs['labels'] = labels
-        if outputs.logits.shape[1] != labels.shape[1]:
-            # for llava, the model returns logits for the entire sequence, including the image tokens
-            # (placed before the text tokens)
-            outputs.logits = outputs.logits[:, -labels.shape[1]:]
+        _, _, values = model(**model_kwargs, use_cache=False, return_dict=True)
+        batch_size = model_kwargs['input_ids'].shape[0] // 2
+        chosen_masks, rejected_masks = torch.split(model_kwargs["attention_mask"], batch_size, dim=0)
+        chosen_rewards, rejected_rewards = torch.split(values, batch_size, dim=0)
+        chosen_scores = chosen_rewards.gather(dim=-1, index=(chosen_masks.sum(dim=-1, keepdim=True) - 1)).squeeze()
+        rejected_scores = rejected_rewards.gather(dim=-1, index=(rejected_masks.sum(dim=-1, keepdim=True) - 1)).squeeze()
+        loss = -torch.nn.functional.logsigmoid(chosen_scores.float() - rejected_scores.float()).mean().to(self.args.device)
+        if return_outputs:
+            return loss, {
+                "rewards_chosen": chosen_rewards,
+                "rewards_rejected": rejected_rewards,
+            }
+        return loss
+    
+    def visualize_samples(self, num_print_samples: int):
+        """
+        Visualize the reward model logits prediction
 
+        Args:
+            num_print_samples (`int`, defaults to `4`):
+                The number of samples to print. Set to `-1` to print all samples.
+        """
+        eval_dataloader = self.get_eval_dataloader()
+        table = defaultdict(list)
+        for _, inputs in enumerate(eval_dataloader):
+            _, logits, _ = self.prediction_step(self.model, inputs, prediction_loss_only=False)
+            batch_size = inputs["input_ids"].shape[0]//2
+            text = self.tokenizer.batch_decode(inputs["input_ids"], skip_special_tokens=True)
+            chosen_text, rejected_text = text[:batch_size], text[batch_size:]
+            table["chosen_text"].extend(gather_object(chosen_text))
+            table["rejected_text"].extend(gather_object(rejected_text))
+            table["logits"].extend(
+                gather_object([[round(inner_item, 4) for inner_item in item] for item in logits.tolist()])
+            )
+            if num_print_samples >= 0 and len(table["chosen_text"]) >= num_print_samples:
+                break
+        df = pd.DataFrame(table)
+        if self.accelerator.process_index == 0:
+            print_rich_table(df[:num_print_samples])
+            if "wandb" in self.args.report_to:
+                import wandb
+
+                if wandb.run is not None:
+                    wandb.log({"completions": wandb.Table(dataframe=df)})

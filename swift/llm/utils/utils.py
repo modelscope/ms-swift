@@ -1083,6 +1083,18 @@ def get_rope_scaling(config: PretrainedConfig):
 
     return getattr(config, 'rope_scaling')
 
+def load_reward_model(model: PreTrainedModel):
+    from trl import AutoModelForCausalLMWithValueHead
+    model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+    if model_args.adapter_name_or_path is not None:
+        vhead_path = model_args.adapter_name_or_path[-1]
+    else:
+        vhead_path = model_args.model_name_or_path
+
+    vhead_params = load_valuehead_params(vhead_path, model_args)
+    if vhead_params is not None:
+        model.load_state_dict(vhead_params, strict=False)
+        logger.info("Loaded valuehead from checkpoint: {}".format(vhead_path))
 
 if is_ddp_plus_mp():
     from accelerate.utils.modeling import get_balanced_memory, infer_auto_device_map
