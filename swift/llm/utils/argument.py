@@ -5,7 +5,7 @@ import os
 import platform
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import List, Literal, Optional, Set, Tuple, Union
 
 import json
 import numpy as np
@@ -16,7 +16,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets
 from packaging import version
-from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available, strtobool
+from transformers.utils import is_torch_npu_available, strtobool
 from transformers.utils.versions import require_version
 
 from swift.hub import HubApi, ModelScopeConfig
@@ -30,7 +30,7 @@ from .dataset import (DATASET_MAPPING, _dataset_name_exists, get_dataset, parse_
 from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
-from .template import TEMPLATE_MAPPING
+from swift.llm.template.template import TEMPLATE_MAPPING
 from .utils import is_liger_available, is_lmdeploy_available, is_quant_model, is_vllm_available
 
 logger = get_logger()

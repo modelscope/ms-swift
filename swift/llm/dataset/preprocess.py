@@ -1,6 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import os
 from copy import copy
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
@@ -8,10 +7,7 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
-from transformers.utils import strtobool
 from swift.utils import get_logger
-from swift.llm.utils.template import History
-
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 PreprocessFunc = Callable[[DATASET_TYPE, ...], DATASET_TYPE]

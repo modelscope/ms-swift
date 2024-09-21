@@ -23,7 +23,7 @@ from transformers.utils import is_torch_bf16_gpu_available
 from transformers.utils.versions import require_version
 
 from swift import get_logger
-from swift.llm.utils.template import TemplateType, get_env_args
+from swift.llm.template.template import TemplateType, get_env_args
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
 from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING, safe_snapshot_download
 from .patcher import patch_rope_scaling, patch_tokenizer, patch_hidden_size, \

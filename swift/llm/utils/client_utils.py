@@ -14,7 +14,7 @@ from requests.exceptions import HTTPError
 
 from .protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
                        CompletionStreamResponse, ModelList, XRequestConfig)
-from .template import History
+from swift.llm.template.template import History
 from .utils import Messages, history_to_messages
 
 

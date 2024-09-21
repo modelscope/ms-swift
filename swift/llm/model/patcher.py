@@ -1,6 +1,9 @@
+import inspect
 import math
 from collections.abc import Mapping
-from typing import Dict, Any
+from contextlib import contextmanager
+from functools import wraps
+from typing import Dict, Any, List
 
 import torch
 import transformers
@@ -8,6 +11,8 @@ from accelerate.utils import find_device
 from packaging import version
 from torch import Tensor
 import torch.nn.functional as F
+from transformers.integrations import is_deepspeed_zero3_enabled
+
 from swift import get_logger
 
 from .utils import set_rope_scaling, get_rope_scaling, to_device
@@ -167,3 +172,52 @@ def patch_output_to_input_device(module: torch.nn.Module):
         recursive_set_device(output, device)
 
     module.register_forward_hook(_output_to_input_device_hook, with_kwargs=True)
+
+
+def _pre_forward_hook(model, template, args, kwargs):
+    from .utils import to_device
+    if '_data' in kwargs:
+        res_extra = []
+        data = kwargs.pop('_data')
+        for d in data:
+            res_extra.append(template.post_encode(model, d))
+        kwargs.update(to_device(template.data_collator(res_extra), model.device))
+        if 'inputs_embeds' in kwargs:
+            kwargs.pop('input_ids', None)
+
+    parameters = inspect.signature(model.forward).parameters
+    if 'position_ids' not in parameters:
+        kwargs.pop('position_ids', None)
+    return args, kwargs
+
+
+@contextmanager
+def training_context(models: List):
+    # TODO: use in inference?
+    handles = []
+    for model in models:
+        parameters = inspect.signature(model.register_forward_pre_hook).parameters
+        if 'with_kwargs' in parameters:
+            handle = model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+            handles.append(handle)
+
+    _deepspeed_initialize = None
+    if is_deepspeed_zero3_enabled():
+        import deepspeed
+        _deepspeed_initialize = deepspeed.initialize
+
+        @wraps(_deepspeed_initialize)
+        def _initialize(*args, **kwargs):
+            res = _deepspeed_initialize(*args, **kwargs)
+            for model, handle in zip(models, handles):
+                model._forward_pre_hooks.move_to_end(handle.id)
+            return res
+
+        deepspeed.initialize = _initialize
+    yield
+    for handle in handles:
+        handle.remove()
+    if _deepspeed_initialize:
+        deepspeed.initialize = _deepspeed_initialize
+
+

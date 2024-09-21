@@ -192,7 +192,7 @@ def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
 
 def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
     from PIL import Image, ImageDraw
-    from .template import Template
+    from swift.llm.template.template import Template
     image = Image.open(img_dir)
 
     objects = [{'bbox': bbox, 'bbox_type': bbox_type, 'image': 0}]
@@ -267,7 +267,7 @@ def load_audio_qwen(audio_io: BytesIO, sampling_rate: int):
 
 
 def load_video_qwen2(video_path: str):
-    from .template import get_env_args
+    from swift.llm.template.template import get_env_args
     import torchvision
     from torchvision import io, transforms
     from qwen_vl_utils.vision_process import (round_by_factor, FPS, FRAME_FACTOR, FPS_MIN_FRAMES, FPS_MAX_FRAMES,

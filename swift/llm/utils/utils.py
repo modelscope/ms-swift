@@ -3,12 +3,10 @@
 import heapq
 import importlib.util
 import os
-import shutil
 import time
 from copy import deepcopy
 from functools import partial, wraps
 from queue import Empty, Queue
-from tempfile import TemporaryDirectory
 from threading import Thread
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Type
 
@@ -21,7 +19,6 @@ import torch.distributed as dist
 import transformers
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
-from modelscope.utils.config_ds import MS_CACHE_HOME
 from torch.nn import Linear, Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, IterableDataset
@@ -31,10 +28,9 @@ from transformers import (GenerationConfig, PreTrainedModel, PreTrainedTokenizer
 from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available
 
-from swift.hub import ModelScopeConfig
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, stat_array, upper_bound, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-from .template import History, StopWords, StopWordsCriteria, Template
+from swift.llm.template.template import History, StopWords, StopWordsCriteria, Template
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 

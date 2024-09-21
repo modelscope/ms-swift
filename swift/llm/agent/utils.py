@@ -71,7 +71,7 @@ GLM4_PROMPT = '''你是一个名为 ChatGLM 的人工智能助手。你是基于
 {tool_list}'''
 
 
-def calculate_loss_scale(query: str,
+def default_loss_scale(query: str,
                          response: str,
                          use_loss_scale=False,
                          response_loss_scale_map: Optional[Dict[str, list]] = None,

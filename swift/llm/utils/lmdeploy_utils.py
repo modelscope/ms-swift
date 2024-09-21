@@ -22,7 +22,7 @@ from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 from swift.utils import get_logger, get_seed
 from .argument import InferArguments
 from swift.llm.model.model import get_model_tokenizer
-from .template import Template, get_template
+from swift.llm.template.template import Template, get_template
 from .utils import get_max_model_len
 
 try:
