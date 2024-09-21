@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
-import multiprocessing
 import os
+from multiprocessing import shared_memory
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 import numpy as np
@@ -37,10 +37,10 @@ def _reduce_columns(cls: type) -> type:
         self.shared_shm_name = None
         shm, buffer = None, None
         if num_proc > 1:  # multiprocess
-            shm = multiprocessing.shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
+            shm = shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
             self.shared_shm_name = shm.name
             buffer = shm.buf
-        self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=buffer)
+        self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool_, buffer=buffer)
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()
@@ -59,8 +59,8 @@ def _reduce_columns(cls: type) -> type:
 
     def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         if self.shared_shm_name is not None:  # multiprocess
-            shm = multiprocessing.shared_memory.SharedMemory(name=self.shared_shm_name)
-            column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
+            shm = shared_memory.SharedMemory(name=self.shared_shm_name)
+            column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool_, buffer=shm.buf)
         else:
             column_state = self.column_state
         row = preprocess(self, row)
