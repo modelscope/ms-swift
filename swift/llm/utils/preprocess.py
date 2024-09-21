@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+import multiprocessing
 import os
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
+import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
@@ -30,29 +32,34 @@ def _reduce_columns(cls: type) -> type:
     cls._patching = True
 
     def new_call_func(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        self.column_state = set(['images', 'videos', 'audios'])
+        self.key_mapping_r: List[str] = list(self.empty_row.keys())
+        self.key_mapping = {k: i for i, k in enumerate(self.key_mapping_r)}
+        shm = multiprocessing.shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
+        self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()
         else:
             features = dataset.features.keys()
         for k in features:
-            if k not in self.column_state:
+            k_i = self.key_mapping.get(k, -1)
+            if k_i == -1 or not self.column_state[k_i]:
                 dataset = dataset.remove_columns([k])
         return dataset
 
     def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         row = preprocess(self, row)
         for k, v in row.items():
+            k_i = self.key_mapping[k]
             if k == 'query_role':
-                if k not in self.column_state and v and v != 'user':
-                    self.column_state.add(k)
+                if not self.column_state[k_i] and v and v != 'user':
+                    self.column_state[k_i] = 1
             elif k == 'history_roles':
-                if k not in self.column_state and v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
-                    self.column_state.add(k)
+                if not self.column_state[k_i] and v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
+                    self.column_state[k_i] = 1
             else:
                 if v:
-                    self.column_state.add(k)
+                    self.column_state[k_i] = 1
         return row
 
     cls.__call__ = new_call_func
@@ -142,6 +149,7 @@ class SwiftPreprocessor:
         return dataset
 
 
+@_reduce_columns
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
@@ -194,6 +202,7 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
+@_reduce_columns
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,
