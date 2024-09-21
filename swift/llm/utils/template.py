@@ -638,6 +638,7 @@ class Template:
                 new_str_list = [system, query, round0, round1]
                 for (old_str, new_str) in zip(old_str_list, new_str_list):
                     if new_str is not None and old_str in context:
+                        assert isinstance(new_str, str), f'new_str: {new_str}'
                         context = context.replace(old_str, new_str)
             if len(context) == 0:
                 continue

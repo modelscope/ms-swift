@@ -46,15 +46,23 @@ datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
-def partialed_map(self, *args, **kwargs):
-    if 'num_proc' not in kwargs:
-        num_proc = os.environ.get('DATASET_MAP_NPROC')
-        kwargs['num_proc'] = int(num_proc) if num_proc else num_proc
-    return self._origin_map(*args, **kwargs)
+def patch_num_proc(func_name: str):
+    _origin_func_name = f'_origin_{func_name}'
+    _old_func = getattr(HfDataset, func_name)
+
+    def new_func(self, *args, **kwargs):
+        if 'num_proc' not in kwargs:
+            num_proc = os.environ.get('DATASET_MAP_NPROC')
+            if num_proc:
+                kwargs['num_proc'] = int(num_proc)
+        return _old_func(self, *args, **kwargs)
+
+    setattr(HfDataset, _origin_func_name, _old_func)
+    setattr(HfDataset, func_name, new_func)
 
 
-datasets.Dataset._origin_map = datasets.Dataset.map
-datasets.Dataset.map = partialed_map
+for func_name in ['map', 'filter']:
+    patch_num_proc(func_name)
 
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
