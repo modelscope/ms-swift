@@ -70,12 +70,12 @@ def _reduce_columns(cls: type) -> type:
                 continue
             if k == 'query_role':
                 if v and v != 'user':
-                    column_state[k_i] = 1
+                    column_state[k_i] = True
             elif k == 'history_roles':
                 if v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
-                    column_state[k_i] = 1
+                    column_state[k_i] = True
             elif v:
-                column_state[k_i] = 1
+                column_state[k_i] = True
         return row
 
     cls.__call__ = new_call_func
