@@ -35,6 +35,7 @@ def _reduce_columns(cls: type) -> type:
         self.key_mapping_r: List[str] = list(self.empty_row.keys())
         self.key_mapping = {k: i for i, k in enumerate(self.key_mapping_r)}
         shm = multiprocessing.shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
+        self.shared_shm_name = shm.name
         self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
@@ -45,21 +46,26 @@ def _reduce_columns(cls: type) -> type:
             k_i = self.key_mapping.get(k, -1)
             if k_i == -1 or not self.column_state[k_i]:
                 dataset = dataset.remove_columns([k])
+        shm.close()
+        shm.unlink()
         return dataset
 
     def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        shm = multiprocessing.shared_memory.SharedMemory(name=self.shared_shm_name)
+        column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
         row = preprocess(self, row)
         for k, v in row.items():
             k_i = self.key_mapping[k]
+            if column_state[k_i]:
+                continue
             if k == 'query_role':
-                if not self.column_state[k_i] and v and v != 'user':
-                    self.column_state[k_i] = 1
+                if v and v != 'user':
+                    column_state[k_i] = 1
             elif k == 'history_roles':
-                if not self.column_state[k_i] and v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
-                    self.column_state[k_i] = 1
-            else:
-                if v:
-                    self.column_state[k_i] = 1
+                if v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
+                    column_state[k_i] = 1
+            elif v:
+                column_state[k_i] = 1
         return row
 
     cls.__call__ = new_call_func
