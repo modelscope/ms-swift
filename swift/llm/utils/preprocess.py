@@ -35,10 +35,12 @@ def _reduce_columns(cls: type) -> type:
         self.key_mapping = {k: i for i, k in enumerate(self.empty_row.keys())}
         num_proc = int(os.environ.get('DATASET_MAP_NPROC', '1'))
         self.shared_shm_name = None
+        shm, buffer = None, None
         if num_proc > 1:  # multiprocess
             shm = multiprocessing.shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
             self.shared_shm_name = shm.name
-            self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
+            buffer = shm.buf
+        self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=buffer)
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()
@@ -50,12 +52,13 @@ def _reduce_columns(cls: type) -> type:
             k_i = self.key_mapping.get(k, -1)
             if k_i == -1 or not self.column_state[k_i]:
                 dataset = dataset.remove_columns([k])
-        shm.close()
-        shm.unlink()
+        if shm:
+            shm.close()
+            shm.unlink()
         return dataset
 
     def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        if self.shared_shm_name is None:  # multiprocess
+        if self.shared_shm_name is not None:  # multiprocess
             shm = multiprocessing.shared_memory.SharedMemory(name=self.shared_shm_name)
             column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
         else:
