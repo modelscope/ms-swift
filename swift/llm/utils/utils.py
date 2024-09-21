@@ -431,7 +431,7 @@ def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
             return
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
             module_lists.append(m)
-    if module_lists is not None:
+    if module_lists:
         return max(module_lists, key=lambda x: len(x))
 
 
