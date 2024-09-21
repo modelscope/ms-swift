@@ -33,25 +33,33 @@ def _reduce_columns(cls: type) -> type:
 
     def new_call_func(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
         self.key_mapping = {k: i for i, k in enumerate(self.empty_row.keys())}
-        shm = multiprocessing.shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
-        self.shared_shm_name = shm.name
-        column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
+        num_proc = int(os.environ.get('DATASET_MAP_NPROC', '1'))
+        self.shared_shm_name = None
+        if num_proc > 1:  # multiprocess
+            shm = multiprocessing.shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
+            self.shared_shm_name = shm.name
+            self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()
         else:
             features = dataset.features.keys()
         for k in features:
+            if k in ['images', 'videos', 'audios']:
+                continue
             k_i = self.key_mapping.get(k, -1)
-            if k_i == -1 or not column_state[k_i]:
+            if k_i == -1 or not self.column_state[k_i]:
                 dataset = dataset.remove_columns([k])
         shm.close()
         shm.unlink()
         return dataset
 
     def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        shm = multiprocessing.shared_memory.SharedMemory(name=self.shared_shm_name)
-        column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
+        if self.shared_shm_name is None:  # multiprocess
+            shm = multiprocessing.shared_memory.SharedMemory(name=self.shared_shm_name)
+            column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool8, buffer=shm.buf)
+        else:
+            column_state = self.column_state
         row = preprocess(self, row)
         for k, v in row.items():
             k_i = self.key_mapping[k]

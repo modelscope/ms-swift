@@ -53,7 +53,8 @@ def patch_num_proc(func_name: str):
     def new_func(self, *args, **kwargs):
         if 'num_proc' not in kwargs:
             num_proc = os.environ.get('DATASET_MAP_NPROC')
-            kwargs['num_proc'] = int(num_proc) if num_proc else num_proc
+            if num_proc:
+                kwargs['num_proc'] = int(num_proc)
         return _old_func(self, *args, **kwargs)
 
     setattr(HfDataset, _origin_func_name, _old_func)
