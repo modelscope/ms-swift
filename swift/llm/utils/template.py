@@ -1530,6 +1530,13 @@ register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
 register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
+def _gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
+    # List[Tensor] ->  List[Tensor]
+    res = []
+    for b in batch:
+        if b.get(attr_name) is not None:
+            res += b.pop(attr_name)
+    return res
 
 class PixtralTemplate(Template):
 
@@ -1575,10 +1582,7 @@ class PixtralTemplate(Template):
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        pixel_values = []
-        for b in batch:
-            if b.get('pixel_values') is not None:
-                pixel_values += b.pop('pixel_values')
+        pixel_values = _gather_list(batch, 'pixel_values')
         res = super().data_collator(batch, padding_to)
         if pixel_values:
             res['pixel_values'] = pixel_values
