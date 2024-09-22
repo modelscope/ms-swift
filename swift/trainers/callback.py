@@ -1,15 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import time
+from typing import Dict
 
+import torch
+from peft import PeftModel
 from tqdm.auto import tqdm
+from transformers import PreTrainedModel
 from transformers.trainer_callback import (DefaultFlowCallback, ProgressCallback, TrainerCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length, speed_metrics
+from trl import AutoModelForCausalLMWithValueHead
 
-from swift.utils import append_to_jsonl, is_pai_training_job, use_torchacc
+from swift.utils import append_to_jsonl, get_logger, is_pai_training_job, use_torchacc
 from ..utils.utils import format_time
 from .arguments import TrainingArguments
+
+logger = get_logger()
 
 
 class ProgressCallbackNew(ProgressCallback):
@@ -97,3 +104,63 @@ class PrinterCallbackNew(TrainerCallback):
         _ = logs.pop('total_flos', None)
         if state.is_world_process_zero:
             print(logs, flush=True)
+
+
+# This code is adapted from the LlamaFactory.
+def fix_valuehead_checkpoint(model: 'AutoModelForCausalLMWithValueHead', output_dir: str,
+                             safe_serialization: bool) -> None:
+    r"""
+    The model is already unwrapped.
+
+    There are three cases:
+    1. full tuning without ds_zero3: state_dict = {"model.layers.*": ..., "v_head.summary.*": ...}
+    2. lora tuning without ds_zero3: state_dict = {"v_head.summary.*": ...}
+    3. under deepspeed zero3: state_dict = {"pretrained_model.model.layers.*": ..., "v_head.summary.*": ...}
+
+    We assume `stage3_gather_16bit_weights_on_model_save=true`.
+    """
+    if not isinstance(model.pretrained_model, (PreTrainedModel, PeftModel)):
+        return
+
+    if safe_serialization:
+        path_to_checkpoint = os.path.join(output_dir, 'model.safetensors')
+        from safetensors import safe_open
+        from safetensors.torch import save_file
+        with safe_open(path_to_checkpoint, framework='pt', device='cpu') as f:
+            state_dict: Dict[str, torch.Tensor] = {key: f.get_tensor(key) for key in f.keys()}
+    else:
+        path_to_checkpoint = os.path.join(output_dir, 'pytorch_model.bin')
+        state_dict: Dict[str, torch.Tensor] = torch.load(path_to_checkpoint, map_location='cpu')
+
+    os.remove(path_to_checkpoint)
+    decoder_state_dict, v_head_state_dict = {}, {}
+    for name, param in state_dict.items():
+        if name.startswith('v_head.'):
+            v_head_state_dict[name] = param
+        else:
+            decoder_state_dict[name.replace('pretrained_model.', '', 1)] = param
+
+    model.pretrained_model.save_pretrained(
+        output_dir, state_dict=decoder_state_dict or None, safe_serialization=safe_serialization)
+
+    if safe_serialization:
+        save_file(v_head_state_dict, os.path.join(output_dir, 'value_head.safetensors'), metadata={'format': 'pt'})
+    else:
+        torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
+
+    logger.info('Value head model saved at: {}'.format(output_dir))
+
+
+class FixValueHeadModelCallback(TrainerCallback):
+    r"""
+    A callback for fixing the checkpoint for valuehead models.
+    """
+
+    def on_save(self, args: 'TrainingArguments', state: 'TrainerState', control: 'TrainerControl', **kwargs):
+        r"""
+        Event called after a checkpoint save.
+        """
+        if args.should_save:
+            output_dir = os.path.join(args.output_dir, '{}-{}'.format('checkpoint', state.global_step))
+            fix_valuehead_checkpoint(
+                model=kwargs.pop('model'), output_dir=output_dir, safe_serialization=args.save_safetensors)

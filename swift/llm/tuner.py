@@ -328,6 +328,53 @@ def prepare_model(model, args: SftArguments):
         lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
         callbacks.append(lisa_callback)
 
+    # add value head for reward model
+    if hasattr(args, 'rlhf_type') and args.rlhf_type == 'rm':
+        from trl import AutoModelForCausalLMWithValueHead
+        from transformers import PreTrainedModel
+        from types import MethodType
+        model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+
+        def patch_valuehead_model(model):
+
+            def tie_weights(self: 'AutoModelForCausalLMWithValueHead') -> None:
+                if isinstance(self.pretrained_model, PreTrainedModel):
+                    self.pretrained_model.tie_weights()
+
+            def get_input_embeddings(self: 'AutoModelForCausalLMWithValueHead') -> torch.nn.Module:
+                if isinstance(self.pretrained_model, PreTrainedModel):
+                    return self.pretrained_model.get_input_embeddings()
+
+            def get_output_embeddings(self: 'AutoModelForCausalLMWithValueHead') -> torch.nn.Module:
+                if isinstance(self.pretrained_model, PreTrainedModel):
+                    return self.pretrained_model.get_output_embeddings()
+
+            ignore_modules = [name for name, _ in model.named_parameters() if 'pretrained_model' in name]
+            setattr(model, '_keys_to_ignore_on_save', ignore_modules)
+            setattr(model, 'tie_weights', MethodType(tie_weights, model))
+            setattr(model, 'get_input_embeddings', MethodType(get_input_embeddings, model))
+            setattr(model, 'get_output_embeddings', MethodType(get_output_embeddings, model))
+
+        patch_valuehead_model(model)
+
+        # try to load local vhead weights
+        vhead_params = None
+        try:
+            from safetensors import safe_open
+            vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.safetensors')
+            with safe_open(vhead_file, framework='pt', device='cpu') as f:
+                vhead_params = {key: f.get_tensor(key) for key in f.keys()}
+        except Exception:
+            pass
+        try:
+            vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.bin')
+            vhead_params = torch.load(vhead_file, map_location='cpu')
+        except Exception:
+            pass
+        if vhead_params is not None:
+            model.load_state_dict(vhead_params, strict=False)
+            logger.info('Loading value head weights')
+
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))
     return model, callbacks

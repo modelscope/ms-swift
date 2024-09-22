@@ -243,14 +243,6 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
         dynamic_vit_gradient_checkpointing(model, args.model_type)
     # Preparing LoRA
     model, callbacks = prepare_model(model, args)
-    if args.rlhf_type == 'rm':
-        # value head wrapper
-        load_reward_model(model)
-        patch_reward_model(model)
-        from trl import AutoModelForCausalLMWithValueHead
-        model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
-        # patch_reward_model(model) # not implemented
-        
     show_layers(model)
     logger.info(model)
     model_info = get_model_info(model)

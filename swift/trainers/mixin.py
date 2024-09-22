@@ -30,6 +30,7 @@ from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trai
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
+from trl import AutoModelForCausalLMWithValueHead
 
 from swift.hub.check_model import check_local_model_is_latest
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
@@ -257,7 +258,7 @@ class SwiftMixin:
         if generation_config is not None:
             generation_config.save_pretrained(output_dir)
         # model
-        supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
+        supported_classes = (SwiftModel, PreTrainedModel, PeftModel, AutoModelForCausalLMWithValueHead)
         save_safetensors = self.args.save_safetensors
 
         if not isinstance(self.model, supported_classes):
@@ -276,6 +277,23 @@ class SwiftMixin:
         elif is_instance_of_ms_model(self.model):
             PreTrainedModel.save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
+        elif isinstance(self.model, AutoModelForCausalLMWithValueHead):
+            # save reward model
+            state_dict = self.model.state_dict()
+            decoder_state_dict, v_head_state_dict = {}, {}
+            for name, param in state_dict.items():
+                if name.startswith('v_head.'):
+                    v_head_state_dict[name] = param
+                else:
+                    decoder_state_dict[name.replace('pretrained_model.', '', 1)] = param
+            self.model.pretrained_model.save_pretrained(
+                output_dir, state_dict=decoder_state_dict or None, safe_serialization=save_safetensors)
+            if save_safetensors:
+                from safetensors.torch import save_file
+                save_file(
+                    v_head_state_dict, os.path.join(output_dir, 'value_head.safetensors'), metadata={'format': 'pt'})
+            else:
+                torch.save(v_head_state_dict, os.path.join(output_dir, 'value_head.bin'))
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         sft_args = getattr(self, 'sft_args', None)
