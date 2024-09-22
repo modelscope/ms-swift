@@ -13,6 +13,7 @@ from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.utils import is_torch_npu_available
 
+from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
@@ -217,8 +218,13 @@ def prepare_model_template(args: InferArguments,
         else:
             raise ValueError('args.max_model_len exceeds the maximum max_model_len supported by the model.'
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
-    # Preparing LoRA
-    if is_adapter(args.sft_type) and args.ckpt_dir is not None:
+
+    if getattr(model, 'is_tuner_plugin', False):
+        with open(os.path.join(args.ckpt_dir, 'sft_args.json'), 'r') as f:
+            content = json.load(f)
+        tuner: Tuner = extra_tuners[content['sft_type']]
+        model = tuner.from_pretrained(model, args.ckpt_dir)
+    elif args.is_adapter() and args.ckpt_dir is not None:
         if isinstance(args, DeployArguments) and args.lora_request_list is not None:
             logger.info(f'args.lora_request_list: {args.lora_request_list}')
             for lora_request in args.lora_request_list:

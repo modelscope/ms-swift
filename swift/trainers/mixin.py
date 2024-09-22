@@ -41,6 +41,7 @@ from swift.utils.constants import Invoke
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
+from ..plugin.tuner import extra_tuners, Tuner
 
 logger = get_logger()
 
@@ -260,7 +261,11 @@ class SwiftMixin:
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         save_safetensors = self.args.save_safetensors
 
-        if not isinstance(self.model, supported_classes):
+        sft_args = getattr(self, 'sft_args', None)
+        if sft_args and sft_args.sft_type in extra_tuners:
+            tuner: Tuner = extra_tuners[sft_args.sft_type]
+            tuner.save_pretrained(self.model, output_dir)
+        elif not isinstance(self.model, supported_classes):
             if state_dict is None:
                 state_dict = self.model.state_dict()
 
@@ -278,7 +283,6 @@ class SwiftMixin:
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
-        sft_args = getattr(self, 'sft_args', None)
         # tokenizer
         if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
             if hasattr(self.tokenizer, 'processor'):

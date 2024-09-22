@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import json
 import os
 from typing import List
 
@@ -10,7 +11,9 @@ from swift.llm.argument.train_args import SftArguments
 from swift.llm.utils import find_all_linears, find_embedding
 from swift.llm.utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback
 
+from swift.plugin.callback import extra_callbacks
 from swift.plugin.optimizer import optimizers_map
+from swift.plugin.tuner import extra_tuners, Tuner
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
@@ -227,8 +230,19 @@ def prepare_modules(model, args: SftArguments):
                 )
                 logger.info(f'reft config: {reft_config}')
                 model = Swift.prepare_model(model, {'reft': reft_config})
+            else:
+                assert args.sft_type in extra_tuners
+                tuner: Tuner = extra_tuners[args.sft_type]
+                model = tuner.prepare_model(model, args)
+                model.is_tuner_plugin = True
         else:
-            if use_torchacc():
+            if getattr(model, 'is_tuner_plugin', False):
+                with open(os.path.join(args.resume_from_checkpoint, 'sft_args.json'), 'r') as f:
+                    content = json.load(f)
+
+                tuner: Tuner = extra_tuners[content['sft_type']]
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint)
+            elif use_torchacc():
                 model = Swift.from_pretrained(
                     model, args.resume_from_checkpoint, adapter_name='default', is_trainable=True)
             else:
@@ -321,4 +335,5 @@ def prepare_modules(model, args: SftArguments):
 
     if args.is_adapter() and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))
+    callbacks.extend(extra_callbacks or [])
     return model, callbacks, optimizer_callback(model, args)

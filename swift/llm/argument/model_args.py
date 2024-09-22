@@ -30,8 +30,7 @@ dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 class ArgumentsBase:
 
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
-                      'reft'] = 'lora'
+    sft_type: str = 'lora'
 
     @classmethod
     def _check_path(cls,

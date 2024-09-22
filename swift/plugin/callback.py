@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from transformers import TrainerCallback
 
+extra_callbacks = []
+
 
 class TrainerAdapterCallback(TrainerCallback):
 
