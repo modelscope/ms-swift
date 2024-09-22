@@ -4,6 +4,7 @@ import inspect
 from contextlib import contextmanager
 from typing import Dict
 
+from swift.plugin.trainer_class import custom_trainer_class
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -25,6 +26,8 @@ class TrainerFactory:
         'kto': 'swift.trainers.KTOConfig',
         'cpo': 'swift.trainers.CPOConfig'
     }
+
+    custom_trainer_class(TRAINER_MAPPING, TRAINING_ARGS_MAPPING)
 
     @staticmethod
     def get_cls(train_type: str, mapping: Dict[str, str]):
