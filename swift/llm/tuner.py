@@ -333,27 +333,23 @@ def prepare_model(model, args: SftArguments):
         from trl import AutoModelForCausalLMWithValueHead
         from transformers import PreTrainedModel
         from types import MethodType
+        lm_head_namings = ['lm_head', 'embed_out']
+        if not any(hasattr(model, attribute) for attribute in lm_head_namings):
+            setattr(model, 'lm_head', None)  # avoid ValueError
         model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
 
         def patch_valuehead_model(model):
 
-            def tie_weights(self: 'AutoModelForCausalLMWithValueHead') -> None:
-                if isinstance(self.pretrained_model, PreTrainedModel):
-                    self.pretrained_model.tie_weights()
+            attr_list = [
+                'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
+                'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
+                'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform',
+                'get_vllm_embedding', 'forward_image', 'dtype'
+            ]
 
-            def get_input_embeddings(self: 'AutoModelForCausalLMWithValueHead') -> torch.nn.Module:
-                if isinstance(self.pretrained_model, PreTrainedModel):
-                    return self.pretrained_model.get_input_embeddings()
-
-            def get_output_embeddings(self: 'AutoModelForCausalLMWithValueHead') -> torch.nn.Module:
-                if isinstance(self.pretrained_model, PreTrainedModel):
-                    return self.pretrained_model.get_output_embeddings()
-
-            ignore_modules = [name for name, _ in model.named_parameters() if 'pretrained_model' in name]
-            setattr(model, '_keys_to_ignore_on_save', ignore_modules)
-            setattr(model, 'tie_weights', MethodType(tie_weights, model))
-            setattr(model, 'get_input_embeddings', MethodType(get_input_embeddings, model))
-            setattr(model, 'get_output_embeddings', MethodType(get_output_embeddings, model))
+            for attr in attr_list:
+                if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
+                    setattr(model, attr, getattr(model.pretrained_model, attr))
 
         patch_valuehead_model(model)
 
