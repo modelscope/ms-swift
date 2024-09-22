@@ -1575,7 +1575,10 @@ class PixtralTemplate(Template):
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        pixel_values = [b['pixel_values'] for b in batch if b.pop('pixel_values', None) is not None]
+        pixel_values = []
+        for b in batch:
+            if b.get('pixel_values') is not None:
+                pixel_values += b.pop('pixel_values')
         res = super().data_collator(batch, padding_to)
         if pixel_values:
             res['pixel_values'] = pixel_values
