@@ -2,7 +2,7 @@
 import json
 import re
 from types import MethodType
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -10,12 +10,13 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm import decode_base64
-from swift.llm.agent.utils import get_tools_prompt, default_loss_scale
+from swift.plugin.loss_scale import loss_scale_map
+from swift.plugin.utils import get_tools_prompt
 from swift.llm.dataset.dataset import standard_keys
 from swift.llm.model.utils import to_device
 from swift.llm.template.template import replace_img_tag, _findall
 from swift.llm.utils.utils import fetch_one
-from swift.llm.utils.vision_utils import (load_batch, load_image, rescale_image)
+from swift.utils.vision_utils import (load_batch, load_image, rescale_image)
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, use_torchacc
 
@@ -158,8 +159,7 @@ class Template:
                        default_system: Optional[str] = None,
                        max_length: Optional[int] = None,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                       use_loss_scale: bool = False,
-                       loss_scale_calculater: Callable = default_loss_scale,
+                       loss_scale: str = 'default',
                        rescale_image: int = -1,
                        **kwargs) -> None:
         assert self._is_init is False, 'The template has been initialized.'
@@ -174,7 +174,10 @@ class Template:
             self.default_system = default_system
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale_calculater = loss_scale_calculater
+        if isinstance(loss_scale, str):
+            self.loss_scale = loss_scale_map.get(loss_scale, None)
+        else:
+            self.loss_scale = loss_scale
         self.sequence_parallel_size = kwargs.get('sequence_parallel_size', 1)
         self.rescale_image = rescale_image
 
@@ -372,7 +375,7 @@ class Template:
                 if '{{RESPONSE}}' == context:
                     assert response is not None
                     if compute_loss:
-                        content_part, weight_part = self.loss_scale_calculater(query, response)
+                        content_part, weight_part = self.loss_scale(query, response)
                     else:
                         content_part, weight_part = [response], [0.]
                     res_context_list.extend(content_part)
@@ -680,7 +683,7 @@ class Template:
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
                 inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
-                if self.use_loss_scale:
+                if self.loss_scale:
                     inputs[f'{key}_loss_scale'] = loss_scale
             input_ids = inputs['prompt_input_ids'] + inputs['answer_input_ids']
             labels = inputs['prompt_labels'] + inputs['answer_labels']
@@ -711,7 +714,7 @@ class Template:
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
 
-        if self.use_loss_scale:
+        if self.loss_scale:
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
 

@@ -21,7 +21,7 @@ from openai import APIConnectionError
 from tqdm import tqdm
 
 from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
-from .infer import merge_lora, prepare_model_template
+from swift.llm.infer import merge_lora, prepare_model_template
 from .utils import DeployArguments, EvalArguments, XRequestConfig, inference, inference_client_async
 
 logger = get_logger()

@@ -12,10 +12,10 @@ import requests
 from dacite import from_dict
 from requests.exceptions import HTTPError
 
-from .protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
-                       CompletionStreamResponse, ModelList, XRequestConfig)
+from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
+                                      CompletionStreamResponse, ModelList, XRequestConfig)
 from swift.llm.template.template import History
-from .utils import Messages, history_to_messages
+from swift.llm.utils.utils import Messages, history_to_messages
 
 
 def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:

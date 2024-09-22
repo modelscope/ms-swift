@@ -9,6 +9,13 @@ from .utils import check_json_format
 logger = get_logger()
 
 
+def download_files(url: str, local_path: str, cookies) -> None:
+    resp = requests.get(url, cookies=cookies, stream=True)
+    with open(local_path, 'wb') as f:
+        for data in tqdm(resp.iter_lines()):
+            f.write(data)
+
+
 def read_from_jsonl(fpath: str, encoding: str = 'utf-8') -> List[Any]:
     res: List[Any] = []
     with open(fpath, 'r', encoding=encoding) as f:

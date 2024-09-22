@@ -1,32 +1,37 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-import types
+from typing import List
 
-import numpy as np
 import torch
 import transformers
 from packaging import version
 
-from swift.trainers import TrainerCallback
+from swift.llm.argument.train_args import SftArguments
+from swift.llm.utils import find_all_linears, find_embedding
+from swift.llm.utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
-                          LoraConfig, LoRAConfig, NEFTuneConfig, ReftConfig, Swift, VeraConfig)
+                          LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
-from .utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback
 
 logger = get_logger()
 
 
 def handle_target_modules(model, args: SftArguments) -> None:
+    """Replace EMBEDDING and ALL to actual modules
+    Args:
+        model: The input model
+        args: The SftArguments
+    """
+
     if args.sft_type == 'ia3':
         assert len(args.ia3_feedforward_modules) > 0, ('Setting ia3_target_modules to `ALL` '
                                                        'need to pass MLP linear names to `ia3_feedforward_modules`')
-    target_modules = args.target_modules
-    if args.lora_use_embedding:
+    target_modules: List[str] = args.target_modules
+    if 'EMBEDDING' in target_modules:
         target_modules.remove('EMBEDDING')
         target_modules += find_embedding(model)
-    if args.lora_use_all:
+    if 'ALL' in target_modules:
         target_modules.remove('ALL')
         target_modules += find_all_linears(model, args.quantization_bit, args.model_type, args.quant_method)
     args.target_modules = target_modules
@@ -34,7 +39,8 @@ def handle_target_modules(model, args: SftArguments) -> None:
         logger.info(f'target_modules: {args.target_modules}')
 
 
-def handle_same_dim_target_modules(model: torch.nn.Module, config: VeraConfig):
+def handle_vera_target_modules(model: torch.nn.Module, config: VeraConfig):
+    """This function is only useful on the vera tuner"""
     target_modules = config.target_modules
     modules_dict = {
         name: module.weight.shape
@@ -51,16 +57,6 @@ def handle_same_dim_target_modules(model: torch.nn.Module, config: VeraConfig):
         names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
         config.target_modules = [t for t in target_modules if any([t in name for name in names])]
     return config
-
-
-def handle_modules_to_save(model, args: SftArguments) -> None:
-    modules_to_save = args.modules_to_save
-    if args.lora_m2s_use_embedding:
-        modules_to_save += find_embedding(model)
-    if args.lora_m2s_use_ln:
-        modules_to_save += find_ln(model)
-    args.modules_to_save = modules_to_save
-    logger.info(f'modules_to_save: {args.modules_to_save}')
 
 
 def apply_liger(model_type: str):
@@ -86,18 +82,11 @@ def prepare_model(model, args: SftArguments):
         # Apply liger
         apply_liger(args.model_type)
 
-    # This model_type is used to map the model structure
-    model_type = args.model_type or args.model_id_or_path
-    for key in MODEL_KEYS_MAPPING.keys():
-        if key in model_type.lower():
-            model_type = key
-            break
-
+    group_type = args.get_model_group()
     # Preparing LoRA
-    if is_adapter(args.sft_type):
+    if args.is_adapter():
         if args.resume_from_checkpoint is None:
             handle_target_modules(model, args)
-            handle_modules_to_save(model, args)
             if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
             if args.target_regex:
@@ -175,14 +164,14 @@ def prepare_model(model, args: SftArguments):
                 logger.info(f'ia3_config: {ia3_config}')
             elif args.sft_type == 'llamapro':
                 llamapro_config = LLaMAProConfig(
-                    model_type=model_type,
+                    model_type=group_type,
                     num_new_blocks=args.llamapro_num_new_blocks,
                     num_groups=args.llamapro_num_groups)
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
             elif args.sft_type == 'adapter':
-                assert model_type in MODEL_KEYS_MAPPING
-                mlp_key = MODEL_KEYS_MAPPING[model_type].mlp
+                assert group_type in MODEL_KEYS_MAPPING
+                mlp_key = MODEL_KEYS_MAPPING[group_type].mlp
                 mlp_key = mlp_key.split('.{}.')[1]
                 adapter_config = AdapterConfig(
                     dim=model.config.hidden_size,
@@ -201,7 +190,7 @@ def prepare_model(model, args: SftArguments):
                     d_initial=args.vera_d_initial,
                     modules_to_save=args.modules_to_save,
                 )
-                vera_config = handle_same_dim_target_modules(model, vera_config)
+                vera_config = handle_vera_target_modules(model, vera_config)
                 model = Swift.prepare_model(model, vera_config)
                 logger.info(f'vera_config: {vera_config}')
             elif args.sft_type == 'boft':
@@ -227,7 +216,7 @@ def prepare_model(model, args: SftArguments):
                 logger.info(f'fourier_config: {fourier_config}')
             elif args.sft_type == 'reft':
                 reft_config = ReftConfig(
-                    model_type=model_type,
+                    model_type=group_type,
                     layer_key=args.reft_layer_key,
                     r=args.reft_rank,
                     layers=args.reft_layers,
@@ -291,10 +280,6 @@ def prepare_model(model, args: SftArguments):
     if args.sequence_parallel_size > 1:
         from swift.trainers.xtuner import dispatch_module_xtuner
         dispatch_module_xtuner(model)
-    if args.neftune_backend == 'swift' and args.neftune_noise_alpha not in {None, 0.}:
-        neftune_config = NEFTuneConfig(noise_alpha=args.neftune_noise_alpha)
-        model = Swift.prepare_model(model, {'neftune': neftune_config})
-        logger.info(f'neftune_config: {neftune_config}')
 
     if args.use_galore:
         from swift.trainers.optimizers.galore import GaLoreConfig
@@ -328,6 +313,6 @@ def prepare_model(model, args: SftArguments):
         lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
         callbacks.append(lisa_callback)
 
-    if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
+    if args.is_adapter() and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))
     return model, callbacks

@@ -23,7 +23,7 @@ from swift.utils import get_logger, get_seed
 from .argument import InferArguments
 from swift.llm.model.model import get_model_tokenizer
 from swift.llm.template.template import Template, get_template
-from .utils import get_max_model_len
+from swift.llm.utils.utils import get_max_model_len
 
 try:
     from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig

@@ -21,15 +21,113 @@ from .torch_utils import broadcast_string, is_dist, is_dist_ta, is_local_master
 logger = get_logger()
 
 
-@contextmanager
-def safe_ddp_context():
-    if (is_dist() or is_dist_ta()) and not is_local_master() and dist.is_initialized():
-        dist.barrier()
-    yield
-    if (is_dist() or is_dist_ta()) and is_local_master() and dist.is_initialized():
-        dist.barrier()
-    if (is_dist() or is_dist_ta()) and dist.is_initialized():  # sync
-        dist.barrier()
+def fetch_one(element: Union[Tuple, List, Set, Dict, Any], type: Type = None) -> Any:
+    if isinstance(element, (tuple, set, list)):
+        for ele in element:
+            out = fetch_one(ele)
+            if out and (type is None or isinstance(out, type)):
+                return out
+    elif isinstance(element, dict):
+        return fetch_one(list(element.values()))
+    else:
+        return element
+
+
+def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[str]]:
+    agent_keyword = [
+        'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:', 'Thought:',
+        'Final Answer:', 'Observation:'
+    ]
+    agent_parts = split_str_parts_by(response, agent_keyword)
+    action = None
+    action_input = None
+    for c in agent_parts:
+        if c['key'].lower() == 'action:':
+            action = c['content']
+        elif c['key'].lower() == 'action input:':
+            action_input = c['content']
+    if action:
+        action = action.strip().replace('\n', '')
+    if action_input:
+        action_input.strip().replace('\n', '')
+    return action, action_input
+
+
+def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:
+    import re
+    compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
+    for i in range(len(text_list) - 1, -1, -1):
+        item = text_list[i]
+        if item.get('key') == '':
+            res_text = item['content']
+            last_idx = 0
+            segments = []
+
+            for pattern, scale in compiled_patterns:
+                matches = list(re.finditer(pattern, res_text))
+                for match in matches:
+                    if match.start() > last_idx:
+                        segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
+                    segments.append({'key': scale[0], 'content': match.group(0)})
+                    last_idx = match.end()
+
+            if last_idx < len(res_text):
+                segments.insert(0, {'key': '', 'content': res_text[last_idx:]})
+
+            if segments:
+                text_list[i:i + 1] = segments
+
+
+def limit_history_length(template: Template, query: str, history: Optional[History],
+                         max_length: Optional[int]) -> Tuple[History, History]:
+    """binary search"""
+    if history is None:
+        history = []
+    if max_length is None:
+        return [], history
+
+    def compute_token_length(history_length: int) -> int:
+        assert history_length != 0
+        example = {'query': query, 'history': history[-history_length:]}
+        input_ids = template.encode(example)[0]['input_ids']
+        return len(input_ids)
+
+    history_length = upper_bound(0, len(history), lambda mid: compute_token_length(mid) <= max_length)
+    old_history = history[:len(history) - history_length]
+    history = history[len(history) - history_length:]
+    return old_history, history
+
+
+Messages = List[Dict[str, Union[str, List[Dict]]]]
+
+
+def set_generation_config(model: Module, generation_config: GenerationConfig) -> None:
+    old_generation_config = getattr(model, 'generation_config', None)
+    old_generation_priority_config = ['no_repeat_ngram_size', 'num_beams']
+    if old_generation_config is not None:
+        for k, old_v in old_generation_config.__dict__.items():
+            if k.startswith('_'):
+                continue
+            v = getattr(generation_config, k, None)
+            if k in old_generation_priority_config or old_v is not None and v is None:
+                setattr(generation_config, k, old_v)
+    model.generation_config = generation_config
+
+
+def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
+    time_info = None
+    try:
+        last_log_history = log_history[-1]
+        train_runtime = last_log_history['train_runtime']
+        train_samples_per_second = n_train_samples / train_runtime
+        time_info = {
+            'train_runtime': train_runtime,
+            'n_train_samples': n_train_samples,
+            'train_samples_per_second': train_samples_per_second,
+        }
+    except Exception:
+        pass
+    return time_info
 
 
 def check_json_format(obj: Any) -> Any:

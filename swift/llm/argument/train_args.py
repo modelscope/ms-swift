@@ -80,7 +80,7 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
     # multimodal
     loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
-    use_loss_scale: bool = False  # for agent
+    loss_scale: str = 'default'
 
     # streaming dataset
     streaming: bool = False
@@ -191,9 +191,9 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
     def prepare_liger(self):
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
-            if self.use_loss_scale:
-                logger.warn('use_liger is not compatible with `use_loss_scale`, setting to False...')
-                self.use_loss_scale = False
+            if self.loss_scale != 'default':
+                logger.warn('use_liger is not compatible with `loss_scale`, setting to default...')
+                self.loss_scale = 'default'
 
     def prepare_quantization(self):
         # compatibility
