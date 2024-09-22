@@ -14,7 +14,7 @@ from transformers.utils import is_peft_available
 
 from swift.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
 from swift.utils import use_torchacc
-from .loss import get_loss_func
+from swift.plugin.loss import get_loss_func
 from .mixin import SwiftMixin
 from .push_to_ms import PushToMsHubMixin
 

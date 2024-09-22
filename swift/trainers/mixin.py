@@ -499,58 +499,6 @@ class SwiftMixin:
             self.log(logs)
         super()._maybe_log_save_evaluate(tr_loss, *args, **kwargs)
 
-    def create_optimizer_and_scheduler(self, num_training_steps: int):
-        if hasattr(self.args, 'galore_config'):
-            optimizer, lr_scheduler = create_optimizer_and_scheduler(
-                self.model,
-                self.args,
-                self.args.galore_config,
-                num_training_steps,
-                lr=self.args.learning_rate,
-                weight_decay=self.args.weight_decay)
-            self.optimizer = optimizer
-            self.lr_scheduler = lr_scheduler
-        else:
-            self.create_optimizer()
-            self.create_scheduler(num_training_steps=num_training_steps, optimizer=self.optimizer)
-
-    def create_optimizer(self):
-        opt_model = self.model
-
-        if self.optimizer is None:
-            if version.parse(transformers.__version__) < version.parse('4.34.0'):
-                logger.warning(f'If you are using lora+, please remember using transformers>=4.34.0, '
-                               f'but now is {transformers.__version__}')
-                return super().create_optimizer()
-
-            optimizer_grouped_parameters = None
-            if hasattr(self.model, 'create_optimizer_param_groups'):
-                # Lora+ parameter groups
-                optimizer_grouped_parameters = self.model.create_optimizer_param_groups(
-                    lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
-
-            if optimizer_grouped_parameters is None:
-                # Default parameter groups
-                decay_parameters = self.get_decay_parameter_names(opt_model)
-                optimizer_grouped_parameters = [
-                    {
-                        'params':
-                        [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
-                        'weight_decay':
-                        self.args.weight_decay,
-                    },
-                    {
-                        'params':
-                        [p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)],
-                        'weight_decay':
-                        0.0,
-                    },
-                ]
-
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-        return self.optimizer
-
     def get_train_dataloader(self):
         if self.sequence_parallel_size > 1:
             from swift.trainers.xtuner import get_xtuner_train_dataloader

@@ -9,6 +9,8 @@ from packaging import version
 from swift.llm.argument.train_args import SftArguments
 from swift.llm.utils import find_all_linears, find_embedding
 from swift.llm.utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback
+
+from swift.plugin.optimizer import optimizers_map
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
@@ -77,7 +79,7 @@ def apply_liger(model_type: str):
         raise ValueError(f'Unsupported liger model_type: {model_type}')
 
 
-def prepare_model(model, args: SftArguments):
+def prepare_modules(model, args: SftArguments):
     if args.use_liger:
         # Apply liger
         apply_liger(args.model_type)
@@ -281,6 +283,9 @@ def prepare_model(model, args: SftArguments):
         from swift.trainers.xtuner import dispatch_module_xtuner
         dispatch_module_xtuner(model)
 
+    optimizer_callback = optimizers_map['default']
+    if args.lora_lr_ratio:
+        optimizer_callback = optimizers_map['lorap']
     if args.use_galore:
         from swift.trainers.optimizers.galore import GaLoreConfig
         if args.galore_target_modules is None:
@@ -302,6 +307,7 @@ def prepare_model(model, args: SftArguments):
             gamma_proj=args.galore_gamma_proj,
             queue_size=args.galore_queue_size,
         )
+        optimizer_callback = optimizers_map['galore']
 
     callbacks = []
     if args.lisa_activated_layers > 0:
@@ -315,4 +321,4 @@ def prepare_model(model, args: SftArguments):
 
     if args.is_adapter() and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))
-    return model, callbacks
+    return model, callbacks, optimizer_callback(model, args)

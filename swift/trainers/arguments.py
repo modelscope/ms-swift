@@ -10,7 +10,7 @@ from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq
 from transformers.utils import is_accelerate_available
 
 from swift.utils import is_dist, use_torchacc
-from .loss import LOSS_MAPPING
+from swift.plugin.loss import LOSS_MAPPING
 
 
 @dataclass
