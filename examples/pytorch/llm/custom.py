@@ -3,7 +3,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 from datasets import Dataset as HfDataset
-from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer, MsDataset
+from modelscope import MsDataset
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils.versions import require_version
 
 from swift.llm import (LoRATM, Template, TemplateType, dataset_map, get_dataset, get_dataset_from_repo,

@@ -7,9 +7,8 @@ import json
 import torch
 import transformers
 from datasets import Dataset as HfDataset
-from modelscope import BitsAndBytesConfig, GenerationConfig
 from packaging import version
-from transformers import IntervalStrategy
+from transformers import BitsAndBytesConfig, GenerationConfig, IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
 

@@ -41,7 +41,7 @@ def _reduce_columns(cls: type) -> type:
             self.shared_shm_name = shm.name
             buffer = shm.buf
         self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool_, buffer=buffer)
-        self.column_state[:] = 0
+        self.column_state[:] = False
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()

@@ -8,9 +8,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import json
 import numpy as np
 import torch
-from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import BitsAndBytesConfig, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.utils import is_torch_npu_available
 
 from swift.tuners import Swift

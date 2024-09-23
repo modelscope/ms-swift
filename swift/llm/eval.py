@@ -16,9 +16,9 @@ from evalscope.models.custom import CustomModel
 from evalscope.run import run_task
 from evalscope.summarizer import Summarizer
 from evalscope.utils import EvalBackend
-from modelscope import GenerationConfig
 from openai import APIConnectionError
 from tqdm import tqdm
+from transformers import GenerationConfig
 
 from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
 from .infer import merge_lora, prepare_model_template
