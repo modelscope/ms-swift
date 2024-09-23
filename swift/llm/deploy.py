@@ -14,9 +14,9 @@ import json
 import torch
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from modelscope import GenerationConfig
 from packaging import version
 from peft import PeftModel
+from transformers import GenerationConfig
 
 from swift.utils import get_logger, get_main, get_seed, seed_everything
 from .agent import split_action_action_input

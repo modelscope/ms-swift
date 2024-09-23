@@ -2,15 +2,16 @@ import concurrent.futures
 import inspect
 import os
 import time
+from contextlib import contextmanager
 from copy import deepcopy
+from functools import wraps
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import vllm
-from modelscope import GenerationConfig
 from packaging import version
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase
+from transformers import AutoTokenizer, GenerationConfig, PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
@@ -24,6 +25,19 @@ except ImportError:
     pass
 
 logger = get_logger()
+
+
+@contextmanager
+def _patch_auto_tokenizer(tokenizer):
+    _old_from_pretrained = AutoTokenizer.from_pretrained
+
+    @wraps(_old_from_pretrained)
+    def _from_pretrained(self, *args, **kwargs):
+        return tokenizer
+
+    AutoTokenizer.from_pretrained = _from_pretrained
+    yield
+    AutoTokenizer.from_pretrained = _old_from_pretrained
 
 
 def get_vllm_engine(
@@ -105,8 +119,8 @@ def get_vllm_engine(
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     if version.parse(vllm.__version__) >= version.parse('0.5.1'):
         os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
-
-    llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    with _patch_auto_tokenizer(tokenizer):
+        llm_engine = llm_engine_cls.from_engine_args(engine_args)
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
