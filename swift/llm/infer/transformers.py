@@ -209,6 +209,8 @@ class TransformersFramework(InferFramework):
         """
         generation_config: Priority: generation_config > model.generation_config.
         """
+        if args.stop_words:
+            infer_kwargs['stop_words'] = args.stop_words
         model = engine
         runtime = time.perf_counter()
         if history is None:
@@ -301,6 +303,8 @@ class TransformersFramework(InferFramework):
         """
         generation_config: Priority: generation_config > model.generation_config.
         """
+        if args.stop_words:
+            infer_kwargs['stop_words'] = args.stop_words
         start_runtime = time.perf_counter()
         if history is None:
             history = []
@@ -394,7 +398,10 @@ class TransformersFramework(InferFramework):
                 res.update({'response': response, 'history': history})
                 yield res
             else:
-                yield response, history
+                yield [{
+                    'response': response,
+                    'history': history,
+                }]
 
     @staticmethod
     def _prepare_inputs(

@@ -253,40 +253,26 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 infer_kwargs = {}
 
             read_media_file(infer_kwargs, args.infer_media_type, args.media_type, query)
-            infer_kwargs['truncation_strategy'] = args.truncation_strategy
             if system is None and template.use_default_system:
                 system = template.default_system
-            if args.infer_backend in {'vllm', 'lmdeploy'}:
-                request_list = [{'query': query, 'history': history, 'system': system, **infer_kwargs}]
-                if args.stream:
-                    gen = framework.inference_stream(llm_engine, template, request_list, lora_request=lora_request)
-                    print_idx = 0
-                    for resp_list in gen:
-                        response = resp_list[0]['response']
-                        new_history = resp_list[0]['history']
-                        if len(response) > print_idx:
-                            print(response[print_idx:], end='', flush=True)
-                            print_idx = len(response)
-                    print()
-                else:
-                    resp_list = framework.inference(llm_engine, template, request_list, lora_request=lora_request)
+
+            request_list = [{'query': query, 'history': history, 'system': system, **infer_kwargs}]
+            if args.stream:
+                gen = framework.inference_stream(llm_engine, template, request_list, lora_request=lora_request)
+                print_idx = 0
+                for resp_list in gen:
                     response = resp_list[0]['response']
                     new_history = resp_list[0]['history']
-                    print(response)
+                    if len(response) > print_idx:
+                        print(response[print_idx:], end='', flush=True)
+                        print_idx = len(response)
+                print()
             else:
-                if args.stop_words:
-                    infer_kwargs['stop_words'] = args.stop_words
-                if args.stream:
-                    gen = inference_stream(model, template, query, history, system, **infer_kwargs)
-                    print_idx = 0
-                    for response, new_history in gen:
-                        if len(response) > print_idx:
-                            print(response[print_idx:], end='', flush=True)
-                            print_idx = len(response)
-                    print()
-                else:
-                    response, new_history = inference(model, template, query, history, system, **infer_kwargs)
-                    print(response)
+                resp_list = framework.inference(llm_engine, template, request_list, lora_request=lora_request)
+                response = resp_list[0]['response']
+                new_history = resp_list[0]['history']
+                print(response)
+
             print('-' * 50)
             obj = {
                 'system': system,
