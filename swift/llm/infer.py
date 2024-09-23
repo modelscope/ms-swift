@@ -15,7 +15,6 @@ from transformers.utils import is_torch_npu_available
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
-from .sft import get_default_device_map
 from .utils import (DeployArguments, InferArguments, MediaTag, Template, get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, inference, inference_stream, is_adapter, is_quant_model,
                     sample_dataset, set_generation_config)
@@ -136,6 +135,7 @@ def prepare_model_template(args: InferArguments,
                            device_map: Optional[str] = None,
                            verbose: bool = True,
                            automodel_class=None) -> Tuple[PreTrainedModel, Template]:
+    from .sft import get_default_device_map
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
     else:

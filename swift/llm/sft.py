@@ -123,12 +123,12 @@ def get_default_device_map():
             return f'npu:{local_rank}'
         else:
             return 'npu:0'
-    if is_dist() and not is_ddp_plus_mp():
-        return f'cuda:{local_rank}'
-    elif torch.cuda.device_count() == 0:
+    if torch.cuda.device_count() == 0:
         return 'cpu'
     elif torch.cuda.device_count() == 1:
         return 'cuda:0'
+    elif is_dist() and not is_ddp_plus_mp():
+        return f'cuda:{local_rank}'
     else:
         return 'auto'
 
@@ -369,7 +369,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
                                    f'Setting args.preprocess_num_proc to: {args.preprocess_num_proc}')
                 else:
                     template.model = None
-            logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)

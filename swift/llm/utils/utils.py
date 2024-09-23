@@ -302,7 +302,7 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[s
     # Solving the unordered problem
     data = [None] * len(dataset)
     num_proc = min(num_proc, len(dataset))
-    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset)):
+    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset), desc=f'Map (num_proc={num_proc})'):
         data[d[0]] = d[1]
     return data
 
@@ -317,7 +317,7 @@ def dataset_map(dataset: DATASET_TYPE,
     single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
         data = []
-        for d in tqdm(dataset):
+        for d in tqdm(dataset, desc='Map'):
             d = single_map(d)
             data.append(d)
     else:
