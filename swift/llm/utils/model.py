@@ -489,6 +489,8 @@ class ModelType:
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
     mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
+
+    pixtral_12b = 'pixtral-12b'
     # wizardlm
     wizardlm2_7b_awq = 'wizardlm2-7b-awq'
     wizardlm2_8x22b = 'wizardlm2-8x22b'
@@ -1011,6 +1013,26 @@ def get_device_hook(device):
 
 def _output_device_map_hook(module, input, output):
     return output.to(input[0].device)
+
+
+@register_model(
+    ModelType.pixtral_12b,
+    'AI-ModelScope/pixtral-12b',
+    LoRATM.llava,
+    TemplateType.pixtral,
+    # torch_dtype=torch.float16,  # Please do not use bf16.
+    requires=['transformers>=4.45.0.dev0'],
+    placeholder_tokens=['[IMG]'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='mistral-community/pixtral-12b')
+def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, LlavaForConditionalGeneration
+    processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    kwargs['tokenizer'] = processor.tokenizer
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
 
 
 @register_model(
@@ -4452,7 +4474,16 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+    if hasattr(model_config.llm_config, 'attn_implementation'):
+        attr = 'attn_implementation'
+    else:
+        attr = '_attn_implementation'
+    if use_flash_attn:
+        setattr(model_config.llm_config, attr, 'flash_attention_2')
+    else:
+        setattr(model_config.llm_config, attr, 'eager')
+        setattr(model_config.llm_config, f'{attr}_internal', None)
+
     model_quant_config = getattr(model_config, 'quantization_config', None)
 
     use_bnb = False

@@ -56,7 +56,8 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
-- 🔥2024.09.19: 支持qwen2.5、qwen2.5-math、qwen2.5-coder系列模型. 支持qwen2-vl-72b系列模型.
+- 2024.09.23: 支持pixtral-12b的训练与部署. 使用`swift infer --model_type pixtral-12b --dtype fp16`进行体验.
+- 🔥2024.09.19: 支持qwen2.5、qwen2.5-math、qwen2.5-coder系列模型. 支持qwen2-vl-72b系列模型. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2064).
 - 2024.09.07: 支持`Reflection-llama3-70b`模型， 使用`swift sft/infer --model_type reflection-llama_3_1-70b`命令即可训练和推理.
 - 2024.09.06: 支持mplug-owl3的微调和推理, 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1969).
 - 2024.09.05: 支持minicpm3-4b模型. 使用`swift infer --model_type minicpm3-4b`进行体验.
