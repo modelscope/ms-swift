@@ -1530,6 +1530,7 @@ register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
 register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
 
+
 def _gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
     # List[Tensor] ->  List[Tensor]
     res = []
@@ -1537,6 +1538,7 @@ def _gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[A
         if b.get(attr_name) is not None:
             res += b.pop(attr_name)
     return res
+
 
 class PixtralTemplate(Template):
 
