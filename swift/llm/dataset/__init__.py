@@ -7,10 +7,10 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocesso
                                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor,
                                           SmartPreprocessor,
                                           TextGenerationPreprocessor)
-from .loader import DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists, parse_dataset_name
+from .loader import DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists, parse_dataset_name, DATASET_MAPPING
 from .media import MediaResource
 from .register import register_dataset, register_local_dataset, register_dataset_info_file, register_single_dataset
-from .utils import dataset_map, stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, safe_tokenizer_decode, print_example, sort_by_max_length
+from .utils import dataset_map, stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_example, sort_by_max_length
 from swift.utils.torch_utils import _find_local_mac
 
 

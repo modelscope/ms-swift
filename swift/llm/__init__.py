@@ -2,24 +2,43 @@
 from typing import TYPE_CHECKING
 
 from swift.utils.import_utils import _LazyModule
-from .utils import *
 
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
-    from .infer.deploy import deploy_main
-    from .export.export import export_main
-    from swift.llm.train.rlhf import rlhf_main
+    from .infer import deploy_main, infer_main, merge_lora_main, prepare_model_template ,merge_lora
+    from .export import export_main
+    from .eval import eval_main
+    from .train import sft_main, pt_main, rlhf_main
+    from .argument import EvalArguments, InferArguments, SftArguments, ExportArguments, WebuiArguments, DeployArguments, RLHFArguments
+    from .template import TEMPLATE_MAPPING, Template, StopWords, InferTemplate
+    from .model import MODEL_MAPPING, ModelType
+    from .dataset import AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, \
+        ConversationsPreprocessor, ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, \
+        SmartPreprocessor, TextGenerationPreprocessor, \
+        DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists, parse_dataset_name, DATASET_MAPPING, \
+        MediaResource, register_dataset, register_local_dataset, register_dataset_info_file, register_single_dataset, \
+        dataset_map, stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_example, \
+        sort_by_max_length
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'app_ui': ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
-        'deploy': ['deploy_main'],
         'rlhf': ['rlhf_main'],
-        'infer': ['merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
+        'infer': ['deploy_main', 'merge_lora', 'prepare_model_template', 'infer_main', 'merge_lora_main'],
         'sft': ['sft_main', 'pt_main'],
         'export': ['export_main'],
         'eval': ['eval_main'],
+        "argument": ['EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebuiArguments', 'DeployArguments', 'RLHFArguments'],
+        'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'InferTemplate'],
+        'model': ['MODEL_MAPPING', 'ModelType'],
+        'dataset': ['AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor',
+        'ConversationsPreprocessor', 'ListPreprocessor', 'PreprocessFunc', 'RenameColumnsPreprocessor',
+        'SmartPreprocessor', 'TextGenerationPreprocessor',
+        'DatasetLoader', 'HubDatasetLoader', 'LocalDatasetLoader', 'dataset_name_exists', 'parse_dataset_name', 'DATASET_MAPPING',
+        'MediaResource', 'register_dataset', 'register_local_dataset', 'register_dataset_info_file', 'register_single_dataset',
+        'dataset_map', 'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset', 'print_example',
+        'sort_by_max_length']
     }
 
     import sys

@@ -2,7 +2,6 @@ from typing import Type
 
 import gradio as gr
 
-from swift.llm import MODEL_MAPPING, get_default_lora_target_modules
 from swift.ui.base import BaseUI
 
 
@@ -103,7 +102,7 @@ class LoRA(BaseUI):
 
             def update_lora(choice):
                 if choice is not None:
-                    target_modules = get_default_lora_target_modules(choice)
+                    target_modules = 'ALL'
                     if isinstance(target_modules, list):
                         target_modules = 'ALL'  # llm
                     return target_modules
