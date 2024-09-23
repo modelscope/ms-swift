@@ -113,6 +113,25 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
     return {}
 
+def get_device_map():
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
+        return None
+    local_rank = get_dist_setting()[1]
+    if is_torch_npu_available():
+        if local_rank >= 0:
+            return f'npu:{local_rank}'
+        else:
+            return 'npu:0'
+    elif args.device_map_config is not None:
+        model_kwargs = {'device_map': args.device_map_config}
+    else:
+        model_kwargs = {'low_cpu_mem_usage': True}
+        if is_dist() and not is_ddp_plus_mp():
+            model_kwargs['device_map'] = {'': args.local_rank}
+        elif torch.cuda.device_count() == 1:
+            return 'cuda:0'
+        elif not use_torchacc():
+            return 'auto'
 
 def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
 
@@ -128,21 +147,7 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
           f'world_size: {args.world_size}, local_world_size: {args.local_world_size}')
 
     # Loading Model and Tokenizer
-    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
-        model_kwargs = {'device_map': None}
-    elif is_torch_npu_available():
-        model_kwargs = {'device_map': args.local_rank if args.local_rank >= 0 else 0}
-    elif args.device_map_config is not None:
-        model_kwargs = {'device_map': args.device_map_config}
-    else:
-        model_kwargs = {'low_cpu_mem_usage': True}
-        if is_dist() and not is_ddp_plus_mp():
-            model_kwargs['device_map'] = {'': args.local_rank}
-        elif torch.cuda.device_count() == 1:
-            model_kwargs['device_map'] = 'cuda:0'
-        elif not use_torchacc():
-            model_kwargs['device_map'] = 'auto'
-
+    model_kwargs['device_map'] = get_device_map(args.local_rank)
     if args.device_max_memory:
         n_gpu = torch.cuda.device_count()
         assert len(args.device_max_memory) == n_gpu // args.local_world_size
