@@ -6,16 +6,16 @@ from typing import List, Literal, Optional, Union, Tuple, Any
 
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
+from swift.llm import swift_to_peft_format
 
+from swift.llm.argument import TunerArguments
+from swift.llm.argument.utils import handle_path, load_from_ckpt_dir, prepare_ms_hub
 from swift.llm.dataset.dataset import standard_keys
-from swift.llm.utils.argument import swift_to_peft_format
 from transformers.utils.versions import require_version
-
-from swift.llm import TEMPLATE_MAPPING, is_vllm_available, is_lmdeploy_available
 from swift.llm.argument.data_args import DataArguments, TemplateArguments
-from swift.llm.argument.model_args import QuantizeArguments, ModelArguments, GenerationArguments, ArgumentsBase, \
-    load_from_ckpt_dir, prepare_ms_hub
+from swift.llm.argument.model_args import QuantizeArguments, ModelArguments, GenerationArguments
 from swift.llm.model.loader import MODEL_MAPPING
+from swift.llm.template import TEMPLATE_MAPPING
 from swift.utils import (get_logger)
 
 logger = get_logger()
@@ -51,7 +51,7 @@ class MergeArguments:
 
 
 @dataclass
-class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments, VLLMArguments, LMDeployArguments, MergeArguments):
+class InferArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments, VLLMArguments, LMDeployArguments, MergeArguments):
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
@@ -75,29 +75,25 @@ class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeA
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     def __post_init__(self) -> None:
-        super().__post_init__()
-        self.handle_path()
+        ModelArguments.__post_init__(self)
+        TunerArguments.__post_init__(self)
+        TemplateArguments.__post_init__(self)
+        QuantizeArguments.__post_init__(self)
+        GenerationArguments.__post_init__(self)
+        DataArguments.__post_init__(self)
+        handle_path(self)
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
             logger.info('Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.')
         if self.load_args_from_ckpt_dir:
-            load_from_ckpt_dir(self, False)
+            load_from_ckpt_dir(self)
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
 
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
-        self._handle_dataset_sample()
-        self.register_self_cognition()
-        self.handle_custom_register()
-        self.handle_custom_dataset_info()
-        self.set_model_type()
-        self.check_flash_attn()
-        self.is_multimodal = self.is_multimodal()
         prepare_ms_hub(self)
 
-        self.torch_dtype, _, _ = self.select_dtype()
-        self.prepare_template()
         if self.eval_human is None:
             if len(self.dataset) == 0 and len(self.val_dataset) == 0:
                 self.eval_human = True
@@ -118,13 +114,7 @@ class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeA
                 logger.info('Since you have specified quantization_bit as greater than 0 '
                             "and have not designated a quant_method, quant_method will be set to 'hqq'.")
 
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
-
-        if self.ckpt_dir is None:
-            self.sft_type = 'full'
-
         self.handle_infer_backend()
-        self.handle_generation_config()
 
     def handle_infer_backend(self):
         model_info = MODEL_MAPPING.get(self.model_type, {})
@@ -134,7 +124,7 @@ class InferArguments(ArgumentsBase, ModelArguments, TemplateArguments, QuantizeA
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm and not self.is_multimodal:
-                if ((self.sft_type == 'full' or self.sft_type == 'lora' and self.merge_lora)
+                if ((self.sft_type == 'full' or self.sft_type in self.adapters_can_be_merged() and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
                 if self.vllm_enable_lora:

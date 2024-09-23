@@ -2,9 +2,8 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-from swift.llm import get_model_list_client
-
-from swift.llm.argument.infer_args import InferArguments
+from .infer_args import InferArguments
+from swift.llm.infer.client_utils import get_model_list_client
 
 
 @dataclass
@@ -49,7 +48,7 @@ class EvalArguments(InferArguments):
 
     def set_model_type(self) -> None:
         if self.eval_url is None:
-            super().set_model_type()
+            super().select_model_type()
 
     def check_flash_attn(self) -> None:
         if self.eval_url is None:
@@ -57,11 +56,11 @@ class EvalArguments(InferArguments):
 
     def prepare_template(self) -> None:
         if self.eval_url is None:
-            super().prepare_template()
+            super().select_template()
 
     def handle_infer_backend(self) -> None:
         if self.eval_url is None:
             super().handle_infer_backend()
 
-    def is_multimodal(self, model_type: Optional[str] = None) -> bool:
-        return False if self.eval_url is not None else super().is_multimodal(model_type)
+    def is_multimodal(self) -> bool:
+        return False if self.eval_url is not None else super().is_multimodal()

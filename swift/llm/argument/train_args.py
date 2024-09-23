@@ -9,24 +9,24 @@ from typing import List, Literal, Optional
 
 import torch
 import torch.distributed as dist
-from modelscope import HubApi
-from modelscope.hub.api import ModelScopeConfig
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import TEMPLATE_MAPPING
-from swift.llm.utils.utils import is_liger_available
-from swift.trainers import LOSS_MAPPING, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from swift.utils import get_logger
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .data_args import TemplateArguments, DataArguments
-from .model_args import ModelArguments, QuantizeArguments, GenerationArguments, ArgumentsBase, load_from_ckpt_dir, \
-    prepare_ms_hub
+from .model_args import ModelArguments, QuantizeArguments, GenerationArguments
 from .tuner_args import TunerArguments
+from .utils import handle_path, load_from_ckpt_dir, prepare_ms_hub
 from ..model.loader import MODEL_MAPPING
+from ..template import TEMPLATE_MAPPING
+from ...plugin.loss import LOSS_MAPPING
+from ...plugin.tuner import extra_tuners
+from ...trainers import TrainerFactory
+from ...utils.import_utils import is_liger_available
 
 logger = get_logger()
 
@@ -66,7 +66,7 @@ class MegatronArguments:
 
 
 @dataclass
-class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
+class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
@@ -162,7 +162,7 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
                 'lora does not support `freeze_parameters_ratio`, please set `--sft_type full`')
             assert len(self.additional_trainable_parameters) == 0, (
                 'lora does not support `additional_trainable_parameters`, please set `--sft_type full`')
-            if self.is_quant_model(self.model_type, self.model_id_or_path or self.ckpt_dir, self.model_revision):
+            if self.is_quant_model():
                 assert self.quantization_bit == 0, (
                     f'{self.model_type} is already a quantized model and does not need to be quantized again.')
             if self.learning_rate is None:
@@ -185,7 +185,7 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
                 self.learning_rate = 1e-5
             if self.eval_steps is None:
                 self.eval_steps = 200
-        else:
+        elif self.sft_type not in extra_tuners:
             raise ValueError(f'sft_type: {self.sft_type}')
 
     def prepare_liger(self):
@@ -194,20 +194,6 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
             if self.loss_scale != 'default':
                 logger.warn('use_liger is not compatible with `loss_scale`, setting to default...')
                 self.loss_scale = 'default'
-
-    def prepare_quantization(self):
-        # compatibility
-        if self.quantization_bit > 0 and self.quant_method is None:
-            if self.quantization_bit == 4 or self.quantization_bit == 8:
-                logger.info('Since you have specified quantization_bit as greater than 0 '
-                            "and have not designated a quant_method, quant_method will be set to 'bnb'.")
-                self.quant_method = 'bnb'
-            else:
-                self.quant_method = 'hqq'
-                logger.info('Since you have specified quantization_bit as greater than 0 '
-                            "and have not designated a quant_method, quant_method will be set to 'hqq'.")
-
-        self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = self.select_bnb()
 
     def prepare_dataloader(self):
         template_info = TEMPLATE_MAPPING[self.template_type]
@@ -236,29 +222,25 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
             self.dataloader_drop_last = True
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        ModelArguments.__post_init__(self)
+        TunerArguments.__post_init__(self)
+        TemplateArguments.__post_init__(self)
+        QuantizeArguments.__post_init__(self)
+        GenerationArguments.__post_init__(self)
+        DataArguments.__post_init__(self)
         if is_pai_training_job():
             self._handle_pai_compat()
         self.prepare_deepspeed()
-        self.handle_path()
-        self.handle_dataset_sample()
-        self.register_self_cognition()
-        self.handle_custom_register()
-        self.handle_custom_dataset_info()
+        handle_path(self)
+        if self.sft_type == 'full' or self.train_backend == 'megatron':
+            self.model_id_or_path = self.resume_from_checkpoint
         if self.resume_from_checkpoint:
-            load_from_ckpt_dir(self, True, False)
+            load_from_ckpt_dir(self)
 
-        if self.dataset_seed is None:
-            self.dataset_seed = self.seed
         if self.save_steps is None:
             self.save_steps = self.eval_steps
         self.train_sampler_random = not self.test_oom_error
-        self.set_model_type()
-        self.check_flash_attn()
         self.handle_lr_scheduler_kwargs()
-        self.is_multimodal = self.is_multimodal()
-
-        self.torch_dtype, self.fp16, self.bf16 = self.select_dtype(True, self.sft_type)
         self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
 
         if self.train_backend == 'megatron' and self.sft_type == 'lora':
@@ -269,9 +251,7 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
             raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
 
         self.prepare_train_type()
-        self.prepare_template(self.model_type)
         self.prepare_liger()
-        self.prepare_quantization()
         prepare_ms_hub(self)
 
         if self.eval_batch_size is None:
@@ -301,7 +281,6 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
             self.init_megatron()
 
         self.prepare_output()
-        self.handle_generation_config()
 
     def prepare_output(self):
         if self.add_output_dir_suffix is None:
@@ -334,7 +313,7 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
         training_args_cls, kwargs = TrainerFactory.get_training_args_info(self)
         additional_saved_files = []
         if self.sft_type == 'full':
-            additional_saved_files = self.get_additional_saved_files(self.model_type)
+            additional_saved_files = self.get_additional_saved_files()
 
         kwargs['neftune_noise_alpha'] = self.neftune_noise_alpha
 
@@ -456,19 +435,11 @@ class SftArguments(ArgumentsBase, MegatronArguments, Seq2SeqTrainingOverrideArgu
             self.lazy_tokenize = False
             logger.info('lazy_tokenize set to False in streaming dataset')
 
-        if self.train_dataset_mix_ratio > 0:
-            logger.warning('train_dataset_mix_ratio is not supported for streaming dataset, set to 0')
-            self.train_dataset_mix_ratio = 0
-
         if self.dataset_test_ratio > 0:
             logger.info('Set dataset_test_ratio to 0 in streaming mode.'
                         'You can manually set val_dataset and val_dataset_sample.'
                         'or set streaming_val_size instead to split from train dataset')
             self.dataset_test_ratio = 0
-
-        if self.train_dataset_sample > 0:
-            logger.warning('train_dataset_sample is not supported for streaming dataset, set to -1')
-            self.train_dataset_sample = -1
 
         if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
             logger.info('Set dataloader_num_workers to 0 in streaming mode')

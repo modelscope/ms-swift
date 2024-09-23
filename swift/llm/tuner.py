@@ -230,11 +230,6 @@ def prepare_modules(model, args: SftArguments):
                 )
                 logger.info(f'reft config: {reft_config}')
                 model = Swift.prepare_model(model, {'reft': reft_config})
-            else:
-                assert args.sft_type in extra_tuners
-                tuner: Tuner = extra_tuners[args.sft_type]
-                model = tuner.prepare_model(model, args)
-                model.is_tuner_plugin = True
         else:
             if getattr(model, 'is_tuner_plugin', False):
                 with open(os.path.join(args.resume_from_checkpoint, 'sft_args.json'), 'r') as f:
@@ -257,6 +252,10 @@ def prepare_modules(model, args: SftArguments):
                     logger.info('Convert trainable parameters from fp16 to fp32.')
                     is_logging = True
                 p.data = p.data.to(dtype=torch.float32)
+    elif args.sft_type in extra_tuners:
+        tuner: Tuner = extra_tuners[args.sft_type]
+        model = tuner.prepare_model(model, args)
+        model.is_tuner_plugin = True
     elif args.sft_type == 'full':
         model.train()
         model.requires_grad_(True)

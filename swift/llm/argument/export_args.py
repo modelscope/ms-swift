@@ -67,8 +67,8 @@ class ExportArguments(InferArguments):
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
         elif self.to_ollama:
-            assert self.sft_type in ('full', 'lora', 'longlora', 'llamapro')
-            if self.sft_type in ('lora', 'longlora', 'llamapro'):
+            assert self.sft_type in ['full'] + self.adapters_can_be_merged()
+            if self.sft_type in self.adapters_can_be_merged():
                 self.merge_lora = True
             if not self.ollama_output_dir:
                 self.ollama_output_dir = f'{self.model_type}-ollama'

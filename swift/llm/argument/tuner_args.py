@@ -1,14 +1,14 @@
-from dataclasses import field
+from dataclasses import field, dataclass
 from typing import Literal, List, Optional
 
 
+@dataclass
 class TunerArguments:
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
-    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
-                      'reft'] = 'lora'
+    sft_type: str = 'lora'
 
     # tuners
-    target_modules: List[str] = field(default_factory=lambda: ['DEFAULT'])
+    target_modules: List[str] = field(default_factory=lambda: ['ALL'])
     target_regex: Optional[str] = None
     # e.g. ['wte', 'ln_1', 'ln_2', 'ln_f', 'lm_head']
     modules_to_save: List[str] = field(default_factory=list)
@@ -102,3 +102,10 @@ class TunerArguments:
         return self.sft_type in {
             'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
         }
+
+    def adapters_can_be_merged(self):
+        return ['lora', 'longlora', 'llamapro']
+
+    def __post_init__(self):
+        if self.ckpt_dir is None:
+            self.sft_type = 'full'
