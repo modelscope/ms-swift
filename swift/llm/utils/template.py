@@ -3379,19 +3379,20 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         media_offset = []
         cusum_offset = 0
 
-        
-        for bi,b in enumerate(batch):
+        for bi, b in enumerate(batch):
             if 'media_offset' in b:
                 max_sequence_length = res['input_ids'].shape[1]
                 curr_media_offset = b['media_offset']
-                if curr_media_offset.shape[1]<max_sequence_length:
-                    padding = curr_media_offset[:,-1:,:].expand(curr_media_offset.shape[0], max_sequence_length-curr_media_offset.shape[1], curr_media_offset.shape[2])
+                if curr_media_offset.shape[1] < max_sequence_length:
+                    padding = curr_media_offset[:, -1:, :].expand(curr_media_offset.shape[0],
+                                                                  max_sequence_length - curr_media_offset.shape[1],
+                                                                  curr_media_offset.shape[2])
                     curr_media_offset = torch.concat([curr_media_offset, padding], dim=1)
                 media_offset.append(curr_media_offset + cusum_offset)
                 cusum_offset += num_images[bi]
 
         # media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
-        
+
         if media_offset:
             res['media_offset'] = torch.concat(media_offset)
         return res
