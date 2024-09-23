@@ -3,6 +3,7 @@ import datetime as dt
 import os
 import re
 import shutil
+from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import json
@@ -248,6 +249,7 @@ def prepare_model_template(args: InferArguments,
         model=model,
         tools_prompt=args.tools_prompt)
     args.system = template.default_system
+    template.encode = partial(template.encode, streaming=args.streaming, dtype=model.dtype, device=model.device)
     logger.info(f'system: {args.system}')
     return model, template
 
