@@ -1,9 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
 import torch
 from datasets import Dataset as HfDataset
-from modelscope import MsDataset
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.utils.versions import require_version
 
