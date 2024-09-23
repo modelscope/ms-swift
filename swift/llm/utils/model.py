@@ -9,16 +9,15 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from accelerate.utils import find_device
-from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
-                        GenerationConfig, GPTQConfig, snapshot_download)
+from modelscope import snapshot_download
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+                          GenerationConfig, GPTQConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import is_torch_bf16_gpu_available, strtobool
@@ -2729,7 +2728,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.mplug_owl3,
     requires=['transformers>=4.36', 'icecream'],  # decord
     support_flash_attn=True,
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='mPLUG/mPLUG-Owl3-7B-240728')
 def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    torch_dtype: torch.dtype,
@@ -3664,7 +3663,7 @@ for model_size in ['2B', '7B', '72B']:
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
         requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],
-        tags=['multi-modal', 'vision'],
+        tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}')
     register_model(
         f'qwen2-vl-{model_size_lower}-instruct',
@@ -3676,7 +3675,7 @@ for model_size in ['2B', '7B', '72B']:
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
         requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],  # 'pyav'
-        tags=['multi-modal', 'vision'],
+        tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct')
     for quant_bits in [4, 8]:
         quant_type = f'GPTQ-Int{quant_bits}'
@@ -3691,7 +3690,7 @@ for model_size in ['2B', '7B', '72B']:
             support_vllm=True,
             placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
             requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
-            tags=['multi-modal', 'vision'],
+            tags=['multi-modal', 'vision', 'video'],
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
             hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct-{quant_type}')
@@ -3706,7 +3705,7 @@ for model_size in ['2B', '7B', '72B']:
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
         requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
-        tags=['multi-modal', 'vision'],
+        tags=['multi-modal', 'vision', 'video'],
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct-AWQ')
