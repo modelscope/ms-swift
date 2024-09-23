@@ -1,26 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
+import json
 import os
 import re
 import shutil
-from functools import partial
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
-import json
 import numpy as np
-import torch
-from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
-from transformers.utils import is_torch_npu_available
 
-from swift.plugin.tuner import Tuner, extra_tuners
+from swift.llm import InferArguments, standard_keys, standard_tags, DatasetLoader
+from swift.llm.infer.transformers import TransformersFramework
+from swift.llm.infer.utils import inference_stream, inference
 from swift.tuners import Swift
-from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
-                         show_layers)
-from swift.llm.utils import (DeployArguments, InferArguments, MediaTag, Template, get_additional_saved_files, get_dataset,
-                             get_model_tokenizer, get_template, inference, inference_stream, is_adapter, is_quant_model,
-                             sample_dataset, set_generation_config)
+from swift.utils import (append_to_jsonl, get_logger, get_main, read_multi_line, seed_everything)
 
 logger = get_logger()
 
@@ -44,7 +38,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
     model_type = getattr(tokenizer, 'model_type')
     fname_list = ['generation_config.json', 'preprocessor_config.json']
     if model_type is not None:
-        fname_list += get_additional_saved_files(model_type)
+        fname_list += kwargs.get('additional_saved_files', [])
 
     for fname in fname_list:
         tgt_path = os.path.join(target_dir, fname)
@@ -96,8 +90,7 @@ def merge_lora(args: InferArguments,
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
     assert args.sft_type in ('lora', 'adalora', 'longlora', 'llamapro'), 'Only supports lora & llamapro series models'
-    assert not is_quant_model(
-        args.model_type), f'{args.model_type} is a quantized model and does not support merge-lora.'
+    assert not args.is_quant_model(), f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')
@@ -124,7 +117,8 @@ def merge_lora(args: InferArguments,
             args.ckpt_dir,
             merged_lora_path,
             save_safetensors=args.save_safetensors,
-            sft_args_kwargs={'dtype': args.dtype})
+            sft_args_kwargs={'dtype': args.dtype},
+            additional_saved_files=args.get_additional_saved_files())
         logger.info(f'Successfully merged LoRA and saved in {merged_lora_path}.')
     logger.info("Setting args.sft_type: 'full'")
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
@@ -133,134 +127,13 @@ def merge_lora(args: InferArguments,
     return merged_lora_path
 
 
-def prepare_model_template(args: InferArguments,
-                           *,
-                           device_map: Optional[str] = None,
-                           verbose: bool = True,
-                           automodel_class=None) -> Tuple[PreTrainedModel, Template]:
-
-    model_kwargs = {}
-    if is_torch_npu_available():
-        logger.info(f'device_count: {torch.npu.device_count()}')
-        if device_map is None:
-            device_map = 'npu:0'
-    else:
-        logger.info(f'device_count: {torch.cuda.device_count()}')
-        if device_map is None:
-            device_map = 'auto' if torch.cuda.device_count() > 1 else 'cuda:0'
-    if device_map == 'auto':
-        model_kwargs['low_cpu_mem_usage'] = True
-    model_kwargs['device_map'] = device_map
-    if args.device_max_memory:
-        assert len(args.device_max_memory) == torch.cuda.device_count()
-        model_kwargs['max_memory'] = {i: mem for i, mem in enumerate(args.device_max_memory)}
-
-    # Loading Model and Tokenizer
-    if hasattr(args, 'quant_config'):
-        model_kwargs['quantization_config'] = args.quant_config
-    elif args.load_in_8bit or args.load_in_4bit:
-        quantization_config = BitsAndBytesConfig(
-            args.load_in_8bit,
-            args.load_in_4bit,
-            bnb_4bit_compute_dtype=args.bnb_4bit_compute_dtype,
-            bnb_4bit_quant_type=args.bnb_4bit_quant_type,
-            bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant)
-        if args.bnb_4bit_compute_dtype is None:
-            quantization_config.bnb_4bit_compute_dtype = None
-        logger.info(f'quantization_config: {quantization_config.__dict__}')
-        model_kwargs['quantization_config'] = quantization_config
-    kwargs = {}
-    if args.use_flash_attn is not None:
-        kwargs['use_flash_attn'] = args.use_flash_attn
-    model_id_or_path = None
-    if args.sft_type == 'full' and args.ckpt_dir is not None:
-        model_id_or_path = args.ckpt_dir
-    elif args.model_id_or_path is not None:
-        model_id_or_path = args.model_id_or_path
-    if automodel_class is not None:
-        kwargs['automodel_class'] = automodel_class
-    if args.local_repo_path:
-        kwargs['local_repo_path'] = args.local_repo_path
-    if args.rope_scaling:
-        kwargs['rope_scaling'] = args.rope_scaling
-        kwargs['max_length'] = args.max_length
-    model, tokenizer = get_model_tokenizer(
-        args.model_type,
-        args.torch_dtype,
-        model_kwargs,
-        model_id_or_path=model_id_or_path,
-        revision=args.model_revision,
-        quant_method=args.quant_method,
-        **kwargs)
-    if verbose:
-        logger.info(f'model_config: {model.config}')
-
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    set_generation_config(model, generation_config)
-    logger.info(f'model.generation_config: {model.generation_config}')
-
-    if model.generation_config.num_beams != 1:
-        args.stream = False
-        logger.info('Setting args.stream: False')
-    if model.max_model_len is None:
-        model.max_model_len = args.max_model_len
-    elif args.max_model_len is not None:
-        if args.max_model_len <= model.max_model_len:
-            model.max_model_len = args.max_model_len
-        else:
-            raise ValueError('args.max_model_len exceeds the maximum max_model_len supported by the model.'
-                             f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
-
-    if getattr(model, 'is_tuner_plugin', False):
-        with open(os.path.join(args.ckpt_dir, 'sft_args.json'), 'r') as f:
-            content = json.load(f)
-        tuner: Tuner = extra_tuners[content['sft_type']]
-        model = tuner.from_pretrained(model, args.ckpt_dir)
-    elif args.is_adapter() and args.ckpt_dir is not None:
-        if isinstance(args, DeployArguments) and args.lora_request_list is not None:
-            logger.info(f'args.lora_request_list: {args.lora_request_list}')
-            for lora_request in args.lora_request_list:
-                model = Swift.from_pretrained(
-                    model, lora_request.lora_local_path, lora_request.lora_name, inference_mode=True)
-        else:
-            model = Swift.from_pretrained(model, args.ckpt_dir, inference_mode=True)
-        model = model.to(model.dtype)
-    model.requires_grad_(False)
-
-    if verbose:
-        show_layers(model)
-        logger.info(model)
-    logger.info(get_model_info(model))
-    template: Template = get_template(
-        args.template_type,
-        tokenizer,
-        args.system,
-        args.max_length,
-        args.truncation_strategy,
-        model=model,
-        tools_prompt=args.tools_prompt)
-    args.system = template.default_system
-    template.encode = partial(template.encode, streaming=args.streaming, dtype=model.dtype, device=model.device)
-    logger.info(f'system: {args.system}')
-    return model, template
-
-
 def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['none', 'round', 'dialogue', 'interleave'],
                     media_type: Literal['image', 'video', 'audio'], query: str) -> None:
     if infer_media_type == 'none':
         return
 
     def _input_media(media_type: Literal['image', 'video', 'audio']) -> None:
-        media_key = MediaTag.media_keys[media_type]
+        media_key = standard_keys[media_type]
         media_files = infer_kwargs.get(media_key) or []
         a_an = 'an' if media_type[0] in {'i', 'a'} else 'a'
         text = f'Input {a_an} {media_type} path or URL <<< '
@@ -268,14 +141,14 @@ def read_media_file(infer_kwargs: Dict[str, Any], infer_media_type: Literal['non
         infer_kwargs[media_key] = media_files
 
     if infer_media_type == 'interleave':
-        media_tags = re.findall('|'.join(list(MediaTag.standard_tags.values())), query)
-        standard_tags_r = {v: k for k, v in MediaTag.standard_tags.items()}
+        media_tags = re.findall('|'.join(list(standard_tags.values())), query)
+        standard_tags_r = {v: k for k, v in standard_tags.items()}
         for tag in media_tags:
             media_type = standard_tags_r[tag]
             _input_media(media_type)
         return
 
-    media_key = MediaTag.media_keys[media_type]
+    media_key = standard_keys[media_type]
     media_files = infer_kwargs.get(media_key) or []
     if infer_media_type == 'round' or len(media_files) == 0:
         _input_media(media_type)
@@ -288,38 +161,22 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
         merge_lora(args, device_map=args.merge_device_map)
 
     if args.infer_backend == 'vllm':
-        from .utils import (prepare_vllm_engine_template, inference_stream_vllm as inference_stream_x, inference_vllm as
-                            inference_x)
-        llm_engine, template = prepare_vllm_engine_template(args)
+        from .vllm import VLLMFramework
+        framework = VLLMFramework
     elif args.infer_backend == 'lmdeploy':
-        from .utils import (prepare_lmdeploy_engine_template, inference_stream_lmdeploy as inference_stream_x,
-                            inference_lmdeploy as inference_x)
-        llm_engine, template = prepare_lmdeploy_engine_template(args)
+        from .lmdeploy import LMDeployFramework
+        framework = LMDeployFramework
+    elif args.infer_backend == 'pt':
+        framework = TransformersFramework
     else:
-        if args.quant_method == 'hqq':
-            from transformers import HqqConfig
-            if args.hqq_dynamic_config_path is not None:
-                cwd = os.getcwd()
-                config_path = args.hqq_dynamic_config_path if os.path.isabs(
-                    args.hqq_dynamic_config_path) else os.path.join(cwd, args.hqq_dynamic_config_path)
-                with open(config_path, 'r') as json_file:
-                    args.quant_config = HqqConfig(dynamic_config=json.load(json_file))
-            else:
-                if args.quantization_bit == 0:
-                    logger.info("You haven't set the quantization_bit parameter; set it to 8.")
-                    args.quantization_bit = 8
-                args.quant_config = HqqConfig(nbits=args.quantization_bit, axis=args.hqq_axis)
-        elif args.quant_method == 'eetq':
-            from transformers import EetqConfig
-            args.quant_config = EetqConfig('int8')
-        model, template = prepare_model_template(args, device_map=args.device_map_config)
-        if args.overwrite_generation_config:
-            assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
-            model.generation_config.save_pretrained(args.ckpt_dir)
+        raise ValueError(f'Unsupported backend: {args.infer_backend}')
+
+    llm_engine, template = framework.prepare_engine_template(args)
     lora_request = None
     if args.vllm_enable_lora:
         assert len(args.lora_request_list) == 1
         lora_request = args.lora_request_list[0]
+
     # Inference
     result: List[Dict[str, Any]] = []
     jsonl_path = None
@@ -336,6 +193,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             os.makedirs(result_dir, exist_ok=True)
             time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
             jsonl_path = os.path.join(result_dir, f'{time}.jsonl')
+
     if args.eval_human:
         input_mode: Literal['S', 'M'] = 'S'
         logger.info('Input `exit` or `quit` to exit the conversation.')
@@ -401,7 +259,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             if args.infer_backend in {'vllm', 'lmdeploy'}:
                 request_list = [{'query': query, 'history': history, 'system': system, **infer_kwargs}]
                 if args.stream:
-                    gen = inference_stream_x(llm_engine, template, request_list, lora_request=lora_request)
+                    gen = framework.inference_stream(llm_engine, template, request_list, lora_request=lora_request)
                     print_idx = 0
                     for resp_list in gen:
                         response = resp_list[0]['response']
@@ -411,7 +269,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                             print_idx = len(response)
                     print()
                 else:
-                    resp_list = inference_x(llm_engine, template, request_list, lora_request=lora_request)
+                    resp_list = framework.inference(llm_engine, template, request_list, lora_request=lora_request)
                     response = resp_list[0]['response']
                     new_history = resp_list[0]['history']
                     print(response)
@@ -436,7 +294,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 'response': response,
                 'history': history,
             }
-            for media_key in MediaTag.media_keys.values():
+            for media_key in standard_keys.values():
                 media_files = infer_kwargs.get(media_key)
                 if media_files is not None:
                     obj[media_key] = media_files
@@ -452,15 +310,14 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
             'model_author': args.model_author
         }
         if len(args.val_dataset) > 0:
-            _, val_dataset = get_dataset(args.val_dataset, 1.0, **dataset_kwargs)
+            _, val_dataset = DatasetLoader.load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
         else:
-            _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
-        _, val_dataset = args._handle_dataset_compat(_, val_dataset)
+            _, val_dataset = DatasetLoader.load_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
         assert val_dataset is not None
         if 0 <= args.show_dataset_sample < val_dataset.shape[0]:
             random_state = np.random.RandomState(args.dataset_seed)
             logger.info(f'show_dataset_sample: {args.show_dataset_sample}')
-            val_dataset = sample_dataset(val_dataset, args.show_dataset_sample, random_state)
+            val_dataset = DatasetLoader.sample_dataset(val_dataset, args.show_dataset_sample, random_state)
         logger.info(f'val_dataset: {val_dataset}')
 
         if args.verbose is None:
@@ -492,7 +349,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 if system is None and template.use_default_system:
                     system = template.default_system
                 request['system'] = system
-                for media_key in MediaTag.media_keys.values():
+                for media_key in standard_keys.values():
                     media_files = data.get(media_key)
                     if media_files is not None:
                         request[media_key] = media_files
@@ -511,7 +368,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     'label': request.pop('label', None),
                     'history': request['history'],
                 }
-                for media_key in MediaTag.media_keys.values():
+                for media_key in standard_keys.values():
                     media_files = request.get(media_key)
                     if media_files is not None:
                         obj[media_key] = media_files
@@ -535,7 +392,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 if system is None and template.use_default_system:
                     system = template.default_system
                 kwargs['system'] = system
-                for media_key in MediaTag.media_keys.values():
+                for media_key in standard_keys.values():
                     media_files = data.get(media_key)
                     if media_files is not None:
                         kwargs[media_key] = media_files
@@ -567,7 +424,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                     'label': label,
                     'history': kwargs['history'],
                 }
-                for media_key in MediaTag.media_keys.values():
+                for media_key in standard_keys.values():
                     media_files = kwargs.get(media_key)
                     if media_files is not None:
                         obj[media_key] = media_files
@@ -577,7 +434,7 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
                 if args.verbose:
                     print()
                     print(f'[LABELS]{label}')
-                    for media_key in MediaTag.media_keys.values():
+                    for media_key in standard_keys.values():
                         media_files = kwargs.get(media_key)
                         if media_files is not None:
                             print(f'[{media_key.upper()}]{media_files}')

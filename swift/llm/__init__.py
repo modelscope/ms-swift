@@ -11,15 +11,15 @@ if TYPE_CHECKING:
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import EvalArguments, InferArguments, SftArguments, ExportArguments, WebuiArguments, DeployArguments, RLHFArguments
-    from .template import TEMPLATE_MAPPING, Template, StopWords, InferTemplate
-    from .model import MODEL_MAPPING, ModelType
+    from .template import TEMPLATE_MAPPING, Template, StopWords, InferTemplate, get_template
+    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer
     from .dataset import AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, \
         ConversationsPreprocessor, ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, \
         SmartPreprocessor, TextGenerationPreprocessor, \
         DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists, parse_dataset_name, DATASET_MAPPING, \
         MediaResource, register_dataset, register_local_dataset, register_dataset_info_file, register_single_dataset, \
         dataset_map, stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_example, \
-        sort_by_max_length
+        sort_by_max_length, standard_keys, standard_tags
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -30,15 +30,15 @@ else:
         'export': ['export_main'],
         'eval': ['eval_main'],
         "argument": ['EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebuiArguments', 'DeployArguments', 'RLHFArguments'],
-        'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'InferTemplate'],
-        'model': ['MODEL_MAPPING', 'ModelType'],
+        'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'InferTemplate', 'get_template'],
+        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer'],
         'dataset': ['AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor',
         'ConversationsPreprocessor', 'ListPreprocessor', 'PreprocessFunc', 'RenameColumnsPreprocessor',
         'SmartPreprocessor', 'TextGenerationPreprocessor',
         'DatasetLoader', 'HubDatasetLoader', 'LocalDatasetLoader', 'dataset_name_exists', 'parse_dataset_name', 'DATASET_MAPPING',
         'MediaResource', 'register_dataset', 'register_local_dataset', 'register_dataset_info_file', 'register_single_dataset',
         'dataset_map', 'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset', 'print_example',
-        'sort_by_max_length']
+        'sort_by_max_length', 'standard_keys', 'standard_tags']
     }
 
     import sys

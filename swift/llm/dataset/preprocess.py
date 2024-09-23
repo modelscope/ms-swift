@@ -8,7 +8,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 
-from swift.llm import Messages
+from swift.llm.utils import Messages
 from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]

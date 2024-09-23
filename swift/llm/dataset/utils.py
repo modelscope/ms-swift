@@ -323,7 +323,7 @@ def _get_token_len(llm_dataset):
     return token_len
 
 
-def _safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
+def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
 
     def _is_special(token: int) -> bool:
         if token < 0:
@@ -370,7 +370,7 @@ def print_example(example: Dict[str, Any],
         if val is not None:
             key_upper = key.upper()
             logger.info(f'[{key_upper}_IDS] {val}')
-            val_str = _safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
+            val_str = safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
             logger.info(f'[{key_upper}] {val_str}')
 
 

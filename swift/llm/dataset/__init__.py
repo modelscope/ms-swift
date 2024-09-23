@@ -6,7 +6,7 @@ from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocesso
                                           ConversationsPreprocessor,
                                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor,
                                           SmartPreprocessor,
-                                          TextGenerationPreprocessor)
+                                          TextGenerationPreprocessor, standard_keys, standard_tags)
 from .loader import DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists, parse_dataset_name, DATASET_MAPPING
 from .media import MediaResource
 from .register import register_dataset, register_local_dataset, register_dataset_info_file, register_single_dataset

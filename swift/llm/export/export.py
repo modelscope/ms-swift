@@ -283,7 +283,8 @@ def llm_export(args: ExportArguments) -> None:
             sft_args_kwargs={
                 'dtype': args.dtype,
                 'quant_method': args.quant_method
-            })
+            },
+            additional_saved_files=args.get_additional_saved_files())
         logger.info(f'Successfully quantized the model and saved in {args.quant_output_dir}.')
         args.ckpt_dir = args.quant_output_dir
     elif args.to_megatron:
@@ -339,7 +340,8 @@ def llm_export(args: ExportArguments) -> None:
             convert_megatron_to_hf(hf_model, extra_args)
             if args.torch_dtype is not None:
                 hf_model.to(args.torch_dtype)
-            save_checkpoint(hf_model, tokenizer, hf_model.model_dir, args.ckpt_dir, args.hf_output_dir)
+            save_checkpoint(hf_model, tokenizer, hf_model.model_dir, args.ckpt_dir, args.hf_output_dir,
+                            additional_saved_files=args.get_additional_saved_files())
             logger.info('Successfully converted Megatron format to HF format and '
                         f'saved it in the {args.hf_output_dir} directory.')
     if args.push_to_hub:
