@@ -3372,9 +3372,16 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        num_images = [b['image_embeds'].shape[0] if 'image_embeds' in b else 0 for b in batch]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
-        media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+        media_offset = []
+        cusum_offset = 0
+        for bi,b in enumerate(batch):
+            if 'media_offset' in b:
+                media_offset.append(b['media_offset'] + cusum_offset)
+                cusum_offset += num_images[bi]
+        # media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
         if media_offset:
             res['media_offset'] = torch.concat(media_offset)
         return res
