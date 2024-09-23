@@ -82,6 +82,7 @@ class TemplateType:
 
     idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
+    pixtral = 'pixtral'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -1528,6 +1529,69 @@ class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate
 register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
 register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+
+
+def _gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
+    # List[Tensor] ->  List[Tensor]
+    res = []
+    for b in batch:
+        if b.get(attr_name) is not None:
+            res += b.pop(attr_name)
+    return res
+
+
+class PixtralTemplate(Template):
+
+    def __init__(self):
+        super().__init__(['<s>{{SYSTEM}}'], ['[INST]{{QUERY}}[/INST]'], ['</s>'], ['</s>'], None)
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        return ['[IMG]']
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        processor = self.tokenizer.processor
+        images = example['images']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 10)
+        if idx_list:
+            image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
+            inputs['pixel_values'] = image_inputs['pixel_values'][0]
+            image_sizes = image_inputs['image_sizes'][0]
+            added_tokens_len = 0
+            for idx, image_size in zip(idx_list, image_sizes):
+                height, width = image_size
+                num_height_tokens = height // processor.patch_size
+                num_width_tokens = width // processor.patch_size
+                replace_tokens = [processor.image_token * num_width_tokens + processor.image_break_token] * (
+                    num_height_tokens - 1)
+                replace_tokens += [processor.image_token * num_width_tokens + processor.image_end_token]
+                # Flatten list
+                replace_str = ''.join(replace_tokens)
+                img_tokens: List[int] = self.tokenizer.encode(replace_str, add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        pixel_values = _gather_list(batch, 'pixel_values')
+        res = super().data_collator(batch, padding_to)
+        if pixel_values:
+            res['pixel_values'] = pixel_values
+        return res
+
+
+register_template(TemplateType.pixtral, PixtralTemplate(), lazy_tokenize=True)
 
 
 class YiCoderTemplate(ChatmlTemplate):

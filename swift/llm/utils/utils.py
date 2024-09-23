@@ -473,6 +473,7 @@ def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
         if module_list is None:
             continue
         _add_gradient_checkpointing(module_list)
+        logger.info(f'Automatically add gradient_checkpointing to {vision_tower.__class__}.')
 
 
 def find_embedding(model: Module) -> List[str]:
