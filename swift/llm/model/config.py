@@ -8,9 +8,11 @@ from swift.llm.model.loader import safe_snapshot_download
 
 
 class ConfigReader:
+    """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
     def read_config(key, model_type, model_id_or_path, revision):
+        """Read the config value, key should be like `generation_config.bits`, splits by dots"""
         model_dir = safe_snapshot_download(model_type, model_id_or_path, revision, download_model=False)
         if os.path.exists(os.path.join(model_dir, 'config.json')):
             return ConfigReader.read_config_from_hf(key, model_dir)
@@ -29,6 +31,7 @@ class ConfigReader:
 
     @staticmethod
     def set_rope_scaling(config: PretrainedConfig, rope_scaling: Dict[str, Any]):
+        """Set rope scaling to the config"""
         for k in ['language_config', 'llm_config', 'text_config']:
             llm_config = getattr(config, k, None)
             if llm_config is not None:
@@ -42,6 +45,7 @@ class ConfigReader:
 
     @staticmethod
     def get_rope_scaling(config: PretrainedConfig):
+        """Get rope scaling from the config"""
         for k in ['language_config', 'llm_config', 'text_config']:
             llm_config = getattr(config, k, None)
             if llm_config is not None:
@@ -52,6 +56,7 @@ class ConfigReader:
 
     @staticmethod
     def get_max_model_len(config: PretrainedConfig, ignore_rope_scaling=False) -> Optional[int]:
+        """Get the max length supported by the model"""
         INF = int(1e9)
         max_model_len = INF
         for k in ['language_config', 'llm_config', 'text_config']:

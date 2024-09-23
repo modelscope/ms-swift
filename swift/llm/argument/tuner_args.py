@@ -4,6 +4,7 @@ from typing import Literal, List, Optional
 
 @dataclass
 class TunerArguments:
+    """This dataclass manages the training types"""
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
     sft_type: str = 'lora'
 

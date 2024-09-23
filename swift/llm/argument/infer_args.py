@@ -6,7 +6,6 @@ from typing import List, Literal, Optional, Union, Tuple, Any
 
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
-from swift.llm import swift_to_peft_format
 
 from swift.llm.argument import TunerArguments
 from swift.llm.argument.utils import handle_path, load_from_ckpt_dir, prepare_ms_hub
@@ -16,6 +15,7 @@ from swift.llm.argument.data_args import DataArguments, TemplateArguments
 from swift.llm.argument.model_args import QuantizeArguments, ModelArguments, GenerationArguments
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.template import TEMPLATE_MAPPING
+from swift.tuners.utils import swift_to_peft_format
 from swift.utils import (get_logger)
 
 logger = get_logger()
@@ -92,7 +92,6 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
 
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
-        prepare_ms_hub(self)
 
         if self.eval_human is None:
             if len(self.dataset) == 0 and len(self.val_dataset) == 0:

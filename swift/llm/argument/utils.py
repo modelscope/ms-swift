@@ -5,10 +5,7 @@ from typing import List, Optional, Set, Union
 
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
-from modelscope import HubApi
-from modelscope.hub.api import ModelScopeConfig
 
-from swift.llm.model.model import get_default_template_type
 from swift.utils import (get_logger)
 
 logger = get_logger()
@@ -37,7 +34,8 @@ def _check_path(cls,
     return value
 
 
-def handle_path(args) -> None:
+def handle_path(args: Union['SftArguments', 'InferArguments']) -> None:
+    """Check all paths in the args correct and exist"""
     check_exist_path = ['ckpt_dir', 'resume_from_checkpoint', 'custom_register_path']
     maybe_check_exist_path = ['model_id_or_path', 'custom_dataset_info']
     from swift.llm.argument import SftArguments
@@ -59,7 +57,8 @@ def handle_path(args) -> None:
         setattr(args, k, value)
 
 
-def load_from_ckpt_dir(args) -> None:
+def load_from_ckpt_dir(args: Union['SftArguments', 'InferArguments']) -> None:
+    """Load specific attributes from sft_args.json"""
     from swift.llm.argument import SftArguments, ExportArguments
     if isinstance(args, SftArguments):
         ckpt_dir = args.resume_from_checkpoint
@@ -107,20 +106,3 @@ def load_from_ckpt_dir(args) -> None:
         if key in {'template_type', 'dtype'} and value != 'AUTO':
             continue
         setattr(args, key, old_value)
-
-
-def prepare_ms_hub(args) -> None:
-    hub_token = args.hub_token
-    if hub_token is None:
-        hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-    if hub_token:
-        api = HubApi()
-        api.login(hub_token)
-    if not hasattr(args, 'push_to_hub') or not args.push_to_hub:
-        return
-    args.hub_token = hub_token
-    assert ModelScopeConfig.get_token() is not None, 'Please enter hub_token'
-    if args.hub_model_id is None:
-        args.hub_model_id = f'{args.model_type}-{args.sft_type}'
-        logger.info(f'Setting hub_model_id: {args.hub_model_id}')
-    logger.info('hub login successful!')

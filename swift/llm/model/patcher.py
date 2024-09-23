@@ -13,7 +13,7 @@ from packaging import version
 from torch import Tensor, Module
 from torch.nn import Module
 from torch.nn.parallel import DistributedDataParallel as DDP
-from transformers import GPTQConfig
+from transformers import GPTQConfig, PretrainedConfig
 from transformers import (trainer)
 from transformers.integrations import is_deepspeed_zero3_enabled
 
@@ -62,16 +62,13 @@ def patch_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> N
         QuantLinear.forward = _new_forward
 
 
-def patch_rope_scaling(model_config, rope_scaling, max_length):
+def patch_rope_scaling(model_config: PretrainedConfig, rope_scaling: Dict[str, Any], max_length: int):
     """Patch rope scaling, to enable dynamic/linear rope
 
     Args:
-        model_config:
-        rope_scaling:
-        max_length:
-
-    Returns:
-
+        model_config: The model config
+        rope_scaling: The rope scaling config
+        max_length: The model max length
     """
     max_position_embeddings = ConfigReader.get_max_model_len(model_config, ignore_rope_scaling=True)
     if rope_scaling and max_position_embeddings:
@@ -195,8 +192,13 @@ def _pre_forward_hook(model, template, args, kwargs):
 
 
 @contextmanager
-def training_context(models: List):
-    # TODO: use in inference?
+def training_context(models: List[Module]):
+    """This function is important for multi-modal training
+        Some models need to convert or generate input_embeds before forward, and this part need gradients also.
+        So this must happens after the template.encode and data_collator, and befores the forward operation.
+    Args:
+        models: List of Modules
+    """
     handles = []
     for model in models:
         parameters = inspect.signature(model.register_forward_pre_hook).parameters
@@ -225,6 +227,10 @@ def training_context(models: List):
 
 
 def patch_ddp_mp():
+    """Patch ddp with device_map.
+    After patching, the ddp can run with the device_map.
+    This should be called before any training starts.
+    """
     if is_ddp_plus_mp():
         from accelerate.utils.modeling import get_balanced_memory, infer_auto_device_map
 

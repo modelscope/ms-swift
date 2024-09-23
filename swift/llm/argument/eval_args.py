@@ -42,25 +42,31 @@ class EvalArguments(InferArguments):
                 self.model_type = model.id
 
     def select_dtype(self):
+        """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
             return super().select_dtype()
         return None, None, None
 
-    def set_model_type(self) -> None:
+    def select_model_type(self) -> None:
+        """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
             super().select_model_type()
 
     def check_flash_attn(self) -> None:
+        """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
             super().check_flash_attn()
 
     def prepare_template(self) -> None:
+        """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
             super().select_template()
 
     def handle_infer_backend(self) -> None:
+        """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
             super().handle_infer_backend()
 
     def is_multimodal(self) -> bool:
+        """Override the super one because eval_url does not have a proper model_type"""
         return False if self.eval_url is not None else super().is_multimodal()

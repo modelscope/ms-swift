@@ -494,10 +494,8 @@ class YiVLTemplate(Template):
             return inputs, {}
         inputs.pop('loss_scale', None)
         from llava.mm_utils import expand2square
-        model = kwargs['model'].model
-        if not hasattr(model, 'vision_tower'):
-            model = model.model
-        image_processor = model.vision_tower.image_processor
+        # This processor should be put from the `model.vision_tower.image_processor`
+        image_processor = self.tokenizer.image_processor
         images = example.get('images') or []
         for i, image in enumerate(images):
             background_color = tuple(int(x * 255) for x in image_processor.image_mean)
@@ -505,7 +503,7 @@ class YiVLTemplate(Template):
             images[i] = image
         if images:
             image_tensor = image_processor.preprocess(images, return_tensors='pt')['pixel_values']
-            inputs['images'] = image_tensor.to(model.dtype)
+            inputs['images'] = image_tensor.to(kwargs['dtype'])
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -577,13 +575,13 @@ class GLM4VTemplate(GLMTemplate):
         return res
 
 
-register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True, use_model=True)
+register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True, use_model=False)
 
 register_template(
     TemplateType.yi_vl,
     YiVLTemplate([], [[8308], 'Human: {{QUERY}}\n', [8308], 'Assistant:'], ['\n'], ['\n', [8308]], yi_vl_default_system,
                  ['{{SYSTEM}}\n\n']),
-    use_model=True,
+    use_model=False,
     infer_media_type='round',
     lazy_tokenize=True)
 
@@ -803,7 +801,6 @@ class InternLMXComposer2Template(Template):
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        dtype = kwargs['model'].dtype
         images = example.get('images') or []
 
         if self.version == 'v2.5':
@@ -818,7 +815,8 @@ class InternLMXComposer2Template(Template):
             hd_num = get_env_args('hd_num', int, hd_num)
             HD_transform = get_class_from_dynamic_module('ixc_utils.HD_transform', self.tokenizer.model_dir)
             images = [HD_transform(image, hd_num=hd_num) for image in images]
-        images = [kwargs['model'].vis_processor(image).to(dtype) for image in images]
+        # vis_processor comes from model.vis_processor
+        images = [self.tokenizer.vis_processor(image).to(kwargs['dtype']) for image in images]
         inputs['_data'] = {'input_ids': inputs['input_ids'], 'labels': inputs['labels'], 'images': images}
         return inputs, {}
 
@@ -885,7 +883,7 @@ class InternLMXComposer2Template(Template):
 
 
 register_template(
-    TemplateType.internlm_xcomposer2, InternLMXComposer2Template(version='v2'), use_model=True, lazy_tokenize=True)
+    TemplateType.internlm_xcomposer2, InternLMXComposer2Template(version='v2'), use_model=False, lazy_tokenize=True)
 
 
 class InternLMXComposer2_5Template(InternLMXComposer2Template):
@@ -903,13 +901,13 @@ class InternLMXComposer2_5Template(InternLMXComposer2Template):
 register_template(
     TemplateType.internlm_xcomposer2_5,
     InternLMXComposer2_5Template(version='v2.5'),
-    use_model=True,
+    use_model=False,
     lazy_tokenize=True)
 
 register_template(
     TemplateType.internlm_xcomposer2_4khd,
     InternLMXComposer2_5Template(version='v2-4khd'),
-    use_model=True,
+    use_model=False,
     lazy_tokenize=True)
 
 
@@ -939,7 +937,7 @@ class InternvlTemplate(Template):
             input_size = get_env_args('input_size', int, 448)
             max_num = get_env_args('max_num', int, 12)
             pixel_values_images = [transform_image(image, input_size, max_num) for image in images]
-            pixel_values = torch.cat(pixel_values_images, dim=0).to(kwargs['model'].dtype)
+            pixel_values = torch.cat(pixel_values_images, dim=0).to(kwargs['dtype'])
             image_bs = pixel_values.shape[0]
 
             idx, idx2 = idx_list[0], idx_list[-1]  # remove [-100, -100]
@@ -1044,7 +1042,7 @@ class Internvl2Template(InternvlTemplate):
             max_num = get_env_args('max_num', int, 1 if has_video else 12)
             pixel_values = [transform_image(image, input_size, max_num) for image in images]
             num_patches = [pv.shape[0] for pv in pixel_values]
-            pixel_values = torch.cat(pixel_values).to(kwargs['model'].dtype)
+            pixel_values = torch.cat(pixel_values).to(kwargs['dtype'])
         else:
             pixel_values = None
             num_patches = []
@@ -1085,14 +1083,14 @@ class Internvl2Phi3Template(InternvlPhi3TemplateMixin, Internvl2Template):
 
 
 register_template(
-    TemplateType.internvl, InternvlTemplate(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
+    TemplateType.internvl, InternvlTemplate(), use_model=False, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
+    TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=False, lazy_tokenize=True, infer_media_type='dialogue')
 
-register_template(TemplateType.internvl2, Internvl2Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.internvl2, Internvl2Template(), use_model=False, lazy_tokenize=True)
 
-register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_model=False, lazy_tokenize=True)
 
 
 class FlorenceTemplate(Template):
@@ -1152,7 +1150,7 @@ class FlorenceTemplate(Template):
         labels = inputs['answer_labels']
         if labels is not None:
             labels = [0] + labels
-        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(kwargs['model'].dtype)
+        pixel_values = processor.image_processor(images, return_tensors='pt')['pixel_values'].to(kwargs['dtype'])
         inputs = {
             'input_ids': input_ids,
             'labels': labels,
@@ -1185,7 +1183,7 @@ class FlorenceTemplate(Template):
 register_template(
     TemplateType.florence,
     FlorenceTemplate(),
-    use_model=True,
+    use_model=False,
     lazy_tokenize=True,
     infer_media_type='dialogue',
     stream=False)
@@ -1239,7 +1237,7 @@ class LlavaHfTemplate(Template):
         images = example.get('images')
         if images:
             image_processor = self.tokenizer.processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(kwargs['model'].dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(kwargs['dtype'])
             inputs['pixel_values'] = image_inputs['pixel_values']
             if 'image_sizes' in image_inputs:
                 inputs['image_sizes'] = image_inputs['image_sizes']
@@ -1265,7 +1263,7 @@ class Llava1_6Llama3Template(LlavaHfTemplate):
         return inputs, {}
 
 
-register_template(TemplateType.llava_next_llama3, Llava1_6Llama3Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_next_llama3, Llava1_6Llama3Template(), use_model=False, lazy_tokenize=True)
 
 
 class LlavaVideoTemplate(Template):
@@ -1290,11 +1288,11 @@ class LlavaVideoTemplate(Template):
         if len(videos_path) > 0:
             videos = load_batch(videos_path, load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
-            video_inputs = video_processor(videos, return_tensors='pt').to(kwargs['model'].dtype)
+            video_inputs = video_processor(videos, return_tensors='pt').to(kwargs['dtype'])
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
         if len(images) > 0:
             image_processor = self.tokenizer.processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(kwargs['model'].dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(kwargs['dtype'])
             inputs['pixel_values'] = image_inputs['pixel_values']
             inputs['image_sizes'] = image_inputs['image_sizes']
         return inputs, {}
@@ -1303,13 +1301,13 @@ class LlavaVideoTemplate(Template):
 register_template(
     TemplateType.llava_next_video,
     LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
-    use_model=True,
+    use_model=False,
     lazy_tokenize=True)
 
 register_template(
     TemplateType.llava_next_video_yi,
     LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
-    use_model=True,
+    use_model=False,
     infer_media_type='round',
     lazy_tokenize=True)
 
@@ -1373,7 +1371,7 @@ register_template(
     TemplateType.idefics3,
     Idefics3Template(['<|begin_of_text|>'], ['User:{{QUERY}}<end_of_utterance>\nAssistant:'], ['<end_of_utterance>\n'],
                      ['<end_of_utterance>'], None, ['System:{{SYSTEM}}<end_of_utterance>\n']),
-    use_model=True,
+    use_model=False,
     lazy_tokenize=True)
 
 
@@ -1383,7 +1381,7 @@ class Llava1_5Template(LlavaHfTemplate):
         super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
 
 
-register_template(TemplateType.llava1_5, Llava1_5Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava1_5, Llava1_5Template(), use_model=False, lazy_tokenize=True)
 
 
 class LLavaTemplate(Template):
@@ -1405,13 +1403,11 @@ class LLavaTemplate(Template):
         images = example.get('images') or []
         image_sizes = [x.size for x in images]
         from llava.mm_utils import process_images
-        model = kwargs['model'].model
-        if not hasattr(model, 'vision_tower'):
-            model = model.model
-        image_processor = model.vision_tower.image_processor
         if images:
-            images_tensor = process_images(images, image_processor, kwargs['model'].config)
-            inputs['images'] = images_tensor.to(model.dtype).squeeze(0)
+            # image_processor comes from the model.vision_tower.image_processor
+            # config comes from the model.config
+            images_tensor = process_images(images, self.tokenizer.image_processor, self.tokenizer.config)
+            inputs['images'] = images_tensor.to(kwargs['dtype']).squeeze(0)
             inputs['image_sizes'] = image_sizes
         return inputs, {}
 
@@ -1461,9 +1457,9 @@ class Llava1_6VicunaTemplate(Llava1_6Template):
                          system_prefix=['<s>{{SYSTEM}} '])
 
 
-register_template(TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=False, lazy_tokenize=True)
 
-register_template(TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=False, lazy_tokenize=True)
 
 
 class LLava1_6YiTemplate(Llava1_6Template):
@@ -1477,21 +1473,21 @@ class LLava1_6YiTemplate(Llava1_6Template):
         return super().replace_tag(media_type, index, example)
 
 
-register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=False, lazy_tokenize=True)
 
 
 class Llama3LlavaNextHfTemplate(Llama3TemplateMixin, Llava1_6Template):
     pass
 
 
-register_template(TemplateType.llama3_llava_next_hf, Llama3LlavaNextHfTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llama3_llava_next_hf, Llama3LlavaNextHfTemplate(), use_model=False, lazy_tokenize=True)
 
 
 class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
     pass
 
 
-register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=False, lazy_tokenize=True)
 
 
 class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
@@ -1508,7 +1504,7 @@ class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
         processor = self.tokenizer.processor
         if images:
             image_processor = processor.image_processor
-            image_inputs = image_processor(images, return_tensors='pt').to(kwargs['model'].dtype)
+            image_inputs = image_processor(images, return_tensors='pt').to(kwargs['dtype'])
             height, width = image_inputs['pixel_values'][0].shape[-2:]
             added_tokens_len = 0
             for idx, pixel_v, image_size in zip(idx_list, image_inputs['pixel_values'], image_inputs['image_sizes']):
@@ -1528,7 +1524,7 @@ class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
         return inputs, {}
 
 
-register_template(TemplateType.llava_onevision_qwen, LlavaOneVisonTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_onevision_qwen, LlavaOneVisonTemplate(), use_model=False, lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Llama3Template):
@@ -1543,11 +1539,11 @@ class LLavaLlamaTemplate(Llama3Template):
         raw_image = example.get('images')
         if raw_image:
             pixel_values = self.tokenizer.processor.image_processor(raw_image, return_tensors='pt')['pixel_values']
-            inputs['pixel_values'] = pixel_values.to(kwargs['model'].dtype)
+            inputs['pixel_values'] = pixel_values.to(kwargs['dtype'])
         return inputs, {}
 
 
-register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_model=False, lazy_tokenize=True)
 
 
 class PaliGemmaTemplate(Template):
@@ -1656,14 +1652,14 @@ class Llama3LlavaNextTemplate(Llama3TemplateMixin, LLavaTemplate):
              'and assist the user with a variety of tasks using natural language.'
 
 
-register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llama3_llava_next, Llama3LlavaNextTemplate(), use_model=False, lazy_tokenize=True)
 
 
 class LLavaQwenTemplate(QwenTemplateMixin, LLavaTemplate):
     pass
 
 
-register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.llava_qwen, LLavaQwenTemplate(), use_model=False, lazy_tokenize=True)
 
 
 def _findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
@@ -1723,7 +1719,7 @@ class DeepseekVLTemplate(Template):
             pixel_values=images_outputs.pixel_values,
             num_image_tokens=torch.tensor([processor.num_image_tokens] * len(idx_list)))
         batched_output = dict(processor.batchify([output]))
-        batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=kwargs['model'].dtype)
+        batched_output['pixel_values'] = batched_output['pixel_values'].to(dtype=kwargs['dtype'])
         inputs = {'input_ids': new_input_ids, 'labels': new_labels, '_data': batched_output}
         return inputs, {}
 
@@ -1736,7 +1732,7 @@ class DeepseekVLTemplate(Template):
         return generate_ids
 
 
-register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=False, lazy_tokenize=True)
 
 register_template(
     TemplateType.zephyr,
@@ -1766,8 +1762,7 @@ class CogTemplate(Template):
             return inputs, {}
         image = example.get('images') or []
         inputs.pop('loss_scale', None)
-        model = kwargs['model']
-        inputs2 = model.build_conversation_input_ids(
+        inputs2 = self.tokenizer.build_conversation_input_ids(
             self.tokenizer, query=example['query'], history=example.get('history'), images=image)
         image_token_len = inputs2['token_type_ids'].sum().item()
         input_ids = inputs['input_ids']
@@ -1777,11 +1772,10 @@ class CogTemplate(Template):
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * image_token_len + labels[1:]
         if len(image) > 0:
-            dtype = model.dtype
-            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+            inputs['images'] = [[img.to(dtype=kwargs['dtype'])] for img in inputs2['images']]
             if 'cross_images' in inputs2:
                 # is cogagent
-                inputs['cross_images'] = [[cross_img.to(dtype=dtype)] for cross_img in inputs2['cross_images']]
+                inputs['cross_images'] = [[cross_img.to(dtype=kwargs['dtype'])] for cross_img in inputs2['cross_images']]
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1799,21 +1793,21 @@ class CogTemplate(Template):
 register_template(
     TemplateType.cogagent_chat,
     CogTemplate(['<s>'], [' [INST] {{QUERY}} [/INST] '], [], ['</s>']),
-    use_model=True,
+    use_model=False,
     infer_media_type='dialogue',
     lazy_tokenize=True)
 
 register_template(
     TemplateType.cogagent_instruct,
     CogTemplate(['<s>'], ['<EOI>Question: {{QUERY}} Answer:'], None, ['</s>']),
-    use_model=True,
+    use_model=False,
     infer_media_type='dialogue',
     lazy_tokenize=True)
 
 register_template(
     TemplateType.cogvlm,
     CogTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
-    use_model=True,
+    use_model=False,
     infer_media_type='dialogue',
     lazy_tokenize=True)
 
@@ -1831,8 +1825,7 @@ class Cog2VideoTemplate(CogTemplate):
         videos_path = example.get('videos') or []
         video = load_batch(videos_path, load_video_cogvlm2)
         inputs.pop('loss_scale', None)
-        model = kwargs['model']
-        inputs2 = model.build_conversation_input_ids(
+        inputs2 = self.tokenizer.build_conversation_input_ids(
             self.tokenizer,
             query=example['query'],
             history=example.get('history'),
@@ -1846,15 +1839,14 @@ class Cog2VideoTemplate(CogTemplate):
         if labels is not None:
             inputs['labels'] = labels[:1] + [-100] * video_token_len + labels[1:]
         if len(video) > 0:
-            dtype = model.dtype
-            inputs['images'] = [[img.to(dtype=dtype)] for img in inputs2['images']]
+            inputs['images'] = [[img.to(dtype=kwargs['dtype'])] for img in inputs2['images']]
         return inputs, {}
 
 
 register_template(
     TemplateType.cogvlm2_video,
     Cog2VideoTemplate([['bos_token_id']], ['Question: {{QUERY}} Answer:'], ['\n'], [['eos_token_id']]),
-    use_model=True,
+    use_model=False,
     infer_media_type='dialogue',
     lazy_tokenize=True,
     media_type='video')
@@ -1890,19 +1882,19 @@ class MiniCPMVTemplate(Template):
         labels = inputs['labels']
         idx_list = _findall(input_ids, -100)
         idx = idx_list[0]
-        config = kwargs['model'].config
         tgt_sizes = None
-        slice_mode = getattr(config, 'slice_mode', False)
+        slice_mode = getattr(self.tokenizer.config, 'slice_mode', False)
         if slice_mode:
             if self.is_v2_5:
                 image_processor = self.tokenizer.processor.image_processor
-                image_inputs = image_processor(images, return_tensors='pt').to(kwargs['model'].dtype)
+                image_inputs = image_processor(images, return_tensors='pt').to(kwargs['dtype'])
                 placeholder = image_processor.get_slice_image_placeholder(image_inputs.image_sizes[0][0])
                 pixel_values = image_inputs['pixel_values']
                 tgt_sizes = image_inputs['tgt_sizes']
             else:
-                images, placeholder = kwargs['model'].get_slice_image_placeholder(images[0], self.tokenizer)
-                pixel_values = [[kwargs['model'].transform(img) for img in images]]
+                # Comes from model.get_slice_image_placeholder and model.transform
+                images, placeholder = self.tokenizer.get_slice_image_placeholder(images[0], self.tokenizer)
+                pixel_values = [[self.tokenizer.transform(img) for img in images]]
             placeholder += '\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
@@ -1918,13 +1910,13 @@ class MiniCPMVTemplate(Template):
                     [image_start_idx[:valid_image_nums].unsqueeze(-1), image_end_idx[:valid_image_nums].unsqueeze(-1)])
             ]
         else:
-            placeholder = '<image>' + '<unk>' * config.query_num + '</image>\n'
+            placeholder = '<image>' + '<unk>' * self.tokenizer.config.query_num + '</image>\n'
             placeholder_id = self.tokenizer.encode(placeholder, add_special_tokens=False)
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
-            image_bound = [torch.tensor([[idx, idx + config.query_num]])]
-            pixel_values = [[kwargs['model'].transform(images[0])]]
+            image_bound = [torch.tensor([[idx, idx + self.tokenizer.config.query_num]])]
+            pixel_values = [[self.tokenizer.transform(images[0])]]
         inputs = {
             'input_ids': input_ids,
             'labels': labels,
@@ -1983,7 +1975,7 @@ class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
 
         image_processor = self.tokenizer.processor.image_processor
         image_inputs = image_processor([images], return_tensors='pt',
-                                       max_slice_nums=max_slice_nums).to(kwargs['model'].dtype)
+                                       max_slice_nums=max_slice_nums).to(kwargs['dtype'])
 
         res_input_ids = []
         res_labels = []
@@ -2029,7 +2021,7 @@ class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
         return inputs, {}
 
 
-register_template(TemplateType.minicpm_v_v2_6, MiniCPMV2_6Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.minicpm_v_v2_6, MiniCPMV2_6Template(), use_model=False, lazy_tokenize=True)
 
 
 class MiniCPMV2_5Template(Llama3TemplateMixin, MiniCPMVTemplate):
@@ -2037,12 +2029,12 @@ class MiniCPMV2_5Template(Llama3TemplateMixin, MiniCPMVTemplate):
 
 
 register_template(
-    TemplateType.minicpm_v_v2_5, MiniCPMV2_5Template(), use_model=True, lazy_tokenize=True, infer_media_type='dialogue')
+    TemplateType.minicpm_v_v2_5, MiniCPMV2_5Template(), use_model=False, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
     TemplateType.minicpm_v,
     MiniCPMVTemplate(['<s>{{SYSTEM}}'], ['<用户>{{QUERY}}<AI>'], [], ['</s>']),
-    use_model=True,
+    use_model=False,
     lazy_tokenize=True,
     infer_media_type='dialogue')
 
@@ -2117,7 +2109,7 @@ class mPlugOwl2Template(Template):
         labels = inputs['labels']
         if images:
             images = process_images(images, processor)
-            images = images.to(kwargs['model'].dtype)
+            images = images.to(kwargs['dtype'])
             return {'input_ids': input_ids, 'labels': labels, 'images': images}, {}
         else:
             return {'input_ids': input_ids, 'labels': labels}, {}
@@ -2131,7 +2123,7 @@ class mPlugOwl2Template(Template):
 
 
 register_template(
-    TemplateType.mplug_owl2, mPlugOwl2Template(), infer_media_type='round', use_model=True, lazy_tokenize=True)
+    TemplateType.mplug_owl2, mPlugOwl2Template(), infer_media_type='round', use_model=False, lazy_tokenize=True)
 
 
 class mPlugOwl3Template(QwenTemplateMixin, Template):
@@ -2209,7 +2201,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         return res
 
 
-register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=True, lazy_tokenize=True)
+register_template(TemplateType.mplug_owl3, mPlugOwl3Template(), use_model=False, lazy_tokenize=True)
 
 register_template(TemplateType.wizardlm2_awq,
                   Template(['{{SYSTEM}}'], ['User:\n{{QUERY}}\n\nAssistant:\n'], ['\n\n'], ['</s>']))
@@ -2291,10 +2283,9 @@ def get_template(
     default_system: Optional[str] = None,
     max_length: Optional[int] = None,
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-    model=None,
     **kwargs,
 ) -> Template:
     template_info = TEMPLATE_MAPPING[template_type]
     template = deepcopy(template_info['template'])
-    template._init_template(tokenizer, default_system, max_length, truncation_strategy, model=model, **kwargs)
+    template.init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
     return template

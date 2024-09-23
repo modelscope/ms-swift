@@ -7,6 +7,8 @@ import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
+
+from swift.llm import Messages
 from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -16,8 +18,10 @@ logger = get_logger()
 
 
 class GroundingMixin:
+    """This class offers prompts to the grounding task"""
     task_type: Optional[str] = None
 
+    _grounding_language_mixin = [0.8, 0.2]
     _grounding_prompts = {
         'grounding': {
             'en': [('<ref-object>', '<bbox>'), ('The positions of <ref-object> is', '<bbox>'),
@@ -74,13 +78,14 @@ standard_keys = {
 
 
 class RowPreprocessor(GroundingMixin):
+    """
+    This class owns the data processing scenario.
+    """
 
     _mapping_kwargs = {
         'load_from_cache_file': False,
         'num_proc': 8,
     }
-
-    _grounding_language_mixin = [0.8, 0.2]
 
     has_tool: bool = False
     column_mapping: Dict[str, str] = {}
@@ -100,7 +105,21 @@ class RowPreprocessor(GroundingMixin):
         if 'modal_keys' in kwargs:
             self.modal_keys = kwargs.pop('modal_keys')
 
-    def replace_standard_tag(self, messages, medias, modal):
+    def replace_standard_tag(self, messages: Messages, medias: List[Any], modal: str):
+        """Replace tags to standard tags,
+            for example:
+            query: <img>What is in the image?
+            to:
+            query: <image>What is in the image?
+            Meanwhile, if the conversation shorts of <image>,
+            this method will add equal ones to the head of the messages.
+        Args:
+            messages: The messages input
+            medias: The medias, like images or videos
+            modal: The modal, like image/video/audio
+        Returns:
+            Messages
+        """
         assert len(self.modal_tags) == len(self.modals)
         _modal_tag = None
         for _modal, _tag in zip(self.modals, self.modal_tags):
@@ -124,7 +143,8 @@ class RowPreprocessor(GroundingMixin):
 
         return messages
 
-    def query_to_message(self, row):
+    def query_to_message(self, row: Dict[str, Any]):
+        """A compatible method to turn query/response to messages, this is used to fit the existing dataset_info.json"""
         messages = []
         if 'query' in row:
             messages.append({'role': 'user', 'content': row['query']})
@@ -134,7 +154,12 @@ class RowPreprocessor(GroundingMixin):
         old_messages.extend(messages)
         row['messages'] = old_messages
 
-    def parse_media_from_row(self, row: Dict[str, Any], modal):
+    def parse_media_from_row(self, row: Dict[str, Any], modal: str):
+        """Parse media from a row
+        Args:
+            row: The row in `Dict`
+            modal: The modal
+        """
         modal_key = self.modal_keys[modal]
         if isinstance(modal_key, str):
             if modal_key in row:
@@ -148,9 +173,11 @@ class RowPreprocessor(GroundingMixin):
         return medias
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Please override this method"""
         return row
 
-    def empty_row(self):
+    def empty_row(self) -> Dict[str, Any]:
+        """Generate an empty row, for later filtering"""
         row = {'messages': None}
         if self.has_tool:
             row['tools'] = None
@@ -159,17 +186,28 @@ class RowPreprocessor(GroundingMixin):
         return row
 
     def map(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Map row, preprocess it and turn query/response to messages"""
         row = self.preprocess(row)
         self.query_to_message(row)
         return row
 
     def filter(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter unwanted row, by default `messages` must exist"""
         return row.get('messages')
 
-    def rename_columns(self, dataset: HfDataset, column_mapping: Dict[str, str]):
+    def rename_columns(self, dataset: DATASET_TYPE, column_mapping: Dict[str, str]) -> DATASET_TYPE:
+        """Rename columns"""
         return dataset.rename_columns(column_mapping)
 
-    def prepare_multi_modal(self, row):
+    def prepare_multi_modal(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare multi-modal.
+        1. Replace tag to standard ones of all modals
+        2. Construct grounding prompt and set them
+        Args:
+            row: The row
+        Returns:
+            The output dict
+        """
         for modal in self.modals:
             medias = self.parse_media_from_row(row, modal)
             if medias:
@@ -186,27 +224,28 @@ class RowPreprocessor(GroundingMixin):
         return row
 
     def prepare_map_kwargs(self, dataset: DATASET_TYPE, **kwargs):
+        """Prepare kwargs for mapping, IterableDataset does not support default _mapping_kwargs"""
         _kwargs = {}
         if not isinstance(dataset, HfIterableDataset):
             _kwargs.update(self._mapping_kwargs)
         _kwargs.update(kwargs)
         return _kwargs
 
-    def prepare_downloading(self, dataset):
+    def prepare_downloading(self, dataset: DATASET_TYPE) -> None:
+        """Override this method to prepare extra resources downloading"""
         pass
 
     def __call__(self,
                  dataset: DATASET_TYPE,
-                 *,
-                 history: bool = False,
-                 system: bool = False,
-                 tool: bool = False,
-                 column_mapping: Optional[Dict[str, str]] = None,
-                 modals: Optional[List[str]] = None,
-                 modal_tags: Optional[List[str]] = None,
-                 modal_keys: Optional[List[str]] = None,
-                 grounding_task_type: Optional[str] = None,
                  **kwargs) -> DATASET_TYPE:
+        """Preprocess a dataset.
+        Args:
+            dataset: The dataset to be mapped and filtered.
+            **kwargs:
+                Extra kwargs for mapping&filtering
+        Returns:
+            The processed dataset
+        """
         kwargs = self.prepare_map_kwargs(**kwargs)
         self.prepare_downloading(dataset)
         if self.modal_keys or self.modals:

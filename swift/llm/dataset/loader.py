@@ -2,7 +2,7 @@
 import itertools
 import os
 import shutil
-from abc import ABC, abstractmethod
+from abc import ABC
 from tempfile import TemporaryDirectory
 from typing import List, Literal, Optional, Tuple, Union, Dict, Any, Callable
 
@@ -17,7 +17,7 @@ from transformers.utils import strtobool
 
 from swift.hub.hub import HFHub, MSHub
 from swift.llm.dataset.preprocess import RowPreprocessor
-from swift.llm.dataset.register import register_dataset_info_file, register_single_dataset
+from swift.llm.dataset.register import register_single_dataset
 from swift.utils import get_logger
 from swift.utils import get_seed
 from swift.utils.io_utils import download_files
@@ -593,7 +593,7 @@ class LocalDatasetLoader(DatasetLoader):
             dataset = preprocess_func(dataset)
             if streaming:
                 dataset = dataset.to_iterable_dataset()
-            dataset_list.append(preprocess_func(dataset))
+            dataset_list.append(dataset)
 
         if len(dataset_list) == 1:
             return dataset_list[0]

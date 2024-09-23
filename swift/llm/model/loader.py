@@ -60,6 +60,7 @@ def safe_snapshot_download(model_type: str,
 
 
 def load_by_unsloth(model_dir, torch_dtype, **kwargs):
+    """Load model by unsloth"""
     assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
     from unsloth import FastLanguageModel
     return FastLanguageModel.from_pretrained(
@@ -73,6 +74,7 @@ def load_by_unsloth(model_dir, torch_dtype, **kwargs):
 
 def load_by_transformers(automodel_class, model_dir, model_config, torch_dtype,
                       is_aqlm, is_training, model_kwargs, **kwargs):
+    """Load model by transformers"""
     context = kwargs.get('context', None)
     if is_aqlm and is_training:
         require_version('transformers>=4.39')

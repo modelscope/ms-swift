@@ -32,6 +32,7 @@ logger = get_logger()
 
 
 class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
+    """Override the default value in `Seq2SeqTrainingArguments`"""
 
     output_dir: str = 'output'
     gradient_checkpointing: Optional[bool] = None
@@ -115,12 +116,14 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
     fsdp_num: int = 1
 
     def handle_lr_scheduler_kwargs(self):
+        """Load the passed lr_scheduler kwargs"""
         if self.lr_scheduler_kwargs is None:
             self.lr_scheduler_kwargs = {}
         elif isinstance(self.lr_scheduler_kwargs, str):
             self.lr_scheduler_kwargs = json.loads(self.lr_scheduler_kwargs)
 
     def prepare_deepspeed(self):
+        """Prepare deepspeed settings"""
         ds_config_folder = os.path.abspath(os.path.join(__file__, '..', '..', 'ds_config'))
         deepspeed_mapping = {
             'default-zero2': 'zero2.json',
@@ -145,6 +148,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def prepare_ddp_backend(self):
+        """Prepare ddp of course"""
         if is_dist():
             if is_torch_npu_available():
                 torch.npu.set_device(self.local_rank)
@@ -157,6 +161,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
                 raise ValueError('not supported, please use `nccl`')
 
     def prepare_train_type(self):
+        """Some arguments will be decided by the sft_type"""
         if self.is_adapter():
             assert self.freeze_parameters_ratio == 0., (
                 'lora does not support `freeze_parameters_ratio`, please set `--sft_type full`')
@@ -189,6 +194,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
             raise ValueError(f'sft_type: {self.sft_type}')
 
     def prepare_liger(self):
+        """Liger kernel"""
         if self.use_liger:
             assert is_liger_available(), 'use_liger requires liger_kernels, try `pip install liger-kernel`'
             if self.loss_scale != 'default':
@@ -196,6 +202,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
                 self.loss_scale = 'default'
 
     def prepare_dataloader(self):
+        """Prepare dataloader arguments"""
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.dataloader_num_workers is None:
             if 'dataloader_num_workers' in template_info:
@@ -210,6 +217,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
             logger.info(f'Setting args.dataloader_pin_memory: {self.dataloader_pin_memory}')
 
     def prepare_gradient_checkpointing(self):
+        """Prepare gradient checkpointing arguments"""
         model_info = MODEL_MAPPING.get(self.model_type, {})
         support_gradient_checkpointing = model_info.get('support_gradient_checkpointing', True)
         if self.gradient_checkpointing is None:
@@ -218,6 +226,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
             logger.warning(f'{self.model_type} not support gradient_checkpointing.')
 
     def prepare_torchacc(self):
+        """Prepare torchacc"""
         if use_torchacc():
             self.dataloader_drop_last = True
 
@@ -252,7 +261,6 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
 
         self.prepare_train_type()
         self.prepare_liger()
-        prepare_ms_hub(self)
 
         if self.eval_batch_size is None:
             if self.predict_with_generate:
@@ -283,6 +291,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
         self.prepare_output()
 
     def prepare_output(self):
+        """Prepare the output folder"""
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
@@ -303,12 +312,14 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
                 self.training_args.logging_dir = self.logging_dir
 
     def init_megatron(self):
+        """Init megatron if you are using megatron to pt"""
         assert is_dist(), 'Please start in distributed mode.'
         dist.init_process_group(backend=self.ddp_backend)
         if self.min_lr is None:
             self.min_lr = self.learning_rate * 0.1
 
     def init_transformers(self) -> None:
+        """Init transformer if you are using transformers models"""
         self.train_type = self.rlhf_type if hasattr(self, 'rlhf_type') else 'sft'
         training_args_cls, kwargs = TrainerFactory.get_training_args_info(self)
         additional_saved_files = []
@@ -418,6 +429,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
             logger.info(f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}')
 
     def _handle_streaming_args(self) -> None:
+        """Streaming mode does not support some specific arguments"""
         if not self.streaming:
             return
         if self.max_steps == -1:

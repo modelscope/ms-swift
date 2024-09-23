@@ -25,6 +25,7 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 
 class LLMDataset(Dataset):
+    """This class wraps the Dataset class, to offer the ability of custom dataset tokenizing"""
 
     def __init__(self, data: List[Dict[str, Any]]) -> None:
         self.data = data
@@ -47,6 +48,7 @@ class LLMDataset(Dataset):
 
 
 class LLMIterableDataset(HFIterableDataset):
+    """This class offers abilities of deal with IterableDataset, and skip the bad samples"""
 
     def __init__(self, dataset: HFIterableDataset, max_retries=10):
         super().__init__(
@@ -64,6 +66,10 @@ class LLMIterableDataset(HFIterableDataset):
         dataset._ex_iterable.remove_columns = standard_keys & next(iter(dataset)).keys()
 
     def __iter__(self):
+        """Iter the dataset, skip bad ones. This iter will never stop until your max-length reached.
+        Yields:
+            An example
+        """
         iterator = iter(self.dataset)
         while True:
             retries = 0
@@ -86,11 +92,21 @@ class LLMIterableDataset(HFIterableDataset):
 
 # Code borrowed from trl
 class ConstantLengthDataset(IterableDataset):
+    """This class wraps to do dataset packing
+    Args:
+        template: The template
+        dataset: The dataset instance
+        seq_length: The permitted sequence length
+        num_of_sequences: Used to calculate the max_buffer_size fetched one time
+        chars_per_token: Gives the chars per token, 3.6 if the default one, comes from `trl`
+        append_concat_token: Reserved argument
+        add_special_tokens: Reserved argument
+    """
 
     def __init__(
         self,
         template: 'Template',
-        dataset,
+        dataset: DATASET_TYPE,
         seq_length=1024,
         num_of_sequences=1024,
         chars_per_token=3.6,
@@ -98,7 +114,6 @@ class ConstantLengthDataset(IterableDataset):
         add_special_tokens=True,
     ):
         self.template = template
-
         self.concat_token_id = self.template.tokenizer.eos_token_id
         self.dataset = dataset
         self.seq_length = seq_length
@@ -108,7 +123,7 @@ class ConstantLengthDataset(IterableDataset):
 
     @staticmethod
     def get_packed_dataset(template: 'Template',
-                           dataset,
+                           dataset: DATASET_TYPE,
                            seq_length=1024,
                            num_of_sequences=2048,
                            chars_per_token=3.6,
@@ -173,6 +188,7 @@ class ConstantLengthDataset(IterableDataset):
 
 
 class LazyLLMDataset(Dataset):
+    """This class if used to lazy tokenize the dataset, and skips bad ones when training"""
 
     def __init__(self,
                  dataset: HfDataset,
@@ -252,6 +268,18 @@ def dataset_map(dataset: DATASET_TYPE,
                 map_func: MapFunc,
                 num_proc: int = 1,
                 streaming: bool = False) -> Optional[Union[LLMDataset, DATASET_TYPE]]:
+    """Map and tokenize a dataset
+    This function is used because datasets.map has a critical type checking, which is annoying.
+
+    Args:
+        dataset: The dataset instance
+        map_func: The map(tokenize) function
+        num_proc: Num proc to use
+        streaming: In streaming mode
+
+    Returns:
+
+    """
     if streaming:
         return LLMIterableDataset(dataset.map(map_func))  # num_proc is not supported for IterableDataset
 
@@ -295,7 +323,7 @@ def _get_token_len(llm_dataset):
     return token_len
 
 
-def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
+def _safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
 
     def _is_special(token: int) -> bool:
         if token < 0:
@@ -332,6 +360,7 @@ def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[in
 def print_example(example: Dict[str, Any],
                   tokenizer: PreTrainedTokenizerBase,
                   tokenizer_kwargs: Optional[Dict[str, Any]] = None) -> None:
+    """Print example"""
     if tokenizer_kwargs is None:
         tokenizer_kwargs = {}
     for key in ['input', 'chosen_input', 'rejected_input', 'labels', 'chosen_labels', 'rejected_labels']:
@@ -341,11 +370,12 @@ def print_example(example: Dict[str, Any],
         if val is not None:
             key_upper = key.upper()
             logger.info(f'[{key_upper}_IDS] {val}')
-            val_str = safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
+            val_str = _safe_tokenizer_decode(tokenizer, val, **tokenizer_kwargs)
             logger.info(f'[{key_upper}] {val_str}')
 
 
 def sort_by_max_length(llm_dataset: LLMDataset, num_dataset: int) -> LLMDataset:
+    """Sort dataset by max length, this is always used in OOM testing scenario"""
     logger.info('sort by max length...')
     token_len = _get_token_len(llm_dataset)
     idx = heapq.nlargest(num_dataset, range(len(token_len)), key=lambda i: token_len[i])

@@ -4,6 +4,7 @@ import torch
 
 
 def to_device(inputs: Any, device: torch.device) -> Any:
+    """Move inputs to a device"""
     if callable(getattr(inputs, 'to', None)):
         return inputs.to(device=device)
 

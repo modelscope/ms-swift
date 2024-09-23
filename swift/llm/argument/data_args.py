@@ -42,6 +42,7 @@ class DataArguments:
         default_factory=lambda: [None, None], metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
 
     def handle_custom_register(self) -> None:
+        """Register custom .py file to datasets"""
         if self.custom_register_path is None:
             return
         folder, fname = os.path.split(self.custom_register_path)
@@ -49,6 +50,7 @@ class DataArguments:
         __import__(fname.rstrip('.py'))
 
     def handle_custom_dataset_info(self):
+        """register custom dataset_info.json to datasets"""
         if self.custom_dataset_info is None:
             return
         register_dataset_info_file(self.custom_dataset_info)
@@ -75,6 +77,7 @@ class TemplateArguments:
     rescale_image: int = -1
 
     def select_template(self):
+        """If setting template to `AUTO`, find a proper one"""
         if self.template_type == 'AUTO':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')

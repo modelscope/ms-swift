@@ -906,12 +906,9 @@ def get_model_tokenizer_from_repo(model_dir: str,
             logger.info(f'model_kwargs: {model_kwargs}')
             model = load_by_transformers(automodel_class, model_dir, model_config, torch_dtype,
                       quant_method=='aqlm', is_training, model_kwargs, **kwargs)
-
-        # model.is_gptq = is_gptq
-        # model.is_awq = is_awq
-        # model.is_aqlm = is_aqlm
     else:
         model = None
+    tokenizer.config = model_config
     return model, tokenizer
 
 
@@ -955,6 +952,7 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
         device = next(model.model.vision.linear_proj.parameters()).device
         model.model.vision.boi.data = model.model.vision.boi.to(device)
         model.model.vision.eoi.data = model.model.vision.eoi.to(device)
+        tokenizer.build_conversation_input_ids = MethodType(model.build_conversation_input_ids, tokenizer)
     return model, tokenizer
 
 
@@ -1107,6 +1105,7 @@ def get_model_tokenizer_cogagent(model_dir: str,
                        'to avoid this, please uninstall apex.')
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
+    tokenizer.build_conversation_input_ids = MethodType(model.build_conversation_input_ids, tokenizer)
     logger.info('Please ignore the un-imported warning.')
     return model, tokenizer
 
@@ -3993,6 +3992,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
         if version == 'v2.5':
             patch_output_to_input_device(model.vision_proj)
             patch_output_to_input_device(model.vit)
+        tokenizer.vis_processor = model.vis_processor
 
     return model, tokenizer
 
@@ -5278,6 +5278,7 @@ def get_model_tokenizer_yi_vl(model_dir: str,
         vision_tower.to(device=model.device, dtype=torch_dtype)
         if not hasattr(model.config, 'max_sequence_length'):
             model.config.max_sequence_length = 2048
+        tokenizer.image_processor = vision_tower.image_processor
     return model, tokenizer
 
 
@@ -5330,6 +5331,9 @@ def get_model_tokenizer_minicpm_v(model_dir: str,
         _patch_minicpm_v_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
         _use_submodel_func(model, 'llm', func_list)
+        if hasattr(model, 'get_slice_image_placeholder'):
+            tokenizer.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, tokenizer)
+            tokenizer.transform = MethodType(model.transform, tokenizer)
     return model, tokenizer
 
 
@@ -5686,6 +5690,7 @@ def get_model_tokenizer_llava(model_dir: str,
         if not hasattr(model.config, 'max_sequence_length'):
             model.config.max_sequence_length = 2048
         _patch_llava(model)
+        tokenizer.image_processor = vision_tower.image_processor
     return model, tokenizer
 
 

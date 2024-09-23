@@ -37,6 +37,8 @@ class GenerationArguments:
     stop_words: List[str] = field(default_factory=list)
 
     def handle_do_sample(self) -> None:
+        """Change the arguments because the training/pt infer/lmdeploy infer/vllm infer
+        need different arguments when do_sample=False"""
         if self.temperature == 0:
             self.do_sample = False
         from swift.llm.argument import InferArguments, SftArguments
@@ -68,6 +70,7 @@ class QuantizeArguments:
     bnb_4bit_quant_storage: Optional[str] = None
 
     def select_bnb(self) -> Tuple[Optional[torch.dtype], bool, bool]:
+        """Find proper arguments when doing model quantization"""
         if self.quantization_bit > 0 and self.quant_method is None:
             if self.quantization_bit == 4 or self.quantization_bit == 8:
                 logger.info('Since you have specified quantization_bit as greater than 0 '
@@ -104,6 +107,7 @@ class QuantizeArguments:
         self.bnb_4bit_compute_dtype, self.load_in_4bit, self.load_in_8bit = bnb_4bit_compute_dtype, load_in_4bit, load_in_8bit
 
     def is_quant_model(self: Union['SftArguments', 'InferArguments']) -> bool:
+        """Judge if the current model has already been a quantized model"""
         # Check if the model is gptq, awq, aqlm model. Do not check for other quantization situations such as bnb.
         if self.model_type is not None:
             for k in ['int4', 'int8', 'awq', 'aqlm']:
@@ -143,6 +147,7 @@ class ModelArguments:
     device_max_memory: List[str] = field(default_factory=list)
 
     def _load_json_or_path(self, key) -> None:
+        """Load content from json file set them into self attributes"""
         value = getattr(self, key)
         if isinstance(value, str):
             if os.path.exists(value):  # local path
@@ -153,6 +158,7 @@ class ModelArguments:
         setattr(self, key, value)
 
     def prepare_model_extra_args(self):
+        """Prepare model args and set them to the env"""
         if self.model_kwargs is None:
             self.model_kwargs = {}
         self._load_json_or_path('model_kwargs')
@@ -161,6 +167,7 @@ class ModelArguments:
             os.environ[k] = str(v)
 
     def prepare_device_map_args(self):
+        """Prepare device map args"""
         self._load_json_or_path('device_map_config')
         _, local_rank, _, local_world_size = get_dist_setting()
         # compat mp&ddp
@@ -170,6 +177,7 @@ class ModelArguments:
                     self.device_map_config[k] += local_rank
 
     def get_additional_saved_files(self) -> List[str]:
+        """Some models have extra files need to be saved, list them here"""
         files_mapping = {
             'qwen-vl': ['SimSun.ttf'],
             'qwen-audio': ['mel_filters.npz'],
@@ -182,7 +190,7 @@ class ModelArguments:
         return []
 
     def get_model_group(self):
-        # This model_type is used to map the model structure
+        """Find the model group. This is used to find the model structure"""
         model_type = self.model_type or self.model_id_or_path
         model_group = None
         for key in MODEL_KEYS_MAPPING.keys():
@@ -192,6 +200,7 @@ class ModelArguments:
         return model_group
 
     def check_flash_attn(self) -> None:
+        """Some models do not support flash-attention"""
         model_info = MODEL_MAPPING.get(self.model_type, {})
         support_flash_attn = model_info.get('support_flash_attn', False)
         if self.use_flash_attn and not support_flash_attn:
@@ -199,6 +208,7 @@ class ModelArguments:
 
     @property
     def is_multimodal(self) -> bool:
+        """Is multi modal models?"""
         if self.model_type is None:
             return False
         model_info = MODEL_MAPPING.get(self.model_type, {})
@@ -206,6 +216,7 @@ class ModelArguments:
         return 'multi-modal' in tags
 
     def select_dtype(self) -> Tuple[Optional[torch.dtype], bool, bool]:
+        """If dtype is `AUTO`, find a proper dtype by the sft_type/GPU"""
         if not is_torch_cuda_available() and not is_torch_npu_available():
             # cpu
             if self.dtype == 'AUTO':
@@ -254,6 +265,7 @@ class ModelArguments:
         self.torch_dtype, self.fp16, self.bf16 = torch_dtype, fp16, bf16
 
     def select_model_type(self) -> None:
+        """model_type may be None, find the right one by `model_id_or_path`"""
         from swift.llm.argument import InferArguments
         if self.model_id_or_path is not None:
             model_mapping_reversed = {}

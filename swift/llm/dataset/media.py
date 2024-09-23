@@ -11,6 +11,7 @@ logger = get_logger()
 
 
 class MediaResource:
+    """A class to manage the resource downloading."""
 
     cache_dir = os.path.join(get_cache_dir(), 'media_resources')
     lock_dir = os.path.join(get_cache_dir(), 'lockers')

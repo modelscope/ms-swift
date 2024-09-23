@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
+from torch import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
@@ -32,7 +33,9 @@ Messages = List[Dict[str, Union[str, List[Dict]]]]
 
 
 class StopWordsCriteria(StoppingCriteria):
-    # The returned sentence includes stop words.
+    """Adding extra stop words in template to prevent unstoppable generation
+        Like suffixes and chat seps in the template.
+    """
     def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
@@ -72,6 +75,7 @@ class Template:
         tools_prompt: The tools prompt name
         tool_prompt: The tool prompt, usually useful when there is a tool role
         padding_side: The padding side
+        infer_media_type: The media type supported by the multi-modals
         Examples:
             <start_of_output>system\nYou are a helpful assistant!<end_of_output>\n<bos><start_of_output>Who are you?<end_of_output>\n<start_of_output>assistant:I am a robot<end_of_output>\n<start_of_output>Who are you?<end_of_output>\n<start_of_output>assistant:I am a robot<end_of_output> # noqa
                                      ----------system------------                                       ---query----                                            --response- -----chatsep-----                 ---query---                                             --response- ----suffix-----
@@ -98,7 +102,7 @@ class Template:
                  tools_prompt: str = 'react_en',
                  tool_prompt: Optional[Prompt] = None,
                  padding_side: Literal['left', 'right'] = 'right',
-                 infer_media_type='interleave') -> None:
+                 infer_media_type: Literal['interleave', 'dialogue', 'round'] = 'interleave') -> None:
         # check
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
@@ -155,7 +159,7 @@ class Template:
             res_value.append(v)
         return res_value
 
-    def _init_template(self,
+    def init_template(self,
                        tokenizer: PreTrainedTokenizerBase,
                        default_system: Optional[str] = None,
                        max_length: Optional[int] = None,
@@ -163,9 +167,19 @@ class Template:
                        loss_scale: str = 'default',
                        rescale_image: int = -1,
                        **kwargs) -> None:
+        """Init template by a tokenizer
+        Args:
+            tokenizer: The tokenizer to tokenize the sentence
+            default_system: The default system to use if the dataset does not provide one
+            max_length: Max length of the sequence
+            truncation_strategy: The truncation strategy
+            loss_scale: The loss scale function to use
+            rescale_image: Rescale image to reduce memory usage, default `-1` means no limitation
+        """
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
         self.tokenizer = tokenizer
+        self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         # if default_system is None. not change self.default_system
         if default_system == '':
             self.default_system = None
@@ -187,13 +201,26 @@ class Template:
             value = self.token_attr_to_id(tokenizer, value)
             setattr(self, key, value)
 
-    def post_encode(self, model, data: Any) -> Dict[str, Any]:
+    def post_encode(self, model: Module, data: Any) -> Dict[str, Any]:
+        """This method will be called after data_collator and before the forward
+        Args:
+            data: The `_data` field from the example batch, this field should be packed manually
+        Returns:
+            Any extra fields need to be passed into the model.forward
+        """
         return {}
 
     def check_example(self, example: Dict[str, Any]) -> None:
+        """Check example valid"""
         pass
 
     def add_default_tags(self, example: Dict[str, Any]) -> None:
+        """Add default tags to example, this is for the multi-modal datasets
+            1. For the round infer_media_type, this method will check the tag equals with the chat round
+            2. Else, this method will try to add tags to the head of the messages
+        Args:
+            example: The input example
+        """
         messages = example['messages']
         for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if example.get(media_key):
@@ -221,6 +248,11 @@ class Template:
                     history[0][0]['content'] = media_tag * num_new_tags + history[0][0]['content']
 
     def replace_media_tags(self, example) -> None:
+        """Replace the <img></img> with the images key and <image> tag
+
+        Args:
+            example: The input example
+        """
         # Parse <img></img> format images and merged into images key
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
             example['query'], example['history'], images_path = replace_img_tag(
@@ -242,6 +274,15 @@ class Template:
                 example[k] = example.get(k) or [] + medias_path
 
     def _preprocess_media(self, example):
+        """Preprocess multi-modal media resources in one example
+            1. Wrap all values in media keys to list
+            2. Replace <img></img> tags
+            3. Add or check missing tags to examples
+            4. Parse the string field in the `objects` field to jsons
+            5. Load images if needed
+        Args:
+            example: The input example
+        """
         # Format media_keys to list
         for media_key in standard_keys.values():
             if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
@@ -283,9 +324,6 @@ class Template:
                 images = decode_base64(images=images)['images']  # PIL.Image/base64 -> local_path
             example['images'] = images
 
-        # Check the example that whether matching the very template's rules
-        self.check_example(example)
-
     def preprocess(self, example):
         # Duplicate example and create a new one to prepare in-place changes
         example = example.copy()
@@ -297,13 +335,14 @@ class Template:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
 
+        messages = example['messages']
+        system_round = [message['content'] for message in messages if message['role'] == 'system']
+        messages = [message['content'] for message in messages if message['role'] == 'system']
         # Reset system (by default value and agent tools)
-        system: Optional[str] = example.get('system', None)
-        if system is None:
+        system: Optional[str] = system_round[0]['content'] if system_round else None
+        if not system:
             if self.use_default_system:
                 system = self.default_system
-        elif system == '':
-            system = None
         else:
             assert self.system_prefix is not None, (
                 f'The template does not support `system`, template_type: {template_type}')
@@ -314,27 +353,33 @@ class Template:
                 system = ''
             system += get_tools_prompt(tools, self.tools_prompt)
 
-        example['system'] = system
+        system_round[0]['content'] = system
 
-        # Check whether this template supports multi-round
-        history: History = example.get('history') or []
-        if len(history) > 0:
+        if len(messages) > 1:
             assert self.support_multi_round, (
                 f'The template does not support multi-round chat, template_type: {template_type}')
-
-        # Set history_roles
-        history_roles: Optional[History] = example.get('history_roles')
-        if history_roles is None:
-            example['history_roles'] = [['user', 'assistant'] for _ in range(len(history))]
-
+        example['messages'] = system_round + messages
         self._preprocess_media(example)
+        # Check the example that whether matching the very template's rules
+        self.check_example(example)
         return example
 
-    def encode(self, example: Dict[str, Any], streaming: bool = False, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def encode(self, example: Dict[str, Any], streaming: bool = False, is_training: bool = False, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """The entrance method of Template!
+
+        Args:
+            example: The input example
+            streaming: If is streaming mode
+            is_training: Use template in training
+            **kwargs:
+                model: The model instance, use only in `is_training=False`
+        Returns:
+            if not streaming mode, returns tuple of (example, tokenizer_kwargs), else return example only
+        """
         example = self.preprocess(example)
         res = self._encode(example, **kwargs)
         inputs = res[0]
-        if not self.is_training and '_data' in inputs:
+        if not is_training and '_data' in inputs:
             model = kwargs.get('model')
             assert model is not None
             data = inputs.pop('_data')
@@ -366,7 +411,7 @@ class Template:
             response: Optional[str] = None,
             round0: Optional[int] = None,
             compute_loss: bool = True) -> None:
-        # concat context list and replace placeholder
+        """Concat context list and replace placeholder"""
         round1 = None
         if round0 is not None:
             round1 = str(round0 + 1)
@@ -394,6 +439,7 @@ class Template:
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                **kwargs) -> Tuple[List[Context], List[float]]:
+        """Merge anything in the context to simplify the inputs"""
         is_multi_modal: bool = kwargs.pop('is_multi_modal', False)
 
         if is_multi_modal:
@@ -427,6 +473,7 @@ class Template:
     @staticmethod
     def split_special_tokens(context_list: List[Context],
                              loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
+        """Split special tokens, for example `<image>`, `<video>`, this will help the replace_tag operation"""
         from swift.utils.utils import split_str_parts_by
         res: List[Context] = []
         loss_scale_res: List[float] = []
@@ -449,6 +496,18 @@ class Template:
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
+        """Override this function to do your own replace operation.
+
+        This method is used to replace standard tags like `<image>` to some tokens that the model needs.
+
+        Args:
+            media_type: The modal.
+            index: The index of the medias, for example 0 represents the first elements in `images`
+            example: The input example
+
+        Returns:
+            The content or input_ids after replacement.
+        """
         if media_type == 'image':
             return self.image_placeholder
         elif media_type == 'video':
@@ -457,6 +516,16 @@ class Template:
             return ['<audio>']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        """Replace objects referenced by the bbox to contents or input_ids. This is useful in the grounding task.
+        Override this function to do your own replace operation.
+
+        Args:
+            index: The index in the `objects` key
+            example: The input example
+
+        Returns:
+            The contents or input_ids replaced
+        """
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
@@ -465,13 +534,23 @@ class Template:
             return ['<ref-object>']
 
     def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
+        """Replace bbox pointing to the objects to contents or input_ids. This is useful in the grounding task.
+        Override this function to do your own replace operation.
+
+        Args:
+            index: The index in the `objects` key
+            example: The input example
+
+        Returns:
+            The contents or input_ids replaced
+        """
         objects = example.get('objects')
         if objects:
             object_ = objects[index]
             if isinstance(object_['bbox'][0], list):
                 all_objects = ''
                 for sub_object in object_['bbox']:
-                    all_objects += (f'[({sub_object[0]},{sub_object[1]}),' f'({sub_object[2]},{sub_object[3]})],')
+                    all_objects += f'[({sub_object[0]},{sub_object[1]}),' f'({sub_object[2]},{sub_object[3]})],'
                 all_objects = all_objects[:-1]
                 return [all_objects]
             else:
@@ -480,7 +559,17 @@ class Template:
             return ['<bbox>']
 
     @classmethod
-    def normalize_bbox(cls, objects, images, to_type: Literal['real', 'norm_1000', 'norm_1']):
+    def normalize_bbox(cls, objects: List[Dict[str, Any]], images: List[Any],
+                       to_type: Literal['real', 'norm_1000', 'norm_1']) -> None:
+        """Normalize bbox to needed.
+        to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
+            or normalized by 1.
+
+        Args:
+            objects: The objects containing the bbox
+            images: The images list
+            to_type: The coordinate type needed by the model.
+        """
         if not objects or not images:
             return
 
@@ -530,7 +619,15 @@ class Template:
 
     def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                      **kwargs) -> Tuple[List[Context], List[float]]:
-        # replace tag/object/box
+        """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
+        the model.
+
+        Args:
+            context_list: The content list
+            loss_scale_list: The loss scale list
+        Returns:
+            The context_list and loss_scale_list after replacement.
+        """
         example = kwargs.get('example')  # get x_index
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
@@ -726,7 +823,17 @@ class Template:
     @staticmethod
     def pad_sequence(sequences: List[torch.Tensor],
                      padding_value: float = 0.,
-                     padding_side: Literal['right', 'left'] = 'right'):
+                     padding_side: Literal['right', 'left'] = 'right') -> torch.Tensor:
+        """Pad sequence by some side
+
+        Args:
+            sequences: The input sequences in tensor.
+            padding_value: The padding value
+            padding_side: The padding side
+
+        Returns:
+            A tensor after padding
+        """
         padding_right = padding_side == 'right'
         if padding_right:
             return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
@@ -926,6 +1033,9 @@ class Template:
 
 
 class InferTemplate:
+    """
+    This class is used in inference, and wraps the operations needed by vLLM and LMDeploy.
+    """
 
     def __init__(self, template: Template, framework: str):
         if framework in ('vllm', 'lmdeploy'):

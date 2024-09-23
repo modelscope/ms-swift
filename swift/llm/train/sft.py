@@ -26,12 +26,15 @@ from ..dataset.loader import DatasetLoader
 from ..dataset.utils import print_example, LazyLLMDataset, ConstantLengthDataset, stat_dataset, dataset_map, \
     sort_by_max_length
 from ..model.model import get_model_tokenizer
+from ..model.patcher import training_context, patch_ddp_mp
 from ..template import Template
 from ..template.template import get_template, TEMPLATE_MAPPING
 from ..tuner import prepare_modules
 from ...utils.utils import get_time_info
 
 logger = get_logger()
+
+patch_ddp_mp()
 
 
 def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDataset]]:
@@ -243,7 +246,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         model.label_names = label_names
         model.return_loss = return_loss
 
-    model, callbacks = prepare_modules(model, args)
+    model, callbacks, optimizers = prepare_modules(model, args)
 
     show_layers(model)
     logger.info(model)
@@ -311,7 +314,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         ref_model.requires_grad_(False).eval()
 
     template.ref_model = ref_model
-    return model, ref_model, template, callbacks
+    return model, ref_model, template, callbacks, optimizers
 
 
 def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = None):
@@ -387,6 +390,7 @@ def trainer_train(args,
                   train_dataset,
                   val_dataset,
                   callbacks=None,
+                  optimizers=None,
                   msg=None,
                   ref_model=None) -> Dict[str, Any]:
     if msg is None:
@@ -432,6 +436,7 @@ def trainer_train(args,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
         callbacks=callbacks,
+        optimizers=optimizers,
         **trainer_kwargs)
     trainer.is_multimodal = args.is_multimodal
     trainer.sft_args = args
@@ -446,7 +451,7 @@ def trainer_train(args,
                 json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    with template.training_context():
+    with training_context([model] if ref_model is None else [model, ref_model]):
         trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
@@ -495,9 +500,9 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     if args.train_backend == 'megatron':
         return llm_sft_megatron(args)
     msg = {}
-    model, template, callbacks = prepare_train_model_template(args, msg)
+    model, template, callbacks, optimizers = prepare_train_model_template(args, msg)
     train_dataset, val_dataset = prepare_dataset(args, template, msg)
-    return trainer_train(args, model, template, train_dataset, val_dataset, callbacks=callbacks, msg=msg)
+    return trainer_train(args, model, template, train_dataset, val_dataset, callbacks=callbacks, optimizers=optimizers, msg=msg)
 
 
 def get_sft_main(args, llm):

@@ -19,12 +19,12 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct.")
 
     msg = {}
-    model, ref_model, template, callbacks = prepare_train_model_template(args)
+    model, ref_model, template, callbacks, optimizers = prepare_train_model_template(args)
     with TrainerFactory.patch_template(args, template):
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
 
         return trainer_train(
-            args, model, template, train_dataset, val_dataset, callbacks=callbacks, msg=msg, ref_model=ref_model)
+            args, model, template, train_dataset, val_dataset, callbacks=callbacks, optimizers=optimizers, msg=msg, ref_model=ref_model)
 
 
 rlhf_main = get_main(RLHFArguments, llm_rlhf)
