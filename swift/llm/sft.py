@@ -15,8 +15,8 @@ from transformers.utils import is_torch_npu_available, strtobool
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import TrainerFactory
 from swift.trainers.utils import can_return_loss, find_labels
-from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_logger,
-                         get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
+from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
+                         get_logger, get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
@@ -113,7 +113,8 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         plot_images(images_dir, args.logging_dir, ['train/loss'], 0.9)
     return {}
 
-def get_device_map():
+
+def get_default_device_map():
     if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
         return None
     local_rank = get_dist_setting()[1]
@@ -122,16 +123,15 @@ def get_device_map():
             return f'npu:{local_rank}'
         else:
             return 'npu:0'
-    elif args.device_map_config is not None:
-        model_kwargs = {'device_map': args.device_map_config}
+    if is_dist() and not is_ddp_plus_mp():
+        return f'cuda:{local_rank}'
+    elif torch.cuda.device_count() == 0:
+        return 'cpu'
+    elif torch.cuda.device_count() == 1:
+        return 'cuda:0'
     else:
-        model_kwargs = {'low_cpu_mem_usage': True}
-        if is_dist() and not is_ddp_plus_mp():
-            model_kwargs['device_map'] = {'': args.local_rank}
-        elif torch.cuda.device_count() == 1:
-            return 'cuda:0'
-        elif not use_torchacc():
-            return 'auto'
+        return 'auto'
+
 
 def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
 
@@ -147,7 +147,15 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
           f'world_size: {args.world_size}, local_world_size: {args.local_world_size}')
 
     # Loading Model and Tokenizer
-    model_kwargs['device_map'] = get_device_map(args.local_rank)
+    model_kwargs = {}
+    if not use_torchacc():
+        if args.device_map_config is not None:
+            device_map = args.device_map_config
+        else:
+            device_map = get_default_device_map()
+        model_kwargs['device_map'] = device_map
+        if device_map == 'auto':
+            model_kwargs['low_cpu_mem_usage'] = True
     if args.device_max_memory:
         n_gpu = torch.cuda.device_count()
         assert len(args.device_max_memory) == n_gpu // args.local_world_size

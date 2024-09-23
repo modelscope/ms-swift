@@ -15,6 +15,7 @@ from transformers.utils import is_torch_npu_available
 from swift.tuners import Swift
 from swift.utils import (append_to_jsonl, get_logger, get_main, get_model_info, read_multi_line, seed_everything,
                          show_layers)
+from .sft import get_default_device_map
 from .utils import (DeployArguments, InferArguments, MediaTag, Template, get_additional_saved_files, get_dataset,
                     get_model_tokenizer, get_template, inference, inference_stream, is_adapter, is_quant_model,
                     sample_dataset, set_generation_config)
@@ -135,16 +136,14 @@ def prepare_model_template(args: InferArguments,
                            device_map: Optional[str] = None,
                            verbose: bool = True,
                            automodel_class=None) -> Tuple[PreTrainedModel, Template]:
-
-    model_kwargs = {}
     if is_torch_npu_available():
-        logger.info(f'device_count: {torch.npu.device_count()}')
-        if device_map is None:
-            device_map = 'npu:0'
+        print(f'device_count: {torch.npu.device_count()}')
     else:
-        logger.info(f'device_count: {torch.cuda.device_count()}')
-        if device_map is None:
-            device_map = 'auto' if torch.cuda.device_count() > 1 else 'cuda:0'
+        print(f'device_count: {torch.cuda.device_count()}')
+    model_kwargs = {}
+    if device_map is not None:
+        device_map = get_default_device_map()
+    model_kwargs['device_map'] = device_map
     if device_map == 'auto':
         model_kwargs['low_cpu_mem_usage'] = True
     model_kwargs['device_map'] = device_map
