@@ -20,9 +20,13 @@ from modelscope import GenerationConfig
 from openai import APIConnectionError
 from tqdm import tqdm
 
+from swift.llm.argument import EvalArguments, DeployArguments
+from swift.llm.infer.client_utils import inference_client_async
+from swift.llm.infer.infer import prepare_model_template, merge_lora
+from swift.llm.infer.protocol import XRequestConfig
+from swift.llm.infer.utils import inference
+from swift.llm.infer.vllm_utils import prepare_vllm_engine_template, VllmGenerationConfig, inference_vllm
 from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
-from swift.llm.infer import merge_lora, prepare_model_template
-from .utils import DeployArguments, EvalArguments, XRequestConfig, inference, inference_client_async
 
 logger = get_logger()
 
@@ -34,7 +38,6 @@ class EvalModel(CustomModel):
             if args.merge_lora:
                 merge_lora(args, device_map=args.merge_device_map)
             if args.infer_backend == 'vllm':
-                from .utils import prepare_vllm_engine_template
                 self.llm_engine, self.template = prepare_vllm_engine_template(args)
             else:
                 self.model, self.template = prepare_model_template(args)
@@ -92,7 +95,6 @@ class EvalModel(CustomModel):
             response_list = asyncio.run(self.call_openai_batched(prompts, request_config))
 
         elif self.args.infer_backend == 'vllm':
-            from .utils import inference_vllm, VllmGenerationConfig
             if do_sample is False:
                 infer_cfg['temperature'] = 0
             generation_config = VllmGenerationConfig(**infer_cfg)
@@ -169,8 +171,8 @@ class EvalDatasetContext:
 
     @staticmethod
     def prepare_evalscope_dataset():
-        from swift.llm.dataset.media import MediaCache
-        return MediaCache.download(
+        from swift.llm.dataset.media import MediaResource
+        return MediaResource.download(
             'https://www.modelscope.cn/api/v1/datasets/swift/evalscope_resource/'
             'repo?Revision=master&FilePath=eval.zip', 'evalscope')
 

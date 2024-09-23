@@ -2,8 +2,11 @@
 from typing import Iterator, Tuple
 
 from swift.utils import get_logger, get_main, seed_everything
-from .infer import merge_lora, prepare_model_template
-from .utils import AppUIArguments, History, inference_stream, limit_history_length
+from .argument.webui_args import AppUIArguments
+from .infer.infer import prepare_model_template, merge_lora
+from .infer.utils import inference_stream
+from .template.base import History
+from .utils import limit_history_length
 
 logger = get_logger()
 

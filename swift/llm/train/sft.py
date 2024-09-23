@@ -9,6 +9,7 @@ import transformers
 from datasets import Dataset as HfDataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from packaging import version
+from swift.llm import set_generation_config
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
@@ -20,17 +21,22 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
-from swift.llm.tuner import prepare_model
-from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, PtArguments, RLHFArguments, SftArguments, Template, dataset_map,
-                    get_dataset, get_model_tokenizer, get_template, get_time_info, print_example, set_generation_config,
-                    sort_by_max_length, stat_dataset)
+from ..argument import SftArguments, RLHFArguments, PtArguments
+from ..dataset.loader import DatasetLoader
+from ..dataset.utils import print_example, LazyLLMDataset, ConstantLengthDataset, stat_dataset, dataset_map, \
+    sort_by_max_length
+from ..model.model import get_model_tokenizer
+from ..template import Template
+from ..template.template import get_template, TEMPLATE_MAPPING
+from ..tuner import prepare_modules
+from ...utils.utils import get_time_info
 
 logger = get_logger()
 
 
 def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDataset]]:
     # Loading Dataset
-    train_dataset, val_dataset = get_dataset(
+    train_dataset, val_dataset = DatasetLoader.load_dataset(
         args.dataset,
         args.dataset_test_ratio,
         args.dataset_seed,
@@ -42,7 +48,7 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
         streaming_buffer_size=args.streaming_buffer_size)
     if len(args.val_dataset) > 0:
         # Loading val dataset
-        _, val_dataset = get_dataset(
+        _, val_dataset = DatasetLoader.load_dataset(
             args.val_dataset,
             1.0,
             args.dataset_seed,
@@ -53,7 +59,6 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
             streaming_val_size=args.streaming_val_size,
             streaming_buffer_size=args.streaming_buffer_size)
 
-    train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
     return train_dataset, val_dataset
@@ -238,8 +243,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         model.label_names = label_names
         model.return_loss = return_loss
 
-    # Preparing LoRA
-    model, callbacks = prepare_model(model, args)
+    model, callbacks = prepare_modules(model, args)
 
     show_layers(model)
     logger.info(model)
@@ -265,15 +269,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
             gradient_checkpointing=True,
             fsdp_flatten_parameters=(args.sft_type == 'full'))
 
-    template_kwargs = {}
-    template_kwargs['use_loss_scale'] = args.use_loss_scale
-    if args.loss_scale_config_path is not None:
-        cwd = os.getcwd()
-        config_path = args.loss_scale_config_path if os.path.isabs(args.loss_scale_config_path) else os.path.join(
-            cwd, args.loss_scale_config_path)
-        with open(config_path, 'r') as json_file:
-            template_kwargs['loss_scale_map'] = json.load(json_file)
-    template_kwargs['tools_prompt'] = args.tools_prompt
+    template_kwargs = {'loss_scale': args.loss_scale, 'tools_prompt': args.tools_prompt}
     if args.sequence_parallel_size and args.sequence_parallel_size > 1:
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
     template_kwargs['rescale_image'] = args.rescale_image
@@ -332,7 +328,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
     tokenizer = template.tokenizer
     dataset_info = {}
     if args.packing:
-        from swift.llm.utils.utils import ConstantLengthDataset
         train_dataset = ConstantLengthDataset.get_packed_dataset(
             template, train_dataset, args.max_length, lazy_tokenize=args.lazy_tokenize)
         if val_dataset is not None:

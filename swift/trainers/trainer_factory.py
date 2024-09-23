@@ -4,7 +4,7 @@ import inspect
 from contextlib import contextmanager
 from typing import Dict
 
-from swift.plugin.trainer_class import custom_trainer_class
+from swift.plugin.custom_trainer import custom_trainer_class
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -59,16 +59,17 @@ class TrainerFactory:
     @staticmethod
     @contextmanager
     def patch_template(args, template):
-        from swift.llm import RLHFTemplateMixin, KTOTemplateMixin
         if args.train_type == 'sft':
             yield
             return
         _old_compute_per_round_loss = template.compute_per_round_loss
         _old_output_prompt_answer = template.output_prompt_answer
         if args.train_type == 'kto':
+            from swift.llm.template.template import KTOTemplateMixin
             template_mixin = KTOTemplateMixin
             template.output_prompt_answer = True
         else:
+            from swift.llm.template.template import RLHFTemplateMixin
             template_mixin = RLHFTemplateMixin
         if args.train_type != 'orpo' or args.is_multimodal:
             template.compute_per_round_loss = False

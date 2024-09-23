@@ -8,8 +8,11 @@ from typing import Any, Dict, List, Mapping, Optional
 import torch
 import torch.distributed as dist
 
-from swift.llm import LazyLLMDataset, Template, git_clone_github, is_megatron_available
+from swift.llm.dataset.utils import LazyLLMDataset
+from swift.llm.model.model import git_clone_github
+from swift.llm.template import Template
 from swift.utils import append_to_jsonl, get_dist_setting, get_logger, is_master, subprocess_run
+from swift.utils.import_utils import is_megatron_available
 
 logger = get_logger()
 

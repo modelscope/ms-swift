@@ -16,14 +16,13 @@ from swift.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
 from swift.utils import use_torchacc
 from swift.plugin.loss import get_loss_func
 from .mixin import SwiftMixin
-from .push_to_ms import PushToMsHubMixin
 
 
-class Trainer(PushToMsHubMixin, SwiftMixin, HfTrainer):
+class Trainer(SwiftMixin, HfTrainer):
     pass
 
 
-class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
+class Seq2SeqTrainer(SwiftMixin, HfSeq2SeqTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

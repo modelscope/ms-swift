@@ -9,13 +9,13 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-from swift.llm import decode_base64
+from swift.llm.infer.client_utils import decode_base64
 from swift.plugin.loss_scale import loss_scale_map
-from swift.plugin.utils import get_tools_prompt
 from swift.llm.dataset.dataset import standard_keys
 from swift.llm.model.utils import to_device
 from swift.llm.template.template import replace_img_tag, _findall
-from swift.llm.utils.utils import fetch_one
+from swift.plugin.tools_prompt import get_tools_prompt
+from swift.utils.utils import fetch_one
 from swift.utils.vision_utils import (load_batch, load_image, rescale_image)
 from swift.torchacc_utils import pad_and_split_batch
 from swift.utils import get_dist_setting, get_logger, use_torchacc
@@ -28,6 +28,7 @@ Prompt = List[Union[str, List[int], List[str]]]
 StopWords = Prompt
 Context = Union[str, List[int]]
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
+Messages = List[Dict[str, Union[str, List[Dict]]]]
 
 
 class StopWordsCriteria(StoppingCriteria):
@@ -449,10 +450,7 @@ class Template:
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         if media_type == 'image':
-            if self._is_lmdeploy:
-                return [[-100]]
-            else:
-                return self.image_placeholder
+            return self.image_placeholder
         elif media_type == 'video':
             return ['<video>']
         elif media_type == 'audio':
@@ -952,6 +950,8 @@ class InferTemplate:
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
+        if media_type == 'image' and self.framework == 'lmdeploy':
+            return [[-100]]
         if self.template.template_type == 'qwen-vl':
             if self.framework == 'lmdeploy':
                 return [f'Picture {index + 1}: ', [-100], '\n']

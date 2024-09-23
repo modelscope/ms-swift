@@ -6,12 +6,12 @@ import torch.nn as nn
 from transformers import PreTrainedModel
 from trl import ORPOTrainer as HFORPOTrainer
 
-from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
+from swift.trainers import  RLHFTrainerMixin, SwiftMixin
 
 del HFORPOTrainer.__init__
 
 
-class ORPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFORPOTrainer):
+class ORPOTrainer(RLHFTrainerMixin, SwiftMixin, HFORPOTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         ref_model = kwargs.get('ref_model')

@@ -16,13 +16,13 @@ logger = logging.get_logger(__name__)
 class HubOperation:
 
     @classmethod
-    def create_model_repo(cls, hub_model_id: str, hub_token: Optional[str] = None, hub_private_repo: bool = False):
+    def create_model_repo(cls, repo_id: str, token: Optional[str] = None, private: bool = False):
         """Create a model repo on the hub
 
         Args:
-            hub_model_id: The model id of the hub
-            hub_token: The hub token to use
-            hub_private_repo: If is a private repo
+            repo_id: The model id of the hub
+            token: The hub token to use
+            private: If is a private repo
         """
         raise NotImplementedError
 
@@ -34,6 +34,7 @@ class HubOperation:
                     commit_message: Optional[str] = None,
                     commit_description: Optional[str] = None,
                     token: Union[str, bool, None] = None,
+                    private: bool = False,
                     revision: Optional[str] = 'master',
                     ignore_patterns: Optional[Union[List[str], str]] = None,
                     **kwargs):
@@ -46,6 +47,7 @@ class HubOperation:
             commit_message: The commit message of git
             commit_description: The commit description
             token: The hub token
+            private: Private hub or not
             revision: The revision to push to
             ignore_patterns: The ignore file patterns
         """
@@ -144,37 +146,37 @@ class MSHub(HubOperation):
         trainer.upload_folder = partial(upload_folder, api)
 
     @classmethod
-    def create_model_repo(cls, hub_model_id: str, hub_token: Optional[str] = None,
-                          hub_private_repo: bool = False) -> str:
+    def create_model_repo(cls, repo_id: str, token: Optional[str] = None,
+                          private: bool = False) -> str:
         from modelscope import HubApi
         from modelscope.hub.api import ModelScopeConfig
         from modelscope.hub.constants import ModelVisibility
-        assert hub_model_id is not None, 'Please enter a valid hub_model_id'
+        assert repo_id is not None, 'Please enter a valid hub_model_id'
 
         api = HubApi()
-        if hub_token is None:
+        if token is None:
             hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
-        if hub_token is not None:
-            api.login(hub_token)
+        if token is not None:
+            api.login(token)
         else:
             raise ValueError('Please specify a token by `--hub_token` or `MODELSCOPE_API_TOKEN=xxx`')
-        MSHub.ms_token = hub_token
-        visibility = ModelVisibility.PRIVATE if hub_private_repo else ModelVisibility.PUBLIC
+        MSHub.ms_token = token
+        visibility = ModelVisibility.PRIVATE if private else ModelVisibility.PUBLIC
 
-        if '/' not in hub_model_id:
+        if '/' not in repo_id:
             user_name = ModelScopeConfig.get_user_info()[0]
             assert isinstance(user_name, str)
-            hub_model_id = f'{user_name}/{hub_model_id}'
+            hub_model_id = f'{user_name}/{repo_id}'
             logger.info(f"'/' not in hub_model_id, pushing to personal repo {hub_model_id}")
         try:
-            api.create_model(hub_model_id, visibility)
+            api.create_model(repo_id, visibility)
         except HTTPError:
             # The remote repository has been created
             pass
 
         with tempfile.TemporaryDirectory() as temp_cache_dir:
             from modelscope.hub.repository import Repository
-            repo = Repository(temp_cache_dir, hub_model_id)
+            repo = Repository(temp_cache_dir, repo_id)
             MSHub.add_patterns_to_gitattributes(repo, ['*.safetensors', '*.bin', '*.pt'])
             # Add 'runs/' to .gitignore, ignore tensorboard files
             MSHub.add_patterns_to_gitignore(repo, ['runs/', 'images/'])
@@ -186,7 +188,7 @@ class MSHub(HubOperation):
             if os.environ.get('SM_TRAINING_ENV'):
                 MSHub.add_patterns_to_gitignore(repo, ['*.sagemaker-uploading', '*.sagemaker-uploaded'],
                                                 'Add `*.sagemaker` patterns to .gitignore')
-        return hub_model_id
+        return repo_id
 
     @classmethod
     def push_to_hub(cls,
@@ -196,9 +198,11 @@ class MSHub(HubOperation):
                     commit_message: Optional[str] = None,
                     commit_description: Optional[str] = None,
                     token: Union[str, bool, None] = None,
+                    private: bool = False,
                     revision: Optional[str] = 'master',
                     ignore_patterns: Optional[Union[List[str], str]] = None,
                     **kwargs):
+        cls.create_model_repo(repo_id, token, private)
         from modelscope import push_to_hub
         commit_message = commit_message or 'Upload folder using api'
         if commit_description:
@@ -324,9 +328,9 @@ class MSHub(HubOperation):
 class HFHub(HubOperation):
 
     @classmethod
-    def create_model_repo(cls, hub_model_id: str, hub_token: Optional[str] = None,
-                          hub_private_repo: bool = False) -> str:
-        return api.create_model(hub_model_id, token=hub_token, private=hub_private_repo)
+    def create_model_repo(cls, repo_id: str, token: Optional[str] = None,
+                          private: bool = False) -> str:
+        return api.create_model(repo_id, token=token, private=private)
 
     @classmethod
     def push_to_hub(cls,
@@ -336,9 +340,11 @@ class HFHub(HubOperation):
                     commit_message: Optional[str] = None,
                     commit_description: Optional[str] = None,
                     token: Union[str, bool, None] = None,
+                    private: bool = False,
                     revision: Optional[str] = 'master',
                     ignore_patterns: Optional[Union[List[str], str]] = None,
                     **kwargs):
+        cls.create_model_repo(repo_id, token, private)
         if revision is None or revision == 'master':
             revision = 'main'
         return api.upload_folder(repo_id,

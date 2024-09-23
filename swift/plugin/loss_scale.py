@@ -3,8 +3,7 @@ import json
 import os
 from typing import Dict, List, Optional, Tuple
 
-from swift.plugin.utils import split_parts_by_regex
-from swift.utils.utils import split_str_parts_by
+from swift.utils.utils import split_str_parts_by, split_parts_by_regex
 
 
 def calculate_loss_scale(query: str,
@@ -27,22 +26,9 @@ def calculate_loss_scale(query: str,
         Thought: I now know the final answer
         Final Answer: the final answer to the original input question
     ```
-
-    Args:
-        response: The response text
-        use_loss_scale: Use weighted loss. With this, some part of the loss will be enhanced to improve performance.
-
     Returns:
         A tuple of agent response parts and their weights.
     """
-    self.response_loss_scale_map = kwargs.get('loss_scale_map', None)
-    self.query_loss_scale_map = None
-    if self.response_loss_scale_map is not None:
-        if 'query' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['query'], dict):
-            self.query_loss_scale_map = self.response_loss_scale_map['query']
-        if 'response' in self.response_loss_scale_map and isinstance(self.response_loss_scale_map['response'],
-                                                                     dict):
-            self.response_loss_scale_map = self.response_loss_scale_map['response']
     # query loss scale map
     if query_loss_scale_map is not None:
         for key in query_loss_scale_map.keys():

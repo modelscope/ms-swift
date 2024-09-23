@@ -7,8 +7,8 @@ from .utils import *
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
-    from swift.llm.infer.deploy import deploy_main
-    from .export import export_main
+    from .infer.deploy import deploy_main
+    from .export.export import export_main
     from swift.llm.train.rlhf import rlhf_main
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}

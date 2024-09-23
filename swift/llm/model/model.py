@@ -24,11 +24,12 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.llm.template.template import TemplateType, get_env_args
-from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
+from swift.utils import get_dist_setting, subprocess_run, use_torchacc
 from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING, safe_snapshot_download
 from .patcher import patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
     patch_output_to_input_device, patch_output_clone, patch_baichuan2_lm_head_forward, patch_fixed_device
 from .utils import get_max_model_len, to_device
+from ...utils.torch_utils import safe_ddp_context
 
 logger = get_logger()
 
@@ -5011,7 +5012,7 @@ register_model(
     hf_model_id='Skywork/Skywork-13B-base')
 
 
-@register_model(ModelType.skywork_13b_chat, 'skywork/Skywork-13B-chat', LoRATM.llama, TemplateType.skywork)
+@register_model(ModelType.skywork_13b_chat, 'skywork/Skywork-13B-chat', template=TemplateType.skywork)
 def get_skywork_model_tokenizer(model_dir: str,
                                 torch_dtype: torch.dtype,
                                 model_kwargs: Dict[str, Any],

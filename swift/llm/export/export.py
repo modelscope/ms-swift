@@ -1,17 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import json
 import os
 from typing import Dict, List, Optional
 
-import json
 import torch
 import transformers
 from packaging import version
 
-from swift.llm import get_model_tokenizer, get_template
-from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
-                         show_layers)
-from swift.llm.infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
+from swift.llm.argument import ExportArguments
+from swift.llm.dataset.loader import DatasetLoader
+from swift.llm.infer.infer import prepare_model_template, merge_lora, save_checkpoint
+from swift.llm.model.model import get_model_tokenizer
+from swift.llm.template import Template
+from swift.llm.template.template import get_template
+from swift.tuners.utils import swift_to_peft_format
+from swift.hub import hub
+from swift.utils import get_logger, get_main, seed_everything, get_model_info, show_layers, \
+    check_json_format
 
 logger = get_logger()
 
@@ -28,7 +33,7 @@ def _get_dataset(*args, **kwargs):
     block_size = _args.quant_seqlen
 
     # only use train_dataset
-    dataset = get_dataset(
+    dataset = DatasetLoader.load_dataset(
         data,
         0,
         _args.dataset_seed,
@@ -342,7 +347,8 @@ def llm_export(args: ExportArguments) -> None:
         if ckpt_dir is None:
             ckpt_dir = args.model_id_or_path
         assert ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
-        push_to_ms_hub(ckpt_dir, args.hub_model_id, args.hub_token, args.hub_private_repo, args.commit_message)
+        hub.push_to_hub(args.hub_model_id, ckpt_dir, token=args.hub_token, private=args.hub_private_repo,
+                        commit_message=args.commit_message)
 
 
 export_main = get_main(ExportArguments, llm_export)

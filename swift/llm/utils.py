@@ -1,6 +1,14 @@
+from typing import Optional, List, Union, Tuple, Dict
+
+from torch.nn import Module
+from transformers import GenerationConfig
+
+from swift.utils import upper_bound
+
+History = List[Union[Tuple[str, str], List[str]]]
 
 
-def limit_history_length(template: Template, query: str, history: Optional[History],
+def limit_history_length(template: 'Template', query: str, history: Optional[History],
                          max_length: Optional[int]) -> Tuple[History, History]:
     """binary search"""
     if history is None:

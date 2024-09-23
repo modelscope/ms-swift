@@ -1,24 +1,27 @@
 import inspect
 import math
-from collections.abc import Mapping
 from contextlib import contextmanager
 from functools import wraps
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Mapping, Optional, Union
 
+import accelerate
 import torch
+import torch.nn.functional as F
 import transformers
 from accelerate.utils import find_device
 from packaging import version
-from torch import Tensor
-import torch.nn.functional as F
+from torch import Tensor, Module
+from torch.nn import Module
+from torch.nn.parallel import DistributedDataParallel as DDP
+from transformers import GPTQConfig
+from transformers import (trainer)
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift import get_logger
-
-from .utils import set_rope_scaling, get_rope_scaling, to_device
-
-from .utils import get_max_model_len
-from transformers import GPTQConfig
+from swift.utils import is_ddp_plus_mp, get_dist_setting, use_torchacc
+from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
+from .config import ConfigReader
+from .utils import to_device
 
 logger = get_logger()
 
@@ -70,12 +73,12 @@ def patch_rope_scaling(model_config, rope_scaling, max_length):
     Returns:
 
     """
-    max_position_embeddings = get_max_model_len(model_config, ignore_rope_scaling=True)
+    max_position_embeddings = ConfigReader.get_max_model_len(model_config, ignore_rope_scaling=True)
     if rope_scaling and max_position_embeddings:
         max_length = max_length or max_position_embeddings
         rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
-        set_rope_scaling(model_config, {'type': rope_scaling, 'factor': rope_scaling_factor})
-        logger.info(f'rope_scaling is set to type: {get_rope_scaling(model_config)}')
+        ConfigReader.set_rope_scaling(model_config, {'type': rope_scaling, 'factor': rope_scaling_factor})
+        logger.info(f'rope_scaling is set to type: {ConfigReader.get_rope_scaling(model_config)}')
 
 
 def patch_tokenizer(tokenizer, eos_token, pad_token, placeholder_tokens):

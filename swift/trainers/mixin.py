@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 import transformers
 from datasets import Dataset as HfDataset
+from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.nn import Module
@@ -30,8 +31,6 @@ from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trai
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
-
-from swift.hub.check_model import check_local_model_is_latest
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
                                   ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler, ta_test_dataloader,
                                   ta_train_dataloader, ta_trim_graph)

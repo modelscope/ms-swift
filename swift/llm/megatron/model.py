@@ -2,7 +2,7 @@
 import importlib
 from typing import Callable, List, Optional
 
-from swift.llm import MODEL_MAPPING
+from swift.llm.model.loader import MODEL_MAPPING
 
 MEGATRON_MODEL_MAPPING = {}
 

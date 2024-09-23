@@ -418,3 +418,16 @@ def set_trainable(model, adapter_name):
                 new_module = ModulesToSaveWrapper(target, module_key=key, adapter_name=adapter_name)
                 new_module.set_adapter(adapter_name)
                 setattr(parent, target_name, new_module)
+
+
+def swift_to_peft_format(lora_checkpoint_path: str) -> str:
+    if 'default' in os.listdir(lora_checkpoint_path):  # swift_backend
+        new_lora_checkpoint_path = f'{lora_checkpoint_path}-peft'
+        from swift import Swift
+        Swift.save_to_peft_format(lora_checkpoint_path, new_lora_checkpoint_path)
+        lora_checkpoint_path = new_lora_checkpoint_path
+        logger.info('Converting the swift format checkpoint to peft format, '
+                    f"and saving it to: '{new_lora_checkpoint_path}'")
+    else:
+        logger.info('The format of the checkpoint is already in peft format.')
+    return lora_checkpoint_path
