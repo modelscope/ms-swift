@@ -2813,7 +2813,7 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
         dataset = preprocess_func(dataset)
         if streaming:
             dataset = dataset.to_iterable_dataset()
-        dataset_list.append(preprocess_func(dataset))
+        dataset_list.append(dataset)
 
     if len(dataset_list) == 1:
         return dataset_list[0]
