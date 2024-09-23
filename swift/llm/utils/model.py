@@ -9,16 +9,15 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 from accelerate.utils import find_device
-from modelscope import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
-                        GenerationConfig, GPTQConfig, snapshot_download)
+from modelscope import snapshot_download
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+                          GenerationConfig, GPTQConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import is_torch_bf16_gpu_available, strtobool
@@ -489,6 +488,8 @@ class ModelType:
     mixtral_moe_7b_instruct = 'mixtral-moe-7b-instruct'
     mixtral_moe_7b_aqlm_2bit_1x16 = 'mixtral-moe-7b-aqlm-2bit-1x16'  # aqlm
     mixtral_moe_8x22b_v1 = 'mixtral-moe-8x22b-v1'
+
+    pixtral_12b = 'pixtral-12b'
     # wizardlm
     wizardlm2_7b_awq = 'wizardlm2-7b-awq'
     wizardlm2_8x22b = 'wizardlm2-8x22b'
@@ -1011,6 +1012,26 @@ def get_device_hook(device):
 
 def _output_device_map_hook(module, input, output):
     return output.to(input[0].device)
+
+
+@register_model(
+    ModelType.pixtral_12b,
+    'AI-ModelScope/pixtral-12b',
+    LoRATM.llava,
+    TemplateType.pixtral,
+    # torch_dtype=torch.float16,  # Please do not use bf16.
+    requires=['transformers>=4.45.0.dev0'],
+    placeholder_tokens=['[IMG]'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='mistral-community/pixtral-12b')
+def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor, LlavaForConditionalGeneration
+    processor = AutoProcessor.from_pretrained(model_dir)
+    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    kwargs['tokenizer'] = processor.tokenizer
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
 
 
 @register_model(
@@ -2707,7 +2728,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     TemplateType.mplug_owl3,
     requires=['transformers>=4.36', 'icecream'],  # decord
     support_flash_attn=True,
-    tags=['multi-modal', 'vision'],
+    tags=['multi-modal', 'vision', 'video'],
     hf_model_id='mPLUG/mPLUG-Owl3-7B-240728')
 def get_model_tokenizer_mplug_owl3(model_dir: str,
                                    torch_dtype: torch.dtype,
@@ -3642,7 +3663,7 @@ for model_size in ['2B', '7B', '72B']:
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
         requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],
-        tags=['multi-modal', 'vision'],
+        tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}')
     register_model(
         f'qwen2-vl-{model_size_lower}-instruct',
@@ -3654,7 +3675,7 @@ for model_size in ['2B', '7B', '72B']:
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
         requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],  # 'pyav'
-        tags=['multi-modal', 'vision'],
+        tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct')
     for quant_bits in [4, 8]:
         quant_type = f'GPTQ-Int{quant_bits}'
@@ -3669,7 +3690,7 @@ for model_size in ['2B', '7B', '72B']:
             support_vllm=True,
             placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
             requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
-            tags=['multi-modal', 'vision'],
+            tags=['multi-modal', 'vision', 'video'],
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
             hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct-{quant_type}')
@@ -3684,7 +3705,7 @@ for model_size in ['2B', '7B', '72B']:
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
         requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
-        tags=['multi-modal', 'vision'],
+        tags=['multi-modal', 'vision', 'video'],
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct-AWQ')
@@ -4452,7 +4473,16 @@ def get_model_tokenizer_internvl(model_dir: str,
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     use_flash_attn = kwargs.pop('use_flash_attn', False)
-    model_config.llm_config.attn_implementation = 'flash_attention_2' if use_flash_attn else 'eager'
+    if hasattr(model_config.llm_config, 'attn_implementation'):
+        attr = 'attn_implementation'
+    else:
+        attr = '_attn_implementation'
+    if use_flash_attn:
+        setattr(model_config.llm_config, attr, 'flash_attention_2')
+    else:
+        setattr(model_config.llm_config, attr, 'eager')
+        setattr(model_config.llm_config, f'{attr}_internal', None)
+
     model_quant_config = getattr(model_config, 'quantization_config', None)
 
     use_bnb = False

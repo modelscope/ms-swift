@@ -82,6 +82,7 @@ class TemplateType:
 
     idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
+    pixtral = 'pixtral'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -638,6 +639,7 @@ class Template:
                 new_str_list = [system, query, round0, round1]
                 for (old_str, new_str) in zip(old_str_list, new_str_list):
                     if new_str is not None and old_str in context:
+                        assert isinstance(new_str, str), f'new_str: {new_str}'
                         context = context.replace(old_str, new_str)
             if len(context) == 0:
                 continue
@@ -1527,6 +1529,69 @@ class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate
 register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
 register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+
+
+def _gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
+    # List[Tensor] ->  List[Tensor]
+    res = []
+    for b in batch:
+        if b.get(attr_name) is not None:
+            res += b.pop(attr_name)
+    return res
+
+
+class PixtralTemplate(Template):
+
+    def __init__(self):
+        super().__init__(['<s>{{SYSTEM}}'], ['[INST]{{QUERY}}[/INST]'], ['</s>'], ['</s>'], None)
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        return ['[IMG]']
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        processor = self.tokenizer.processor
+        images = example['images']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 10)
+        if idx_list:
+            image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
+            inputs['pixel_values'] = image_inputs['pixel_values'][0]
+            image_sizes = image_inputs['image_sizes'][0]
+            added_tokens_len = 0
+            for idx, image_size in zip(idx_list, image_sizes):
+                height, width = image_size
+                num_height_tokens = height // processor.patch_size
+                num_width_tokens = width // processor.patch_size
+                replace_tokens = [processor.image_token * num_width_tokens + processor.image_break_token] * (
+                    num_height_tokens - 1)
+                replace_tokens += [processor.image_token * num_width_tokens + processor.image_end_token]
+                # Flatten list
+                replace_str = ''.join(replace_tokens)
+                img_tokens: List[int] = self.tokenizer.encode(replace_str, add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        pixel_values = _gather_list(batch, 'pixel_values')
+        res = super().data_collator(batch, padding_to)
+        if pixel_values:
+            res['pixel_values'] = pixel_values
+        return res
+
+
+register_template(TemplateType.pixtral, PixtralTemplate(), lazy_tokenize=True)
 
 
 class YiCoderTemplate(ChatmlTemplate):
@@ -3296,6 +3361,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
             media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
             inputs['_data'] = {'pixel_values': image_inputs['pixel_values']}
             inputs['media_offset'] = media_offset
+            inputs['num_images'] = image_inputs['pixel_values'].shape[0]
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         return inputs, {}
@@ -3307,9 +3373,26 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        num_images = [b['num_images'] if 'num_images' in b else 0 for b in batch]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
-        media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+        media_offset = []
+        cusum_offset = 0
+
+        for bi, b in enumerate(batch):
+            if 'media_offset' in b:
+                max_sequence_length = res['input_ids'].shape[1]
+                curr_media_offset = b['media_offset']
+                if curr_media_offset.shape[1] < max_sequence_length:
+                    padding = curr_media_offset[:, -1:, :].expand(curr_media_offset.shape[0],
+                                                                  max_sequence_length - curr_media_offset.shape[1],
+                                                                  curr_media_offset.shape[2])
+                    curr_media_offset = torch.concat([curr_media_offset, padding], dim=1)
+                media_offset.append(curr_media_offset + cusum_offset)
+                cusum_offset += num_images[bi]
+
+        # media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+
         if media_offset:
             res['media_offset'] = torch.concat(media_offset)
         return res
