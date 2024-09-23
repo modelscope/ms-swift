@@ -9,19 +9,19 @@ from typing import List, Literal, Optional, Tuple, Union, Dict, Any, Callable
 import numpy as np
 from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
+from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from numpy.random import RandomState
 from pandas import DataFrame
-from swift.llm.utils.utils import download_files
-
-from swift.hub import ModelScopeConfig
-from tqdm import tqdm
 from transformers.utils import strtobool
 
 from swift.hub.hub import HFHub, MSHub
 from swift.llm.dataset.preprocess import RowPreprocessor
+from swift.llm.dataset.register import register_dataset_info_file, register_single_dataset
 from swift.utils import get_logger
-from swift.utils import safe_ddp_context, get_seed
+from swift.utils import get_seed
+from swift.utils.io_utils import download_files
+from swift.utils.torch_utils import safe_ddp_context
 from swift.utils.utils import _safe_split
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -379,7 +379,7 @@ class DatasetLoader(ABC):
                     d_info['hf_dataset_id'] = d_id_or_path
                 else:
                     d_info['dataset_id'] = d_id_or_path
-            register_dataset_info(d_name, d_info)
+            register_single_dataset(d_name, d_info)
             res_dataset.append(d.replace(d_id_or_path, d_name))
         return res_dataset
 
@@ -443,8 +443,6 @@ class DatasetLoader(ABC):
                     else:
                         model_n, model_a = model_name[1], model_author[1]
 
-                    q = row['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                    r = row['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
                     messages.append({
                                     'role': 'user',
                                     'content': row['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)

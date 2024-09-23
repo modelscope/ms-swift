@@ -19,7 +19,6 @@ from swift.llm.dataset.preprocess import (AlpacaPreprocessor, ClsPreprocessor, C
                                           ConversationsPreprocessor,
                                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor,
                                           TextGenerationPreprocessor, RowPreprocessor)
-from swift.llm.utils.utils import download_dataset
 from swift.utils import get_logger
 from .loader import HubDatasetLoader, DatasetLoader
 from .media import MediaResource
@@ -1732,7 +1731,7 @@ register_dataset(
 register_dataset(
     DatasetName.sharegpt,
     'swift/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
-    preprocess_sharegpt,
+    ListPreprocessor(user_key='human', assistant_key='assistant'),
     HubDatasetLoader.load_dataset_from_hub,
     tags=['chat', 'general', 'multi-round'])
 

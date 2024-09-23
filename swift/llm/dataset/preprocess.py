@@ -236,7 +236,7 @@ class SwiftPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         output = {}
-        if self.has_history:
+        if 'history' in row:
             history = row['history']
             if isinstance(history, str):
                 history = ast.literal_eval(history)

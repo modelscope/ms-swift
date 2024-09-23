@@ -1,23 +1,15 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import itertools
 import json
 import os
 from copy import deepcopy
 from functools import partial
-from typing import List, Literal, Optional, Tuple, Union, Dict, Any, Callable
+from typing import List, Optional, Tuple, Union, Dict, Any, Callable
 
-import numpy as np
 from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
-from datasets import concatenate_datasets, interleave_datasets
-from numpy.random import RandomState
-from swift.llm import get_dataset_from_repo
-from swift.llm.utils.dataset import get_local_dataset
-from tqdm import tqdm
 
-from swift.hub.hub import HFHub, MSHub
-from swift.llm.dataset.preprocess import RowPreprocessor, RenameColumnsPreprocessor, ConversationsPreprocessor, \
+from swift.llm.dataset.loader import LocalDatasetLoader, HubDatasetLoader
+from swift.llm.dataset.preprocess import RenameColumnsPreprocessor, ConversationsPreprocessor, \
     SmartPreprocessor
-from swift.utils import safe_ddp_context, get_seed
 from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -118,7 +110,7 @@ def register_local_dataset(
                 dataset_path[i] = os.path.join(base_dir, dataset_path[i])
 
     register_dataset(
-        dataset_name, get_function=get_local_dataset, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
+        dataset_name, get_function=LocalDatasetLoader.load_dataset_from_local, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
 
 
 def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
@@ -148,7 +140,7 @@ def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs)
         dataset_id = d_info.pop('dataset_id', None)
         subsets = d_info.pop('subsets', None)
         preprocess_func = d_info.pop('preprocess_func', None)
-        register_dataset(dataset_name, dataset_id, subsets, preprocess_func, get_dataset_from_repo, **d_info,
+        register_dataset(dataset_name, dataset_id, subsets, preprocess_func, HubDatasetLoader.load_dataset_from_hub, **d_info,
                          exist_ok=True)
 
 

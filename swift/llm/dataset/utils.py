@@ -1,3 +1,29 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
+# Part of the implementation is borrowed from huggingface/transformers.
+import heapq
+import os
+from functools import partial
+from queue import Empty, Queue
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+
+import multiprocess
+import numpy as np
+import torch
+from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HFIterableDataset
+from torch.utils.data import Dataset, IterableDataset
+from tqdm.auto import tqdm
+from transformers import (PreTrainedTokenizerBase)
+
+from swift.utils import get_logger, stat_array
+
+DATASET_TYPE = Union[HfDataset, HFIterableDataset]
+
+logger = get_logger()
+
+os.environ['TOKENIZERS_PARALLELISM'] = 'true'
+
+
 class LLMDataset(Dataset):
 
     def __init__(self, data: List[Dict[str, Any]]) -> None:
@@ -20,9 +46,9 @@ class LLMDataset(Dataset):
         return len(self.data)
 
 
-class LLMIterableDataset(HfIterableDataset):
+class LLMIterableDataset(HFIterableDataset):
 
-    def __init__(self, dataset: HfIterableDataset, max_retries=10):
+    def __init__(self, dataset: HFIterableDataset, max_retries=10):
         super().__init__(
             dataset._ex_iterable,
             dataset._info,

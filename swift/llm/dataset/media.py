@@ -43,7 +43,7 @@ class MediaResource:
         Returns:
             The local dir contains the extracted files.
         """
-        from swift.utils import safe_ddp_context
+        from swift.utils.torch_utils import safe_ddp_context
         from datasets.utils.filelock import FileLock
         file_path = hashlib.md5(media_type_or_url.encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(MediaResource.lock_dir, file_path)
