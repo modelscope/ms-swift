@@ -3361,6 +3361,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
             media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
             inputs['_data'] = {'pixel_values': image_inputs['pixel_values']}
             inputs['media_offset'] = media_offset
+            inputs['num_images'] = image_inputs['pixel_values'].shape[0]
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         return inputs, {}
@@ -3372,9 +3373,25 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        num_images = [b['num_images'] if 'num_images' in b else 0 for b in batch]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
-        media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+        media_offset = []
+        cusum_offset = 0
+
+        
+        for bi,b in enumerate(batch):
+            if 'media_offset' in b:
+                max_sequence_length = res['input_ids'].shape[1]
+                curr_media_offset = b['media_offset']
+                if curr_media_offset.shape[1]<max_sequence_length:
+                    padding = curr_media_offset[:,-1:,:].expand(curr_media_offset.shape[0], max_sequence_length-curr_media_offset.shape[1], curr_media_offset.shape[2])
+                    curr_media_offset = torch.concat([curr_media_offset, padding], dim=1)
+                media_offset.append(curr_media_offset + cusum_offset)
+                cusum_offset += num_images[bi]
+
+        # media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+        
         if media_offset:
             res['media_offset'] = torch.concat(media_offset)
         return res
