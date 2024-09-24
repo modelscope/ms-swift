@@ -6544,11 +6544,12 @@ def get_model_tokenizer_omnli(model_dir: str,
             delattr(OmniSpeechLlamaForCausalLM, key)
         except AttributeError:
             pass
+    # not support device_map='auto'
     device_map = model_kwargs['device_map']
     model_kwargs['device_map'] = None
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model:
-        model.to('cuda:0' if device_map == 'auto' else device_map)  # not support device_map='auto'
+        model.to('cuda:0' if device_map == 'auto' else device_map)
     return model, tokenizer
 
 
