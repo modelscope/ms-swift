@@ -73,21 +73,60 @@ class LmdeployGenerationConfig(_LmdeployGenerationConfig):
 
 class LMDeployFramework(InferFramework):
 
-    @classmethod
-    def inference(cls,
-                           engine: Any,
-                           template: Template,
-                           request_list: List[Dict[str, Any]],
-                           *,
-                           generation_config: Optional[Any] = None,
-                           generation_info: Optional[Dict[str, Any]] = None,
-                           max_batch_size: Optional[int] = None,
-                           lora_request: Optional[Any] = None,
-                           use_tqdm: bool = False,
-                           verbose: bool = False,
-                           prompt_prefix: str = '[PROMPT]',
-                           output_prefix: str = '[OUTPUT]',
-                           **kwargs) -> List[Dict[str, Any]]:
+    def __init__(self, args: InferArguments, use_async: bool = False, **kwargs):
+        logger.info(f'device_count: {torch.cuda.device_count()}')
+
+        assert args.quantization_bit == 0, 'not support bnb'
+        assert not args.sft_type == 'lora', 'you need to merge lora'
+        # Loading Model and Tokenizer
+        model_id_or_path = None
+        if args.sft_type == 'full' and args.ckpt_dir is not None:
+            model_id_or_path = args.ckpt_dir
+        elif args.model_id_or_path is not None:
+            model_id_or_path = args.model_id_or_path
+        lmdeploy_engine = LMDeployFramework.get_lmdeploy_engine(
+            args.model_type,
+            tp=args.tp,
+            cache_max_entry_count=args.cache_max_entry_count,
+            quant_policy=args.quant_policy,
+            vision_batch_size=args.vision_batch_size,
+            model_id_or_path=model_id_or_path)
+        tokenizer = lmdeploy_engine.hf_tokenizer
+
+        stop_words = []
+        for stop_word in args.stop_words:
+            LMDeployFramework._add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
+        setattr(lmdeploy_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
+        for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
+            val = getattr(args, k, None)
+            if val is not None:
+                setattr(lmdeploy_engine.generation_config, k, val)
+        logger.info(f'lmdeploy_engine.generation_config: {lmdeploy_engine.generation_config}')
+
+        template: Template = get_template(
+            args.template_type,
+            tokenizer,
+            args.system,
+            args.max_length,
+            args.truncation_strategy,
+            model=lmdeploy_engine,
+            tools_prompt=args.tools_prompt)
+        args.system = template.default_system
+        logger.info(f'system: {args.system}')
+        super().__init__(lmdeploy_engine, InferTemplate(template, framework='lmdeploy'))
+
+    def inference(self,
+                  request_list: List[Dict[str, Any]],
+                  *,
+                  generation_config: Optional[Any] = None,
+                  generation_info: Optional[Dict[str, Any]] = None,
+                  max_batch_size: Optional[int] = None,
+                  lora_request: Optional[Any] = None,
+                  use_tqdm: bool = False,
+                  verbose: bool = False,
+                  prompt_prefix: str = '[PROMPT]',
+                  output_prefix: str = '[OUTPUT]',
+                  **kwargs) -> List[Dict[str, Any]]:
         """
             request_list: e.g. [{'query': 'hello!'}].
                 The keys that can be included are: 'query', 'history', 'system', 'images'.
@@ -96,7 +135,7 @@ class LMDeployFramework(InferFramework):
             return []
         runtime = time.perf_counter()
 
-        is_multimodal = getattr(engine, 'is_multimodal', False)
+        is_multimodal = getattr(self.llm_engine, 'is_multimodal', False)
         if is_multimodal and max_batch_size is None:
             max_batch_size = 512
 
@@ -110,9 +149,7 @@ class LMDeployFramework(InferFramework):
             resp_list = []
             kwargs['_inner_call'] = True
             while i < len(request_list):
-                resp_list += cls.inference(
-                    engine,
-                    template,
+                resp_list += self.inference(
                     request_list[i:i + max_batch_size],
                     generation_config=generation_config,
                     generation_info=generation_info,
@@ -130,21 +167,19 @@ class LMDeployFramework(InferFramework):
             return resp_list
 
         if generation_config is None:
-            generation_config = getattr(engine, 'generation_config', None) or LmdeployGenerationConfig()
+            generation_config = getattr(self.llm_engine, 'generation_config', None) or LmdeployGenerationConfig()
         assert isinstance(generation_config, LmdeployGenerationConfig)
         request_list = deepcopy(request_list)
         generation_config = deepcopy(generation_config)
 
-        resp_list, generators = cls._prepare_lmdeploy_request(
-            engine,
-            template,
+        resp_list, generators = self._prepare_lmdeploy_request(
             request_list,
             generation_config=generation_config,
             generation_info=generation_info,
             use_tqdm=use_tqdm,
             **kwargs)
 
-        tokenizer = template.tokenizer
+        tokenizer = self.template.tokenizer
         if use_tqdm:
             assert verbose is False
         prog_bar = tqdm(total=len(generators), dynamic_ncols=True, disable=not use_tqdm)
@@ -153,17 +188,17 @@ class LMDeployFramework(InferFramework):
             generator = await generator
             images = inputs.pop('images', None) or []
             if len(images) > 0:
-                inputs['images'] = await engine.vl_encoder.async_infer(images)
-                await template.prepare_lmdeploy_inputs(inputs)
+                inputs['images'] = await self.llm_engine.vl_encoder.async_infer(images)
+                await self.template.prepare_lmdeploy_inputs(inputs)
             generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
-            async with engine.safe_run(i):
+            async with self.llm_engine.safe_run(i):
                 async for output in generator.async_stream_infer(
                         session_id=i, **inputs, stream_output=False, gen_config=generation_config):
                     pass
             request = request_list[i]
             input_ids = inputs['input_ids']
             logprobs = output.logprobs
-            response = template.generate_ids_to_response(output.token_ids)
+            response = self.template.generate_ids_to_response(output.token_ids)
             query = request['query']
             history = request['history']
             history.append([query, response])
@@ -189,18 +224,16 @@ class LMDeployFramework(InferFramework):
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         return resp_list
 
-    @classmethod
     @torch.inference_mode()
-    def inference_stream(cls, engine: Any,
-                                  template: Template,
-                                  request_list: List[Dict[str, Any]],
-                                  *,
-                                 generation_config: Optional[Any] = None,
-                                 generation_info: Optional[Dict[str, Any]] = None,
-                                 lora_request: Optional[Any] = None,
-                                 use_tqdm: bool = False,
-                                 flush_steps: Optional[int] = None,  # Ensuring efficiency
-                                  **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    def inference_stream(self,
+                         request_list: List[Dict[str, Any]],
+                         *,
+                         generation_config: Optional[Any] = None,
+                         generation_info: Optional[Dict[str, Any]] = None,
+                         lora_request: Optional[Any] = None,
+                         use_tqdm: bool = False,
+                         flush_steps: Optional[int] = None,  # Ensuring efficiency
+                         **kwargs) -> Iterator[List[Dict[str, Any]]]:
         """
         request_list: e.g. [{'query': 'hello!'}].
             The keys that can be included are: 'query', 'history', 'system', 'images'.
@@ -209,7 +242,7 @@ class LMDeployFramework(InferFramework):
             return
         start_runtime = time.perf_counter()
         if generation_config is None:
-            generation_config = getattr(engine, 'generation_config', None) or LmdeployGenerationConfig()
+            generation_config = getattr(self.llm_engine, 'generation_config', None) or LmdeployGenerationConfig()
         assert isinstance(generation_config, LmdeployGenerationConfig)
         request_list = deepcopy(request_list)
         generation_config = deepcopy(generation_config)
@@ -218,9 +251,7 @@ class LMDeployFramework(InferFramework):
         else:
             generation_info.clear()
 
-        resp_list, generators = cls._prepare_lmdeploy_request(
-            engine,
-            template,
+        resp_list, generators = self._prepare_lmdeploy_request(
             request_list,
             generation_config=generation_config,
             generation_info=generation_info,
@@ -238,10 +269,10 @@ class LMDeployFramework(InferFramework):
             generator = await generator
             images = inputs.pop('images', None) or []
             if len(images) > 0:
-                inputs['images'] = await engine.vl_encoder.async_infer(images)
-                await template.prepare_lmdeploy_inputs(inputs)
+                inputs['images'] = await self.llm_engine.vl_encoder.async_infer(images)
+                await self.template.prepare_lmdeploy_inputs(inputs)
             generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
-            async with engine.safe_run(i):
+            async with self.llm_engine.safe_run(i):
                 async for output in generator.async_stream_infer(
                         session_id=i, **inputs, stream_output=True, gen_config=generation_config):
                     queue.put((i, output))
@@ -265,7 +296,7 @@ class LMDeployFramework(InferFramework):
             outputs[i] = output
             request = request_list[i]
             logprobs = output.logprobs
-            safe_response = template.generate_ids_to_response(output.token_ids, is_finished,
+            safe_response = self.template.generate_ids_to_response(output.token_ids, is_finished,
                                                               print_idx=print_idx_list[i])
             query = request['query']
             history = request['history']
@@ -448,46 +479,3 @@ class LMDeployFramework(InferFramework):
 
         generation_info['num_samples'] = len(generators)
         return resp_list, generators
-
-    @classmethod
-    def prepare_engine_template(cls, args: InferArguments, use_async: bool = False) -> Tuple[Union[AsyncEngine, VLAsyncEngine], Template]:
-        logger.info(f'device_count: {torch.cuda.device_count()}')
-
-        assert args.quantization_bit == 0, 'not support bnb'
-        assert not args.sft_type == 'lora', 'you need to merge lora'
-        # Loading Model and Tokenizer
-        model_id_or_path = None
-        if args.sft_type == 'full' and args.ckpt_dir is not None:
-            model_id_or_path = args.ckpt_dir
-        elif args.model_id_or_path is not None:
-            model_id_or_path = args.model_id_or_path
-        lmdeploy_engine = LMDeployFramework.get_lmdeploy_engine(
-            args.model_type,
-            tp=args.tp,
-            cache_max_entry_count=args.cache_max_entry_count,
-            quant_policy=args.quant_policy,
-            vision_batch_size=args.vision_batch_size,
-            model_id_or_path=model_id_or_path)
-        tokenizer = lmdeploy_engine.hf_tokenizer
-
-        stop_words = []
-        for stop_word in args.stop_words:
-            LMDeployFramework._add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
-        setattr(lmdeploy_engine.generation_config, 'max_new_tokens', args.max_new_tokens)
-        for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
-            val = getattr(args, k, None)
-            if val is not None:
-                setattr(lmdeploy_engine.generation_config, k, val)
-        logger.info(f'lmdeploy_engine.generation_config: {lmdeploy_engine.generation_config}')
-
-        template: Template = get_template(
-            args.template_type,
-            tokenizer,
-            args.system,
-            args.max_length,
-            args.truncation_strategy,
-            model=lmdeploy_engine,
-            tools_prompt=args.tools_prompt)
-        args.system = template.default_system
-        logger.info(f'system: {args.system}')
-        return lmdeploy_engine, InferTemplate(template, framework='lmdeploy')

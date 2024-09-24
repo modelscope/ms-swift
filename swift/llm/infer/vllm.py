@@ -135,218 +135,10 @@ else:
             self._temperature = self.temperature
             super().__post_init__()
 
-            
+
 class VLLMFramework(InferFramework):
 
-    @classmethod
-    def inference(cls,
-                  engine: Any,
-                  template: Template,
-                  request_list: List[Dict[str, Any]],
-                  *,
-                  generation_config: Optional[Any] = None,
-                  generation_info: Optional[Dict[str, Any]] = None,
-                  max_batch_size: Optional[int] = None,
-                  lora_request: Optional[Any] = None,
-                  use_tqdm: bool = False,
-                  verbose: bool = False,
-                  prompt_prefix: str = '[PROMPT]',
-                  output_prefix: str = '[OUTPUT]',
-                  **kwargs) -> List[Dict[str, Any]]:
-        if len(request_list) == 0:
-            return []
-        runtime = time.perf_counter()
-
-        is_multimodal = getattr(engine, 'is_multimodal', False)
-        if is_multimodal and max_batch_size is None:
-            max_batch_size = 512
-
-        _inner_call = kwargs.get('_inner_call', False)
-        if generation_info is None:
-            generation_info = {}
-        elif not _inner_call:
-            generation_info.clear()
-        if max_batch_size is not None and len(request_list) > max_batch_size:
-            i = 0
-            resp_list = []
-            kwargs['_inner_call'] = True
-            while i < len(request_list):
-                resp_list += cls.inference(
-                    engine,
-                    template,
-                    request_list[i:i + max_batch_size],
-                    generation_config=generation_config,
-                    generation_info=generation_info,
-                    max_batch_size=max_batch_size,
-                    lora_request=lora_request,
-                    use_tqdm=use_tqdm,
-                    verbose=verbose,
-                    prompt_prefix=prompt_prefix,
-                    output_prefix=output_prefix,
-                    **kwargs)
-                i += max_batch_size
-            runtime = time.perf_counter() - runtime
-            generation_info['runtime'] = runtime
-            generation_info['samples/s'] = generation_info['num_samples'] / runtime
-            generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-            return resp_list
-
-        if generation_config is None:
-            generation_config = getattr(engine, 'generation_config', None) or VllmGenerationConfig()
-        assert isinstance(generation_config, VllmGenerationConfig)
-        request_list = deepcopy(request_list)
-        generation_config = deepcopy(generation_config)
-
-        old_num_samples = generation_info.get('num_samples', 0)
-        resp_list, agent_state = cls._prepare_vllm_request(
-            engine,
-            template,
-            request_list,
-            generation_config=generation_config,
-            generation_info=generation_info,
-            lora_request=lora_request,
-            use_tqdm=use_tqdm,
-            **kwargs)
-
-        tokenizer = template.tokenizer
-        if use_tqdm:
-            assert verbose is False
-        prog_bar = tqdm(total=generation_info['num_samples'] - old_num_samples, dynamic_ncols=True,
-                        disable=not use_tqdm)
-        outputs = []
-        while engine.has_unfinished_requests():
-            step_outputs = engine.step()
-            for output in step_outputs:
-                if output.finished:
-                    outputs.append(output)
-                    prog_bar.update()
-        prog_bar.close()
-
-        for output in outputs:
-            i = int(output.request_id)
-            request = request_list[i]
-            generate_ids = output.outputs[0].token_ids
-            logprobs = output.outputs[0].logprobs
-            response = template.generate_ids_to_response(generate_ids)
-            query = request['query']
-            history = request['history']
-            if not agent_state[i][0]:
-                history.append([query, response])
-            else:
-                history[-1][-1] = history[-1][-1] + response
-
-            generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
-            resp_list[i] = {'response': response, 'history': history}
-            if logprobs is not None:
-                resp_list[i]['logprobs'] = logprobs
-            if verbose:
-                print(f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}', end='')
-                print(tokenizer.decode(output.outputs[0].token_ids, False))
-        runtime = time.perf_counter() - runtime
-        generation_info['runtime'] = runtime
-        generation_info['samples/s'] = generation_info['num_samples'] / runtime
-        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-        return resp_list
-
-    @classmethod
-    @torch.inference_mode()
-    def inference_stream(
-            cls,
-            llm_engine: LLMEngine,
-            template: Template,
-            request_list: List[Dict[str, Any]],
-            *,
-            generation_config: Optional[Any] = None,
-            generation_info: Optional[Dict[str, Any]] = None,
-            lora_request: Optional['LoRARequest'] = None,
-            use_tqdm: bool = False,
-            flush_steps: Optional[int] = None,  # Ensuring efficiency
-            **kwargs) -> Iterator[List[Dict[str, Any]]]:
-        """
-        request_list: e.g. [{'query': 'hello!'}].
-            The keys that can be included are: 'query', 'history', 'system', 'images'.
-        generation_config: Priority: generation_config > model.generation_config.
-        return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
-            The keys to be included will be: 'response', 'history'.
-        """
-        if len(request_list) == 0:
-            return
-        start_runtime = time.perf_counter()
-        if generation_config is None:
-            generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
-        assert isinstance(generation_config, VllmGenerationConfig)
-        request_list = deepcopy(request_list)
-        generation_config = deepcopy(generation_config)
-        if generation_info is None:
-            generation_info = {}
-        else:
-            generation_info.clear()
-
-        resp_list, agent_state = cls._prepare_vllm_request(
-            llm_engine,
-            template,
-            request_list,
-            generation_config=generation_config,
-            generation_info=generation_info,
-            lora_request=lora_request,
-            use_tqdm=use_tqdm,
-            **kwargs)
-
-        if generation_config.use_beam_search:
-            error_msg = 'Streaming generation does not support beam search.'
-            raise ValueError(error_msg)
-
-        n_finished = 0
-        n_steps = 0
-        if flush_steps is None:
-            flush_steps = min(10, generation_info['num_samples'])
-        print_idx_list = [[0] for _ in range(len(request_list))]
-        num_generated_tokens = [0] * len(request_list)
-        prog_bar = tqdm(total=generation_info['num_samples'], dynamic_ncols=True, disable=not use_tqdm)
-        while llm_engine.has_unfinished_requests():
-            is_flush = False
-            n_steps += 1
-            step_outputs = llm_engine.step()
-            for output in step_outputs:
-                if not output.finished and n_steps % flush_steps != 0:
-                    continue
-                is_flush = True
-                i = int(output.request_id)
-                request = request_list[i]
-                generate_ids = output.outputs[0].token_ids
-                logprobs = output.outputs[0].logprobs
-                safe_response = template.generate_ids_to_response(
-                    generate_ids, output.finished, print_idx=print_idx_list[i])
-                query = request['query']
-                history = request['history']
-                if resp_list[i] is None and not agent_state[i][0]:
-                    history.append(None)
-                if not agent_state[i][0]:
-                    history[-1] = [query, safe_response]
-                else:
-                    history[-1][-1] = history[-1][-1][:agent_state[i][1]] + safe_response
-
-                n_gen_tokens = sum(len(_output.token_ids) for _output in output.outputs)
-                generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
-                num_generated_tokens[i] = n_gen_tokens
-
-                resp_list[i] = {'response': safe_response, 'history': history}
-                if logprobs is not None:
-                    resp_list[i]['logprobs'] = logprobs
-                if output.finished:
-                    n_finished += 1
-                    prog_bar.update()
-            if not is_flush:
-                continue
-            runtime = time.perf_counter() - start_runtime
-            generation_info['runtime'] = runtime
-            generation_info['samples/s'] = n_finished / runtime
-            generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
-            yield resp_list
-        prog_bar.close()
-
-    @classmethod
-    def prepare_engine_template(cls, args: InferArguments, use_async: bool = False) -> Tuple[LLMEngine, Template]:
+    def __init__(self, args: InferArguments, use_async: bool = False):
         logger.info(f'device_count: {torch.cuda.device_count()}')
 
         assert not (args.sft_type == 'lora' and not args.vllm_enable_lora), 'you need to merge lora'
@@ -356,7 +148,7 @@ class VLLMFramework(InferFramework):
             model_id_or_path = args.ckpt_dir
         elif args.model_id_or_path is not None:
             model_id_or_path = args.model_id_or_path
-        llm_engine = cls.get_vllm_engine(
+        llm_engine = self.get_vllm_engine(
             args.model_type,
             args.torch_dtype,
             gpu_memory_utilization=args.gpu_memory_utilization,
@@ -388,7 +180,203 @@ class VLLMFramework(InferFramework):
             tools_prompt=args.tools_prompt)
         args.system = template.default_system
         logger.info(f'system: {args.system}')
-        return llm_engine, InferTemplate(template, framework='vllm')
+        super().__init__(llm_engine, InferTemplate(template, framework='vllm'))
+
+    @torch.inference_mode
+    def inference(self,
+                  request_list: List[Dict[str, Any]],
+                  *,
+                  generation_config: Optional[Any] = None,
+                  generation_info: Optional[Dict[str, Any]] = None,
+                  max_batch_size: Optional[int] = None,
+                  lora_request: Optional[Any] = None,
+                  use_tqdm: bool = False,
+                  verbose: bool = False,
+                  prompt_prefix: str = '[PROMPT]',
+                  output_prefix: str = '[OUTPUT]',
+                  **kwargs) -> List[Dict[str, Any]]:
+        if len(request_list) == 0:
+            return []
+        runtime = time.perf_counter()
+
+        is_multimodal = getattr(self.llm_engine, 'is_multimodal', False)
+        if is_multimodal and max_batch_size is None:
+            max_batch_size = 512
+
+        _inner_call = kwargs.get('_inner_call', False)
+        if generation_info is None:
+            generation_info = {}
+        elif not _inner_call:
+            generation_info.clear()
+        if max_batch_size is not None and len(request_list) > max_batch_size:
+            i = 0
+            resp_list = []
+            kwargs['_inner_call'] = True
+            while i < len(request_list):
+                resp_list += self.inference(
+                    request_list[i:i + max_batch_size],
+                    generation_config=generation_config,
+                    generation_info=generation_info,
+                    max_batch_size=max_batch_size,
+                    lora_request=lora_request,
+                    use_tqdm=use_tqdm,
+                    verbose=verbose,
+                    prompt_prefix=prompt_prefix,
+                    output_prefix=output_prefix,
+                    **kwargs)
+                i += max_batch_size
+            runtime = time.perf_counter() - runtime
+            generation_info['runtime'] = runtime
+            generation_info['samples/s'] = generation_info['num_samples'] / runtime
+            generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
+            return resp_list
+
+        if generation_config is None:
+            generation_config = getattr(self.llm_engine, 'generation_config', None) or VllmGenerationConfig()
+        assert isinstance(generation_config, VllmGenerationConfig)
+        request_list = deepcopy(request_list)
+        generation_config = deepcopy(generation_config)
+
+        old_num_samples = generation_info.get('num_samples', 0)
+        resp_list, agent_state = self._prepare_vllm_request(
+            request_list,
+            generation_config=generation_config,
+            generation_info=generation_info,
+            lora_request=lora_request,
+            use_tqdm=use_tqdm,
+            **kwargs)
+
+        tokenizer = self.template.tokenizer
+        if use_tqdm:
+            assert verbose is False
+        prog_bar = tqdm(total=generation_info['num_samples'] - old_num_samples, dynamic_ncols=True,
+                        disable=not use_tqdm)
+        outputs = []
+        while self.llm_engine.has_unfinished_requests():
+            step_outputs = self.llm_engine.step()
+            for output in step_outputs:
+                if output.finished:
+                    outputs.append(output)
+                    prog_bar.update()
+        prog_bar.close()
+
+        for output in outputs:
+            i = int(output.request_id)
+            request = request_list[i]
+            generate_ids = output.outputs[0].token_ids
+            logprobs = output.outputs[0].logprobs
+            response = self.template.generate_ids_to_response(generate_ids)
+            query = request['query']
+            history = request['history']
+            if not agent_state[i][0]:
+                history.append([query, response])
+            else:
+                history[-1][-1] = history[-1][-1] + response
+
+            generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
+            resp_list[i] = {'response': response, 'history': history}
+            if logprobs is not None:
+                resp_list[i]['logprobs'] = logprobs
+            if verbose:
+                print(f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}', end='')
+                print(tokenizer.decode(output.outputs[0].token_ids, False))
+        runtime = time.perf_counter() - runtime
+        generation_info['runtime'] = runtime
+        generation_info['samples/s'] = generation_info['num_samples'] / runtime
+        generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
+        return resp_list
+
+    @torch.inference_mode()
+    def inference_stream(
+            self,
+            request_list: List[Dict[str, Any]],
+            *,
+            generation_config: Optional[Any] = None,
+            generation_info: Optional[Dict[str, Any]] = None,
+            lora_request: Optional['LoRARequest'] = None,
+            use_tqdm: bool = False,
+            flush_steps: Optional[int] = None,  # Ensuring efficiency
+            **kwargs) -> Iterator[List[Dict[str, Any]]]:
+        """
+        request_list: e.g. [{'query': 'hello!'}].
+            The keys that can be included are: 'query', 'history', 'system', 'images'.
+        generation_config: Priority: generation_config > model.generation_config.
+        return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
+            The keys to be included will be: 'response', 'history'.
+        """
+        if len(request_list) == 0:
+            return
+        start_runtime = time.perf_counter()
+        if generation_config is None:
+            generation_config = getattr(self.llm_engine, 'generation_config', None) or VllmGenerationConfig()
+        assert isinstance(generation_config, VllmGenerationConfig)
+        request_list = deepcopy(request_list)
+        generation_config = deepcopy(generation_config)
+        if generation_info is None:
+            generation_info = {}
+        else:
+            generation_info.clear()
+
+        resp_list, agent_state = self._prepare_vllm_request(
+            request_list,
+            generation_config=generation_config,
+            generation_info=generation_info,
+            lora_request=lora_request,
+            use_tqdm=use_tqdm,
+            **kwargs)
+
+        if generation_config.use_beam_search:
+            error_msg = 'Streaming generation does not support beam search.'
+            raise ValueError(error_msg)
+
+        n_finished = 0
+        n_steps = 0
+        if flush_steps is None:
+            flush_steps = min(10, generation_info['num_samples'])
+        print_idx_list = [[0] for _ in range(len(request_list))]
+        num_generated_tokens = [0] * len(request_list)
+        prog_bar = tqdm(total=generation_info['num_samples'], dynamic_ncols=True, disable=not use_tqdm)
+        while self.llm_engine.has_unfinished_requests():
+            is_flush = False
+            n_steps += 1
+            step_outputs = self.llm_engine.step()
+            for output in step_outputs:
+                if not output.finished and n_steps % flush_steps != 0:
+                    continue
+                is_flush = True
+                i = int(output.request_id)
+                request = request_list[i]
+                generate_ids = output.outputs[0].token_ids
+                logprobs = output.outputs[0].logprobs
+                safe_response = self.template.generate_ids_to_response(
+                    generate_ids, output.finished, print_idx=print_idx_list[i])
+                query = request['query']
+                history = request['history']
+                if resp_list[i] is None and not agent_state[i][0]:
+                    history.append(None)
+                if not agent_state[i][0]:
+                    history[-1] = [query, safe_response]
+                else:
+                    history[-1][-1] = history[-1][-1][:agent_state[i][1]] + safe_response
+
+                n_gen_tokens = sum(len(_output.token_ids) for _output in output.outputs)
+                generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
+                num_generated_tokens[i] = n_gen_tokens
+
+                resp_list[i] = {'response': safe_response, 'history': history}
+                if logprobs is not None:
+                    resp_list[i]['logprobs'] = logprobs
+                if output.finished:
+                    n_finished += 1
+                    prog_bar.update()
+            if not is_flush:
+                continue
+            runtime = time.perf_counter() - start_runtime
+            generation_info['runtime'] = runtime
+            generation_info['samples/s'] = n_finished / runtime
+            generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
+            yield resp_list
+        prog_bar.close()
 
     @staticmethod
     def get_vllm_engine(

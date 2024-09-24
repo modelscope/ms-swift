@@ -4,18 +4,22 @@ import os
 import time
 from copy import deepcopy
 from functools import partial
+from threading import Thread
 from typing import Any, Dict, List, Optional, Tuple
 from typing import Iterator
 
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, StoppingCriteriaList
 from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available
 from queue import Empty, Queue
-from swift.llm import InferArguments, Template, get_model_tokenizer, DeployArguments, get_template
+from swift.llm import InferArguments, Template, get_model_tokenizer, DeployArguments, get_template, StopWords
 from swift.llm.infer.base import InferFramework
-from swift.llm.utils import set_generation_config
+from swift.llm.model import ConfigReader
+from swift.llm.model.utils import to_device
+from swift.llm.template.base import StopWordsCriteria
+from swift.llm.utils import set_generation_config, Messages
 from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (get_model_info, show_layers)
@@ -53,8 +57,11 @@ class TokenListIteratorStreamer(BaseStreamer):
 
 class TransformersFramework(InferFramework):
 
-    @classmethod
-    def prepare_engine_template(cls, args: InferArguments, use_async: bool = False, **kwargs) -> Tuple[Any, Template]:
+    def __init__(self, args: InferArguments, use_async: bool = False, **kwargs):
+        super().__init__(*self.prepare_model_template_hf(args, use_async, **kwargs))
+
+    @staticmethod
+    def prepare_model_template_hf(args: InferArguments, use_async: bool = False, **kwargs):
         if args.quant_method == 'hqq':
             from transformers import HqqConfig
             if args.hqq_dynamic_config_path is not None:
@@ -189,23 +196,21 @@ class TransformersFramework(InferFramework):
         if args.overwrite_generation_config:
             assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
             model.generation_config.save_pretrained(args.ckpt_dir)
+
         return model, template
 
-    @classmethod
     @torch.inference_mode()
-    def inference(cls,
-                           engine: Any,
-                           template: Template,
-                           request_list: List[Dict[str, Any]],
-                           *,
-                           generation_config: Optional[Any] = None,
-                           generation_info: Optional[Dict[str, Any]] = None,
-                           max_batch_size: Optional[int] = None,
-                           use_tqdm: bool = False,
-                           verbose: bool = False,
-                           prompt_prefix: str = '[PROMPT]',
-                           output_prefix: str = '[OUTPUT]',
-                           **kwargs) -> List[Dict[str, Any]]:
+    def inference(self,
+                  request_list: List[Dict[str, Any]],
+                  *,
+                  generation_config: Optional[Any] = None,
+                  generation_info: Optional[Dict[str, Any]] = None,
+                  max_batch_size: Optional[int] = None,
+                  use_tqdm: bool = False,
+                  verbose: bool = False,
+                  prompt_prefix: str = '[PROMPT]',
+                  output_prefix: str = '[OUTPUT]',
+                  **kwargs) -> List[Dict[str, Any]]:
         """
         generation_config: Priority: generation_config > model.generation_config.
         """
@@ -224,9 +229,9 @@ class TransformersFramework(InferFramework):
             generation_info = {}
         else:
             generation_info.clear()
-        inputs, tokenizer_kwargs, token_len, example = cls._prepare_inputs(
-            model,
-            template,
+        inputs, tokenizer_kwargs, token_len, example = self._prepare_inputs(
+            self.llm_engine,
+            self.template,
             query,
             history,
             system,
@@ -266,13 +271,13 @@ class TransformersFramework(InferFramework):
         if return_dict:
             res = dict(generate_ids)
             generate_ids = generate_ids['sequences']
-        generate_ids = template.get_generate_ids(generate_ids, token_len)
+        generate_ids = self.template.get_generate_ids(generate_ids, token_len)
         generation_info['num_generated_tokens'] = len(generate_ids)
         if verbose and stream is False:
             response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
             print(response)
-        response = template.generate_ids_to_response(generate_ids, tokenizer_kwargs=tokenizer_kwargs)
-        response = template.post_process_generate_response(response=response, example=example)
+        response = self.template.generate_ids_to_response(generate_ids, tokenizer_kwargs=tokenizer_kwargs)
+        response = self.template.post_process_generate_response(response=response, example=example)
         if not is_observation:
             history.append([query, response])
         else:
@@ -288,18 +293,16 @@ class TransformersFramework(InferFramework):
         else:
             return response, history
 
-    @classmethod
     @torch.inference_mode()
-    def inference_stream(cls, engine: Any,
-                                  template: Template,
-                                  request_list: List[Dict[str, Any]],
-                                  *,
-                                 generation_config: Optional[Any] = None,
-                                 generation_info: Optional[Dict[str, Any]] = None,
-                                 lora_request: Optional['LoRARequest'] = None,
-                                 use_tqdm: bool = False,
-                                 flush_steps: Optional[int] = None,  # Ensuring efficiency
-                                  **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    def inference_stream(self,
+                         request_list: List[Dict[str, Any]],
+                         *,
+                         generation_config: Optional[Any] = None,
+                         generation_info: Optional[Dict[str, Any]] = None,
+                         lora_request: Optional['LoRARequest'] = None,
+                         use_tqdm: bool = False,
+                         flush_steps: Optional[int] = None,  # Ensuring efficiency
+                         **kwargs) -> Iterator[List[Dict[str, Any]]]:
         """
         generation_config: Priority: generation_config > model.generation_config.
         """
@@ -317,9 +320,9 @@ class TransformersFramework(InferFramework):
             generation_info = {}
         else:
             generation_info.clear()
-        inputs, tokenizer_kwargs, token_len, example = cls._prepare_inputs(
-            model,
-            template,
+        inputs, tokenizer_kwargs, token_len, example = self._prepare_inputs(
+            self.model,
+            self.template,
             query,
             history,
             system,
@@ -350,8 +353,8 @@ class TransformersFramework(InferFramework):
 
         def _model_generate(*args, **kwargs):
             if is_torch_npu_available():
-                torch.npu.set_device(model.device)
-            res = model.generate(*args, **kwargs)
+                torch.npu.set_device(self.llm_engine.device)
+            res = self.llm_engine.generate(*args, **kwargs)
             result_queue.put(res)
             return res
 
@@ -373,13 +376,13 @@ class TransformersFramework(InferFramework):
             except StopIteration:
                 is_finished = True
             res = {}
-            generate_ids = template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
+            generate_ids = self.template.get_generate_ids(torch.tensor(raw_generate_ids)[None], token_len)
             if return_dict and is_finished:
                 thread.join()
                 res = dict(result_queue.get())
                 res['sequences'] = generate_ids
             generation_info['num_generated_tokens'] = len(generate_ids)
-            response = template.generate_ids_to_response(
+            response = self.template.generate_ids_to_response(
                 generate_ids,
                 is_finished,
                 tokenizer_kwargs=tokenizer_kwargs,
@@ -405,18 +408,18 @@ class TransformersFramework(InferFramework):
 
     @staticmethod
     def _prepare_inputs(
-                        model: PreTrainedModel,
-                        template: Template,
-                        query: str,
-                        history: History,
-                        system: Optional[str] = None,
-                        images: Optional[List[str]] = None,
-                        *,
-                        generation_config: GenerationConfig,
-                        generation_info: Dict[str, Any],
-                        stop_words: Optional[StopWords] = None,
-                        adapter_names: Optional[List[str]] = None,
-                        **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
+            model: PreTrainedModel,
+            template: Template,
+            query: str,
+            history: History,
+            system: Optional[str] = None,
+            images: Optional[List[str]] = None,
+            *,
+            generation_config: GenerationConfig,
+            generation_info: Dict[str, Any],
+            stop_words: Optional[StopWords] = None,
+            adapter_names: Optional[List[str]] = None,
+            **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
         if stop_words is None:
             stop_words = []
 
