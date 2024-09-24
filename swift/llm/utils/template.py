@@ -18,6 +18,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import strtobool
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
@@ -177,6 +178,10 @@ class StopWordsCriteria(StoppingCriteria):
                 if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
                     return True
         return False
+
+
+def is_deepspeed_enabled():
+    return strtobool(os.environ.get('ACCELERATE_USE_DEEPSPEED', 'False'))
 
 
 class Template:
@@ -1504,7 +1509,28 @@ class _Qwen2VLTemplateMixin:
 
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
+        inputs['_data'] = {'plain_text': not images and not videos, 'input_ids': torch.tensor(input_ids)[None]}
         return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        plain_text = data.pop('plain_text', False)
+        if is_deepspeed_enabled() and plain_text:
+            from PIL import Image
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            processor = self.tokenizer.processor
+            media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+            input_ids = data['input_ids']
+            device = input_ids.device
+            pixel_values = media_inputs['pixel_values'].to(device)
+            _model = model.model
+            if not hasattr(_model, 'embed_tokens'):
+                _model = _model.model  # LoRA
+            inputs_embeds = _model.embed_tokens(input_ids)
+            pixel_values = pixel_values.type(model.visual.get_dtype())
+            image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            inputs_embeds += image_embeds.mean() * 0.
+            return {'inputs_embeds': inputs_embeds[0]}
+        return {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
@@ -2150,7 +2176,7 @@ class InternvlTemplate(Template):
             vit_embeds = model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
-        elif is_deepspeed_zero3_enabled():
+        elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
