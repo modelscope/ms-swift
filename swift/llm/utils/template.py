@@ -1820,6 +1820,7 @@ class Llama3_1OmniTemplate(Llama3Template):
               'and assist the user with a variety of tasks using natural language.')
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
+        assert media_type == 'audio'
         return [[-200]]
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1830,7 +1831,9 @@ class Llama3_1OmniTemplate(Llama3Template):
         audios = example['audios']
         input_ids = inputs['input_ids']
         labels = inputs['labels']
-        inputs['_data'] = {'inputs': torch.tensor(input_ids)[None]}
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
+        if labels is not None:
+            inputs['_data']['labels'] = torch.tensor(labels)[None]
         if audios:
             audios = load_batch(audios, whisper.load_audio)
             n_mels = get_env_args('n_mels', int, 128)
@@ -1839,22 +1842,24 @@ class Llama3_1OmniTemplate(Llama3Template):
                 audios[i] = whisper.log_mel_spectrogram(audio, n_mels=n_mels).permute(1, 0)
             audios = torch.stack(audios)
             inputs['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
-            if labels is not None:
-                inputs['_data']['labels'] = torch.tensor(labels)[None]
+
         return inputs, {}
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         speech = data.get('speech')
-        inputs = data['inputs']
+        input_ids = data['input_ids']
+        labels = data.get('labels')
         if speech is not None:
             speech_lengths = data['speech_lengths']
-            labels = data['labels']
             speech = speech.to(model.dtype)
-            inputs_embeds, labels = model.prepare_inputs_labels_for_speech_and_text(inputs, None, None, None, labels,
+            inputs_embeds, labels = model.prepare_inputs_labels_for_speech_and_text(input_ids, None, None, None, labels,
                                                                                     speech, speech_lengths)[4:]
         else:
-            inputs_embeds = model.get_model().embed_tokens(inputs)
-        return {'inputs_embeds': inputs_embeds[0]}
+            inputs_embeds = model.get_model().embed_tokens(input_ids)
+        res = {'inputs_embeds': inputs_embeds[0]}
+        if labels is not None:
+            res['labels'] = labels[0]
+        return res
 
 
 register_template(TemplateType.llama3_1_omni, Llama3_1OmniTemplate(), lazy_tokenize=True, use_model=True)

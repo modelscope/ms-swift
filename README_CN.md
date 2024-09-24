@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.09.24: 支持llama3_1-8b-omni的训练与部署. 使用`swift infer --model_type llama3_1-8b-omni`进行体验.
 - 2024.09.23: 支持pixtral-12b的训练与部署. 使用`swift infer --model_type pixtral-12b --dtype fp16`进行体验.
 - 🔥2024.09.19: 支持qwen2.5、qwen2.5-math、qwen2.5-coder系列模型. 支持qwen2-vl-72b系列模型. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2064).
 - 2024.09.07: 支持`Reflection-llama3-70b`模型， 使用`swift sft/infer --model_type reflection-llama_3_1-70b`命令即可训练和推理.
@@ -628,7 +629,8 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | PaliGemma                                               | Google                                                                     | 英文       | 3B               | chat模型       |
 | Florence                                                | 微软                                                                         | 英文       | 0.23B-0.77B      | chat模型       |
 | Idefics3                                | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | 英文       | 8B      | chat模型       |
-
+| Pixtral                                | [mistralai](https://huggingface.co/mistralai)                               | 英文       | 12B      | chat模型       |
+| Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | 英文       | 8B      | chat模型       |
 
 
 #### 扩散模型

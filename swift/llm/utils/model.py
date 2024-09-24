@@ -6538,7 +6538,8 @@ def get_model_tokenizer_omnli(model_dir: str,
     import whisper
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     model_config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
-    whisper.load_model('large-v3', download_root=model_dir)
+    if not os.path.exists(model_config.speech_encoder):
+        whisper.load_model('large-v3', download_root=model_dir)
     kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
     kwargs['model_config'] = model_config
     for key in ['forward', 'generate']:
