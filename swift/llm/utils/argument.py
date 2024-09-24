@@ -1049,7 +1049,7 @@ class SftArguments(ArgumentsBase):
                 self.eval_steps = 50
         elif self.sft_type == 'full':
             from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-            lora_target_modules = model_info.get('lora_target_modules')
+            lora_target_modules = model_info.get('lora_target_modules')  # model_group
             model_arch = None
             if isinstance(lora_target_modules, str):
                 model_arch = MODEL_KEYS_MAPPING[lora_target_modules]

@@ -639,6 +639,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Pixtral                                | [mistralai](https://huggingface.co/mistralai)                     | English       | 12B      | chat model       |
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
 
+
 #### Diffusion Models
 
 | Model Type          | Model Introduction                                                    | Language | Model Type        |
