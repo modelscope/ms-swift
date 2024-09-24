@@ -18,6 +18,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import strtobool
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
@@ -177,6 +178,10 @@ class StopWordsCriteria(StoppingCriteria):
                 if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
                     return True
         return False
+
+
+def is_deepspeed_enabled():
+    return strtobool(os.environ.get('ACCELERATE_USE_DEEPSPEED', 'False'))
 
 
 class Template:
@@ -2150,7 +2155,7 @@ class InternvlTemplate(Template):
             vit_embeds = model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
-        elif is_deepspeed_zero3_enabled():
+        elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
