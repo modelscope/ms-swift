@@ -5,17 +5,18 @@ import socket
 import time
 import uuid
 from bisect import bisect_right
-from contextlib import nullcontext
-from typing import List, Optional, Tuple
+from contextlib import nullcontext, contextmanager
+from typing import List, Optional, Tuple, Dict, Union
 
 import numpy as np
 import torch
 import torch.distributed as dist
-from torch.nn import Module
+from torch.nn import Module, Linear
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
 
 from .logger import get_logger
+from .module_mapping import MODEL_KEYS_MAPPING
 
 logger = get_logger()
 
