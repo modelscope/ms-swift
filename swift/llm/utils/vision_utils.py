@@ -292,7 +292,8 @@ def load_video_qwen2(video_path: str):
     if nframes is not None:
         nframes = round_by_factor(nframes, size_factor)
     else:
-        fps = FPS
+        if fps is None:
+            fps = FPS
         nframes = video.size(0) / info['video_fps'] * fps
         nframes = round_by_factor(nframes, size_factor)
         min_frames = get_env_args('min_frames', int, FPS_MIN_FRAMES)

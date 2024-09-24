@@ -1380,9 +1380,11 @@ class _Qwen2AudioTemplateMixin:
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = Template.data_collator(self, batch, padding_to)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        feature_attention_mask = [
+            b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
+        ]
         if input_features:
             res['input_features'] = torch.concat(input_features)
-            feature_attention_mask = [b['feature_attention_mask'] for b in batch]
             res['feature_attention_mask'] = torch.concat(feature_attention_mask)
         return res
 
