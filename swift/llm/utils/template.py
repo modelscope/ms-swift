@@ -1384,7 +1384,9 @@ class _Qwen2AudioTemplateMixin:
             input_ids = data['input_ids']
             inputs_embeds = model.get_input_embeddings()(input_ids)
             _, _ = model.audio_tower.conv1.weight.dtype, model.audio_tower.conv1.weight.device
-            input_features = input_ids.new_zeros((1, 128, 3000))
+            seq_len = model.audio_tower.config.max_source_positions * model.audio_tower.conv1.stride[
+                0] * model.audio_tower.conv2.stride[0]
+            input_features = input_ids.new_zeros((1, 128, seq_len))
             audio_outputs = model.audio_tower(input_features)
             selected_audio_feature = audio_outputs.last_hidden_state
             audio_features = model.multi_modal_projector(selected_audio_feature)
