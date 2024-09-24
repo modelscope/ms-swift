@@ -1391,7 +1391,7 @@ class _Qwen2AudioTemplateMixin:
             selected_audio_feature = audio_outputs.last_hidden_state
             audio_features = model.multi_modal_projector(selected_audio_feature)
 
-            inputs_embeds += audio_features.mean() * 0.
+            inputs_embeds = inputs_embeds + audio_features.mean() * 0.
             return {'inputs_embeds': inputs_embeds[0]}
         return {}
 
