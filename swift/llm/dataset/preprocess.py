@@ -90,8 +90,8 @@ class RowPreprocessor(GroundingMixin):
     has_tool: bool = False
     column_mapping: Dict[str, str] = {}
     modals: List[str] = []
-    modal_tags: List[str] = []
-    modal_keys: List[str] = []
+    modal_tags: List[str] = {}
+    modal_keys: List[str] = {}
 
     def __init__(self, **kwargs):
         if 'has_tool' in kwargs:
@@ -104,6 +104,11 @@ class RowPreprocessor(GroundingMixin):
             self.modal_tags = kwargs.pop('modal_tags')
         if 'modal_keys' in kwargs:
             self.modal_keys = kwargs.pop('modal_keys')
+        if self.modals:
+            if not self.modal_tags:
+                self.modal_tags = {modal: multimodal_tags[modal] for modal in self.modals}
+            if not self.modal_keys:
+                self.modal_keys = {modal: multimodal_keys[modal] for modal in self.modals}
 
     def replace_standard_tag(self, messages: Messages, medias: List[Any], modal: str):
         """Replace tags to standard tags,
@@ -121,14 +126,11 @@ class RowPreprocessor(GroundingMixin):
             Messages
         """
         assert len(self.modal_tags) == len(self.modals)
-        _modal_tag = None
-        for _modal, _tag in zip(self.modals, self.modal_tags):
-            if modal == _modal:
-                _modal_tag = _tag
+        _modal_tag = self.modal_tags[modal]
         assert _modal_tag is not None
         media_cnt = len(medias) if isinstance(medias, (tuple, list)) else 1 if medias else 0
         # like <image>, etc
-        standard_tag = standard_tags[modal]
+        standard_tag = multimodal_keys[modal]
         all_content = ''.join([m['content'] for m in messages])
         if _modal_tag in all_content:
             # If the messages already have placeholders like `<image>`
@@ -182,12 +184,14 @@ class RowPreprocessor(GroundingMixin):
         if self.has_tool:
             row['tools'] = None
         for _modal in self.modals:
-            row[standard_keys[_modal]] = None
+            row[multimodal_keys[_modal]] = None
         return row
 
     def map(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Map row, preprocess it and turn query/response to messages"""
         row.update(self.preprocess(row))
+        if self.modals:
+            row = self.prepare_multi_modal(row)
         self.query_to_message(row)
         return row
 
@@ -210,17 +214,21 @@ class RowPreprocessor(GroundingMixin):
         """
         for modal in self.modals:
             medias = self.parse_media_from_row(row, modal)
+            if 'messages' not in row:
+                row['messages'] = []
+            if self.task_type in self._grounding_prompts.keys():
+                query, response = self.construct_grounding_prompt()
+                row['messages'].append([
+                    {'role': 'user', 'content': query},
+                    {'role': 'assistant', 'content': response},
+                ])
             if medias:
                 row['messages'] = self.replace_standard_tag(row['messages'], medias, modal)
                 modal_key = self.modal_keys[modal]
                 if not isinstance(modal_key, str):
                     row[modal_key] = medias
                 else:
-                    row[standard_keys[modal]] = medias
-        if self.task_type in self._grounding_prompts.keys():
-            query, response = self.construct_grounding_prompt()
-            row['messages'][-2]['content'] = query
-            row['messages'][-1]['content'] = response
+                    row[multimodal_keys[modal]] = medias
         return row
 
     def prepare_map_kwargs(self, dataset: DATASET_TYPE, **kwargs):
@@ -248,12 +256,8 @@ class RowPreprocessor(GroundingMixin):
         """
         kwargs = self.prepare_map_kwargs(dataset, **kwargs)
         self.prepare_downloading(dataset)
-        if self.modal_keys or self.modals:
-            assert len(self.modal_keys) == len(self.modals)
 
         dataset = dataset.map(self.map, **kwargs)
-        if self.modals:
-            dataset = dataset.map(self.prepare_multi_modal, **kwargs)
         dataset = dataset.filter(self.filter, **kwargs)
 
         column_mapping = copy(self.column_mapping)

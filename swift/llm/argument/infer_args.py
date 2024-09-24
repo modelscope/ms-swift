@@ -82,6 +82,8 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
         GenerationArguments.__post_init__(self)
         DataArguments.__post_init__(self)
         handle_path(self)
+        from swift.hub import hub
+        hub.try_login(self.hub_token)
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
             logger.info('Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.')

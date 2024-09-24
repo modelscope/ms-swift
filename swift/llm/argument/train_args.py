@@ -55,6 +55,10 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     eval_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
 
+    def __post_init__(self):
+        from swift.hub import hub
+        hub.try_login(self.hub_token)
+
 
 @dataclass
 class MegatronArguments:
@@ -232,6 +236,7 @@ class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateAr
             self.dataloader_drop_last = True
 
     def __post_init__(self) -> None:
+        Seq2SeqTrainingOverrideArguments.__post_init__(self)
         ModelArguments.__post_init__(self)
         TunerArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
@@ -272,7 +277,7 @@ class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateAr
             self.save_total_limit = None
 
         if self.gradient_accumulation_steps is None:
-            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.world_size)
+            self.gradient_accumulation_steps = math.ceil(16 / self.batch_size / self.global_world_size)
 
         self._handle_streaming_args()
         if self.lazy_tokenize is None and not self.streaming:

@@ -16,6 +16,10 @@ logger = logging.get_logger(__name__)
 class HubOperation:
 
     @classmethod
+    def try_login(cls, token: Optional[str] = None) -> bool:
+        raise NotImplementedError
+
+    @classmethod
     def create_model_repo(cls, repo_id: str, token: Optional[str] = None, private: bool = False):
         """Create a model repo on the hub
 
@@ -144,21 +148,26 @@ class MSHub(HubOperation):
         huggingface_hub.upload_folder = partial(upload_folder, api)
         trainer.create_repo = create_repo
         trainer.upload_folder = partial(upload_folder, api)
-
+    
     @classmethod
-    def create_model_repo(cls, repo_id: str, token: Optional[str] = None,
-                          private: bool = False) -> str:
+    def try_login(cls, token: Optional[str] = None) -> bool:
         from modelscope import HubApi
-        from modelscope.hub.api import ModelScopeConfig
-        from modelscope.hub.constants import ModelVisibility
-        assert repo_id is not None, 'Please enter a valid hub_model_id'
-
         api = HubApi()
         if token is None:
             hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
         if token is not None:
             api.login(token)
-        else:
+            return True
+        return False
+
+    @classmethod
+    def create_model_repo(cls, repo_id: str, token: Optional[str] = None,
+                          private: bool = False) -> str:
+        from modelscope.hub.api import ModelScopeConfig
+        from modelscope.hub.constants import ModelVisibility
+        assert repo_id is not None, 'Please enter a valid hub_model_id'
+
+        if not cls.try_login(token):
             raise ValueError('Please specify a token by `--hub_token` or `MODELSCOPE_API_TOKEN=xxx`')
         MSHub.ms_token = token
         visibility = ModelVisibility.PRIVATE if private else ModelVisibility.PUBLIC
@@ -236,8 +245,10 @@ class MSHub(HubOperation):
                      streaming: bool = False,
                      revision: Optional[str] = None,
                      force_redownload: bool = False,
+                     token: Optional[str] = None,
                      ):
         from modelscope import MsDataset
+        cls.try_login(token)
         download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         if revision is None or revision == 'main':
             revision = 'master'
@@ -256,7 +267,9 @@ class MSHub(HubOperation):
                        revision: Optional[str] = None,
                        download_bin_files: bool = True,
                        ignore_file_pattern: Optional[str] = None,
+                       token: Optional[str] = None,
                        **kwargs):
+        cls.try_login(token)
         if revision is None or revision == 'main':
             revision = 'master'
         logger.info(f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}')
@@ -326,6 +339,10 @@ class MSHub(HubOperation):
 
 
 class HFHub(HubOperation):
+
+    @classmethod
+    def try_login(cls, token: Optional[str] = None) -> bool:
+        pass
 
     @classmethod
     def create_model_repo(cls, repo_id: str, token: Optional[str] = None,

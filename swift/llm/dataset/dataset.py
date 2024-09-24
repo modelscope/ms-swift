@@ -1068,6 +1068,7 @@ register_dataset(
 class RefCOCOCaptionPreprocessor(RowPreprocessor):
 
     task_type = 'caption'
+    modals = ['image']
 
     def prepare_downloading(self, dataset):
         self.cache_dir = MediaResource.download(
