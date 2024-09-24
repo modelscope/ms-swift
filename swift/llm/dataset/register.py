@@ -109,7 +109,7 @@ def register_local_dataset(
                 dataset_path[i] = os.path.join(base_dir, dataset_path[i])
     from swift.llm.dataset.loader import LocalDatasetLoader
     register_dataset(
-        dataset_name, get_function=LocalDatasetLoader.load_dataset_from_local, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
+        dataset_name, get_function=LocalDatasetLoader.dataset_get_function, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
 
 
 def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
@@ -140,7 +140,7 @@ def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs)
         subsets = d_info.pop('subsets', None)
         preprocess_func = d_info.pop('preprocess_func', None)
         from swift.llm.dataset.loader import LocalDatasetLoader, HubDatasetLoader
-        register_dataset(dataset_name, dataset_id, subsets, preprocess_func, HubDatasetLoader.load_dataset_from_hub, **d_info,
+        register_dataset(dataset_name, dataset_id, subsets, preprocess_func, HubDatasetLoader.dataset_get_function, **d_info,
                          exist_ok=True)
 
 
