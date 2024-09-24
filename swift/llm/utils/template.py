@@ -1483,9 +1483,6 @@ class _Qwen2VLTemplateMixin:
         labels = inputs['labels']
         images = example.get('images') or []
         videos = example.get('videos') or []
-        plain_text = False
-        if not images and not videos:
-            plain_text = True
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
@@ -1512,14 +1509,13 @@ class _Qwen2VLTemplateMixin:
 
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
-        if is_deepspeed_enabled() and plain_text:
-            inputs['_data'] = {'plain_text': True, 'input_ids': torch.tensor(input_ids)[None]}
+        inputs['_data'] = {'plain_text': not images and not videos, 'input_ids': torch.tensor(input_ids)[None]}
         return inputs, {}
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        from PIL import Image
         plain_text = data.pop('plain_text', False)
         if is_deepspeed_enabled() and plain_text:
+            from PIL import Image
             images = [Image.new('RGB', (32, 32), (0, 0, 0))]
             processor = self.tokenizer.processor
             media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
@@ -1533,7 +1529,8 @@ class _Qwen2VLTemplateMixin:
             pixel_values = pixel_values.type(model.visual.get_dtype())
             image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
             inputs_embeds += image_embeds.mean() * 0.
-        return {'inputs_embeds': inputs_embeds[0]}
+            return {'inputs_embeds': inputs_embeds[0]}
+        return {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
