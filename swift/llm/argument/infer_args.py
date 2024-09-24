@@ -7,12 +7,12 @@ from typing import List, Literal, Optional, Union, Tuple, Any
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
-from swift.llm.argument import TunerArguments
-from swift.llm.argument.utils import handle_path, load_from_ckpt_dir, prepare_ms_hub
-from swift.llm.dataset.dataset import standard_keys
+from .tuner_args import TunerArguments
+from .utils import handle_path, load_from_ckpt_dir
+from swift.llm.dataset.preprocess import standard_keys
 from transformers.utils.versions import require_version
-from swift.llm.argument.data_args import DataArguments, TemplateArguments
-from swift.llm.argument.model_args import QuantizeArguments, ModelArguments, GenerationArguments
+from .data_args import DataArguments, TemplateArguments
+from .model_args import QuantizeArguments, ModelArguments, GenerationArguments
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.template import TEMPLATE_MAPPING
 from swift.tuners.utils import swift_to_peft_format

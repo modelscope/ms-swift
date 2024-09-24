@@ -20,7 +20,7 @@ from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .data_args import TemplateArguments, DataArguments
 from .model_args import ModelArguments, QuantizeArguments, GenerationArguments
 from .tuner_args import TunerArguments
-from .utils import handle_path, load_from_ckpt_dir, prepare_ms_hub
+from .utils import handle_path, load_from_ckpt_dir
 from ..model.loader import MODEL_MAPPING
 from ..template import TEMPLATE_MAPPING
 from ...plugin.loss import LOSS_MAPPING
@@ -31,6 +31,7 @@ from ...utils.import_utils import is_liger_available
 logger = get_logger()
 
 
+@dataclass
 class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     """Override the default value in `Seq2SeqTrainingArguments`"""
 
@@ -52,7 +53,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     warmup_ratio: float = 0.05
     dataloader_num_workers: Optional[int] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
-    evaluation_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
+    eval_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
 
 
 @dataclass
@@ -67,7 +68,7 @@ class MegatronArguments:
 
 
 @dataclass
-class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
+class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments, Seq2SeqTrainingOverrideArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
@@ -250,7 +251,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
             self.save_steps = self.eval_steps
         self.train_sampler_random = not self.test_oom_error
         self.handle_lr_scheduler_kwargs()
-        self.rank, self.local_rank, self.world_size, self.local_world_size = get_dist_setting()
+        self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
 
         if self.train_backend == 'megatron' and self.sft_type == 'lora':
             logger.warning('Currently, only full parameter is supported. Setting args.sft_type: "full"')
@@ -333,9 +334,9 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, ModelArg
             if k in parameters:
                 kwargs[k] = getattr(self, k)
         if 'eval_strategy' in parameters:
-            kwargs['eval_strategy'] = self.evaluation_strategy
+            kwargs['eval_strategy'] = self.eval_strategy
         else:
-            kwargs['evaluation_strategy'] = self.evaluation_strategy
+            kwargs['evaluation_strategy'] = self.eval_strategy
 
         if 'accelerator_config' in parameters:
             kwargs['accelerator_config'] = {'dispatch_batches': False}

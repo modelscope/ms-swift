@@ -9,10 +9,10 @@ from typing import Dict, List, Optional, Tuple, Union
 from torch.nn import Module
 from transformers import GenerationConfig
 
-from swift.llm.template.base import Messages
 from swift.utils import upper_bound
 
 History = List[Union[Tuple[str, str], List[str]]]
+Messages = List[Dict[str, Union[str, List[Dict]]]]
 
 
 from typing import Any, Mapping, Sequence

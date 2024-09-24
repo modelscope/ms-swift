@@ -1,8 +1,6 @@
 from peft import get_peft_model, PeftModel
 from peft import IA3Config
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
-
-from swift.llm.argument.train_args import SftArguments
 from swift.utils.torch_utils import find_all_linears
 
 
@@ -24,7 +22,7 @@ class Tuner:
 class IA3(Tuner):
 
     @staticmethod
-    def prepare_model(model, args: SftArguments):
+    def prepare_model(model, args: 'SftArguments'):
         model_group = args.get_model_group()
         mapping: ModelKeys = MODEL_KEYS_MAPPING.get(model_group)
 

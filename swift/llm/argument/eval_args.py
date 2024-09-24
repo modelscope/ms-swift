@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 from .infer_args import InferArguments
-from swift.llm.infer.client_utils import get_model_list_client
 
 
 @dataclass
@@ -35,6 +34,7 @@ class EvalArguments(InferArguments):
         if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
             self.eval_dataset = []
         if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
+            from swift.llm.infer.client_utils import get_model_list_client
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:
                 self.eval_is_chat_model = model.is_chat

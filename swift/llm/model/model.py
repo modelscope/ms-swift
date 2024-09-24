@@ -25,10 +25,10 @@ from transformers.utils.versions import require_version
 from swift import get_logger
 from swift.llm.template.template import TemplateType, get_env_args
 from swift.utils import get_dist_setting, subprocess_run, use_torchacc
+from . import ConfigReader
 from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING, safe_snapshot_download
 from .patcher import patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
     patch_output_to_input_device, patch_output_clone, patch_baichuan2_lm_head_forward, patch_fixed_device
-from .utils import get_max_model_len, to_device
 from ...utils.torch_utils import safe_ddp_context
 
 logger = get_logger()
@@ -5872,7 +5872,7 @@ def get_model_tokenizer(model_type: Optional[str] = None,
     is_multimodal = 'multi-modal' in model_info.get('tags', [])
 
     if model is not None:
-        model.max_model_len = get_max_model_len(model.config)
+        model.max_model_len = ConfigReader.get_max_model_len(model.config)
         logger.info(f'model.max_model_len: {model.max_model_len}')
         model.model_type = model_type
         model.model_dir = model_dir

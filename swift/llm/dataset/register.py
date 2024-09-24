@@ -14,7 +14,7 @@ from swift.utils import get_logger
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
-DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
+from .loader import DATASET_MAPPING
 PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 

@@ -10,11 +10,9 @@ from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-from swift.llm.infer.client_utils import decode_base64
-from swift.llm.utils import to_device
+from swift.llm.utils import to_device, decode_base64
 from swift.plugin.loss_scale import loss_scale_map
 from swift.llm.dataset.dataset import standard_keys
-from swift.llm.template.template import replace_img_tag, _findall
 from swift.plugin.tools_prompt import get_tools_prompt
 from swift.utils.utils import fetch_one
 from swift.utils.vision_utils import (load_batch, load_image, rescale_image)
@@ -29,7 +27,42 @@ Prompt = List[Union[str, List[int], List[str]]]
 StopWords = Prompt
 Context = Union[str, List[int]]
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
-Messages = List[Dict[str, Union[str, List[Dict]]]]
+
+
+def _findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
+    """Find the index of a token in the token_list."""
+    if isinstance(sub_token_list, int):
+        sub_token_list = [sub_token_list]
+    res = []
+    idx = -1
+    try:
+        while True:
+            idx = token_list.index(sub_token_list[0], idx + 1)
+            if len(sub_token_list) == 1 or sub_token_list == token_list[idx:idx + len(sub_token_list)]:
+                res.append(idx)
+    except ValueError:
+        pass
+    return res
+
+
+def replace_img_tag(query: str,
+                    history: History,
+                    replace_token: str,
+                    pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
+    images_path = []
+    new_history = []
+    for i, h in enumerate(history):
+        if h[0] is None:
+            new_history.append(h.copy())
+        else:
+            images_path += re.findall(pattern, h[0])
+            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
+    if query is None:
+        new_query = query  # pretrain dataset
+    else:
+        images_path += re.findall(pattern, query)
+        new_query = re.sub(pattern, replace_token, query)
+    return new_query, new_history, images_path
 
 
 class StopWordsCriteria(StoppingCriteria):

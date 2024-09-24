@@ -10,18 +10,17 @@ import torch.nn.functional as F
 import transformers
 from accelerate.utils import find_device
 from packaging import version
-from torch import Tensor, Module
+from torch import Tensor
 from torch.nn import Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import GPTQConfig, PretrainedConfig
 from transformers import (trainer)
 from transformers.integrations import is_deepspeed_zero3_enabled
-
+from swift.llm.utils import to_device
 from swift import get_logger
 from swift.utils import is_ddp_plus_mp, get_dist_setting, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
 from .config import ConfigReader
-from .utils import to_device
 
 logger = get_logger()
 
@@ -175,7 +174,6 @@ def patch_output_to_input_device(module: torch.nn.Module):
 
 
 def _pre_forward_hook(model, template, args, kwargs):
-    from .utils import to_device
     if '_data' in kwargs:
         res_extra = []
         data = kwargs.pop('_data')

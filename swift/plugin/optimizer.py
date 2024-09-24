@@ -1,6 +1,6 @@
 from transformers import Trainer
 
-from swift.llm import calculate_max_steps
+from swift.llm.utils import calculate_max_steps
 from swift.trainers.optimizers.galore import create_optimizer_and_scheduler
 
 
@@ -15,7 +15,8 @@ def create_galore_optimizers(model, args):
         weight_decay=args.weight_decay)
 
 
-def create_lorap_optimizers(model, args, training_steps):
+def create_lorap_optimizers(model, args):
+    training_steps = calculate_max_steps(args)
     args = args.training_args
     optimizer_grouped_parameters = None
     if hasattr(model, 'create_optimizer_param_groups'):
@@ -44,7 +45,7 @@ def create_lorap_optimizers(model, args, training_steps):
     return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs), None
 
 
-def default_create_optimizers():
+def default_create_optimizers(model, args):
     return None, None
 
 

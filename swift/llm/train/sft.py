@@ -20,7 +20,7 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
                          get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
-from ..argument import SftArguments, RLHFArguments, PtArguments
+from swift.llm.argument import SftArguments, RLHFArguments, PtArguments
 from ..dataset.loader import DatasetLoader
 from ..dataset.utils import print_example, LazyLLMDataset, ConstantLengthDataset, stat_dataset, dataset_map, \
     sort_by_max_length
@@ -133,7 +133,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     else:
         print(f'device_count: {torch.cuda.device_count()}')
     print(f'rank: {args.rank}, local_rank: {args.local_rank}, '
-          f'world_size: {args.world_size}, local_world_size: {args.local_world_size}')
+          f'world_size: {args.global_world_size}, local_world_size: {args.local_world_size}')
 
     # Loading Model and Tokenizer
     if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
@@ -291,7 +291,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
 
     if not isinstance(args, RLHFArguments):
-        return model, template, callbacks
+        return model, template, callbacks, optimizers
 
     # ref_model
     ref_model = None

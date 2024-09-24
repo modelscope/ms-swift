@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .export import export_main
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
-    from .argument import EvalArguments, InferArguments, SftArguments, ExportArguments, WebuiArguments, DeployArguments, RLHFArguments
+    from .argument import EvalArguments, InferArguments, SftArguments, ExportArguments, WebuiArguments, DeployArguments, RLHFArguments, WebuiArguments, AppUIArguments
     from .template import TEMPLATE_MAPPING, Template, StopWords, InferTemplate, get_template
     from .model import MODEL_MAPPING, ModelType, get_model_tokenizer
     from .dataset import AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, \
@@ -29,7 +29,7 @@ else:
         'export': ['export_main'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
-        "argument": ['EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebuiArguments', 'DeployArguments', 'RLHFArguments'],
+        "argument": ['EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebuiArguments', 'DeployArguments', 'RLHFArguments', 'WebuiArguments', 'AppUIArguments'],
         'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'InferTemplate', 'get_template'],
         'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer'],
         'dataset': ['AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor',

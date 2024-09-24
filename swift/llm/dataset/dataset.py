@@ -28,7 +28,6 @@ dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False')
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
     'videos', 'audios', 'tools', 'label'
@@ -36,7 +35,6 @@ standard_keys = {
 
 
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
-DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 logger = get_logger()
 
@@ -200,7 +198,7 @@ register_dataset(
     'AI-ModelScope/alpaca-gpt4-data-zh',
     None,
     AlpacaPreprocessor(concat_inst_inp=_concat_inst_inp_alpaca_zh),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'general', '🔥'],
     hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh')
 
@@ -238,7 +236,7 @@ register_dataset(
                 user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')
         ]
     ),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['images'],
     tags=['vqa', 'multi-modal'],
     hf_dataset_id='OpenGVLab/ShareGPT-4o')
@@ -273,7 +271,7 @@ register_dataset(
     'Tongyi-DataEngine/SA1B-Paired-Captions-Images',
     None,
     SA1BPairedCaptionPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train'],
     huge_dataset=True,
     tags=['zh', 'multi-modal', 'vqa'])
@@ -309,7 +307,7 @@ register_dataset(
     'Tongyi-DataEngine/SA1B-Dense-Caption',
     None,
     SA1BDenseCaptionPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train'],
     huge_dataset=True,
     tags=['zh', 'multi-modal', 'vqa'])
@@ -347,7 +345,7 @@ register_dataset(
     DatasetName.coco_en,
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
     COCO2014Preprocess(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['chat', 'multi-modal', 'vision'],
     is_main=False)
@@ -356,7 +354,7 @@ register_dataset(
     DatasetName.coco_en_mini,
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
     COCO2014Preprocess(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['validation'],
     tags=['chat', 'multi-modal', 'vision', '🔥'],
     is_main=False)
@@ -400,7 +398,7 @@ def get_mantis_dataset(dataset_id: str,
         subset_split_list = list(itertools.product(subsets, split))
     all_datasets = []
     for subset in subset_split_list:
-        dataset = HubDatasetLoader.load_dataset_from_hub(dataset_id, [subset], use_hf, streaming=streaming)
+        dataset = HubDatasetLoader.dataset_get_function(dataset_id, [subset], use_hf, streaming=streaming)
         dataset = preprocess_mantis_image(dataset, subset=subset[0])
         all_datasets.append(dataset)
         break
@@ -481,7 +479,7 @@ register_dataset(
             media_key='images')
 
     ]),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train'],
     tags=['sft', 'multi-modal', 'quality'],
     hf_dataset_id='TIGER-Lab/llava-data')
@@ -518,7 +516,7 @@ register_dataset(
     DatasetName.coco_en_2,
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
     COCOEn2Preprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['chat', 'multi-modal', 'vision'],
     is_main=False)
@@ -527,7 +525,7 @@ register_dataset(
     DatasetName.coco_en_2_mini,
     'modelscope/coco_2014_caption', ['coco_2014_caption'],
     COCOEn2Preprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['validation'],
     tags=['chat', 'multi-modal', 'vision', '🔥'],
     is_main=False)
@@ -556,7 +554,7 @@ register_dataset(
     'swift/pixelprose',
     None,
     PixelProsePreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'cc12m', 'commonpool', 'redcaps'],
     hf_dataset_id='tomg-group-umd/pixelprose',
     tags=['caption', 'multi-modal', 'vision'],
@@ -584,7 +582,7 @@ register_dataset(
     'speech_asr/speech_asr_aishell1_trainsets',
     None,
     AIShell1Preprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation', 'test'],
     tags=['chat', 'multi-modal', 'audio'])
 
@@ -593,7 +591,7 @@ register_dataset(
     'speech_asr/speech_asr_aishell1_trainsets',
     None,
     AIShell1Preprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['validation', 'test'],
     tags=['chat', 'multi-modal', 'audio', '🔥'],
     is_main=False)
@@ -622,7 +620,7 @@ register_dataset(
     DatasetName.video_chatgpt,
     'swift/VideoChatGPT', ['Generic', 'Temporal', 'Consistency'],
     VideoChatGPTPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['test'],
     hf_dataset_id='lmms-lab/VideoChatGPT',
     tags=['chat', 'multi-modal', 'video', '🔥'])
@@ -646,7 +644,7 @@ register_dataset(
         AlpacaPreprocessor(),
         LongAlpacaPreprocessor()
     ]),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['longlora', 'QA'],
     hf_dataset_id='Yukang/LongAlpaca-12k')
 
@@ -673,7 +671,7 @@ register_dataset(
     DatasetName.ruozhiba,
     'AI-ModelScope/ruozhiba', ['post-annual', 'title-good', 'title-norm'],
     RuozhibaPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['pretrain', '🔥'])
 
 
@@ -697,7 +695,7 @@ register_dataset(
     'iic/ms_bench',
     None,
     ConversationsPreprocessor(repair_conversations=_repair_ms_bench, error_strategy='delete'),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'general', 'multi-round', '🔥'])
 
 
@@ -727,7 +725,7 @@ register_dataset(
     None,
     ConversationsPreprocessor(
         repair_conversations=partial(_repair_agent_conversations, use_mini=True), error_strategy='delete'),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['chat', 'agent', 'multi-round'],
     is_main=False)
@@ -737,7 +735,7 @@ register_dataset(
     None,
     ConversationsPreprocessor(
         repair_conversations=partial(_repair_agent_conversations, use_mini=False), error_strategy='delete'),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['chat', 'agent', 'multi-round'])
 
@@ -749,7 +747,7 @@ register_dataset(
     'lvjianjin/AdvertiseGen',
     None,
     TextGenerationPreprocessor(prompt=advertise_gen_prompt, query_key='content', response_key='summary'),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['text-generation', '🔥'],
     hf_dataset_id='shibing624/AdvertiseGen')
@@ -798,7 +796,7 @@ register_dataset(
     DatasetName.cmnli_zh,
     'modelscope/clue', ['cmnli'],
     ClsPreprocessor(['neutral', 'entailment', 'contradiction'], 'Natural Language Inference', True),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['text-generation', 'classification'],
     hf_dataset_id='clue')
@@ -808,7 +806,7 @@ register_dataset(
     'DAMO_NLP/jd',
     None,
     ClsPreprocessor(['negative', 'positive'], 'Sentiment Classification', False),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['text-generation', 'classification', '🔥'])
 
@@ -832,7 +830,7 @@ register_dataset(
     'modelscope/DuReader_robust-QG',
     None,
     DureaderPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation', 'test'],
     tags=['text-generation', '🔥'])
 
@@ -883,7 +881,7 @@ register_dataset(
     DatasetName.hh_rlhf,
     'AI-ModelScope/hh-rlhf', ['harmless-base', 'helpful-base', 'helpful-online', 'helpful-rejection-sampled'],
     HHRLHFPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'test'],
     tags=['rlhf', 'dpo', 'pairwise'])
 
@@ -951,7 +949,7 @@ register_dataset(
     'AI-ModelScope/hh_rlhf_cn',
     ['hh_rlhf', 'harmless_base_cn', 'harmless_base_en', 'helpful_base_cn', 'helpful_base_en'],
     HHRLHFCNPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'test'],
     tags=['rlhf', 'dpo', 'pairwise', '🔥'])
 
@@ -974,7 +972,7 @@ register_dataset(
         'flickr8k-cn'
     ],
     M3ITPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train'],
     huge_dataset=True,
     tags=['chat', 'multi-modal', 'vision'])
@@ -1030,7 +1028,7 @@ register_dataset(
         ConversationsPreprocessor(
                 user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     ]),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train'],
     huge_dataset=True,
     tags=['chat', 'multi-modal', 'vision'])
@@ -1060,7 +1058,7 @@ register_dataset(
     DatasetName.text_caps,
     'swift/TextCaps', [],
     preprocess_func=TextCapsPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'val'],
     hf_dataset_id='HuggingFaceM4/TextCaps',
     huge_dataset=True,
@@ -1103,7 +1101,7 @@ register_dataset(
     DatasetName.refcoco_unofficial_caption,
     'swift/refcoco', [],
     preprocess_func=RefCOCOCaptionPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcoco',
     tags=['multi-modal', 'en', 'caption'])
@@ -1112,7 +1110,7 @@ register_dataset(
     DatasetName.refcocog_unofficial_caption,
     'swift/refcocog', [],
     preprocess_func=RefCOCOCaptionPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcocog',
     tags=['multi-modal', 'en', 'caption'])
@@ -1126,7 +1124,7 @@ register_dataset(
     DatasetName.refcoco_unofficial_grounding,
     'swift/refcoco', [],
     preprocess_func=RefCOCOGroundingPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcoco',
     tags=['multi-modal', 'en', 'grounding'])
@@ -1135,7 +1133,7 @@ register_dataset(
     DatasetName.refcocog_unofficial_grounding,
     'swift/refcocog', [],
     preprocess_func=RefCOCOGroundingPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='jxu124/refcocog',
     tags=['multi-modal', 'en', 'grounding'])
@@ -1144,7 +1142,7 @@ register_dataset(
     DatasetName.lnqa,
     'swift/lnqa', [],
     preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='vikhyatk/lnqa',
     huge_dataset=True,
@@ -1191,7 +1189,7 @@ register_dataset(
         ConversationsPreprocessor(
             user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
     ]),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train'],
     revision='d5db3806e395c60496630a206c336932e85a2d00',
     tags=['chat', 'multi-modal', 'vision'])
@@ -1219,7 +1217,7 @@ register_dataset(
         value_key='content',
         error_strategy='delete',
         repair_conversations=repair_conversations),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='lmsys/lmsys-chat-1m',
     tags=['chat', 'em'])
 
@@ -1256,7 +1254,7 @@ register_dataset(
                     user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')
         ]
     ),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train'],
     hf_dataset_id='liuhaotian/LLaVA-Pretrain',
     huge_dataset=True,
@@ -1280,7 +1278,7 @@ register_dataset(
     DatasetName.shareai_llama3_dpo_zh_en_emoji,
     'hjh0119/shareAI-Llama3-DPO-zh-en-emoji', ['default'],
     ShareAIDPOPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['rlhf', 'dpo', 'pairwise'])
 
 
@@ -1292,7 +1290,7 @@ register_dataset(
     DatasetName.ultrafeedback_kto,
     'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto', ['default'],
     UltraFeedbackKTOPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     remove_useless_columns=False,
     tags=['rlhf', 'kto'])
 
@@ -1305,7 +1303,7 @@ register_dataset(
     DatasetName.zhihu_kol_filtered,
     'OmniData/Zhihu-KOL-More-Than-100-Upvotes', ['default'],
     ZhihuKOLPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='bzb2023/Zhihu-KOL-More-Than-100-Upvotes',
     tags=['zhihu', 'qa'])
 
@@ -1313,7 +1311,7 @@ register_dataset(
     DatasetName.zhihu_kol,
     'OmniData/Zhihu-KOL', ['default'],
     ZhihuKOLPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='wangrui6/Zhihu-KOL',
     huge_dataset=True,
     tags=['zhihu', 'qa'])
@@ -1359,7 +1357,7 @@ register_dataset(
     DatasetName.guanaco,
     'AI-ModelScope/GuanacoDataset', ['default'],
     GuanacoPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='JosephusCheung/GuanacoDataset',
     tags=['chat', 'zh'])
 
@@ -1388,7 +1386,7 @@ register_dataset(
     DatasetName.dolly_15k,
     'AI-ModelScope/databricks-dolly-15k', ['default'],
     Dolly15kPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='databricks/databricks-dolly-15k',
     tags=['multi-task', 'en', 'quality'])
 
@@ -1403,7 +1401,7 @@ register_dataset(
         inner_key='data',
         modals=['image'],
         modal_keys=['image']),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='WinterSchool/MideficsDataset',
     tags=['medical', 'en', 'vqa'])
 
@@ -1427,7 +1425,7 @@ register_dataset(
     DatasetName.okvqa,
     'swift/OK-VQA_train', [],
     preprocess_func=OkvqaPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train'],
     hf_dataset_id='Multimodal-Fatima/OK-VQA_train',
     tags=['multi-modal', 'en', 'vqa', 'quality'])
@@ -1452,7 +1450,7 @@ register_dataset(
     DatasetName.a_okvqa,
     'swift/A-OKVQA', [],
     preprocess_func=AOkvqaPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='HuggingFaceM4/A-OKVQA',
     tags=['multi-modal', 'en', 'vqa', 'quality'])
@@ -1478,7 +1476,7 @@ register_dataset(
     DatasetName.ocr_vqa,
     'swift/OCR-VQA', [],
     preprocess_func=OcrvqaPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='howard-hou/OCR-VQA',
     tags=['multi-modal', 'en', 'ocr-vqa'])
@@ -1504,7 +1502,7 @@ register_dataset(
     DatasetName.science_qa,
     'swift/ScienceQA', [],
     preprocess_func=ScienceQAPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='derek-thomas/ScienceQA',
     tags=['multi-modal', 'science', 'vqa', 'quality'])
@@ -1572,7 +1570,7 @@ register_dataset(
     DatasetName.grit,
     'swift/GRIT', [],
     preprocess_func=GritPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['train'],
     hf_dataset_id='zzliang/GRIT',
     huge_dataset=True,
@@ -1601,7 +1599,7 @@ register_dataset(
     DatasetName.gqa,
     None, ['train_all_instructions'],
     GQAPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     hf_dataset_id='lmms-lab/GQA',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'vqa', 'quality'])
@@ -1631,7 +1629,7 @@ register_dataset(
     DatasetName.llava_instruct_mix,
     'swift/llava-instruct-mix-vsft', [],
     LLaVAMixSFTPreprocessor(),
-    get_function=HubDatasetLoader.load_dataset_from_hub,
+    get_function=HubDatasetLoader.dataset_get_function,
     split=['test'],
     hf_dataset_id='HuggingFaceH4/llava-instruct-mix-vsft',
     tags=['multi-modal', 'en', 'vqa', 'quality'])
@@ -1698,7 +1696,7 @@ register_dataset(
     DatasetName.orpo_dpo_mix_40k,
     'AI-ModelScope/orpo-dpo-mix-40k', ['default'],
     OrpoDPOMix40kPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='mlabonne/orpo-dpo-mix-40k',
     tags=['dpo', 'orpo', 'en', 'quality'])
 
@@ -1724,7 +1722,7 @@ register_dataset(
     DatasetName.synthetic_text_to_sql,
     'AI-ModelScope/synthetic_text_to_sql', ['default'],
     SyntheticText2SqlPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='gretelai/synthetic_text_to_sql',
     tags=['nl2sql', 'en'])
 
@@ -1732,7 +1730,7 @@ register_dataset(
     DatasetName.sharegpt,
     'swift/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
     ListPreprocessor(user_key='human', assistant_key='assistant'),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'general', 'multi-round'])
 
 
@@ -1754,7 +1752,7 @@ register_dataset(
     'AI-ModelScope/LaTeX_OCR',
     ['full'],
     LatexocrPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['validation', 'test'],  # There are some problems in the training dataset.
     hf_dataset_id='linxy/LaTeX_OCR',
     tags=['chat', 'ocr', 'multi-modal', 'vision'])
@@ -1763,7 +1761,7 @@ register_dataset(
     DatasetName.latex_ocr_handwrite,
     'AI-ModelScope/LaTeX_OCR', ['synthetic_handwrite'],
     LatexocrPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation', 'test'],
     hf_dataset_id='linxy/LaTeX_OCR',
     tags=['chat', 'ocr', 'multi-modal', 'vision'])
@@ -1788,7 +1786,7 @@ register_dataset(
     'AI-ModelScope/captcha-images',
     None,
     CapchaImagesPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     tags=['chat', 'multi-modal', 'vision'])
 
@@ -1804,8 +1802,8 @@ register_dataset(
     DatasetName.toolbench_for_alpha_umi,
     'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'],
     # TODO
-    ConversationsPreprocessor('system', system_role='-', repair_conversations=_repair_toolbench),
-    HubDatasetLoader.load_dataset_from_hub,
+    ConversationsPreprocessor(system_role='system', repair_conversations=_repair_toolbench),
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'agent', '🔥'],
     huge_dataset=True)
 
@@ -1827,7 +1825,7 @@ register_dataset(
     'AI-ModelScope/blossom-math-v2',
     None,
     BlossomMathPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'math', '🔥'],
     hf_dataset_id='Azure99/blossom-math-v2')
 
@@ -1843,7 +1841,7 @@ register_dataset(
         }),
         AlpacaPreprocessor(),
     ]),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'sql', '🔥'],
     hf_dataset_id='b-mc2/sql-create-context')
 
@@ -1872,7 +1870,7 @@ register_dataset(
     'AI-ModelScope/tigerbot-law-plugin',
     None,
     TigerBotLawPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['text-generation', 'law', 'pretrained'],
     hf_dataset_id='TigerResearch/tigerbot-law-plugin')
 
@@ -1900,7 +1898,7 @@ register_dataset(
     'AI-ModelScope/leetcode-solutions-python',
     None,
     LeetcodePythonPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'coding', '🔥'])
 
 
@@ -1916,7 +1914,7 @@ register_dataset(
     'huangjintao/AgentInstruct_copy', ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
     ConversationsPreprocessor(user_role='human', assistant_role='gpt',
                               repair_conversations=_repair_conversations_agent_instruct),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'agent', 'multi-round'])
 
 
@@ -2031,7 +2029,7 @@ register_dataset(
     DatasetName.mind2web,
     'swift/Multimodal-Mind2Web', [],
     preprocess_mind2web,
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     hf_dataset_id='osunlp/Multimodal-Mind2Web',
     tags=['agent', 'multi-modal'])
 
@@ -2068,7 +2066,7 @@ register_dataset(
     'iic/MSAgent-MultiRole',
     None,
     MultiRoleAgentPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
 
 
@@ -2080,7 +2078,7 @@ register_dataset(
         from_key='from',
         value_key='value',
     ),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     remove_useless_columns=False,
     tags=['chat', 'agent', 'multi-round'])
 
@@ -2121,7 +2119,7 @@ register_dataset(
     DatasetName.hc3_zh,
     'simpleai/HC3-Chinese', ['baike', 'open_qa', 'nlpcc_dbqa', 'finance', 'medicine', 'law', 'psychology'],
     _preprocess_hc3,
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3-Chinese')
 
@@ -2129,7 +2127,7 @@ register_dataset(
     DatasetName.hc3_en,
     'simpleai/HC3', ['finance', 'medicine'],
     _preprocess_hc3,
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3')
 
@@ -2145,6 +2143,6 @@ register_dataset(
     DatasetName.rlaif_v,
     'swift/RLAIF-V-Dataset', ['default'],
     RLAIFVPreprocessor(),
-    HubDatasetLoader.load_dataset_from_hub,
+    HubDatasetLoader.dataset_get_function,
     tags=['rlhf', 'dpo', 'multi-modal', 'en'],
     hf_dataset_id='openbmb/RLAIF-V-Dataset')

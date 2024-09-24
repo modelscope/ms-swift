@@ -53,7 +53,7 @@ def handle_path(args: Union['SftArguments', 'InferArguments']) -> None:
         value = getattr(args, k, None)
         if value is None:
             continue
-        value = args._check_path(value, k, check_exist_path_set)
+        value = _check_path(value, k, check_exist_path_set)
         setattr(args, k, value)
 
 
