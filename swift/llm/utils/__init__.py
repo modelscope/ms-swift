@@ -34,7 +34,7 @@ logger = get_logger()
 try:
     if is_vllm_available():
         from .vllm_utils import (VllmGenerationConfig, get_vllm_engine, inference_stream_vllm, inference_vllm,
-                                 prepare_vllm_engine_template)
+                                 prepare_vllm_engine_template, add_vllm_request)
         try:
             from .vllm_utils import LoRARequest
         except ImportError:
