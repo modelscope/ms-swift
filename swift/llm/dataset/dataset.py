@@ -29,7 +29,7 @@ dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False')
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 standard_keys = {
-    'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
+    'messages', 'rejected_response', 'images', 'objects',
     'videos', 'audios', 'tools', 'label'
 }
 

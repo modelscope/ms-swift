@@ -3,7 +3,7 @@ import math
 from contextlib import contextmanager
 from functools import wraps
 from typing import Any, Dict, List, Mapping, Optional, Union
-
+from functools import partial
 import accelerate
 import torch
 import torch.nn.functional as F
@@ -173,7 +173,7 @@ def patch_output_to_input_device(module: torch.nn.Module):
     module.register_forward_hook(_output_to_input_device_hook, with_kwargs=True)
 
 
-def _pre_forward_hook(model, template, args, kwargs):
+def _pre_forward_hook(model, args, kwargs, template):
     if '_data' in kwargs:
         res_extra = []
         data = kwargs.pop('_data')
@@ -190,7 +190,7 @@ def _pre_forward_hook(model, template, args, kwargs):
 
 
 @contextmanager
-def training_context(models: List[Module]):
+def training_context(models: List[Module], templates: List['Template']):
     """This function is important for multi-modal training
         Some models need to convert or generate input_embeds before forward, and this part need gradients also.
         So this must happens after the template.encode and data_collator, and befores the forward operation.
@@ -198,10 +198,10 @@ def training_context(models: List[Module]):
         models: List of Modules
     """
     handles = []
-    for model in models:
+    for model, template in zip(models, templates):
         parameters = inspect.signature(model.register_forward_pre_hook).parameters
         if 'with_kwargs' in parameters:
-            handle = model.register_forward_pre_hook(_pre_forward_hook, with_kwargs=True)
+            handle = model.register_forward_pre_hook(partial(_pre_forward_hook, template=template), with_kwargs=True)
             handles.append(handle)
 
     _deepspeed_initialize = None

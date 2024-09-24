@@ -9,7 +9,7 @@ from datasets import IterableDataset as HfIterableDataset
 
 from .tuner_args import TunerArguments
 from .utils import handle_path, load_from_ckpt_dir
-from swift.llm.dataset.preprocess import standard_keys
+from swift.llm.dataset.preprocess import multimodal_keys
 from transformers.utils.versions import require_version
 from .data_args import DataArguments, TemplateArguments
 from .model_args import QuantizeArguments, ModelArguments, GenerationArguments
@@ -162,7 +162,7 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
         if self.infer_media_type == 'none' and self.is_multimodal:
             self.infer_media_type = 'interleave'
         self.media_type = template_info.get('media_type', 'image')
-        self.media_key = standard_keys.get(self.media_type, 'images')
+        self.media_key = multimodal_keys.get(self.media_type, 'images')
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 

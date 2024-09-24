@@ -443,15 +443,16 @@ class DatasetLoader(ABC):
                     else:
                         model_n, model_a = model_name[1], model_author[1]
 
-                    messages.append({
+                    messages.append({'messages':
+                        [{
                                     'role': 'user',
                                     'content': row['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                                })
-                    messages.append({
+                                },
+                    {
                                     'role': 'assistant',
                                     'content': row['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                                })
-                dataset = dataset.remove_columns('response').remove_columns('query').remove_columns('tag').add_column('messages', messages)
+                                }]})
+                dataset = HfDataset.from_list(messages)
             res_d_list.append(dataset)
         return tuple(res_d_list)
 

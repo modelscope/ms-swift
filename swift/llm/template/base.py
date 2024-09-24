@@ -12,7 +12,7 @@ from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.utils import to_device, decode_base64
 from swift.plugin.loss_scale import loss_scale_map
-from swift.llm.dataset.dataset import standard_keys
+from swift.llm.dataset.preprocess import multimodal_keys
 from swift.plugin.tools_prompt import get_tools_prompt
 from swift.utils.utils import fetch_one
 from swift.utils.vision_utils import (load_batch, load_image, rescale_image)
@@ -317,7 +317,7 @@ class Template:
             example: The input example
         """
         # Format media_keys to list
-        for media_key in standard_keys.values():
+        for media_key in multimodal_keys.values():
             if example.get(media_key) and not isinstance(example[media_key], (tuple, list)):
                 # change images field to list
                 example[media_key] = [example[media_key]]
@@ -369,10 +369,10 @@ class Template:
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
 
         messages = example['messages']
-        system_round = [message['content'] for message in messages if message['role'] == 'system']
-        messages = [message['content'] for message in messages if message['role'] == 'system']
+        system_round = [message for message in messages if message['role'] == 'system']
+        messages = [message for message in messages if message['role'] != 'system']
         # Reset system (by default value and agent tools)
-        system: Optional[str] = system_round[0]['content'] if system_round else None
+        system: Optional[str] = system_round[0]['content'] if system_round else ''
         if not system:
             if self.use_default_system:
                 system = self.default_system
@@ -386,7 +386,10 @@ class Template:
                 system = ''
             system += get_tools_prompt(tools, self.tools_prompt)
 
-        system_round[0]['content'] = system
+        if system:
+            if not system_round:
+                system_round = [{'role': 'system', 'content': None}]
+            system_round[0]['content'] = system
 
         if len(messages) > 1:
             assert self.support_multi_round, (
@@ -429,7 +432,8 @@ class Template:
             messages,
             self.truncation_strategy,
             auto_add_bos=self.auto_add_bos,
-            is_multi_modal=is_multi_modal)
+            is_multi_modal=is_multi_modal,
+            example=example)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -736,8 +740,8 @@ class Template:
         """
         return: inputs, tokenizer_kwargs
         """
-        system = [message['content'] for message in messages if message['role'] == 'system']
-        messages = [message['content'] for message in messages if message['role'] == 'system']
+        system = [message for message in messages if message['role'] == 'system']
+        messages = [message for message in messages if message['role'] != 'system']
         if len(system) > 0:
             system = system[0]
         else:
@@ -753,8 +757,8 @@ class Template:
                 history_roles = [messages['role'], None]
         else:
             assert len(messages) % 2 == 0
-            history = [[messages[i]['content'], messages[i+1]['content']] for i in len(messages) // 2]
-            history_roles = [[messages[i]['role'], messages[i + 1]['role']] for i in len(messages) // 2]
+            history = [[messages[i]['content'], messages[i+1]['content']] for i in range(len(messages) // 2)]
+            history_roles = [[messages[i]['role'], messages[i + 1]['role']] for i in range(len(messages) // 2)]
 
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []

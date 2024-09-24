@@ -341,7 +341,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
             if val_dataset is not None:
                 dataset_info['val_dataset'] = stat_dataset(val_dataset)
     elif not args.lazy_tokenize:
-        model = template.model
         if not args.streaming:
             if args.preprocess_num_proc > 1:
                 use_model = TEMPLATE_MAPPING[args.template_type].get('use_model', False)
@@ -357,7 +356,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
         if val_dataset is not None:
             val_dataset = dataset_map(val_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)
-        template.model = model  # recover
         if args.test_oom_error:
             train_dataset = sort_by_max_length(train_dataset, 20000)
         # Data analysis
@@ -450,7 +448,7 @@ def trainer_train(args,
                 json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    with training_context([model] if ref_model is None else [model, ref_model]):
+    with training_context([model] if ref_model is None else [model, ref_model], [template] if ref_model is None else [template, template]):
         trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')

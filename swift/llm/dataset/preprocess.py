@@ -65,12 +65,12 @@ class GroundingMixin:
         return query, response
 
 
-standard_tags = {
+multimodal_tags = {
     'image': '<image>',
     'audio': '<audio>',
     'video': '<video>',
 }
-standard_keys = {
+multimodal_keys = {
     'audio': 'audios',
     'image': 'images',
     'video': 'videos',
@@ -187,7 +187,7 @@ class RowPreprocessor(GroundingMixin):
 
     def map(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Map row, preprocess it and turn query/response to messages"""
-        row = self.preprocess(row)
+        row.update(self.preprocess(row))
         self.query_to_message(row)
         return row
 
@@ -246,17 +246,15 @@ class RowPreprocessor(GroundingMixin):
         Returns:
             The processed dataset
         """
-        kwargs = self.prepare_map_kwargs(**kwargs)
+        kwargs = self.prepare_map_kwargs(dataset, **kwargs)
         self.prepare_downloading(dataset)
         if self.modal_keys or self.modals:
             assert len(self.modal_keys) == len(self.modals)
 
-        if self.preprocess is not RowPreprocessor.preprocess:
-            dataset = dataset.map(self.preprocess, **kwargs)
+        dataset = dataset.map(self.map, **kwargs)
         if self.modals:
             dataset = dataset.map(self.prepare_multi_modal, **kwargs)
-        if self.filter is not RowPreprocessor.filter:
-            dataset = dataset.filter(self.filter, **kwargs)
+        dataset = dataset.filter(self.filter, **kwargs)
 
         column_mapping = copy(self.column_mapping)
         # Replace un-standard media keys to standard keys
@@ -521,7 +519,9 @@ class RenameColumnsPreprocessor:
             messages.append({'role': 'assistant', 'content': row['response']})
         old_messages = row.get('messages', [])
         old_messages.extend(messages)
-        row['messages'] = old_messages
+        return {
+            'messages': old_messages
+        }
 
     def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
         for old_name, new_name in self.rename_mapping.items():
