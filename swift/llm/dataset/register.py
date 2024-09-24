@@ -7,7 +7,6 @@ from typing import List, Optional, Tuple, Union, Dict, Any, Callable
 
 from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
 
-from swift.llm.dataset.loader import LocalDatasetLoader, HubDatasetLoader
 from swift.llm.dataset.preprocess import RenameColumnsPreprocessor, ConversationsPreprocessor, \
     SmartPreprocessor
 from swift.utils import get_logger
@@ -108,7 +107,7 @@ def register_local_dataset(
         for i, path in enumerate(dataset_path):
             if not os.path.isabs(path):
                 dataset_path[i] = os.path.join(base_dir, dataset_path[i])
-
+    from swift.llm.dataset.loader import LocalDatasetLoader
     register_dataset(
         dataset_name, get_function=LocalDatasetLoader.load_dataset_from_local, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
 
@@ -140,6 +139,7 @@ def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs)
         dataset_id = d_info.pop('dataset_id', None)
         subsets = d_info.pop('subsets', None)
         preprocess_func = d_info.pop('preprocess_func', None)
+        from swift.llm.dataset.loader import LocalDatasetLoader, HubDatasetLoader
         register_dataset(dataset_name, dataset_id, subsets, preprocess_func, HubDatasetLoader.load_dataset_from_hub, **d_info,
                          exist_ok=True)
 

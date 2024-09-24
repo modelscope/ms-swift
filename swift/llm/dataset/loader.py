@@ -17,7 +17,6 @@ from transformers.utils import strtobool
 
 from swift.hub.hub import HFHub, MSHub
 from swift.llm.dataset.preprocess import RowPreprocessor
-from swift.llm.dataset.register import register_single_dataset
 from swift.utils import get_logger
 from swift.utils import get_seed
 from swift.utils.io_utils import download_files
@@ -379,6 +378,7 @@ class DatasetLoader(ABC):
                     d_info['hf_dataset_id'] = d_id_or_path
                 else:
                     d_info['dataset_id'] = d_id_or_path
+            from swift.llm.dataset.register import register_single_dataset
             register_single_dataset(d_name, d_info)
             res_dataset.append(d.replace(d_id_or_path, d_name))
         return res_dataset

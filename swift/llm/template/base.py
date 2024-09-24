@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from torch import Module
+from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm.infer.client_utils import decode_base64
+from swift.llm.utils import to_device
 from swift.plugin.loss_scale import loss_scale_map
 from swift.llm.dataset.dataset import standard_keys
-from swift.llm.model.utils import to_device
 from swift.llm.template.template import replace_img_tag, _findall
 from swift.plugin.tools_prompt import get_tools_prompt
 from swift.utils.utils import fetch_one

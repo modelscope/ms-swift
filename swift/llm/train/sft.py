@@ -9,7 +9,6 @@ import transformers
 from datasets import Dataset as HfDataset
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from packaging import version
-from swift.llm import set_generation_config
 from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
@@ -30,6 +29,7 @@ from ..model.patcher import training_context, patch_ddp_mp
 from ..template import Template
 from ..template.template import get_template, TEMPLATE_MAPPING
 from ..tuner import prepare_modules
+from ..utils import set_generation_config
 from ...utils.utils import get_time_info
 
 logger = get_logger()
