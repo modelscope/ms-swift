@@ -2464,6 +2464,7 @@ class LlavaVideoTemplate(Template):
         if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
             return ['<image>\n']
         else:
+            example['videos'][index] = load_video_llava(example['videos'][index])
             return ['<video>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -2473,7 +2474,6 @@ class LlavaVideoTemplate(Template):
         images = example.get('images') or []
         videos_path = example.get('videos') or []
         if len(videos_path) > 0:
-            videos = load_batch(videos_path, load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']

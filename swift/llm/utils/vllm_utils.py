@@ -300,7 +300,7 @@ def add_vllm_request(llm_engine: Union[LLMEngine, AsyncLLMEngine], inputs: Dict[
                         f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
                     mm_data = {key.rstrip('s'): meida_data[0]}
                 else:
-                    mm_data = {key.rstrip('s'): meida_data}
+                    mm_data = {key.rstrip('s'): meida_data[0] if len(meida_data) == 1 else meida_data}
         if mm_data:
             llm_inputs['multi_modal_data'] = mm_data
         if llm_engine.__class__.__name__ == 'LLMEngine':
