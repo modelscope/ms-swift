@@ -5,7 +5,7 @@ import time
 from contextlib import contextmanager
 from copy import deepcopy
 from functools import wraps
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 import vllm
@@ -304,12 +304,12 @@ def add_vllm_request(llm_engine: Union[LLMEngine, AsyncLLMEngine], inputs: Dict[
         if mm_data:
             llm_inputs['multi_modal_data'] = mm_data
         if llm_engine.__class__.__name__ == 'LLMEngine':
-            result_generator = llm_engine.generate(llm_inputs, generation_config, request_id, **generate_kwargs)
+            result_generator = llm_engine.generate(llm_inputs, generation_config, request_id, **kwargs)
         else:
             result_generator = llm_engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
     else:
         if llm_engine.__class__.__name__ == 'LLMEngine':
-            result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
+            result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **kwargs)
         else:
             result_generator = llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
     return result_generator

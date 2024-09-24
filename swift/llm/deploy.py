@@ -14,7 +14,6 @@ import json
 import torch
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from packaging import version
 from peft import PeftModel
 from transformers import GenerationConfig
 
@@ -25,8 +24,8 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, compat_openai, inference, inference_stream, is_quant_model,
-                    messages_join_observation, messages_to_history, random_uuid, set_generation_config)
+                    Model, ModelList, Template, UsageInfo, add_vllm_request, compat_openai, inference, inference_stream,
+                    is_quant_model, messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
 
@@ -321,7 +320,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         generate_kwargs['lora_request'] = lora_request
 
     result_generator = add_vllm_request(
-        llm_inputs, inputs, request_id=str(i), generation_config=generation_config, **generate_kwargs)
+        llm_engine, inputs, request_id=request_id, generation_config=generation_config, **generate_kwargs)
 
     async def _generate_full():
         result = None
