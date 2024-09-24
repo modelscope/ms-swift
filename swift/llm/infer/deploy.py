@@ -18,7 +18,20 @@ from modelscope import GenerationConfig
 from packaging import version
 from peft import PeftModel
 
+from swift.llm import DeployArguments, Template, TEMPLATE_MAPPING, merge_lora
+from swift.llm.infer.base import InferFramework
+from swift.llm.infer.client_utils import compat_openai
+from swift.llm.infer.lmdeploy import LMDeployFramework
+from swift.llm.infer.protocol import ModelList, Model, ChatCompletionRequest, CompletionRequest, \
+    messages_join_observation, random_uuid, UsageInfo, ChatCompletionMessageToolCall, ChatCompletionResponseChoice, \
+    Function, ChatMessage, ChatCompletionResponse, CompletionResponseChoice, CompletionResponse, \
+    ChatCompletionResponseStreamChoice, DeltaMessage, ChatCompletionStreamResponse, CompletionResponseStreamChoice, \
+    CompletionStreamResponse
+from swift.llm.infer.transformers import TransformersFramework
+from swift.llm.infer.vllm import VLLMFramework
+from swift.llm.utils import set_generation_config
 from swift.utils import get_logger, get_main, get_seed, seed_everything
+from swift.utils.utils import split_action_action_input
 
 logger = get_logger()
 
@@ -67,9 +80,7 @@ def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 _args: Optional[DeployArguments] = None
-model = None
-llm_engine = None
-template: Optional[Template] = None
+framework: InferFramework = None
 
 
 def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
@@ -185,7 +196,9 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
             compat_openai(messages, request)
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)
-        example = messages_to_history(messages)
+        example = {
+            'messages': messages
+        }
         if request.tool_choice is not None and request.tools is not None:
             if isinstance(request.tool_choice, dict):
                 name = request.tool_choice['function']['name']
@@ -258,7 +271,6 @@ def _get_logprobs_vllm(logprobs_list: Optional[List[Dict[int, float]]],
 @torch.inference_mode()
 async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global llm_engine, template, _args
-    from .utils import VllmGenerationConfig
     created_time = int(time.time())
 
     result = await _prepare_request(request, raw_request)
@@ -285,6 +297,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         if request.top_logprobs is not None:
             kwargs['logprobs'] = max(1, request.top_logprobs)
 
+    from swift.llm.infer.vllm import VllmGenerationConfig
     generation_config = VllmGenerationConfig(**kwargs)
     if generation_config.use_beam_search and request.stream:
         error_msg = 'Streaming generation does not support beam search.'
@@ -463,7 +476,6 @@ def _get_logprobs_lmdeploy(logprobs_list: Optional[List[Dict[int, float]]],
 async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global llm_engine, template, _args
     created_time = int(time.time())
-    from .utils.lmdeploy_utils import LmdeployGenerationConfig, _add_stop_word
 
     result = await _prepare_request(request, raw_request)
     if isinstance(result, JSONResponse):
@@ -483,9 +495,10 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
     tokenizer = template.tokenizer
     stop_words = (llm_engine.generation_config.stop_words or []).copy()
     for stop_word in getattr(request, 'stop') or []:
-        _add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
-    _add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
-    _add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
+        from swift.llm.infer.lmdeploy import LMDeployFramework
+        LMDeployFramework._add_stop_word(stop_words, stop_word, tokenizer=tokenizer)
+    LMDeployFramework._add_stop_word(stop_words, tokenizer.eos_token_id, tokenizer=tokenizer)
+    LMDeployFramework._add_stop_word(stop_words, template.suffix[-1], tokenizer=tokenizer)
     kwargs['stop_words'] = stop_words
     if request.seed is None:
         request.seed = get_seed()
@@ -496,6 +509,7 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
         if request.top_logprobs is not None:
             kwargs['logprobs'] = max(1, request.top_logprobs)
 
+    from swift.llm.infer.lmdeploy import LmdeployGenerationConfig
     generation_config = LmdeployGenerationConfig(**kwargs)
     request_info['generation_config'] = generation_config
     request_info.update({'stream': request.stream})
@@ -713,10 +727,10 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     adapter_kwargs = {}
     if _args.lora_request_list is not None:
-        if _args.use_dora or is_quant_model(_args.model_type, model) or _args.is_multimodal:
+        if _args.use_dora or _args.is_quant_model() or _args.is_multimodal:
             if _args.use_dora:
                 error_msg = 'Dora'
-            elif is_quant_model(_args.model_type, model):
+            elif _args.is_quant_model():
                 error_msg = 'GPTQ/AWQ/AQLM model'
             else:
                 error_msg = 'Multimodal model'
@@ -735,9 +749,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     async def _generate_full():
         generation_info = {}
-        resp = inference(
-            model,
-            template,
+        resp = framework.inference(
             **example,
             stop_words=stop,
             generation_config=generation_config,
@@ -782,9 +794,7 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     def _generate_stream():
         generation_info = {}
-        gen = inference_stream(
-            model,
-            template,
+        gen = framework.inference_stream(
             **example,
             stop_words=stop,
             generation_config=generation_config,
@@ -878,20 +888,16 @@ def llm_deploy(args: DeployArguments) -> None:
     logger_format = logging.Formatter('%(levelname)s: %(asctime)s %(filename)s:%(lineno)d] %(message)s')
     logger.handlers[0].setFormatter(logger_format)
     import uvicorn
-    global llm_engine, model, template, _args
+    global framework, _args
     _args = args
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.infer_backend == 'vllm':
-        from .utils import prepare_vllm_engine_template
-        llm_engine, template = prepare_vllm_engine_template(args, use_async=True)
-        template._is_vllm = True
+        framework = VLLMFramework(args, use_async=True)
     elif args.infer_backend == 'lmdeploy':
-        from .utils import prepare_lmdeploy_engine_template
-        llm_engine, template = prepare_lmdeploy_engine_template(args)
-        template._is_lmdeploy = True
+        framework = LMDeployFramework(args, use_async=True)
     else:
-        model, template = prepare_model_template(args)
+        framework = TransformersFramework(args, use_async=True)
     uvicorn.run(app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
 
 

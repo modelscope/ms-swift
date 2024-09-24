@@ -4,6 +4,7 @@ import os
 import time
 from copy import deepcopy
 from functools import partial
+from queue import Queue
 from threading import Thread
 from typing import Any, Dict, List, Optional, Tuple
 from typing import Iterator
@@ -13,8 +14,10 @@ from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import PreTrainedModel, StoppingCriteriaList
 from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available
-from queue import Empty, Queue
+
+from swift import get_logger
 from swift.llm import InferArguments, Template, get_model_tokenizer, DeployArguments, get_template, StopWords
+from swift.llm.dataset.utils import safe_tokenizer_decode
 from swift.llm.infer.base import InferFramework
 from swift.llm.model import ConfigReader
 from swift.llm.model.utils import to_device
@@ -23,7 +26,6 @@ from swift.llm.utils import set_generation_config, Messages
 from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import (get_model_info, show_layers)
-from swift import get_logger
 
 logger = get_logger()
 
@@ -58,6 +60,7 @@ class TokenListIteratorStreamer(BaseStreamer):
 class TransformersFramework(InferFramework):
 
     def __init__(self, args: InferArguments, use_async: bool = False, **kwargs):
+        self.stop_words = args.stop_words
         super().__init__(*self.prepare_model_template_hf(args, use_async, **kwargs))
 
     @staticmethod
@@ -206,6 +209,7 @@ class TransformersFramework(InferFramework):
                   generation_config: Optional[Any] = None,
                   generation_info: Optional[Dict[str, Any]] = None,
                   max_batch_size: Optional[int] = None,
+                  lora_request: Optional[Any] = None,
                   use_tqdm: bool = False,
                   verbose: bool = False,
                   prompt_prefix: str = '[PROMPT]',
@@ -214,14 +218,16 @@ class TransformersFramework(InferFramework):
         """
         generation_config: Priority: generation_config > model.generation_config.
         """
-        if args.stop_words:
-            infer_kwargs['stop_words'] = args.stop_words
-        model = engine
+        infer_kwargs = kwargs.get('infer_kwargs', {})
+        if self.stop_words:
+            infer_kwargs['stop_words'] = self.stop_words
+        model = self.llm_engine
         runtime = time.perf_counter()
-        if history is None:
-            history = []
-        else:
-            history = deepcopy(history)
+        messages = deepcopy(request_list[0]['messages'])
+        query = request_list[0]['query']
+        system = request_list[0]['system']
+        images = request_list[0]['images']
+        adapter_names = [request['name'] for request in lora_request]
         if generation_config is None:
             generation_config = getattr(model, 'generation_config')
         generation_config = deepcopy(generation_config)
@@ -232,31 +238,24 @@ class TransformersFramework(InferFramework):
         inputs, tokenizer_kwargs, token_len, example = self._prepare_inputs(
             self.llm_engine,
             self.template,
-            query,
-            history,
+            messages,
             system,
             images,
             generation_config=generation_config,
             generation_info=generation_info,
-            stop_words=stop_words,
+            stop_words=self.stop_words,
             adapter_names=adapter_names,
             **kwargs)
         if len(inputs) == 0:
-            return '', history
+            return ''
 
         # agent support
-        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
+        is_observation = messages[-1]['content'].endswith('Observation:') if messages and messages[-1]['content'] else False
         if is_observation:
-            history[-1][-1] = history[-1][-1] + query
+            messages[-1]['content'] = messages[-1]['content'] + query
             query = None
 
-        if stream and not verbose:
-            logger.warning('Please set verbose to True to support TextStreamer, or use `inference_stream.`')
-            stream = False
-        streamer = None
-        tokenizer = template.tokenizer
-        if stream:
-            streamer = TextStreamer(tokenizer, skip_prompt=True)
+        tokenizer = self.template.tokenizer
         if verbose:
             if 'input_ids' in inputs:
                 input_ids = inputs['input_ids']
@@ -267,31 +266,34 @@ class TransformersFramework(InferFramework):
                 print(f'[QUERY]{query}\n{output_prefix}', end='')
 
         return_dict = generation_config.return_dict_in_generate
-        generate_ids = model.generate(streamer=streamer, generation_config=generation_config, **inputs)
+        generate_ids = model.generate(generation_config=generation_config, **inputs)
         if return_dict:
             res = dict(generate_ids)
             generate_ids = generate_ids['sequences']
         generate_ids = self.template.get_generate_ids(generate_ids, token_len)
         generation_info['num_generated_tokens'] = len(generate_ids)
-        if verbose and stream is False:
+        if verbose:
             response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
             print(response)
         response = self.template.generate_ids_to_response(generate_ids, tokenizer_kwargs=tokenizer_kwargs)
         response = self.template.post_process_generate_response(response=response, example=example)
         if not is_observation:
-            history.append([query, response])
+            messages.extend([
+                {'role': 'user', 'content': query},
+                {'role': 'assistant', 'content': response},
+            ])
         else:
-            history[-1][-1] = history[-1][-1] + response
+            messages[-1]['content'] = messages[-1]['content'] + response
         runtime = time.perf_counter() - runtime
         generation_info['runtime'] = runtime
         generation_info['samples/s'] = 1 / runtime
         generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
         if return_dict:
             res['sequences'] = generate_ids
-            res.update({'response': response, 'history': history})
+            res.update({'response': response, 'messages': messages})
             return res
         else:
-            return response, history
+            return response, messages
 
     @torch.inference_mode()
     def inference_stream(self,
@@ -306,13 +308,16 @@ class TransformersFramework(InferFramework):
         """
         generation_config: Priority: generation_config > model.generation_config.
         """
-        if args.stop_words:
-            infer_kwargs['stop_words'] = args.stop_words
+        infer_kwargs = kwargs.get('infer_kwargs', {})
+        if self.stop_words:
+            infer_kwargs['stop_words'] = self.stop_words
+        model = self.llm_engine
         start_runtime = time.perf_counter()
-        if history is None:
-            history = []
-        else:
-            history = deepcopy(history)
+        messages = deepcopy(request_list[0]['messages'])
+        query = request_list[0]['query']
+        system = request_list[0]['system']
+        images = request_list[0]['images']
+        adapter_names = [request['name'] for request in lora_request]
         if generation_config is None:
             generation_config = getattr(model, 'generation_config')
         generation_config = deepcopy(generation_config)
@@ -321,25 +326,25 @@ class TransformersFramework(InferFramework):
         else:
             generation_info.clear()
         inputs, tokenizer_kwargs, token_len, example = self._prepare_inputs(
-            self.model,
+            self.llm_engine,
             self.template,
             query,
-            history,
+            messages,
             system,
             images,
             generation_config=generation_config,
             generation_info=generation_info,
-            stop_words=stop_words,
+            stop_words=self.stop_words,
             adapter_names=adapter_names,
             **kwargs)
         if len(inputs) == 0:
-            return '', history
+            return '', messages
 
         # agent support
-        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
+        is_observation = messages[-1]['content'].endswith('Observation:') if messages and messages[-1]['content'] else False
         if is_observation:
-            history[-1][-1] = history[-1][-1] + query
-            act_length = len(history[-1][-1])
+            messages[-1]['content'] = messages[-1]['content'] + query
+            act_length = len(messages[-1]['content'])
             query = None
 
         if generation_config.num_beams != 1:
@@ -363,7 +368,11 @@ class TransformersFramework(InferFramework):
         raw_generate_ids, generate_ids = [], []
 
         if not is_observation:
-            history.append(None)  # dummy
+            # To be replaced by code below
+            messages.extend([
+                {'role': 'user', 'content': None},
+                {'role': 'assistant', 'content': None},
+            ])
 
         print_idx = [0]
         first_num_space = [-1]
@@ -389,21 +398,22 @@ class TransformersFramework(InferFramework):
                 print_idx=print_idx,
                 first_num_space=first_num_space)
             if not is_observation:
-                history[-1] = [query, response]
+                messages[-2]['content'] = query
+                messages[-1]['content'] = response
             else:
-                history[-1][-1] = history[-1][-1][:act_length] + response
+                messages[-1]['content'] = messages[-1]['content'][:act_length] + response
 
             runtime = time.perf_counter() - start_runtime
             generation_info['runtime'] = runtime
             generation_info['samples/s'] = 1 / runtime
             generation_info['tokens/s'] = generation_info['num_generated_tokens'] / runtime
             if return_dict:
-                res.update({'response': response, 'history': history})
+                res.update({'response': response, 'messages': messages})
                 yield res
             else:
                 yield [{
                     'response': response,
-                    'history': history,
+                    'messages': messages,
                 }]
 
     @staticmethod
@@ -411,7 +421,7 @@ class TransformersFramework(InferFramework):
             model: PreTrainedModel,
             template: Template,
             query: str,
-            history: History,
+            messages: Messages,
             system: Optional[str] = None,
             images: Optional[List[str]] = None,
             *,
@@ -422,11 +432,10 @@ class TransformersFramework(InferFramework):
             **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
         if stop_words is None:
             stop_words = []
-
+        system = [{'role': 'system', 'content': system}] if system else []
+        messages = system + messages + [{'role': 'user', 'content': query}]
         example = {
-            'query': query,
-            'history': history,
-            'system': system,
+            'messages': messages,
             'images': images or [],  # for vl. str.
             'audios': kwargs.pop('audios', None) or [],
             'videos': kwargs.pop('videos', None) or [],
@@ -486,34 +495,3 @@ class TransformersFramework(InferFramework):
         inputs['stopping_criteria'] = stopping_criteria
         generation_info['num_prompt_tokens'] = token_len
         return inputs, tokenizer_kwargs, token_len, example
-
-    @staticmethod
-    def messages_join_observation(messages: Messages):
-        """
-            Joins observations from 'tool' message into the 'assistant' response.
-
-            Example:
-            ---------
-            Original messages:
-            messages = [
-                {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-                {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                      [{"location": "Hangzhou"}]\nObservations:'},
-                {'role': 'tool', 'content': 'It is 26 degrees Celsius and sunny in Hangzhou today.'}
-            ]
-
-            Transformed messages:
-            messages = [
-                {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-                {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                      [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.'}
-            ]
-            """
-
-        if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'] and messages[-2][
-            'content'].endswith('Observation:'):
-            assert messages[-1]['role'] == 'tool'
-            observations = messages[-1]['content']
-            messages.pop(-1)
-            messages[-1]['content'] += observations
-        return

@@ -4,6 +4,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 
+from swift.llm.utils import Messages
+
 
 def random_uuid() -> str:
     return str(uuid.uuid4().hex)
@@ -194,3 +196,34 @@ class CompletionStreamResponse:
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
+
+
+def messages_join_observation(messages: Messages):
+    """
+        Joins observations from 'tool' message into the 'assistant' response.
+
+        Example:
+        ---------
+        Original messages:
+        messages = [
+            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
+            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
+                  [{"location": "Hangzhou"}]\nObservations:'},
+            {'role': 'tool', 'content': 'It is 26 degrees Celsius and sunny in Hangzhou today.'}
+        ]
+
+        Transformed messages:
+        messages = [
+            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
+            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
+                  [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.'}
+        ]
+        """
+
+    if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'] and messages[-2][
+        'content'].endswith('Observation:'):
+        assert messages[-1]['role'] == 'tool'
+        observations = messages[-1]['content']
+        messages.pop(-1)
+        messages[-1]['content'] += observations
+    return

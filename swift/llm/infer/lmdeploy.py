@@ -115,6 +115,7 @@ class LMDeployFramework(InferFramework):
         logger.info(f'system: {args.system}')
         super().__init__(lmdeploy_engine, InferTemplate(template, framework='lmdeploy'))
 
+    @torch.inference_mode()
     def inference(self,
                   request_list: List[Dict[str, Any]],
                   *,
@@ -129,7 +130,7 @@ class LMDeployFramework(InferFramework):
                   **kwargs) -> List[Dict[str, Any]]:
         """
             request_list: e.g. [{'query': 'hello!'}].
-                The keys that can be included are: 'query', 'history', 'system', 'images'.
+                The keys that can be included are: 'query', 'messages', 'system', 'images'.
             """
         if len(request_list) == 0:
             return []
@@ -200,11 +201,14 @@ class LMDeployFramework(InferFramework):
             logprobs = output.logprobs
             response = self.template.generate_ids_to_response(output.token_ids)
             query = request['query']
-            history = request['history']
-            history.append([query, response])
+            messages = request['messages']
+            messages.extend([
+                {'role': 'user', 'content': query},
+                {'role': 'assistant', 'content': response},
+            ])
 
             generation_info['num_generated_tokens'] += len(output.token_ids)
-            resp_list[i] = {'response': response, 'history': history}
+            resp_list[i] = {'response': response, 'messages': messages}
             if logprobs is not None:
                 resp_list[i]['logprobs'] = logprobs
             if verbose:
@@ -236,7 +240,7 @@ class LMDeployFramework(InferFramework):
                          **kwargs) -> Iterator[List[Dict[str, Any]]]:
         """
         request_list: e.g. [{'query': 'hello!'}].
-            The keys that can be included are: 'query', 'history', 'system', 'images'.
+            The keys that can be included are: 'query', 'messages', 'system', 'images'.
         """
         if len(request_list) == 0:
             return
@@ -299,14 +303,18 @@ class LMDeployFramework(InferFramework):
             safe_response = self.template.generate_ids_to_response(output.token_ids, is_finished,
                                                               print_idx=print_idx_list[i])
             query = request['query']
-            history = request['history']
+            messages = request['messages']
             if resp_list[i] is None:
-                history.append(None)
-            history[-1] = [query, safe_response]
+                messages.extend([
+                    {'role': 'user', 'content': None},
+                    {'role': 'assistant', 'content': None},
+                ])
+            messages[-2]['content'] = query
+            messages[-1]['content'] = safe_response
             n_gen_tokens = len(output.token_ids)
             generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
             num_generated_tokens[i] = n_gen_tokens
-            resp_list[i] = {'response': safe_response, 'history': history}
+            resp_list[i] = {'response': safe_response, 'messages': messages}
             if logprobs is not None:
                 resp_list[i]['logprobs'] = logprobs
 
@@ -456,7 +464,12 @@ class LMDeployFramework(InferFramework):
         prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
 
         def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
-            request['history'] = request.get('history') or []
+            query = request_list[0]['query']
+            system = request_list[0]['system']
+            system = [{'role': 'system', 'content': system}] if system else []
+            messages = request.get('messages') or []
+            messages = system + messages + [{'role': 'user', 'content': query}]
+            request['messages'] = messages
             inputs = template.encode(request)[0]
             prog_bar.update()
             return inputs
@@ -472,7 +485,7 @@ class LMDeployFramework(InferFramework):
             truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
             if len(inputs) == 0 and truncation_strategy == 'delete':
                 # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-                resp_list[i] = {'response': '', 'history': request['history']}
+                resp_list[i] = {'response': '', 'messages': request['messages']}
                 continue
             generator = lmdeploy_engine.get_generator(False, i)
             generators.append((i, inputs, generator))

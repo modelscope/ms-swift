@@ -267,14 +267,17 @@ class VLLMFramework(InferFramework):
             logprobs = output.outputs[0].logprobs
             response = self.template.generate_ids_to_response(generate_ids)
             query = request['query']
-            history = request['history']
+            messages = request['messages']
             if not agent_state[i][0]:
-                history.append([query, response])
+                messages.extend([
+                    {'role': 'user', 'content': query},
+                    {'role': 'assistant', 'content': response},
+                ])
             else:
-                history[-1][-1] = history[-1][-1] + response
+                messages[-1]['content'] = messages[-1]['content'] + response
 
             generation_info['num_generated_tokens'] += sum(len(_output.token_ids) for _output in output.outputs)
-            resp_list[i] = {'response': response, 'history': history}
+            resp_list[i] = {'response': response, 'messages': messages}
             if logprobs is not None:
                 resp_list[i]['logprobs'] = logprobs
             if verbose:
@@ -299,10 +302,10 @@ class VLLMFramework(InferFramework):
             **kwargs) -> Iterator[List[Dict[str, Any]]]:
         """
         request_list: e.g. [{'query': 'hello!'}].
-            The keys that can be included are: 'query', 'history', 'system', 'images'.
+            The keys that can be included are: 'query', 'messages', 'system', 'images'.
         generation_config: Priority: generation_config > model.generation_config.
-        return: e.g. [{'response': 'hi!', 'history': [('hello!', 'hi!')]}].
-            The keys to be included will be: 'response', 'history'.
+        return: e.g. [{'response': 'hi!', 'messages': [{'role': 'user', 'content': 'question'}, {'role': 'assistant', 'content': 'answer'}]}].
+            The keys to be included will be: 'response', 'messages'.
         """
         if len(request_list) == 0:
             return
@@ -351,19 +354,23 @@ class VLLMFramework(InferFramework):
                 safe_response = self.template.generate_ids_to_response(
                     generate_ids, output.finished, print_idx=print_idx_list[i])
                 query = request['query']
-                history = request['history']
+                messages = request['messages']
                 if resp_list[i] is None and not agent_state[i][0]:
-                    history.append(None)
+                    messages.extend([
+                        {'role': 'user', 'content': None},
+                        {'role': 'assistant', 'content': None},
+                    ])
                 if not agent_state[i][0]:
-                    history[-1] = [query, safe_response]
+                    messages[-2]['content'] = query
+                    messages[-1]['content'] = safe_response
                 else:
-                    history[-1][-1] = history[-1][-1][:agent_state[i][1]] + safe_response
+                    messages[-1]['content'] = messages[-1]['content'][:agent_state[i][1]] + safe_response
 
                 n_gen_tokens = sum(len(_output.token_ids) for _output in output.outputs)
                 generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
                 num_generated_tokens[i] = n_gen_tokens
 
-                resp_list[i] = {'response': safe_response, 'history': history}
+                resp_list[i] = {'response': safe_response, 'messages': messages}
                 if logprobs is not None:
                     resp_list[i]['logprobs'] = logprobs
                 if output.finished:
@@ -536,7 +543,6 @@ class VLLMFramework(InferFramework):
             if key not in generation_info:
                 generation_info[key] = 0
 
-        template.model = llm_engine
         tokenizer = template.tokenizer
         if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
             generation_config.stop.append(tokenizer.eos_token)
@@ -566,16 +572,20 @@ class VLLMFramework(InferFramework):
         prog_bar = tqdm(request_list, dynamic_ncols=True, disable=not use_tqdm)
 
         def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
-            history = request.get('history') or []
+            messages = request.get('messages') or []
+            query = request_list[0]['query']
+            system = request_list[0]['system']
+            system = [{'role': 'system', 'content': system}] if system else []
+            messages = system + messages + [{'role': 'user', 'content': query}]
             # agent support
-            is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
+            is_observation = messages[-1]['content'].endswith('Observation:') if messages and messages[-1]['content'] else False
             act_length = None
             if is_observation:
-                history[-1][-1] = history[-1][-1] + request['query']
-                act_length = len(history[-1][-1])
+                messages[-1]['content'] = messages[-1]['content'] + request['query']
+                act_length = len(messages[-1]['content'])
                 request['query'] = None
             agent_state.append((is_observation, act_length))
-            request['history'] = history
+            request['messages'] = messages
 
             inputs = template.encode(request)[0]
             prog_bar.update()
@@ -592,7 +602,7 @@ class VLLMFramework(InferFramework):
             truncation_strategy = kwargs.pop('truncation_strategy', 'delete')
             if len(inputs) == 0 and truncation_strategy == 'delete':
                 # input_ids exceeds `max_length`. Please increase the value of `max_length`.
-                resp_list[i] = {'response': '', 'history': request['history']}
+                resp_list[i] = {'response': '', 'messages': request['messages']}
                 continue
             generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
             generation_info['num_samples'] += 1
