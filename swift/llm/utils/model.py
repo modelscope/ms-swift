@@ -6510,10 +6510,6 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     return model, tokenizer
 
 
-def _patch_builder(encoder, projector):
-    build_speech_encoder
-
-
 @register_model(
     ModelType.llama3_1_8b_omni,
     'ICTNLP/Llama-3.1-8B-Omni',
