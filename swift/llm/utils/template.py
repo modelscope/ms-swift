@@ -1484,7 +1484,7 @@ class _Qwen2VLTemplateMixin:
         images = example.get('images') or []
         videos = example.get('videos') or []
         plain_text = False
-        if is_deepspeed_enabled() and not images and not videos:
+        if not images and not videos:
             plain_text = True
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
@@ -1526,12 +1526,12 @@ class _Qwen2VLTemplateMixin:
             input_ids = data['input_ids']
             device = input_ids.device
             pixel_values = media_inputs['pixel_values'].to(device)
-            _model = self.model.model
+            _model = model.model
             if not hasattr(_model, 'embed_tokens'):
                 _model = _model.model  # LoRA
             inputs_embeds = _model.embed_tokens(input_ids)
-            pixel_values = pixel_values.type(self.model.visual.get_dtype())
-            image_embeds = self.model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            pixel_values = pixel_values.type(model.visual.get_dtype())
+            image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
             inputs_embeds += image_embeds.mean() * 0.
         return {'inputs_embeds': inputs_embeds[0]}
 
