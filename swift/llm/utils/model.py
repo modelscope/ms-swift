@@ -260,6 +260,8 @@ class ModelType:
     llama3_1_405b_instruct_awq = 'llama3_1-405b-instruct-awq'
     llama3_1_405b_instruct_gptq_int4 = 'llama3_1-405b-instruct-gptq-int4'
     llama3_1_405b_instruct_bnb = 'llama3_1-405b-instruct-bnb'
+    # omni
+    llama3_1_8b_omni = 'llama3_1-8b-omni'
     # reflection
     reflection_llama_3_1_70b = 'reflection-llama_3_1-70b'
     # long writer
@@ -633,6 +635,7 @@ class LoRATM(NamedTuple):
     florence = 'florence'
     idefics3 = 'idefics3'
     mplug_owl3 = 'mplug_owl3'
+    llama3_1_omni = 'llama3_1_omni'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -6504,6 +6507,49 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     logger.info('Please ignore the unimported warning.')
     processor = CLIPImageProcessor.from_pretrained(model_dir)
     tokenizer.processor = processor
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.llama3_1_8b_omni,
+    'ICTNLP/Llama-3.1-8B-Omni',
+    LoRATM.llama3_1_omni,
+    TemplateType.llama3_1_omni,
+    requires=['whisper', 'openai-whisper'],
+    support_flash_attn=True,
+    tags=['multi-modal', 'audio'],
+    hf_model_id='ICTNLP/Llama-3.1-8B-Omni')
+def get_model_tokenizer_omnli(model_dir: str,
+                              torch_dtype: torch.dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
+    local_repo_path = os.path.join(local_repo_path, 'LLaMA-Omni')
+    sys.path.append(os.path.join(local_repo_path))
+    from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
+    import whisper
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    model_config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
+    if not os.path.exists(model_config.speech_encoder):
+        whisper.load_model('large-v3', download_root=model_dir)
+    kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
+    kwargs['model_config'] = model_config
+    for key in ['forward', 'generate']:
+        try:
+            delattr(OmniSpeech2SLlamaForCausalLM, key)
+            delattr(OmniSpeechLlamaForCausalLM, key)
+        except AttributeError:
+            pass
+    # not support device_map='auto'
+    device_map = model_kwargs['device_map']
+    model_kwargs['device_map'] = None
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    if model:
+        model.to('cuda:0' if device_map == 'auto' else device_map)
     return model, tokenizer
 
 

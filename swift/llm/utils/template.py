@@ -60,6 +60,7 @@ class TemplateType:
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    llama3_1_omni = 'llama3_1-omni'
     reflection = 'reflection'
     longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
@@ -1811,6 +1812,57 @@ class ReflectionTemplate(Llama3TemplateMixin, Template):
 
 register_template(TemplateType.reflection, ReflectionTemplate())
 register_template(TemplateType.llama3, Llama3Template())
+
+
+class Llama3_1OmniTemplate(Llama3Template):
+    system = ('You are a helpful language and speech assistant. '
+              'You are able to understand the speech content that the user provides, '
+              'and assist the user with a variety of tasks using natural language.')
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        assert media_type == 'audio'
+        return [[-200]]
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        import whisper
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        audios = example['audios']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
+        if labels is not None:
+            inputs['_data']['labels'] = torch.tensor(labels)[None]
+        if audios:
+            audios = load_batch(audios, whisper.load_audio)
+            n_mels = get_env_args('n_mels', int, 128)
+            for i, audio in enumerate(audios):
+                audio = whisper.pad_or_trim(audio)
+                audios[i] = whisper.log_mel_spectrogram(audio, n_mels=n_mels).permute(1, 0)
+            audios = torch.stack(audios)
+            inputs['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
+
+        return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        speech = data.get('speech')
+        input_ids = data['input_ids']
+        labels = data.get('labels')
+        if speech is not None:
+            speech_lengths = data['speech_lengths']
+            speech = speech.to(model.dtype)
+            inputs_embeds, labels = model.prepare_inputs_labels_for_speech_and_text(input_ids, None, None, None, labels,
+                                                                                    speech, speech_lengths)[4:]
+        else:
+            inputs_embeds = model.get_model().embed_tokens(input_ids)
+        res = {'inputs_embeds': inputs_embeds[0]}
+        if labels is not None:
+            res['labels'] = labels[0]
+        return res
+
+
+register_template(TemplateType.llama3_1_omni, Llama3_1OmniTemplate(), lazy_tokenize=True)
 
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'

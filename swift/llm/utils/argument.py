@@ -1048,14 +1048,16 @@ class SftArguments(ArgumentsBase):
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
-            if self.freeze_vit:
-                from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-                lora_target_modules = model_info.get('lora_target_modules')
-                vision_tower = None
-                if isinstance(lora_target_modules, str):
-                    vision_tower = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
-                if vision_tower:
-                    self.freeze_parameters += vision_tower
+            from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+            lora_target_modules = model_info.get('lora_target_modules')  # model_group
+            model_arch = None
+            if isinstance(lora_target_modules, str):
+                model_arch = MODEL_KEYS_MAPPING[lora_target_modules]
+            if model_arch:
+                if self.freeze_vit and model_arch.vision_tower:
+                    self.freeze_parameters += model_arch.vision_tower
+                if model_arch.generator:
+                    self.freeze_parameters += model_arch.generator
             assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "

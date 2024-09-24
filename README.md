@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.09.24: Support for training and deploying llama3_1-8b-omni. Experience it using `swift infer --model_type llama3_1-8b-omni`.
 - 2024.09.23: Support for training and deploying pixtral-12b. Experience it using `swift infer --model_type pixtral-12b --dtype fp16`.
 - 🔥2024.09.19: Supports the qwen2.5, qwen2.5-math, and qwen2.5-coder series models. Supports the qwen2-vl-72b series models. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/2064).
 - 2024.09.07: Support the `Reflection-llama3-70b` model, use by `swift sft/infer --model_type reflection-llama_3_1-70b`.
@@ -635,6 +636,8 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | PaliGemma                                                  | Google                                                                                 | English            | 3B                                    | chat model               |
 | Florence                                                   | Microsoft                                                                              | English            | 0.23B-0.77B                           | chat model               |
 | Idefics3                                                   | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | English       | 8B      | chat model       |
+| Pixtral                                | [mistralai](https://huggingface.co/mistralai)                     | English       | 12B      | chat model       |
+| Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
 
 
 #### Diffusion Models

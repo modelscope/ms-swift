@@ -46,10 +46,11 @@ class MultiModelKeys(ModelKeys):
     language_model: Union[List[str], str] = field(default_factory=list)
     connector: Union[List[str], str] = field(default_factory=list)
     vision_tower: Union[List[str], str] = field(default_factory=list)
+    generator: Union[List[str], str] = field(default_factory=list)
 
     def __post_init__(self):
         # compat
-        for key in ['language_model', 'connector', 'vision_tower']:
+        for key in ['language_model', 'connector', 'vision_tower', 'generator']:
             v = getattr(self, key)
             if isinstance(v, str):
                 setattr(self, key, [v])
@@ -241,7 +242,6 @@ PHI3V_KEYS = MultiModelKeys(
 
 COGVLM_KEYS = MultiModelKeys(
     language_model='model.layers',
-    connector=[],
     vision_tower='model.vision',
 )
 
@@ -253,13 +253,11 @@ FLORENCE_KEYS = MultiModelKeys(
 
 QWEN_VL_KEYS = MultiModelKeys(
     language_model='transformer.h',
-    connector=[],
     vision_tower='transformer.visual',
 )
 
 QWEN_AUDIO_KEYS = MultiModelKeys(
     language_model='transformer.h',
-    connector=[],
     vision_tower='transformer.audio',
 )
 
@@ -271,13 +269,11 @@ QWEN2_AUDIO_KEYS = MultiModelKeys(
 
 QWEN2_VL_KEYS = MultiModelKeys(
     language_model='model',
-    connector=[],
     vision_tower='visual',
 )
 
 GLM4V_KEYS = MultiModelKeys(
     language_model='transformer.encoder',
-    connector=[],
     vision_tower='transformer.vision',
 )
 
@@ -285,6 +281,13 @@ IDEFICS3_KEYS = MultiModelKeys(
     language_model='model.text_model',
     connector='model.connector',
     vision_tower='model.vision_model',
+)
+
+LLAMA3_1_OMNI = MultiModelKeys(
+    language_model='model.layers',
+    connector='model.speech_projector',
+    vision_tower='model.speech_encoder',
+    generator='speech_generator',
 )
 
 MODEL_KEYS_MAPPING = OrderedDict([
@@ -306,6 +309,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('florence', FLORENCE_KEYS),
     ('idefics3', IDEFICS3_KEYS),
     ('mplug_owl3', MPLUG_OWL3_KEYS),
+    ('llama3_1_omni', LLAMA3_1_OMNI),
     # LLM begins here
     ('llama', LLAMA_KEYS),
     ('mistral', LLAMA_KEYS),

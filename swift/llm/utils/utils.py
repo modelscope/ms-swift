@@ -462,7 +462,7 @@ def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
     from swift.utils.module_mapping import MODEL_KEYS_MAPPING
     from .model import MODEL_MAPPING
     model_info = MODEL_MAPPING[model_type]
-    lora_target_modules = model_info.get('lora_target_modules')
+    lora_target_modules = model_info.get('lora_target_modules')  # model_group
 
     if not isinstance(lora_target_modules, str):
         return
