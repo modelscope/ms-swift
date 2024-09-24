@@ -221,7 +221,7 @@ def eval_human(framework: InferFramework, args: InferArguments, jsonl_path: str,
         if system is None and framework.template.use_default_system:
             system = framework.template.default_system
 
-        messages.append([{'role': 'user', 'content': query}])
+        messages.append({'role': 'user', 'content': query})
         request_list = [{'messages': messages, 'system': system, **infer_kwargs}]
         if args.stream:
             gen = framework.inference_stream(request_list, lora_request=lora_request)
@@ -233,12 +233,12 @@ def eval_human(framework: InferFramework, args: InferArguments, jsonl_path: str,
                     print(response[print_idx:], end='', flush=True)
                     print_idx = len(response)
             assert response is not None
-            messages.append([{'role': 'assistant', 'content': response}])
+            messages.append({'role': 'assistant', 'content': response})
             print()
         else:
             resp_list = framework.inference(request_list, lora_request=lora_request)
             response = resp_list[0]['response']
-            messages.append([{'role': 'assistant', 'content': response}])
+            messages.append({'role': 'assistant', 'content': response})
             print(response)
 
         print('-' * 50)

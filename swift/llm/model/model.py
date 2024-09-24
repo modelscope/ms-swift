@@ -7,7 +7,7 @@ from functools import partial, update_wrapper, wraps
 from types import MethodType
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 from typing import List
-
+from swift.llm.utils import to_device
 import torch
 import torch.utils.checkpoint
 import transformers

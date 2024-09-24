@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
-
+from swift.llm.utils import Messages
 from swift.llm.utils import to_device, decode_base64
 from swift.plugin.loss_scale import loss_scale_map
 from swift.llm.dataset.preprocess import multimodal_keys
@@ -45,24 +45,20 @@ def _findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> Li
     return res
 
 
-def replace_img_tag(query: str,
-                    history: History,
+def replace_img_tag(messages: Messages,
                     replace_token: str,
                     pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
     images_path = []
-    new_history = []
-    for i, h in enumerate(history):
-        if h[0] is None:
-            new_history.append(h.copy())
+    new_messages = []
+    for i, m in enumerate(messages):
+        m = m.copy()
+        if m['content'] is None or m['role'] in ('tool', 'system', 'assistant'):
+            new_messages.append(m)
         else:
-            images_path += re.findall(pattern, h[0])
-            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
-    if query is None:
-        new_query = query  # pretrain dataset
-    else:
-        images_path += re.findall(pattern, query)
-        new_query = re.sub(pattern, replace_token, query)
-    return new_query, new_history, images_path
+            images_path += re.findall(pattern, m['content'])
+            m['content'] = re.sub(pattern, replace_token, m['content'])
+            new_messages.append(m)
+    return messages, images_path
 
 
 class StopWordsCriteria(StoppingCriteria):
@@ -257,9 +253,10 @@ class Template:
         messages = example['messages']
         for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if example.get(media_key):
-                n_round = len(messages)
+                _messages = [message for message in messages if message['role']!='system']
+                n_round = len(_messages)
                 assert n_round % 2 == 0
-                history = [messages[i:i+2] for i in n_round // 2]
+                history = [_messages[i:i+2] for i in range(n_round // 2)]
                 if self.infer_media_type == 'round':
                     for i, h, m in zip(range(n_round // 2), history, example[media_key]):
                         num_media_tags = len(re.findall(media_tag, h[0]['content']))
@@ -288,9 +285,8 @@ class Template:
         """
         # Parse <img></img> format images and merged into images key
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
-            example['query'], example['history'], images_path = replace_img_tag(
-                example.get('query'),
-                example.get('history') or [], '<image>')
+            example['messages'], images_path = replace_img_tag(
+                example.get('messages'), '<image>')
 
             if example.get('images') and images_path:
                 raise ValueError('Do not mix use the <img></img> tag and <image> tag.')
@@ -300,9 +296,8 @@ class Template:
         if self.is_multimodal in {True, None}:
             for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'],
                                        [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
-                example['query'], example['history'], medias_path = replace_img_tag(
-                    example.get('query'),
-                    example.get('history') or [], tag, pattern)
+                example['messages'], medias_path = replace_img_tag(
+                    example.get('messages'), tag, pattern)
 
                 example[k] = example.get(k) or [] + medias_path
 
@@ -743,7 +738,7 @@ class Template:
         system = [message for message in messages if message['role'] == 'system']
         messages = [message for message in messages if message['role'] != 'system']
         if len(system) > 0:
-            system = system[0]
+            system = system[0]['content']
         else:
             system = None
 

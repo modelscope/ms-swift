@@ -285,7 +285,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         model=model,
         **template_kwargs)
     template._is_training = True
-    template.encode = partial(template.encode, streaming=args.streaming, dtype=model.dtype, device=model.device)
+    template.encode = partial(template.encode, streaming=args.streaming, is_training=True, dtype=model.dtype, device=model.device)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')

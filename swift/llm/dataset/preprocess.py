@@ -130,7 +130,7 @@ class RowPreprocessor(GroundingMixin):
         assert _modal_tag is not None
         media_cnt = len(medias) if isinstance(medias, (tuple, list)) else 1 if medias else 0
         # like <image>, etc
-        standard_tag = multimodal_keys[modal]
+        standard_tag = multimodal_tags[modal]
         all_content = ''.join([m['content'] for m in messages])
         if _modal_tag in all_content:
             # If the messages already have placeholders like `<image>`
@@ -218,7 +218,7 @@ class RowPreprocessor(GroundingMixin):
                 row['messages'] = []
             if self.task_type in self._grounding_prompts.keys():
                 query, response = self.construct_grounding_prompt()
-                row['messages'].append([
+                row['messages'].extend([
                     {'role': 'user', 'content': query},
                     {'role': 'assistant', 'content': response},
                 ])
@@ -263,8 +263,8 @@ class RowPreprocessor(GroundingMixin):
         column_mapping = copy(self.column_mapping)
         # Replace un-standard media keys to standard keys
         for idx, _modal in enumerate(self.modals):
-            modal_key = self.modal_keys[idx]
-            standard_key = standard_keys[idx]
+            modal_key = self.modal_keys[_modal]
+            standard_key = multimodal_keys[_modal]
             if standard_key not in dataset.features:
                 column_mapping[modal_key] = standard_key
 

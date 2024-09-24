@@ -398,7 +398,7 @@ def get_mantis_dataset(dataset_id: str,
         subset_split_list = list(itertools.product(subsets, split))
     all_datasets = []
     for subset in subset_split_list:
-        dataset = HubDatasetLoader.dataset_get_function(dataset_id, [subset], use_hf, streaming=streaming)
+        dataset = HubDatasetLoader.load_dataset_from_hub(dataset_id, [subset], use_hf, streaming=streaming)
         dataset = preprocess_mantis_image(dataset, subset=subset[0])
         all_datasets.append(dataset)
         break
@@ -1225,6 +1225,9 @@ register_dataset(
 
 class LLaVAPretrainPreprocessor(RowPreprocessor):
 
+    modals = ['image']
+    modal_keys = {'image': 'image'}
+
     def prepare_downloading(self, dataset):
         self.media_dir = MediaResource.download(
             'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip',
@@ -1242,7 +1245,7 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
             return {'image': ''}
 
     def filter(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        return super().filter(row) and row.get('image')
+        return row.get('image')
 
 
 register_dataset(
