@@ -358,7 +358,7 @@ Reference document: [https://docs.vllm.ai/en/latest/models/engine_args.html](htt
 - `--🔥max_model_len`: Override model's max_model__len, default is `None`. This parameter only takes effect when using vllm.
 - `--disable_custom_all_reduce`: Whether to disable the custom all-reduce kernel and fallback to NCCL. The default is `True`, which is different from the default value of vLLM.
 - `--enforce_eager`: vllm uses the PyTorch eager mode or builds the CUDA graph. Default is `False`. Setting to True can save memory, but it may affect efficiency.
-- `--limit_mm_per_prompt`: Control vllm to use multiple images. Default is `None`. For example, pass `--limit_mm_per_prompt '{"image": 2}'`.
+- `--limit_mm_per_prompt`: Control vllm to use multiple images. Default is `None`. For example, pass `--limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - `--vllm_enable_lora`: Default `False`. Whether to support vllm with lora.
 - `--vllm_max_lora_rank`: Default `16`.  Lora rank in vLLM.
 - `--lora_modules`: Introduced.
