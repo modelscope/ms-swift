@@ -1381,11 +1381,13 @@ class _Qwen2AudioTemplateMixin:
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
         plain_text = data.pop('plain_text', False)
         if is_deepspeed_enabled() and plain_text:
-            _, _ = self.audio_tower.conv1.weight.dtype, self.audio_tower.conv1.weight.device
+            input_ids = data['input_ids']
+            inputs_embeds = model.get_input_embeddings()(input_ids)
+            _, _ = model.audio_tower.conv1.weight.dtype, model.audio_tower.conv1.weight.device
             input_features = input_ids.new_zeros((1, 128, 3000))
-            audio_outputs = self.audio_tower(input_features)
+            audio_outputs = model.audio_tower(input_features)
             selected_audio_feature = audio_outputs.last_hidden_state
-            audio_features = self.multi_modal_projector(selected_audio_feature)
+            audio_features = model.multi_modal_projector(selected_audio_feature)
 
             inputs_embeds += audio_features.mean() * 0.
             return {'inputs_embeds': inputs_embeds[0]}
