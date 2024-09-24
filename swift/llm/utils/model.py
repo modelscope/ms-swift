@@ -6305,6 +6305,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     LoRATM.llava_next_video,
     TemplateType.llava_next_video,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.42', 'av'],
     tags=['multi-modal', 'video'],
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-DPO-hf')
@@ -6314,6 +6315,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     LoRATM.llava_next_video,
     TemplateType.llava_next_video,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.42', 'av'],
     tags=['multi-modal', 'video'],
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-32K-hf')
@@ -6323,6 +6325,7 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     LoRATM.llava_next_video,
     TemplateType.llava_next_video,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.42', 'av'],
     tags=['multi-modal', 'video'],
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-hf')
@@ -6338,6 +6341,7 @@ def get_model_tokenizer_llava_next_video(*args, **kwargs):
     LoRATM.llava_next_video,
     TemplateType.llava_next_video_yi,
     support_flash_attn=True,
+    support_vllm=True,
     requires=['transformers>=4.42', 'av'],
     tags=['multi-modal', 'video'],
     hf_model_id='llava-hf/LLaVA-NeXT-Video-34B-hf')

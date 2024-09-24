@@ -603,7 +603,8 @@ class Template:
             example=example,
             is_multi_modal=is_multi_modal)
         if self._is_lmdeploy or self._is_vllm:
-            inputs['images'] = example.get('images')
+            for key in ['images', 'audios', 'videos']:
+                inputs[key] = example.get(key)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -1436,8 +1437,10 @@ class _Qwen2VLTemplateMixin:
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type in {'image', 'video'}
         if media_type == 'image':
+            example['images'][index] = _process_image_qwen(example['images'][index])
             return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
+            example['videos'][index] = load_video_qwen2(example['videos'][index])
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
@@ -1478,12 +1481,10 @@ class _Qwen2VLTemplateMixin:
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
-                    images = load_batch(images, _process_image_qwen)
                     media_token = 151655
                     media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    videos = load_batch(videos, load_video_qwen2)
                     media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = 151656
@@ -2463,6 +2464,7 @@ class LlavaVideoTemplate(Template):
         if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
             return ['<image>\n']
         else:
+            example['videos'][index] = load_video_llava(example['videos'][index])
             return ['<video>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -2472,7 +2474,6 @@ class LlavaVideoTemplate(Template):
         images = example.get('images') or []
         videos_path = example.get('videos') or []
         if len(videos_path) > 0:
-            videos = load_batch(videos_path, load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']

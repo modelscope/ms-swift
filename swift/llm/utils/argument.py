@@ -1414,7 +1414,7 @@ class InferArguments(ArgumentsBase):
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
     enforce_eager: bool = False
-    limit_mm_per_prompt: Optional[str] = None
+    limit_mm_per_prompt: Optional[str] = None  # '{"image": 10, "video": 5}'
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
