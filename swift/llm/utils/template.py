@@ -1862,7 +1862,7 @@ class Llama3_1OmniTemplate(Llama3Template):
         return res
 
 
-register_template(TemplateType.llama3_1_omni, Llama3_1OmniTemplate(), lazy_tokenize=True, use_model=True)
+register_template(TemplateType.llama3_1_omni, Llama3_1OmniTemplate(), lazy_tokenize=True)
 
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
