@@ -16,7 +16,7 @@ from packaging import version
 from peft import PeftModel
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
-from transformers.dynamic_module_utils import get_class_from_dynamic_module, get_class_in_module
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
