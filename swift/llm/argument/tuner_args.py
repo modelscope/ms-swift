@@ -106,7 +106,3 @@ class TunerArguments:
 
     def adapters_can_be_merged(self):
         return ['lora', 'longlora', 'llamapro', 'adalora']
-
-    def __post_init__(self):
-        if self.ckpt_dir is None:
-            self.sft_type = 'full'

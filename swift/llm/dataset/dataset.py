@@ -207,8 +207,8 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
 
     column_mapping: Dict[str, str] = {}
     modals: List[str] = ['image']
-    modal_tags: List[str] = ['<image>']
-    modal_keys: List[str] = ['image']
+    modal_tags: List[str] = {'image': '<image>'}
+    modal_keys: List[str] = {'image': 'image'}
     task_type: Optional[str] = 'vqa'
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -218,7 +218,11 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
         image = os.path.join(self.prefix_path, image)
         if not os.path.exists(image):
             return self.empty_row()
-        return {'image': [image]}
+        row = ConversationsPreprocessor(
+                user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete',
+                modals=['image'], modal_keys={'image': 'image'}).preprocess(row)
+        row['image'] = [image]
+        return row
 
     def prepare_downloading(self, dataset):
         url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
@@ -229,13 +233,7 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
 register_dataset(
     DatasetName.sharegpt_4o_image,
     'AI-ModelScope/ShareGPT-4o', ['image_caption'],
-    ComposePreprocessor(
-        [
-            ShareGPT4oPreprocessor(),
-            ConversationsPreprocessor(
-                user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')
-        ]
-    ),
+    ShareGPT4oPreprocessor(),
     HubDatasetLoader.dataset_get_function,
     split=['images'],
     tags=['vqa', 'multi-modal'],

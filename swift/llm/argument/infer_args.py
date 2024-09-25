@@ -76,7 +76,6 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
 
     def __post_init__(self) -> None:
         ModelArguments.__post_init__(self)
-        TunerArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         GenerationArguments.__post_init__(self)
@@ -92,6 +91,8 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
 
+        if self.ckpt_dir is None:
+            self.sft_type = 'full'
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
 

@@ -238,7 +238,6 @@ class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateAr
     def __post_init__(self) -> None:
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
         ModelArguments.__post_init__(self)
-        TunerArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         GenerationArguments.__post_init__(self)

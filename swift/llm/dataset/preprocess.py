@@ -387,7 +387,7 @@ class ConversationsPreprocessor(RowPreprocessor):
             conversations = row[self.conversations_key]
             conversations = self.repair_conversations(conversations)
             if conversations is None:
-                return self.empty_row
+                return self.empty_row()
 
             messages = []
             system_message = None
@@ -425,7 +425,7 @@ class ConversationsPreprocessor(RowPreprocessor):
             if self.error_strategy == 'raise':
                 raise ValueError(f'Unsupported row: {row}')
             else:
-                return self.empty_row
+                return self.empty_row()
 
 
 class ListPreprocessor(RowPreprocessor):
