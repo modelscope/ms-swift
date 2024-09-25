@@ -248,8 +248,6 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
         label_names = find_labels(model)
         return_loss = can_return_loss(model)
         model = patch_acc_model(model, args)
-        model.label_names = label_names
-        model.return_loss = return_loss
 
     if args.is_multimodal and args.gradient_checkpointing and args.vit_use_gc:
         dynamic_vit_gradient_checkpointing(model, args.model_type)
@@ -279,6 +277,8 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
             args.fp16,
             gradient_checkpointing=True,
             fsdp_flatten_parameters=(args.sft_type == 'full'))
+        model.label_names = label_names
+        model.return_loss = return_loss
 
     template_kwargs = {}
     template_kwargs['use_loss_scale'] = args.use_loss_scale
