@@ -509,6 +509,7 @@ The table below introcudes all models supported by SWIFT:
 |florence-2-base-ft|[AI-ModelScope/Florence-2-base-ft](https://modelscope.cn/models/AI-ModelScope/Florence-2-base-ft/summary)|^(language_model\|image_projection)(?!.\*(lm_head\|output\|emb\|wte\|shared)).\*|florence|&#x2714;|&#x2718;|&#x2718;|&#x2718;||vision|[microsoft/Florence-2-base-ft](https://huggingface.co/microsoft/Florence-2-base-ft)|
 |florence-2-large|[AI-ModelScope/Florence-2-large](https://modelscope.cn/models/AI-ModelScope/Florence-2-large/summary)|^(language_model\|image_projection)(?!.\*(lm_head\|output\|emb\|wte\|shared)).\*|florence|&#x2714;|&#x2718;|&#x2718;|&#x2718;||vision|[microsoft/Florence-2-large](https://huggingface.co/microsoft/Florence-2-large)|
 |florence-2-large-ft|[AI-ModelScope/Florence-2-large-ft](https://modelscope.cn/models/AI-ModelScope/Florence-2-large-ft/summary)|^(language_model\|image_projection)(?!.\*(lm_head\|output\|emb\|wte\|shared)).\*|florence|&#x2714;|&#x2718;|&#x2718;|&#x2718;||vision|[microsoft/Florence-2-large-ft](https://huggingface.co/microsoft/Florence-2-large-ft)|
+|got-ocr2|[stepfun-ai/GOT-OCR2_0](https://modelscope.cn/models/stepfun-ai/GOT-OCR2_0/summary)|^(model.layers\|model.mm_projector_vary)(?!.\*(lm_head\|output\|emb\|wte\|shared)).\*|got_ocr2|&#x2714;|&#x2718;|&#x2718;|&#x2718;||audio|[stepfun-ai/GOT-OCR2_0](https://huggingface.co/stepfun-ai/GOT-OCR2_0)|
 
 
 ## Datasets
