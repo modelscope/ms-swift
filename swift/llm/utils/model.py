@@ -606,6 +606,8 @@ class ModelType:
     florence_2_large = 'florence-2-large'
     florence_2_large_ft = 'florence-2-large-ft'
 
+    got_ocr2 = 'got-ocr2'
+
     @classmethod
     def get_model_name_list(cls) -> List[str]:
         res = []
@@ -636,6 +638,7 @@ class LoRATM(NamedTuple):
     idefics3 = 'idefics3'
     mplug_owl3 = 'mplug_owl3'
     llama3_1_omni = 'llama3_1_omni'
+    got_ocr2 = 'got_ocr2'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -6555,6 +6558,22 @@ def get_model_tokenizer_omnli(model_dir: str,
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model:
         model.to('cuda:0' if device_map == 'auto' else device_map)
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.got_ocr2,
+    'stepfun-ai/GOT-OCR2_0',
+    LoRATM.got_ocr2,
+    TemplateType.got_ocr2,
+    support_flash_attn=True,
+    placeholder_tokens=['<imgpad>'],
+    eos_token='<|im_end|>',
+    tags=['multi-modal', 'audio'],
+    hf_model_id='stepfun-ai/GOT-OCR2_0')
+def get_model_tokenizer_got_ocr2(*args, **kwargs):
+    kwargs['automodel_class'] = AutoModel
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     return model, tokenizer
 
 
