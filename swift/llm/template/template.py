@@ -2273,17 +2273,3 @@ class KTOTemplateMixin:
                 res[f'{prefix}completion_{k}'] = v
         res['label'] = [b['label'] for b in batch]
         return res
-
-
-def get_template(
-    template_type: str,
-    tokenizer: PreTrainedTokenizerBase,
-    default_system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-    **kwargs,
-) -> Template:
-    template_info = TEMPLATE_MAPPING[template_type]
-    template = deepcopy(template_info['template'])
-    template.init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
-    return template

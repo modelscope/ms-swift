@@ -154,7 +154,7 @@ class MSHub(HubOperation):
         from modelscope import HubApi
         api = HubApi()
         if token is None:
-            hub_token = os.environ.get('MODELSCOPE_API_TOKEN')
+            token = os.environ.get('MODELSCOPE_API_TOKEN')
         if token is not None:
             api.login(token)
             return True

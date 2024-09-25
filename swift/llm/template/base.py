@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import json
 import re
+from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -19,6 +20,20 @@ logger = get_logger()
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
+
+
+def get_template(
+    template_type: str,
+    tokenizer: PreTrainedTokenizerBase,
+    default_system: Optional[str] = None,
+    max_length: Optional[int] = None,
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+    **kwargs,
+) -> 'Template':
+    template_info = TEMPLATE_MAPPING[template_type]
+    template = deepcopy(template_info['template'])
+    template.init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
+    return template
 
 
 def _findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
@@ -502,7 +517,7 @@ class Template:
     def split_special_tokens(context_list: List[Context],
                              loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
         """Split special tokens, for example `<image>`, `<video>`, this will help the replace_tag operation"""
-        from swift.utils.utils import split_str_parts_by
+        from .utils import split_str_parts_by
         res: List[Context] = []
         loss_scale_res: List[float] = []
         for context, loss_scale in zip(context_list, loss_scale_list):

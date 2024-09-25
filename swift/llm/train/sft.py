@@ -25,9 +25,10 @@ from ..dataset.loader import DatasetLoader
 from ..dataset.utils import print_example, LazyLLMDataset, ConstantLengthDataset, stat_dataset, dataset_map, \
     sort_by_max_length
 from ..model.model import get_model_tokenizer
-from .patcher import training_context, patch_ddp_mp, patch_template
+from .patcher import training_context, patch_ddp_mp, TrainTemplate
 from ..template import Template
-from ..template.template import get_template, TEMPLATE_MAPPING
+from ..template.base import get_template
+from ..template.template import TEMPLATE_MAPPING
 from ..tuner import prepare_modules
 from ..utils import set_generation_config
 from ...utils.utils import get_time_info
@@ -82,6 +83,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     # Loading Dataset
     template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
                                       args.truncation_strategy)
+    template = TrainTemplate(template)
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     td0, tkwargs0 = template.encode(train_dataset[0])
