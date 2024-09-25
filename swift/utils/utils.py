@@ -41,31 +41,6 @@ def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[st
     return action, action_input
 
 
-def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float]]) -> None:
-    import re
-    compiled_patterns = [(re.compile(pattern), scale) for pattern, scale in regex_delimiters.items()]
-    for i in range(len(text_list) - 1, -1, -1):
-        item = text_list[i]
-        if item.get('key') == '':
-            res_text = item['content']
-            last_idx = 0
-            segments = []
-
-            for pattern, scale in compiled_patterns:
-                matches = list(re.finditer(pattern, res_text))
-                for match in matches:
-                    if match.start() > last_idx:
-                        segments.append({'key': '', 'content': res_text[last_idx:match.start()]})
-                    segments.append({'key': scale[0], 'content': match.group(0)})
-                    last_idx = match.end()
-
-            if last_idx < len(res_text):
-                segments.insert(0, {'key': '', 'content': res_text[last_idx:]})
-
-            if segments:
-                text_list[i:i + 1] = segments
-
-
 def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
     time_info = None
     try:

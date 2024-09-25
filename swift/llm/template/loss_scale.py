@@ -3,7 +3,7 @@ import json
 import os
 from typing import Dict, List, Optional, Tuple
 
-from swift.utils.utils import split_str_parts_by, split_parts_by_regex
+from .utils import split_str_parts_by, split_parts_by_regex
 
 
 def calculate_loss_scale(query: str,
