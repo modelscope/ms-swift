@@ -1375,25 +1375,7 @@ class _Qwen2AudioTemplateMixin:
                 audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
             inputs.update(audio_inputs)
-        inputs['_data'] = {'plain_text': not audios, 'input_ids': torch.tensor(inputs['input_ids'])[None]}
         return inputs, {}
-
-    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        plain_text = data.pop('plain_text', False)
-        if is_deepspeed_enabled() and plain_text:
-            input_ids = data['input_ids']
-            inputs_embeds = model.get_input_embeddings()(input_ids)
-            _, _ = model.audio_tower.conv1.weight.dtype, model.audio_tower.conv1.weight.device
-            seq_len = model.audio_tower.config.max_source_positions * model.audio_tower.conv1.stride[
-                0] * model.audio_tower.conv2.stride[0]
-            input_features = input_ids.new_zeros((1, 128, seq_len))
-            audio_outputs = model.audio_tower(input_features)
-            selected_audio_feature = audio_outputs.last_hidden_state
-            audio_features = model.multi_modal_projector(selected_audio_feature)
-
-            inputs_embeds = inputs_embeds + audio_features.mean() * 0.
-            return {'inputs_embeds': inputs_embeds[0]}
-        return {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = Template.data_collator(self, batch, padding_to)
