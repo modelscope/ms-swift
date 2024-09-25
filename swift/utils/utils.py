@@ -21,18 +21,6 @@ from .torch_utils import broadcast_string, is_dist, is_dist_ta, is_local_master
 logger = get_logger()
 
 
-def fetch_one(element: Union[Tuple, List, Set, Dict, Any], type: Type = None) -> Any:
-    if isinstance(element, (tuple, set, list)):
-        for ele in element:
-            out = fetch_one(ele)
-            if out and (type is None or isinstance(out, type)):
-                return out
-    elif isinstance(element, dict):
-        return fetch_one(list(element.values()))
-    else:
-        return element
-
-
 def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[str]]:
     agent_keyword = [
         'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:', 'Thought:',

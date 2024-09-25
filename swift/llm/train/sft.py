@@ -25,7 +25,7 @@ from ..dataset.loader import DatasetLoader
 from ..dataset.utils import print_example, LazyLLMDataset, ConstantLengthDataset, stat_dataset, dataset_map, \
     sort_by_max_length
 from ..model.model import get_model_tokenizer
-from ..model.patcher import training_context, patch_ddp_mp
+from .patcher import training_context, patch_ddp_mp, patch_template
 from ..template import Template
 from ..template.template import get_template, TEMPLATE_MAPPING
 from ..tuner import prepare_modules

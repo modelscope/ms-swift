@@ -12,13 +12,11 @@ from packaging import version
 from transformers import PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
-
-from swift.llm.template.base import Template
-from swift.utils import get_logger, upper_bound
-from swift.utils.utils import fetch_one
-from swift.utils.vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                                      load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2,
-                                      transform_image)
+from modelscope import get_logger
+from .base import Template
+from .utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
+                                             load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2,
+                                             transform_image, upper_bound)
 
 logger = get_logger()
 
