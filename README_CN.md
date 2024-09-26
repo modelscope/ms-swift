@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
 - 2024.09.26: 支持llama3.2系列模型的训练到部署. 使用`swift infer --model_type llama3_2-1b-instruct`进行体验.
 - 2024.09.25: 支持got-ocr2的训练到部署. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2122).
 - 2024.09.24: 支持llama3_1-8b-omni的训练与部署. 使用`swift infer --model_type llama3_1-8b-omni`进行体验.
@@ -616,6 +617,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 |---------------------------------------------------------|----------------------------------------------------------------------------|----------|------------------|------------------|
 | Qwen-VL<br>Qwen2-VL                        | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 2B-72B<br>包含量化版本     | base模型<br>chat模型 |
 | Qwen-Audio<br>Qwen2-Audio                       | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B               | base模型<br>chat模型 |
+| Llama3.2-Vision              | [Llama3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf)                | 英文       | 11B-90B      | base模型<br>chat模型 |
 | YI-VL                                                   | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B           | chat模型           |
 | XComposer2<br>XComposer2.5                              | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)            | 中文<br>英文 | 7B               | chat模型           |
 | DeepSeek-VL                                             | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |

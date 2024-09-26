@@ -21,8 +21,8 @@ from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
 from .utils import (TEMPLATE_MAPPING, LazyLLMDataset, PtArguments, RLHFArguments, SftArguments, Template, dataset_map,
-                    dynamic_vit_gradient_checkpointing, get_dataset, get_model_tokenizer, get_template, get_time_info,
-                    print_example, set_generation_config, sort_by_max_length, stat_dataset)
+                    deep_getattr, dynamic_vit_gradient_checkpointing, get_dataset, get_mllm_arch, get_model_tokenizer,
+                    get_template, get_time_info, print_example, set_generation_config, sort_by_max_length, stat_dataset)
 
 logger = get_logger()
 
@@ -265,6 +265,12 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
         model.config.use_cache = False  # fix transformers==4.36
         logger.info('Setting model.config.use_cache: False')
         model.enable_input_require_grads()
+        mllm_arch = get_mllm_arch(args.model_type)
+        if mllm_arch is not None:
+            for vision_tower_name in mllm_arch.vision_tower:
+                vision_tower = deep_getattr(model, vision_tower_name)
+                if hasattr(vision_tower, 'enable_input_require_grads'):
+                    vision_tower.enable_input_require_grads()
 
     if use_torchacc():
         model.config.use_cache = False

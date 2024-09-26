@@ -265,6 +265,12 @@ class ModelType:
     llama3_2_1b_instruct = 'llama3_2-1b-instruct'
     llama3_2_3b = 'llama3_2-3b'
     llama3_2_3b_instruct = 'llama3_2-3b-instruct'
+    # llama3.2-vision
+    llama3_2_11b_vision = 'llama3_2-11b-visiont'
+    llama3_2_11b_vision_instruct = 'llama3_2-11b-vision-instruct'
+    llama3_2_90b_vision = 'llama3_2-90b-vision'
+    llama3_2_90b_vision_instruct = 'llama3_2-90b-vision-instruct'
+
     # omni
     llama3_1_8b_omni = 'llama3_1-8b-omni'
     # reflection
@@ -644,6 +650,7 @@ class LoRATM(NamedTuple):
     mplug_owl3 = 'mplug_owl3'
     llama3_1_omni = 'llama3_1_omni'
     got_ocr2 = 'got_ocr2'
+    llama3_2_vision = 'llama3_2_vision'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -6192,6 +6199,56 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
+
+
+@register_model(
+    ModelType.llama3_2_11b_vision,
+    'LLM-Research/Llama-3.2-11B-Vision',
+    LoRATM.llama3_2_vision,
+    TemplateType.llama3_2_vision_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    ignore_file_pattern=['*.pth'],
+    requires=['transformers>=4.45'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='meta-llama/Llama-3.2-11B-Vision')
+@register_model(
+    ModelType.llama3_2_11b_vision_instruct,
+    'LLM-Research/Llama-3.2-11B-Vision-Instruct',
+    LoRATM.llama3_2_vision,
+    TemplateType.llama3_2_vision,
+    support_flash_attn=True,
+    support_vllm=True,
+    ignore_file_pattern=['*.pth'],
+    requires=['transformers>=4.45'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='meta-llama/Llama-3.2-11B-Vision-Instruct')
+@register_model(
+    ModelType.llama3_2_90b_vision,
+    'LLM-Research/Llama-3.2-90B-Vision',
+    LoRATM.llama3_2_vision,
+    TemplateType.llama3_2_vision_generation,
+    support_flash_attn=True,
+    support_vllm=True,
+    ignore_file_pattern=['*.pth'],
+    requires=['transformers>=4.45'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='meta-llama/Llama-3.2-90B-Vision')
+@register_model(
+    ModelType.llama3_2_90b_vision_instruct,
+    'LLM-Research/Llama-3.2-90B-Vision-Instruct',
+    LoRATM.llama3_2_vision,
+    TemplateType.llama3_2_vision,
+    support_flash_attn=True,
+    support_vllm=True,
+    ignore_file_pattern=['*.pth'],
+    requires=['transformers>=4.45'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='meta-llama/Llama-3.2-90B-Vision-Instruct')
+def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
+    from transformers import MllamaForConditionalGeneration
+    kwargs['automodel_class'] = MllamaForConditionalGeneration
+    return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
 @register_model(

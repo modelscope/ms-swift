@@ -31,7 +31,7 @@ from .media import MediaTag
 from .model import (MODEL_MAPPING, dtype_mapping, get_additional_saved_files, get_default_lora_target_modules,
                     get_default_template_type)
 from .template import TEMPLATE_MAPPING
-from .utils import is_liger_available, is_lmdeploy_available, is_quant_model, is_vllm_available
+from .utils import get_mllm_arch, is_liger_available, is_lmdeploy_available, is_quant_model, is_vllm_available
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -1048,16 +1048,12 @@ class SftArguments(ArgumentsBase):
             if self.eval_steps is None:
                 self.eval_steps = 50
         elif self.sft_type == 'full':
-            from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-            lora_target_modules = model_info.get('lora_target_modules')  # model_group
-            model_arch = None
-            if isinstance(lora_target_modules, str):
-                model_arch = MODEL_KEYS_MAPPING[lora_target_modules]
-            if model_arch:
-                if self.freeze_vit and model_arch.vision_tower:
-                    self.freeze_parameters += model_arch.vision_tower
-                if model_arch.generator:
-                    self.freeze_parameters += model_arch.generator
+            mllm_arch = get_mllm_arch(self.model_type)
+            if mllm_arch:
+                if self.freeze_vit and mllm_arch.vision_tower:
+                    self.freeze_parameters += mllm_arch.vision_tower
+                if mllm_arch.generator:
+                    self.freeze_parameters += mllm_arch.generator
             assert 0 <= self.freeze_parameters_ratio <= 1
             assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
             assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "

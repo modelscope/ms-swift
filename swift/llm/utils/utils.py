@@ -36,7 +36,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import ModelScopeConfig
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, stat_array, upper_bound, use_torchacc
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+from swift.utils.module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
 from .template import History, StopWords, StopWordsCriteria, Template
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -458,16 +458,20 @@ def deep_getattr(model, attr: str):
     return model
 
 
-def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
-    from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+def get_mllm_arch(model_type: str) -> MultiModelKeys:
     from .model import MODEL_MAPPING
     model_info = MODEL_MAPPING[model_type]
     lora_target_modules = model_info.get('lora_target_modules')  # model_group
-
     if not isinstance(lora_target_modules, str):
+        return None
+    return MODEL_KEYS_MAPPING[lora_target_modules]
+
+
+def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
+    mllm_arch = get_mllm_arch(model_type)
+    if mllm_arch is None:
         return
-    vision_tower_list = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
-    for vision_tower_name in vision_tower_list:
+    for vision_tower_name in mllm_arch.vision_tower:
         vision_tower = deep_getattr(model, vision_tower_name)
         module_list = _find_module_list(vision_tower)
         if module_list is None:
