@@ -270,7 +270,10 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
             for vision_tower_name in mllm_arch.vision_tower:
                 vision_tower = deep_getattr(model, vision_tower_name)
                 if hasattr(vision_tower, 'enable_input_require_grads'):
-                    vision_tower.enable_input_require_grads()
+                    try:
+                        vision_tower.enable_input_require_grads()
+                    except NotImplementedError:
+                        pass
 
     if use_torchacc():
         model.config.use_cache = False
