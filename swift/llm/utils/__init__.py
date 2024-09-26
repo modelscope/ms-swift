@@ -27,7 +27,7 @@ from .utils import (LazyLLMDataset, LLMDataset, dataset_map, download_dataset, d
                     inference, inference_stream, is_lmdeploy_available, is_megatron_available, is_quant_model,
                     is_vllm_available, limit_history_length, messages_join_observation, messages_to_history,
                     print_example, safe_tokenizer_decode, set_generation_config, sort_by_max_length, stat_dataset,
-                    to_device)
+                    to_device, get_mllm_arch)
 
 logger = get_logger()
 

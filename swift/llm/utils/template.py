@@ -1964,8 +1964,16 @@ class Llama3_2VisionTemplateMixin:
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        print()
-
+        res = super().data_collator(batch, padding_to)
+        for key in ['aspect_ratio_ids', 'aspect_ratio_mask']:
+            value = [b[key] for b in batch if b.get(key) is not None]
+            if value:
+                res[key] = torch.concat(value)
+        
+        cross_attention_mask = [b['cross_attention_mask'] for b in batch if b.get('cross_attention_mask') is not None]
+        if cross_attention_mask:
+            res['cross_attention_mask'] = self.pad_sequence(cross_attention_mask[0], 0, self.padding_side)
+        return res
 
 class Llama3_2VisionTemplate(Llama3_2VisionTemplateMixin, Llama3Template):
     pass

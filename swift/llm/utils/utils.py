@@ -458,15 +458,18 @@ def deep_getattr(model, attr: str):
     return model
 
 
-def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
-    from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+def get_mllm_arch(model_type: str) -> 'MultiModelKeys':
+    from swift.utils.module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
     from .model import MODEL_MAPPING
     model_info = MODEL_MAPPING[model_type]
     lora_target_modules = model_info.get('lora_target_modules')  # model_group
-
     if not isinstance(lora_target_modules, str):
-        return
-    vision_tower_list = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
+        return None
+    return MODEL_KEYS_MAPPING[lora_target_modules]
+    
+def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
+    vision_tower_list = get_vision_tower_list()
+
     for vision_tower_name in vision_tower_list:
         vision_tower = deep_getattr(model, vision_tower_name)
         module_list = _find_module_list(vision_tower)
