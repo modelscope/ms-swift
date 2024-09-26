@@ -1,22 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import json
 import os
 import re
-from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
-import json
 import torch
 import transformers
 from packaging import version
 from transformers import PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
+
 from modelscope import get_logger
-from .base import Template
+from .base import Template, TEMPLATE_MAPPING
 from .utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                                             load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2,
-                                             transform_image, upper_bound)
+                    load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2,
+                    transform_image, upper_bound, fetch_one)
 
 logger = get_logger()
 
@@ -25,7 +25,6 @@ History = List[Union[Tuple[str, str], List[str]]]
 Prompt = List[Union[str, List[int], List[str]]]
 StopWords = Prompt
 Context = Union[str, List[int]]
-TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
 class TemplateType:
