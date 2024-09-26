@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import os
+from multiprocessing import shared_memory
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
+import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
@@ -30,29 +32,51 @@ def _reduce_columns(cls: type) -> type:
     cls._patching = True
 
     def new_call_func(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
-        self.column_state = set(['images', 'videos', 'audios'])
+        self.key_mapping = {k: i for i, k in enumerate(self.empty_row.keys())}
+        num_proc = int(os.environ.get('DATASET_MAP_NPROC', '1'))
+        self.shared_shm_name = None
+        shm, buffer = None, None
+        if num_proc > 1:  # multiprocess
+            shm = shared_memory.SharedMemory(create=True, size=len(self.key_mapping))
+            self.shared_shm_name = shm.name
+            buffer = shm.buf
+        self.column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool_, buffer=buffer)
+        self.column_state[:] = False
         dataset = call_func(self, dataset)
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()
         else:
             features = dataset.features.keys()
         for k in features:
-            if k not in self.column_state:
+            if k in ['images', 'videos', 'audios']:
+                continue
+            k_i = self.key_mapping.get(k, -1)
+            if k_i == -1 or not self.column_state[k_i]:
                 dataset = dataset.remove_columns([k])
+        if shm:
+            shm.close()
+            shm.unlink()
         return dataset
 
     def new_preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        if self.shared_shm_name is not None:  # multiprocess
+            shm = shared_memory.SharedMemory(name=self.shared_shm_name)
+            column_state = np.ndarray((len(self.key_mapping), ), dtype=np.bool_, buffer=shm.buf)
+        else:
+            column_state = self.column_state
         row = preprocess(self, row)
         for k, v in row.items():
+            k_i = self.key_mapping[k]
+            if column_state[k_i]:
+                continue
             if k == 'query_role':
-                if k not in self.column_state and v and v != 'user':
-                    self.column_state.add(k)
+                if v and v != 'user':
+                    column_state[k_i] = True
             elif k == 'history_roles':
-                if k not in self.column_state and v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
-                    self.column_state.add(k)
-            else:
-                if v:
-                    self.column_state.add(k)
+                if v and any(_v[0] != 'user' or _v[1] != 'assistant' for _v in v):
+                    column_state[k_i] = True
+            elif v:
+                column_state[k_i] = True
         return row
 
     cls.__call__ = new_call_func
@@ -142,6 +166,7 @@ class SwiftPreprocessor:
         return dataset
 
 
+@_reduce_columns
 class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
@@ -194,6 +219,7 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
+@_reduce_columns
 class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
 
     def __init__(self,

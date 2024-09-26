@@ -55,7 +55,12 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
-- 🔥2024.09.19: Supports the qwen2.5, qwen2.5-math, and qwen2.5-coder series models. Supports the qwen2-vl-72b series models.
+- 2024.09.26: Support for training and deploying llama3.2-vision series models. Experience it using `swift infer --model_type llama3_2-11b-vision-instruct`.
+- 2024.09.26: Support for training and deploying llama3.2 series models. Experience it using `swift infer --model_type llama3_2-1b-instruct`.
+- 2024.09.25: Support for training to deployment with got-ocr2. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/2122).
+- 2024.09.24: Support for training and deploying llama3_1-8b-omni. Experience it using `swift infer --model_type llama3_1-8b-omni`.
+- 2024.09.23: Support for training and deploying pixtral-12b. Experience it using `swift infer --model_type pixtral-12b --dtype fp16`.
+- 🔥2024.09.19: Supports the qwen2.5, qwen2.5-math, and qwen2.5-coder series models. Supports the qwen2-vl-72b series models. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/2064).
 - 2024.09.07: Support the `Reflection-llama3-70b` model, use by `swift sft/infer --model_type reflection-llama_3_1-70b`.
 - 2024.09.06: Support fine-tuning and inference for mplug-owl3. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/1969).
 - 2024.09.05: Support for the minicpm3-4b model. Experience it using `swift infer --model_type minicpm3-4b`.
@@ -581,7 +586,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Yuan2                                                                                           | [Langchao Yuan series models](https://github.com/IEIT-Yuan)                                                                                    | Chinese<br>English | 2B-102B                                   | instruct model                                                    |
 | XVerse                                                                                          | [XVerse series models](https://github.com/xverse-ai)                                                                                           | Chinese<br>English | 7B-65B                                    | base model<br>chat model<br>long text model<br>MoE model          |
 | LLaMA2                                                                                          | [LLaMA2 series models](https://github.com/facebookresearch/llama)                                                                              | English            | 7B-70B<br>including quantized versions    | base model<br>chat model                                          |
-| LLaMA3<br>LLaMA3.1                       | [LLaMA3 series models](https://github.com/meta-llama/llama3)                                                                                   | English            | 8B-70B<br>including quantized versions    | base model<br>chat model                                          |
+| LLaMA3<br>LLaMA3.1<br>Llama3.2              | [LLaMA3 series models](https://github.com/meta-llama/llama3)                                                                                   | English            | 1B-70B<br>including quantized versions    | base model<br>chat model                                          |
 | Mistral<br>Mixtral                                                                              | [Mistral series models](https://github.com/mistralai/mistral-src)                                                                              | English            | 7B-22B                                    | base model<br>instruct model<br>MoE model                         |
 | Yi<br>Yi1.5<br>Yi-Coder                                                                | [01AI's YI series models](https://github.com/01-ai)                                   | Chinese<br>English | 1.5B-34B<br>including quantized             | base model<br>chat model<br>long text model                      |
 | InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5                                          | [Pujiang AI Lab InternLM series models](https://github.com/InternLM/InternLM)                                                                  | Chinese<br>English | 1.8B-20B                                  | base model<br>chat model<br>math model                            |
@@ -619,6 +624,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 |------------------------------------------------------------|----------------------------------------------------------------------------------------|--------------------|---------------------------------------|--------------------------|
 | Qwen-VL<br>Qwen2-VL                       | [Tongyi Qwen vision model](https://github.com/QwenLM)                                  | Chinese<br>English | 2B-72B<br>including quantized versions    | base model<br>chat model |
 | Qwen-Audio<br>Qwen2-Audio                                  | [Tongyi Qwen speech model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B                                    | base model<br>chat model |
+| Llama3.2-Vision              | [Llama3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf)                | English       | 11B-90B      | base model<br>chat model       |
 | YI-VL                                                      | [01AI's YI series vision models](https://github.com/01-ai)                             | Chinese<br>English | 6B-34B                                | chat model               |
 | XComposer2<br>XComposer2.5                                 | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                    | chat model               |
 | DeepSeek-VL                                                | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
@@ -634,6 +640,8 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | PaliGemma                                                  | Google                                                                                 | English            | 3B                                    | chat model               |
 | Florence                                                   | Microsoft                                                                              | English            | 0.23B-0.77B                           | chat model               |
 | Idefics3                                                   | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | English       | 8B      | chat model       |
+| Pixtral                                | [mistralai](https://huggingface.co/mistralai)                     | English       | 12B      | chat model       |
+| Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
 
 
 #### Diffusion Models

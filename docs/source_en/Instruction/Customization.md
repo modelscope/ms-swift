@@ -277,7 +277,7 @@ The following is an example of **custom models**. The complete py file can be vi
 from typing import Any, Dict
 import torch
 
-from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from transformers.utils.versions import require_version
 

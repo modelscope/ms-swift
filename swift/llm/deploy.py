@@ -14,9 +14,8 @@ import json
 import torch
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from modelscope import GenerationConfig
-from packaging import version
 from peft import PeftModel
+from transformers import GenerationConfig
 
 from swift.utils import get_logger, get_main, get_seed, seed_everything
 from .agent import split_action_action_input
@@ -25,8 +24,8 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, compat_openai, inference, inference_stream, is_quant_model,
-                    messages_join_observation, messages_to_history, random_uuid, set_generation_config)
+                    Model, ModelList, Template, UsageInfo, add_vllm_request, compat_openai, inference, inference_stream,
+                    is_quant_model, messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
 
@@ -189,8 +188,7 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         messages = request.messages
-        if _args.is_multimodal:
-            compat_openai(messages, request)
+        compat_openai(messages, request)
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)
         example = messages_to_history(messages)
@@ -321,21 +319,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         assert lora_request is not None
         generate_kwargs['lora_request'] = lora_request
 
-    import vllm
-    input_ids = inputs['input_ids']
-    if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-        llm_inputs = {'prompt_token_ids': input_ids}
-        images = inputs.get('images') or []
-        if images:
-            if version.parse(vllm.__version__) < version.parse('0.6'):
-                assert len(images) == 1, (
-                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.0')
-                llm_inputs['multi_modal_data'] = {'image': images[0]}
-            else:
-                llm_inputs['multi_modal_data'] = {'image': images}
-        result_generator = llm_engine.generate(llm_inputs, generation_config, request_id, **generate_kwargs)
-    else:
-        result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
+    result_generator = add_vllm_request(
+        llm_engine, inputs, request_id=request_id, generation_config=generation_config, **generate_kwargs)
 
     async def _generate_full():
         result = None
