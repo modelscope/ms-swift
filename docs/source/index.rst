@@ -30,6 +30,7 @@ Swift DOCUMENTATION
    Instruction/命令行参数.md
    Instruction/支持的模型和数据集.md
    Instruction/自定义与拓展.md
+   Instruction/常见问题整理.md
 
 
 .. toctree::
