@@ -30,6 +30,7 @@ Swift DOCUMENTATION
    Instruction/Command-line-parameters.md
    Instruction/Supported-models-datasets.md
    Instruction/Customization.md
+   Instruction/Common-QA.md
 
 .. toctree::
    :maxdepth: 2
