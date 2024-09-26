@@ -1934,10 +1934,40 @@ register_template(TemplateType.llama3_2, Llama3_2Template())
 
 
 class Llama3_2VisionTemplateMixin:
-    pass
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        return ['<|image|>']
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
+                                                                  convert_sparse_cross_attention_mask_to_dense)
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        images = example['images']
+        if images:
+            input_ids = inputs['input_ids']
+            processor = self.tokenizer.processor
+            image_features = processor.image_processor(images, return_tensors='pt')
+            num_tiles = image_features.pop('num_tiles')
+            inputs.update(image_features)
+
+            cross_attention_token_mask = [get_cross_attention_token_mask(input_ids, processor.image_token_id)]
+            cross_attention_mask = convert_sparse_cross_attention_mask_to_dense(
+                cross_attention_token_mask,
+                num_tiles=num_tiles,
+                max_num_tiles=processor.image_processor.max_image_tiles,
+                length=len(input_ids),
+            )
+            inputs['cross_attention_mask'] = torch.tensor(cross_attention_mask)
+
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        print()
 
 
-class Llama3_2VisionTemplate(Llama3_2VisionTemplateMixin, Llama3_2Template):
+class Llama3_2VisionTemplate(Llama3_2VisionTemplateMixin, Llama3Template):
     pass
 
 

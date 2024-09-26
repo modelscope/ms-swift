@@ -6208,6 +6208,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     TemplateType.llama3_2_vision_generation,
     support_flash_attn=True,
     support_vllm=True,
+    ignore_file_pattern=['*.pth'],
     requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision'],
     hf_model_id='meta-llama/Llama-3.2-11B-Vision')
@@ -6218,6 +6219,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     TemplateType.llama3_2_vision,
     support_flash_attn=True,
     support_vllm=True,
+    ignore_file_pattern=['*.pth'],
     requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision'],
     hf_model_id='meta-llama/Llama-3.2-11B-Vision-Instruct')
@@ -6228,6 +6230,7 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     TemplateType.llama3_2_vision_generation,
     support_flash_attn=True,
     support_vllm=True,
+    ignore_file_pattern=['*.pth'],
     requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision'],
     hf_model_id='meta-llama/Llama-3.2-90B-Vision')
@@ -6238,10 +6241,11 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     TemplateType.llama3_2_vision,
     support_flash_attn=True,
     support_vllm=True,
+    ignore_file_pattern=['*.pth'],
     requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision'],
     hf_model_id='meta-llama/Llama-3.2-90B-Vision-Instruct')
-def get_model_tokenizer_llama3_2_vision(model_dir: str, *args, **kwargs):
+def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
     from transformers import MllamaForConditionalGeneration
     kwargs['automodel_class'] = MllamaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
