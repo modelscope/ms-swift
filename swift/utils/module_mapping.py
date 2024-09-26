@@ -296,6 +296,12 @@ GOT_OCR2 = MultiModelKeys(
     vision_tower='model.vision_tower_high',
 )
 
+LLAMA3_2_VISION = MultiModelKeys(
+    language_model='language_model',
+    connector='multi_modal_projector',
+    vision_tower='vision_model',
+)
+
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
     ('qwen_audio', QWEN_AUDIO_KEYS),
@@ -317,6 +323,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('mplug_owl3', MPLUG_OWL3_KEYS),
     ('llama3_1_omni', LLAMA3_1_OMNI),
     ('got_ocr2', GOT_OCR2),
+    ('llama3_2_vision', LLAMA3_2_VISION),
     # LLM begins here
     ('llama', LLAMA_KEYS),
     ('mistral', LLAMA_KEYS),

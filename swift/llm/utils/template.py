@@ -64,6 +64,8 @@ class TemplateType:
     llama3 = 'llama3'
     llama3_1_omni = 'llama3_1-omni'
     llama3_2 = 'llama3_2'
+    llama3_2_vision = 'llama3_2-vision'
+    llama3_2_vision_generation = 'llama3_2-vision-generation'
     reflection = 'reflection'
     longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
@@ -1929,6 +1931,22 @@ class Llama3_2Template(Llama3_2TemplateMixin, Template):
 
 
 register_template(TemplateType.llama3_2, Llama3_2Template())
+
+
+class Llama3_2VisionTemplateMixin:
+    pass
+
+
+class Llama3_2VisionTemplate(Llama3_2VisionTemplateMixin, Llama3_2Template):
+    pass
+
+
+class Llama3_2VisionGenerationTemplate(Llama3_2VisionTemplateMixin, DefaultGenerationTemplate):
+    pass
+
+
+register_template(TemplateType.llama3_2_vision, Llama3_2VisionTemplate(), lazy_tokenize=True)
+register_template(TemplateType.llama3_2_vision_generation, Llama3_2VisionGenerationTemplate(), lazy_tokenize=True)
 
 
 class Llama3_1OmniTemplate(Llama3Template):
