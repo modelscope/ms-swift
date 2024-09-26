@@ -260,6 +260,11 @@ class ModelType:
     llama3_1_405b_instruct_awq = 'llama3_1-405b-instruct-awq'
     llama3_1_405b_instruct_gptq_int4 = 'llama3_1-405b-instruct-gptq-int4'
     llama3_1_405b_instruct_bnb = 'llama3_1-405b-instruct-bnb'
+    # llama3.2
+    llama3_2_1b = 'llama3_2-1b'
+    llama3_2_1b_instruct = 'llama3_2-1b-instruct'
+    llama3_2_3b = 'llama3_2-3b'
+    llama3_2_3b_instruct = 'llama3_2-3b-instruct'
     # omni
     llama3_1_8b_omni = 'llama3_1-8b-omni'
     # reflection
@@ -1026,7 +1031,7 @@ def _output_device_map_hook(module, input, output):
     LoRATM.llava,
     TemplateType.pixtral,
     # torch_dtype=torch.float16,  # Please do not use bf16.
-    requires=['transformers>=4.45.0.dev0'],
+    requires=['transformers>=4.45'],
     placeholder_tokens=['[IMG]'],
     tags=['multi-modal', 'vision'],
     hf_model_id='mistral-community/pixtral-12b')
@@ -3598,7 +3603,7 @@ for model_size in ['1.5B', '7B']:
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio,
     support_flash_attn=True,
-    requires=['librosa', 'transformers>=4.45.0.dev0'],
+    requires=['librosa', 'transformers>=4.45'],
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B-Instruct')
 @register_model(
@@ -3607,7 +3612,7 @@ for model_size in ['1.5B', '7B']:
     LoRATM.qwen2_audio,
     TemplateType.qwen2_audio_generation,
     support_flash_attn=True,
-    requires=['librosa', 'transformers>=4.45.0.dev0'],
+    requires=['librosa', 'transformers>=4.45'],
     eos_token='<|endoftext|>',
     tags=['multi-modal', 'audio'],
     hf_model_id='Qwen/Qwen2-Audio-7B')
@@ -3669,7 +3674,7 @@ for model_size in ['2B', '7B', '72B']:
         support_flash_attn=True,
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],
+        requires=['transformers>=4.45', 'qwen_vl_utils'],
         tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}')
     register_model(
@@ -3681,7 +3686,7 @@ for model_size in ['2B', '7B', '72B']:
         support_flash_attn=True,
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils'],  # 'pyav'
+        requires=['transformers>=4.45', 'qwen_vl_utils'],  # 'pyav'
         tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct')
     for quant_bits in [4, 8]:
@@ -3696,7 +3701,7 @@ for model_size in ['2B', '7B', '72B']:
             support_flash_attn=True,
             support_vllm=True,
             placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-            requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+            requires=['transformers>=4.45', 'qwen_vl_utils', 'auto_gptq>=0.5'],
             tags=['multi-modal', 'vision', 'video'],
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
@@ -3711,7 +3716,7 @@ for model_size in ['2B', '7B', '72B']:
         support_flash_attn=True,
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        requires=['transformers>=4.45.0.dev0', 'qwen_vl_utils', 'autoawq'],
+        requires=['transformers>=4.45', 'qwen_vl_utils', 'autoawq'],
         tags=['multi-modal', 'vision', 'video'],
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
@@ -5256,6 +5261,50 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     support_lmdeploy=True,
     requires=['transformers>=4.43'],
     hf_model_id='THUDM/LongWriter-llama3.1-8b')
+@register_model(
+    ModelType.llama3_2_1b,
+    'LLM-Research/Llama-3.2-1B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    ignore_file_pattern=[r'.+\.pth$'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.45'],
+    hf_model_id='meta-llama/Llama-3.2-1B')
+@register_model(
+    ModelType.llama3_2_3b,
+    'LLM-Research/Llama-3.2-3B',
+    LoRATM.llama,
+    TemplateType.default_generation,
+    ignore_file_pattern=[r'.+\.pth$'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.45'],
+    hf_model_id='meta-llama/Llama-3.2-3B')
+@register_model(
+    ModelType.llama3_2_1b_instruct,
+    'LLM-Research/Llama-3.2-1B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3_2,
+    ignore_file_pattern=[r'.+\.pth$'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.45'],
+    hf_model_id='meta-llama/Llama-3.2-1B-Instruct')
+@register_model(
+    ModelType.llama3_2_3b_instruct,
+    'LLM-Research/Llama-3.2-3B-Instruct',
+    LoRATM.llama,
+    TemplateType.llama3_2,
+    ignore_file_pattern=[r'.+\.pth$'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.45'],
+    hf_model_id='meta-llama/Llama-3.2-3B-Instruct')
 def get_model_tokenizer_llama2(model_dir: str,
                                torch_dtype: torch.dtype,
                                model_kwargs: Dict[str, Any],
@@ -6179,7 +6228,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_onevision_qwen,
     support_flash_attn=True,
-    requires=['transformers>=4.45.0.dev0'],
+    requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision', 'video'],
     ignore_file_pattern=['onnx'],
     placeholder_tokens=['<image>'],
@@ -6190,7 +6239,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_onevision_qwen,
     support_flash_attn=True,
-    requires=['transformers>=4.45.0.dev0'],
+    requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision', 'video'],
     placeholder_tokens=['<image>'],
     hf_model_id='llava-hf/llava-onevision-qwen2-7b-ov-hf')
@@ -6200,7 +6249,7 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     LoRATM.llava,
     TemplateType.llava_onevision_qwen,
     support_flash_attn=True,
-    requires=['transformers>=4.45.0.dev0'],
+    requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision', 'video'],
     placeholder_tokens=['<image>'],
     hf_model_id='llava-hf/llava-onevision-qwen2-72b-ov-hf')
@@ -6452,7 +6501,7 @@ def get_model_tokenizer_llava(model_dir: str,
     TemplateType.idefics3,
     support_flash_attn=True,
     placeholder_tokens=['<image>'],
-    requires=['transformers>=4.45.0.dev0'],
+    requires=['transformers>=4.45'],
     tags=['multi-modal', 'vision'],
     hf_model_id='HuggingFaceM4/Idefics3-8B-Llama3')
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):

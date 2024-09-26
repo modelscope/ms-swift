@@ -4,6 +4,7 @@ import os
 import re
 from contextlib import contextmanager
 from copy import deepcopy
+from datetime import datetime
 from functools import partial, wraps
 from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
@@ -62,6 +63,7 @@ class TemplateType:
     llama = 'llama'  # llama2
     llama3 = 'llama3'
     llama3_1_omni = 'llama3_1-omni'
+    llama3_2 = 'llama3_2'
     reflection = 'reflection'
     longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
@@ -1897,6 +1899,36 @@ class ReflectionTemplate(Llama3TemplateMixin, Template):
 
 register_template(TemplateType.reflection, ReflectionTemplate())
 register_template(TemplateType.llama3, Llama3Template())
+
+
+class Llama3_2TemplateMixin:
+    system = None
+
+    def __init__(self):
+        now = datetime.now()
+        date_string = now.strftime('%d %b %Y')
+        date_prompt = f'Cutting Knowledge Date: December 2023\nToday Date: {date_string}'
+        Template.__init__(
+            self, [
+                f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n'
+                '{{SYSTEM}}<|eot_id|>'
+            ], [
+                '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+                '<|start_header_id|>assistant<|end_header_id|>\n\n'
+            ], ['<|eot_id|>'], ['<|eot_id|>'],
+            self.system,
+            tools_prompt='toolbench',
+            tool_prompt=[
+                '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+                '<|start_header_id|>assistant<|end_header_id|>\n\n'
+            ])
+
+
+class Llama3_2Template(Llama3_2TemplateMixin, Template):
+    pass
+
+
+register_template(TemplateType.llama3_2, Llama3_2Template())
 
 
 class Llama3_1OmniTemplate(Llama3Template):
