@@ -24,8 +24,8 @@ from .utils import (TEMPLATE_MAPPING, ChatCompletionMessageToolCall, ChatComplet
                     ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse,
                     ChatMessage, CompletionRequest, CompletionResponse, CompletionResponseChoice,
                     CompletionResponseStreamChoice, CompletionStreamResponse, DeltaMessage, DeployArguments, Function,
-                    Model, ModelList, Template, UsageInfo, add_vllm_request, compat_openai, inference, inference_stream,
-                    is_quant_model, messages_join_observation, messages_to_history, random_uuid, set_generation_config)
+                    Model, ModelList, Template, UsageInfo, compat_openai, inference, inference_stream, is_quant_model,
+                    messages_join_observation, messages_to_history, random_uuid, set_generation_config)
 
 logger = get_logger()
 
@@ -264,7 +264,7 @@ def _get_logprobs_vllm(logprobs_list: Optional[List[Dict[int, float]]],
 @torch.inference_mode()
 async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global llm_engine, template, _args
-    from .utils import VllmGenerationConfig
+    from .utils import VllmGenerationConfig, add_vllm_request
     created_time = int(time.time())
 
     result = await _prepare_request(request, raw_request)
