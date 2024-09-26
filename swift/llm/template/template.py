@@ -4,7 +4,7 @@ import os
 import re
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
-
+from copy import deepcopy
 import torch
 import transformers
 from packaging import version
@@ -2220,8 +2220,8 @@ class RLHFTemplateMixin:
         template_encode = self._old_encode
         inputs = {}
         tokenizer_kwargs = {}
-        chosen_example, rejected_example = example, example.copy()
-        rejected_example['response'] = example['rejected_response']
+        chosen_example, rejected_example = example, deepcopy(example)
+        rejected_example['messages'][-1]['content'] = example['rejected_response']
         if streaming:
             chosen_inputs, chosen_tokenizer_kwargs = template_encode(chosen_example), {}
             rejected_inputs, rejected_tokenizer_kwargs = template_encode(rejected_example), {}

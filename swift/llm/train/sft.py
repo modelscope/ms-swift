@@ -500,6 +500,7 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
         return llm_sft_megatron(args)
     msg = {}
     model, template, callbacks, optimizers = prepare_train_model_template(args, msg)
+    template = TrainTemplate(template)
     train_dataset, val_dataset = prepare_dataset(args, template, msg)
     return trainer_train(args, model, template, train_dataset, val_dataset, callbacks=callbacks, optimizers=optimizers, msg=msg)
 

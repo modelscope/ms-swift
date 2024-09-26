@@ -226,9 +226,12 @@ class Template:
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
         if isinstance(loss_scale, str):
+            self.loss_scale_name = loss_scale
             self.loss_scale = loss_scale_map.get(loss_scale, None)
         else:
+            self.loss_scale_name = ''
             self.loss_scale = loss_scale
+        
         self.rescale_image = rescale_image
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
@@ -763,8 +766,8 @@ class Template:
                 history_roles = [messages['role'], None]
         else:
             assert len(messages) % 2 == 0
-            history = [[messages[i]['content'], messages[i+1]['content']] for i in range(len(messages) // 2)]
-            history_roles = [[messages[i]['role'], messages[i + 1]['role']] for i in range(len(messages) // 2)]
+            history = [[messages[i]['content'], messages[i+1]['content']] for i in range(0, len(messages), 2)]
+            history_roles = [[messages[i]['role'], messages[i + 1]['role']] for i in range(0, len(messages), 2)]
 
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
@@ -821,7 +824,7 @@ class Template:
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
                 inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
-                if self.loss_scale:
+                if self.loss_scale_name != 'default':
                     inputs[f'{key}_loss_scale'] = loss_scale
             input_ids = inputs['prompt_input_ids'] + inputs['answer_input_ids']
             labels = inputs['prompt_labels'] + inputs['answer_labels']
@@ -852,7 +855,7 @@ class Template:
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
 
-        if self.loss_scale:
+        if self.loss_scale_name != 'default':
             inputs['loss_scale'] = loss_scale
         return inputs, tokenizer_kwargs
 

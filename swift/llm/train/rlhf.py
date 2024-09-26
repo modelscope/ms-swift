@@ -6,6 +6,7 @@ from swift.utils import get_logger, get_main, seed_everything
 from .sft import prepare_dataset, prepare_train_model_template, trainer_train
 from ..argument import RLHFArguments
 from ..template import TEMPLATE_MAPPING
+from .patcher import TrainTemplate
 
 logger = get_logger()
 
@@ -21,6 +22,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     msg = {}
     model, ref_model, template, callbacks, optimizers = prepare_train_model_template(args)
     with TrainerFactory.patch_template(args, template):
+        template = TrainTemplate(template)
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
 
         return trainer_train(

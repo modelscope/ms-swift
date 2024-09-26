@@ -939,7 +939,7 @@ class HHRLHFCNPreprocessor(RowPreprocessor):
 
     def __call__(self, dataset, **kwargs):
         dataset = dataset.filter(self.filter_valid_row, **kwargs)
-        return super()(dataset, **kwargs)
+        return super(HHRLHFCNPreprocessor, self).__call__(dataset, **kwargs)
 
 
 register_dataset(

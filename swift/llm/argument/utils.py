@@ -12,8 +12,7 @@ logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
-def _check_path(cls,
-                value: Union[str, List[str]],
+def _check_path(value: Union[str, List[str]],
                 k: Optional[str] = None,
                 check_exist_path_set: Optional[Set[str]] = None) -> Union[str, List[str]]:
     if check_exist_path_set is None:

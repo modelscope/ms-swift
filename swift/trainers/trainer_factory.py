@@ -3,7 +3,7 @@ import importlib.util
 import inspect
 from contextlib import contextmanager
 from typing import Dict
-
+from types import MethodType
 from swift.plugin.custom_trainer import custom_trainer_class
 from swift.utils import get_logger
 
@@ -75,13 +75,13 @@ class TrainerFactory:
             template.compute_per_round_loss = False
         logger.info(f'template.compute_per_round_loss: {template.compute_per_round_loss}')
         logger.info(f'template.output_prompt_answer: {template.output_prompt_answer}')
-        template.__class__._old_encode = template.__class__.encode
-        template.__class__._old_data_collator = template.__class__.data_collator
-        template.__class__.encode = template_mixin.encode
-        template.__class__.data_collator = template_mixin.data_collator
+        template._old_encode = template.encode
+        template._old_data_collator = template.data_collator
+        template.encode = MethodType(template_mixin.encode, template)
+        template.data_collator = MethodType(template_mixin.data_collator, template)
         yield
         template.compute_per_round_loss = _old_compute_per_round_loss
         template.output_prompt_answer = _old_output_prompt_answer
-        template.__class__.encode = template.__class__._old_encode
-        template.__class__.data_collator = template.__class__._old_data_collator
-        del template.__class__._old_encode, template.__class__._old_data_collator
+        template.encode = template._old_encode
+        template.data_collator = template._old_data_collator
+        del template._old_encode, template._old_data_collator

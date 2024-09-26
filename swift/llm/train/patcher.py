@@ -140,7 +140,7 @@ class TrainTemplate:
         input_ids = res['input_ids']
         attention_mask = res['attention_mask']
         labels = res['labels']
-        loss_scale = res['loss_scale']
+        loss_scale = res.get('loss_scale')
         if use_torchacc():
             rank, _, world_size, _ = get_dist_setting()
             from swift.torchacc_utils import pad_and_split_batch
@@ -166,3 +166,9 @@ class TrainTemplate:
                     pad_and_split_for_sequence_parallel(
                         self.template.tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
             res['position_ids'] = position_ids
+        _local_var = locals()
+        for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
+            value = _local_var[key]
+            if value is not None:
+                res[key] = value
+        return res
