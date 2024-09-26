@@ -266,7 +266,7 @@ class ModelType:
     llama3_2_3b = 'llama3_2-3b'
     llama3_2_3b_instruct = 'llama3_2-3b-instruct'
     # llama3.2-vision
-    llama3_2_11b_vision = 'llama3_2-11b-visiont'
+    llama3_2_11b_vision = 'llama3_2-11b-vision'
     llama3_2_11b_vision_instruct = 'llama3_2-11b-vision-instruct'
     llama3_2_90b_vision = 'llama3_2-90b-vision'
     llama3_2_90b_vision_instruct = 'llama3_2-90b-vision-instruct'
