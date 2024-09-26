@@ -1936,6 +1936,7 @@ register_template(TemplateType.llama3_2, Llama3_2Template())
 class Llama3_2VisionTemplateMixin:
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
+        assert media_type == 'image'
         return ['<|image|>']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
