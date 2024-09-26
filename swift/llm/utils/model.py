@@ -3681,7 +3681,7 @@ for model_size in ['2B', '7B', '72B']:
         support_flash_attn=True,
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        requires=['transformers>=4.45', 'qwen_vl_utils'],
+        requires=['transformers>=4.45.dev.0', 'qwen_vl_utils'],
         tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}')
     register_model(
@@ -3693,7 +3693,7 @@ for model_size in ['2B', '7B', '72B']:
         support_flash_attn=True,
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        requires=['transformers>=4.45', 'qwen_vl_utils'],  # 'pyav'
+        requires=['transformers>=4.45.dev.0', 'qwen_vl_utils'],  # 'pyav'
         tags=['multi-modal', 'vision', 'video'],
         hf_model_id=f'Qwen/Qwen2-VL-{model_size}-Instruct')
     for quant_bits in [4, 8]:
@@ -3708,7 +3708,7 @@ for model_size in ['2B', '7B', '72B']:
             support_flash_attn=True,
             support_vllm=True,
             placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-            requires=['transformers>=4.45', 'qwen_vl_utils', 'auto_gptq>=0.5'],
+            requires=['transformers>=4.45.dev.0', 'qwen_vl_utils', 'auto_gptq>=0.5'],
             tags=['multi-modal', 'vision', 'video'],
             function_kwargs={'gptq_bits': quant_bits},
             torch_dtype=torch.float16,
@@ -3723,7 +3723,7 @@ for model_size in ['2B', '7B', '72B']:
         support_flash_attn=True,
         support_vllm=True,
         placeholder_tokens=['<|image_pad|>', '<|video_pad|>'],
-        requires=['transformers>=4.45', 'qwen_vl_utils', 'autoawq'],
+        requires=['transformers>=4.45.dev.0', 'qwen_vl_utils', 'autoawq'],
         tags=['multi-modal', 'vision', 'video'],
         function_kwargs={'is_awq': True},
         torch_dtype=torch.float16,
