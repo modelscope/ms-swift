@@ -1971,9 +1971,11 @@ class Llama3_2VisionTemplateMixin:
             if value:
                 res[key] = torch.concat(value)
 
-        cross_attention_mask = [b['cross_attention_mask'] for b in batch if b.get('cross_attention_mask') is not None]
+        cross_attention_mask = [
+            b['cross_attention_mask'][0] for b in batch if b.get('cross_attention_mask') is not None
+        ]
         if cross_attention_mask:
-            res['cross_attention_mask'] = self.pad_sequence(cross_attention_mask[0], 0, self.padding_side)
+            res['cross_attention_mask'] = self.pad_sequence(cross_attention_mask, 0, self.padding_side)
         return res
 
 
