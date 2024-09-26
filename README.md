@@ -55,7 +55,8 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
-- 2024.09.24: Support for training and deploying llama3.2 series models. Experience it using `swift infer --model_type llama3_2-1b-instruct`.
+- 2024.09.26: Support for training and deploying llama3.2-vision series models. Experience it using `swift infer --model_type llama3_2-11b-vision-instruct`.
+- 2024.09.26: Support for training and deploying llama3.2 series models. Experience it using `swift infer --model_type llama3_2-1b-instruct`.
 - 2024.09.25: Support for training to deployment with got-ocr2. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/2122).
 - 2024.09.24: Support for training and deploying llama3_1-8b-omni. Experience it using `swift infer --model_type llama3_1-8b-omni`.
 - 2024.09.23: Support for training and deploying pixtral-12b. Experience it using `swift infer --model_type pixtral-12b --dtype fp16`.
@@ -623,6 +624,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 |------------------------------------------------------------|----------------------------------------------------------------------------------------|--------------------|---------------------------------------|--------------------------|
 | Qwen-VL<br>Qwen2-VL                       | [Tongyi Qwen vision model](https://github.com/QwenLM)                                  | Chinese<br>English | 2B-72B<br>including quantized versions    | base model<br>chat model |
 | Qwen-Audio<br>Qwen2-Audio                                  | [Tongyi Qwen speech model](https://github.com/QwenLM)                                  | Chinese<br>English | 7B                                    | base model<br>chat model |
+| Llama3.2-Vision              | [Llama3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf)                | English       | 11B-90B      | base model<br>chat model       |
 | YI-VL                                                      | [01AI's YI series vision models](https://github.com/01-ai)                             | Chinese<br>English | 6B-34B                                | chat model               |
 | XComposer2<br>XComposer2.5                                 | [Pujiang AI Lab InternLM vision model](https://github.com/InternLM/InternLM-XComposer) | Chinese<br>English | 7B                                    | chat model               |
 | DeepSeek-VL                                                | [DeepSeek series vision models](https://github.com/deepseek-ai)                        | Chinese<br>English | 1.3B-7B                               | chat model               |
