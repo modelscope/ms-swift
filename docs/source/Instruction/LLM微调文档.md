@@ -204,9 +204,11 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from swift.llm import (
-    get_model_tokenizer, get_template, inference, ModelType, get_default_template_type
+    get_model_tokenizer, get_template, ModelType, get_default_template_type, TransformersFramework, InferArguments
 )
 from swift.tuners import Swift
+
+infer_framework = TransformersFramework()
 
 ckpt_dir = 'vx-xxx/checkpoint-100'
 model_type = ModelType.qwen_7b_chat

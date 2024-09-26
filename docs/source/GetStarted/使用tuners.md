@@ -15,7 +15,8 @@ tuner是指附加在模型上的额外结构部分，用于减少训练参数量
 11. Vision Prompt Tuning: [Visual Prompt Tuning](https://arxiv.org/abs/2203.12119)
 12. Side: [Side-Tuning: A Baseline for Network Adaptation via Additive Side Networks](https://arxiv.org/abs/1912.13503)
 13. Res-Tuning: [Res-Tuning: A Flexible and Efficient Tuning Paradigm via Unbinding Tuner from Backbone](https://arxiv.org/abs/2310.19859)  < [arXiv](https://arxiv.org/abs/2310.19859)  |  [Project Page](https://res-tuning.github.io/)  |  [Usage](ResTuning.md) >
-14. [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等
+14. ReFT: [ReFT: Representation Finetuning for Language Models](https://arxiv.org/pdf/2404.03592)
+15. [PEFT](https://github.com/huggingface/peft)提供的tuners, 如IA3, AdaLoRA等
 
 ## 在训练中使用
 

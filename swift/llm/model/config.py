@@ -22,7 +22,7 @@ class ConfigReader:
 
     @staticmethod
     def read_config_from_hf(key, model_dir):
-        config = AutoConfig.from_pretrained(model_dir)
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         for k in key.split('.'):
             config = getattr(config, k, None)
             if config is None:
