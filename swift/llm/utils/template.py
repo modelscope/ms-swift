@@ -435,8 +435,7 @@ class Template:
                     assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
                     history[0][0] = media_tag * num_new_tags + history[0][0]
 
-        example['query'] = history[-1][0]
-        example['response'] = history[-1][1]
+        example['query'], example['response'] = history[-1]
         example['history'] = history[:-1]
 
     def replace_media_tags(self, example) -> None:
