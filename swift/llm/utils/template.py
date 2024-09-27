@@ -800,6 +800,7 @@ class Template:
                 if context == f'<{k}>':
                     c_list = self.replace_tag(k, example[f'{k}_index'], example)
                     example[f'{k}_index'] += 1
+                    loss_scale = 0.
                     break
             else:
                 if context == '<ref-object>':
