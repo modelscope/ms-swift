@@ -160,6 +160,7 @@ class DatasetName:
     ocr_vqa = 'ocr-vqa'
     grit = 'grit'
     llava_instruct_mix = 'llava-instruct-mix'
+    gpt4v_dataset = 'gpt4v-dataset'
     lnqa = 'lnqa'
     science_qa = 'science-qa'
     guanaco = 'guanaco'
@@ -228,6 +229,29 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
         url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
         local_dir = MediaResource.download(url, 'sharegpt_4o_images')
         self.prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
+
+
+
+class GPT4vDataset(RowPreprocessor):
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            'messages': [
+                {'role': 'user', 'content': 'What is the caption of this image?'},
+                {'role': 'assistant', 'content': row['caption']}
+            ],
+            'images': row['link']
+        }
+
+
+register_dataset(
+    DatasetName.gpt4v_dataset,
+    'swift/gpt4v-dataset', ['default'],
+    GPT4vDataset(),
+    HubDatasetLoader.dataset_get_function,
+    split=['train'],
+    tags=["en", "caption", "multi-modal", "quality"],
+    hf_dataset_id='laion/gpt4v-dataset')
 
 
 register_dataset(

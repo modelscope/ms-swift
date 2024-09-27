@@ -185,17 +185,16 @@
             "from_key": "role",
             "value_key": "content",
             "error_strategy": "delete",
-            "media_type": "image",
-            "media_key": "images"
+            "modals": ["image"]
         },
-        "tags": ["zh", "medical", "vqa"]
+        "tags": ["zh", "medical", "vqa", "multi-modal"]
     },
     "chart-qa": {
         "dataset_id": "swift/ChartQA",
         "hf_dataset_id": "HuggingFaceM4/ChartQA",
         "columns": {
             "label": "response",
-            "image": "images"
+            "modals": ["image"]
         },
         "split": ["train"],
         "tags": ["en", "vqa", "quality"]
@@ -210,15 +209,6 @@
         },
         "split": ["train"],
         "tags": ["en", "vqa", "quality"]
-    },
-    "gpt4v-dataset": {
-        "dataset_id": "swift/gpt4v-dataset",
-        "hf_dataset_id": "laion/gpt4v-dataset",
-        "columns": {
-            "caption": "response",
-            "link": "images"
-        },
-        "tags": ["en", "caption", "multi-modal", "quality"]
     },
     "belle-train-3.5M-CN": {
         "dataset_id": "swift/train_3.5M_CN",

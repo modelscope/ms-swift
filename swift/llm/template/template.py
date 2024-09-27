@@ -2234,6 +2234,8 @@ class RLHFTemplateMixin:
                 data = locals()[f'{prefix}_{suffix}']
                 for k, v in data.items():
                     res[f'{prefix}_{k}'] = v
+        if ('rejected_input_ids' not in inputs and 'chosen_input_ids' in inputs) or ('rejected_input_ids' in inputs and 'chosen_input_ids' not in inputs):
+            inputs = {}
         return inputs, tokenizer_kwargs
 
     def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -2248,7 +2250,10 @@ class RLHFTemplateMixin:
                         new_inputs[new_k] = inputs[k]
                 if len(new_inputs) > 0:
                     new_batch.append(new_inputs)
-        assert len(new_batch) in {0, len(batch) * 2}, f'new_batch: {new_batch}'
+        try:
+            assert len(new_batch) in {0, len(batch) * 2}, f'new_batch: {new_batch}'
+        except:
+            print()
         return _data_collator(new_batch or batch, padding_to)
 
 

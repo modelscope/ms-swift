@@ -142,6 +142,7 @@ class RowPreprocessor(GroundingMixin):
             for m in messages:
                 if m['role'] not in ('tool', 'system', 'assistant'):
                     m['content'] = ''.join([standard_tag] * media_cnt) + m['content']
+                    break
 
         return messages
 
@@ -149,9 +150,15 @@ class RowPreprocessor(GroundingMixin):
         """A compatible method to turn query/response to messages, this is used to fit the existing dataset_info.json"""
         messages = []
         if 'query' in row:
-            messages.append({'role': 'user', 'content': row['query']})
+            query = row['query']
+            if isinstance(query, list):
+                query = query[np.random.choice(range(len(query)))]
+            messages.append({'role': 'user', 'content': query})
         if 'response' in row:
-            messages.append({'role': 'assistant', 'content': row['response']})
+            response = row['response']
+            if isinstance(response, list):
+                response = response[np.random.choice(range(len(response)))]
+            messages.append({'role': 'assistant', 'content': response})
         old_messages = row.get('messages', [])
         old_messages.extend(messages)
         row['messages'] = old_messages
@@ -381,6 +388,9 @@ class ConversationsPreprocessor(RowPreprocessor):
         self.repair_conversations = repair_conversations
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
+    
+    def query_to_message(self, row: Dict[str, Any]):
+        return row
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -518,9 +528,15 @@ class RenameColumnsPreprocessor:
     def query_to_message(self, row):
         messages = []
         if 'query' in row:
-            messages.append({'role': 'user', 'content': row['query']})
+            query = row['query']
+            if isinstance(query, list):
+                query = query[np.random.choice(range(len(query)))]
+            messages.append({'role': 'user', 'content': query})
         if 'response' in row:
-            messages.append({'role': 'assistant', 'content': row['response']})
+            response = row['response']
+            if isinstance(response, list):
+                response = response[np.random.choice(range(len(response)))]
+            messages.append({'role': 'assistant', 'content': response})
         old_messages = row.get('messages', [])
         old_messages.extend(messages)
         return {
