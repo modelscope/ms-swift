@@ -230,11 +230,49 @@ class SwiftMixin:
         if not use_torchacc():
             return super()._save_tpu(output_dir)
 
+        import torch_xla.core.xla_model as xm
+
+        # Compatible with swift and peft
         output_dir = output_dir if output_dir is not None else self.args.output_dir
+
+        if xm.is_master_ordinal(local=False):
+            os.makedirs(output_dir, exist_ok=True)
+            # configuration.json
+            model_dir = getattr(self.model, 'model_dir', None)
+            if model_dir is not None:
+                src_path = os.path.join(model_dir, 'configuration.json')
+                dst_path = os.path.join(output_dir, 'configuration.json')
+                if os.path.exists(src_path):
+                    shutil.copy(src_path, dst_path)
+            else:
+                self._create_configuration_file(self.model, output_dir)
+            self._add_adapter_cfg(output_dir)
+            self._save_sft_args(output_dir)
+            # generation_config
+            generation_config = getattr(self.args, 'generation_config', None)
+            if generation_config is not None:
+                generation_config.save_pretrained(output_dir)
+
+        # model
         if self.sft_args.fsdp_num > 1:
             save_ta_fsdp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
         else:
             save_ta_ddp_checkpoint(self.model, self.tokenizer, self.args, output_dir)
+        sft_args = getattr(self, 'sft_args', None)
+
+        # additional files
+        if xm.is_master_ordinal(local=False):
+            if sft_args is not None and sft_args.sft_type == 'full':
+                additional_files = getattr(self.args, 'additional_saved_files',
+                                           None) or [] + ['preprocessor_config.json']
+                if model_dir is not None:
+                    for file in additional_files:
+                        src_path = os.path.join(model_dir, file)
+                        dst_path = os.path.join(output_dir, file)
+                        if os.path.isfile(src_path):
+                            shutil.copy(src_path, dst_path)
+                        elif os.path.isdir(src_path):
+                            shutil.copytree(src_path, dst_path)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         """Compatible with swift and peft"""
