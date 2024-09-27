@@ -2122,7 +2122,7 @@ def replace_img_tag(query: str,
                 images_path += re.findall(pattern, content)
                 new_h.append(re.sub(pattern, replace_token, content))
         new_history.append(new_h)
-    return *new_history[-1], new_history[:-1], images_path
+    return (*new_history[-1], new_history[:-1], images_path)
 
 
 class InternLMXComposer2Template(Template):
