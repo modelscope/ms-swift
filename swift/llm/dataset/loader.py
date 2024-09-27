@@ -186,7 +186,7 @@ class DatasetLoader(ABC):
         res = []
         for dataset in [train_dataset, val_dataset]:
             if dataset is not None and preprocess_func is not None:
-                dataset = preprocess_func(dataset)
+                dataset = preprocess_func(dataset, num_proc=kwargs.get('num_proc'))
             if dataset is not None and (streaming or len(dataset) > 0) and remove_useless_columns:
                 dataset = cls.remove_useless_columns(dataset)
             res.append(dataset)

@@ -1034,18 +1034,19 @@ register_dataset(
 
 class TextCapsPreprocessor(RowPreprocessor):
 
-    column_mapping = {'image': 'images'}
+    modals = ['image']
+    modal_keys = {'image': 'image'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         try:
             image = row['image']
-            query = row['question']
-            response = np.random.choice(row['reference_strs'])
+            query = 'What is the caption of this image?'
+            response = row['reference_strs']
             return {
-                'messages': {
+                'messages': [
                     {'role': 'user', 'content': query},
-                    {'role': 'assistant', 'content': response},
-                },
+                    {'role': 'assistant', 'content': response[np.random.choice(range(len(response)))]},
+                ],
                 'image': image
             }
         except Exception:
@@ -1057,7 +1058,7 @@ register_dataset(
     'swift/TextCaps', [],
     preprocess_func=TextCapsPreprocessor(),
     get_function=HubDatasetLoader.dataset_get_function,
-    split=['train', 'val'],
+    split=['train', 'validation'],
     hf_dataset_id='HuggingFaceM4/TextCaps',
     huge_dataset=True,
     tags=['multi-modal', 'en', 'caption', 'quality'])
