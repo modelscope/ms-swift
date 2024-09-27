@@ -404,62 +404,49 @@ class Template:
     def add_default_tags(self, example: Dict[str, Any]) -> None:
         history: History = deepcopy(example.get('history') or [])
         query: str = example.get('query') or ''
+        response: str = example.get('response') or ''
+        history.append([query, response])
         for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 if infer_media_type == 'round':
                     n_round = len(example[media_key])
-                    assert n_round == len(history) + 1
-                    for i, h, m in zip(range(n_round), history + [[query, None]], example[media_key]):
-                        num_media_tags = len(re.findall(media_tag, h[0]))
+                    assert n_round == len(history)
+                    for i, h, m in zip(range(n_round), history, example[media_key]):
+                        content = f'{h[0]}\n{h[1]}'
+                        num_media_tags = len(re.findall(media_tag, content))
                         if m:
                             assert num_media_tags <= 1, (
                                 'The model includes at most one media per round. However, '
-                                f'this round contains {num_media_tags} media_tags. query: {h[0]}')
+                                f'this round contains {num_media_tags} media_tags. query: {h[0]}, response: {h[1]}')
                             if num_media_tags == 0:
                                 h[0] = media_tag + h[0]
                         else:
                             assert num_media_tags == 0, f'Missing media. query: {h[0]}'
-                        if i == n_round - 1:
-                            query = h[0]
-                        else:
-                            history[i][0] = h[0]
+                        history[i][0] = h[0]
 
                     example[media_key] = [m for m in example[media_key] if m]
 
                 else:
-                    num_media_tags = len(re.findall(media_tag, '\n'.join([h[0] for h in history]) + f'\n{query}'))
+                    num_media_tags = len(re.findall(media_tag, '\n'.join([f'{h[0]}\n{h[1]}' for h in history])))
                     example[media_key] = [m for m in example[media_key] if m]
                     num_media = len(example[media_key])
                     num_new_tags = num_media - num_media_tags
                     assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
-                    if history:
-                        history[0][0] = media_tag * num_new_tags + history[0][0]
-                    else:
-                        query = media_tag * num_new_tags + query
+                    history[0][0] = media_tag * num_new_tags + history[0][0]
 
-        example['query'] = query
-        example['history'] = history
+        example['query'], example['response'] = history[-1]
+        example['history'] = history[:-1]
 
     def replace_media_tags(self, example) -> None:
-        # Parse <img></img> format images and merged into images key
-        if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
-            example['query'], example['history'], images_path = replace_img_tag(
-                example.get('query'),
-                example.get('history') or [], '<image>')
-
-            if example.get('images') and images_path:
-                raise ValueError('Do not mix use the <img></img> tag and <image> tag.')
-            example['images'] = example.get('images') or [] + images_path
-
-        # audio, video
         if self.is_multimodal in {True, None}:
-            for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'],
-                                       [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
-                example['query'], example['history'], medias_path = replace_img_tag(
-                    example.get('query'),
+            for k, tag, pattern in zip(['images', 'audios', 'videos'], ['<image>', '<audio>', '<video>'],
+                                       [r'<img>(.+?)</img>', r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
+                example['query'], example['response'], example['history'], medias_path = replace_img_tag(
+                    example.get('query'), example.get('response'),
                     example.get('history') or [], tag, pattern)
-
+                if example.get(k) and medias_path:
+                    raise ValueError(f'Do not mix use the {pattern} tag and {tag} tag.')
                 example[k] = example.get(k) or [] + medias_path
 
     def _preprocess_media(self, example):
@@ -813,6 +800,7 @@ class Template:
                 if context == f'<{k}>':
                     c_list = self.replace_tag(k, example[f'{k}_index'], example)
                     example[f'{k}_index'] += 1
+                    loss_scale = 0.
                     break
             else:
                 if context == '<ref-object>':
@@ -2118,23 +2106,23 @@ register_template(TemplateType.internlm2, Internlm2Template())
 
 
 def replace_img_tag(query: str,
+                    response: str,
                     history: History,
                     replace_token: str,
                     pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
     images_path = []
     new_history = []
+    history.append([query, response])
     for i, h in enumerate(history):
-        if h[0] is None:
-            new_history.append(h.copy())
-        else:
-            images_path += re.findall(pattern, h[0])
-            new_history.append([re.sub(pattern, replace_token, h[0]), h[1]])
-    if query is None:
-        new_query = query  # pretrain dataset
-    else:
-        images_path += re.findall(pattern, query)
-        new_query = re.sub(pattern, replace_token, query)
-    return new_query, new_history, images_path
+        new_h = []
+        for content in h:
+            if content is None:
+                new_h.append(content)
+            else:
+                images_path += re.findall(pattern, content)
+                new_h.append(re.sub(pattern, replace_token, content))
+        new_history.append(new_h)
+    return (*new_history[-1], new_history[:-1], images_path)
 
 
 class InternLMXComposer2Template(Template):

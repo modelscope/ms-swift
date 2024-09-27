@@ -251,15 +251,6 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
 
     if args.is_multimodal and args.gradient_checkpointing and args.vit_use_gc:
         dynamic_vit_gradient_checkpointing(model, args.model_type)
-    # Preparing LoRA
-    model, callbacks = prepare_model(model, args)
-
-    show_layers(model)
-    logger.info(model)
-    model_info = get_model_info(model)
-    logger.info(model_info)
-    if isinstance(msg, dict):
-        msg['model_info'] = model_info
 
     if args.gradient_checkpointing:
         model.config.use_cache = False  # fix transformers==4.36
@@ -274,6 +265,16 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
                         vision_tower.enable_input_require_grads()
                     except NotImplementedError:
                         pass
+
+    # Preparing LoRA
+    model, callbacks = prepare_model(model, args)
+
+    show_layers(model)
+    logger.info(model)
+    model_info = get_model_info(model)
+    logger.info(model_info)
+    if isinstance(msg, dict):
+        msg['model_info'] = model_info
 
     if use_torchacc():
         model.config.use_cache = False
