@@ -137,9 +137,9 @@ class TrainTemplate:
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         padding_right = self.template.padding_side == 'right'
         res = self.template.data_collator(batch, padding_to)
-        input_ids = res['input_ids']
-        attention_mask = res['attention_mask']
-        labels = res['labels']
+        input_ids = res.get('input_ids')
+        attention_mask = res.get('attention_mask')
+        labels = res.get('labels')
         loss_scale = res.get('loss_scale')
         if use_torchacc():
             rank, _, world_size, _ = get_dist_setting()

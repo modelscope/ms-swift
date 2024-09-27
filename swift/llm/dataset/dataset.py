@@ -2138,7 +2138,15 @@ NoneType = type(None)
 
 class RLAIFVPreprocessor(RowPreprocessor):
 
-    column_mapping = {'image': 'images', 'question': 'query', 'chosen': 'response', 'rejected': 'rejected_response'}
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            'images': row['image'],
+            'messages': [
+                {'role': 'user', 'content': row['question']},
+                {'role': 'assistant', 'content': row['chosen']},
+            ],
+            'rejected_response': row['rejected']
+        }
 
 
 register_dataset(

@@ -1,19 +1,25 @@
 import os.path
 from typing import Dict, Any, Optional
-
+import hashlib
 from modelscope import AutoConfig
 from transformers import PretrainedConfig
-
+from modelscope.hub.utils.utils import get_cache_dir
+from datasets.utils.filelock import FileLock
 from swift.llm.model.loader import safe_snapshot_download
 
 
 class ConfigReader:
     """This class is used to read config from config.json(maybe params.json also)"""
+    cache_dir = os.path.join(get_cache_dir(), 'configs')
+    lock_dir = os.path.join(get_cache_dir(), 'lockers')
 
     @staticmethod
     def read_config(key, model_type, model_id_or_path, revision):
         """Read the config value, key should be like `generation_config.bits`, splits by dots"""
-        model_dir = safe_snapshot_download(model_type, model_id_or_path, revision, download_model=False)
+        file_path = hashlib.md5((model_type or model_id_or_path).encode('utf-8')).hexdigest() + '.lock'
+        file_path = os.path.join(ConfigReader.lock_dir, file_path)
+        with FileLock(file_path):
+            model_dir = safe_snapshot_download(model_type, model_id_or_path, revision, download_model=False)
         if os.path.exists(os.path.join(model_dir, 'config.json')):
             return ConfigReader.read_config_from_hf(key, model_dir)
         else:
