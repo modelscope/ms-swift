@@ -1661,7 +1661,7 @@ class ExportArguments(InferArguments):
     quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
-    quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
+    quant_device_map: str = 'auto'  # e.g. 'cpu', 'auto'
     quant_output_dir: Optional[str] = None
     quant_batch_size: int = 1
 
