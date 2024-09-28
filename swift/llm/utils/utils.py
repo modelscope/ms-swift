@@ -603,24 +603,33 @@ class TokenListIteratorStreamer(BaseStreamer):
         else:
             return value
 
-def postprocess_inputs(inputs, device = 'cpu') -> int:
+
+def postprocess_inputs(inputs: Dict[str, Any],
+                       device: torch.device = torch.device('cpu'),
+                       return_batch: bool = False) -> Dict[str, Any]:
     if 'input_ids' in inputs:  # 1d
-        input_ids = torch.tensor(inputs['input_ids'])[None]
+        input_ids = torch.tensor(inputs['input_ids'])
         inputs['input_ids'] = input_ids
         token_len = input_ids.shape[1]
     if 'inputs_embeds' in inputs:  # 2d
-        inputs_embeds = inputs['inputs_embeds'][None]
+        inputs_embeds = inputs['inputs_embeds']
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
 
-    inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
+    inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)
     if 'token_type_ids' in inputs:
-        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
+        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])
     if 'inputs_embeds' in inputs:
         inputs.pop('input_ids', None)
     inputs.pop('labels', None)
     inputs = to_device(inputs, device)
-    return token_len
+    if return_batch:
+        for key in ['input_ids', 'inputs_embeds', 'attention_mask', 'token_type_ids']:
+            val = inputs.get(key)
+            if val is not None:
+                inputs[key] = val[None]
+    return inputs
+
 
 def _prepare_inputs(model: PreTrainedModel,
                     template: Template,
@@ -657,7 +666,8 @@ def _prepare_inputs(model: PreTrainedModel,
 
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    token_len = postprocess_inputs(inputs, device)
+    inputs = postprocess_inputs(inputs, device, True)
+    token_len = inputs['attention_mask'].shape[-1]
     model.eval()
     if not generation_config.do_sample:
         generation_config.temperature = 1.

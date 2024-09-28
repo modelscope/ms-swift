@@ -9,7 +9,7 @@ from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
                          show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
+from .utils import ExportArguments, Template, get_dataset, postprocess_inputs, swift_to_peft_format
 
 logger = get_logger()
 
@@ -45,7 +45,7 @@ def _get_dataset(*args, **kwargs):
         if input_ids is None or len(input_ids) == 0:
             continue
         if _args.is_multimodal:
-            samples.append(inputs)
+            samples.append(postprocess_inputs(inputs))
         else:
             samples.append(torch.tensor(input_ids))
         n_run += 1
