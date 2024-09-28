@@ -1,11 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import json
 import torch
-import transformers
-from packaging import version
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
@@ -66,7 +64,6 @@ def _get_dataset(*args, **kwargs):
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
-    import awq
     from awq.quantize import quantizer
     from transformers import AwqConfig
 
