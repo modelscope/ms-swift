@@ -1546,7 +1546,7 @@ class InferArguments(ArgumentsBase):
             self.infer_media_type = 'interleave'
         self.media_type = template_info.get('media_type', 'image')
         self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
-        if self.merge_device_map is None:
+        if self.merge_device_map is None and not isinstance(self, ExportArguments):
             self.merge_device_map = 'cpu'
 
     @staticmethod
@@ -1661,7 +1661,7 @@ class ExportArguments(InferArguments):
     quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
     quant_seqlen: int = 2048
-    quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
+    quant_device_map: Optional[str] = None  # e.g. 'cpu', 'auto'
     quant_output_dir: Optional[str] = None
     quant_batch_size: int = 1
 
@@ -1684,8 +1684,8 @@ class ExportArguments(InferArguments):
     # merge_lora, hub_token
 
     def __post_init__(self):
-        if self.merge_device_map is None:
-            self.merge_device_map = 'cpu' if self.quant_bits > 0 else 'auto'
+        if self.merge_device_map is None and self.quant_bits > 0:
+            self.merge_device_map = 'cpu'
         if self.quant_bits > 0 and self.dtype == 'AUTO':
             self.dtype = 'fp16'
             logger.info(f'Setting args.dtype: {self.dtype}')
