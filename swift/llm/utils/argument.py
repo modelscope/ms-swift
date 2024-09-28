@@ -1546,7 +1546,7 @@ class InferArguments(ArgumentsBase):
             self.infer_media_type = 'interleave'
         self.media_type = template_info.get('media_type', 'image')
         self.media_key = MediaTag.media_keys.get(self.media_type, 'images')
-        if self.merge_device_map is None:
+        if self.merge_device_map is None and not isinstance(self, ExportArguments):
             self.merge_device_map = 'cpu'
 
     @staticmethod
