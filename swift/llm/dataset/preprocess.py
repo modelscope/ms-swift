@@ -159,7 +159,7 @@ class RowPreprocessor(GroundingMixin):
             if isinstance(response, list):
                 response = response[np.random.choice(range(len(response)))]
             messages.append({'role': 'assistant', 'content': response})
-        old_messages = row.get('messages', [])
+        old_messages = row.get('messages') or []
         old_messages.extend(messages)
         row['messages'] = old_messages
 
@@ -233,9 +233,9 @@ class RowPreprocessor(GroundingMixin):
                 row['messages'] = self.replace_standard_tag(row['messages'], medias, modal)
                 modal_key = self.modal_keys[modal]
                 if not isinstance(modal_key, str):
-                    row[modal_key] = medias
-                else:
                     row[multimodal_keys[modal]] = medias
+                else:
+                    row[modal_key] = medias
         return row
 
     def prepare_map_kwargs(self, dataset: DATASET_TYPE, **kwargs):
@@ -261,6 +261,10 @@ class RowPreprocessor(GroundingMixin):
         Returns:
             The processed dataset
         """
+        maybe_multi_modal_keys = [
+            'image', 'images', 'audio', 'audios', 'video', 'videos'
+        ]
+        maybe_multi_modal = any([key in dataset.features for key in maybe_multi_modal_keys])
         kwargs = self.prepare_map_kwargs(dataset, **kwargs)
         self.prepare_downloading(dataset)
 
@@ -277,6 +281,11 @@ class RowPreprocessor(GroundingMixin):
 
         if column_mapping:
             dataset = self.rename_columns(dataset, column_mapping)
+        all_keys = list(multimodal_keys.values())
+        if (maybe_multi_modal and not self.modals) or (maybe_multi_modal and not any([key in dataset.features for key in all_keys])):
+            logger.warn('FOUND MULTI MODAL IN DATASETS, BUT NO KEY IN DATASET, MAYBE THE DATASET IS NOT CORRECT')
+        if self.modals and not any([key in dataset.features for key in all_keys]):
+            raise ValueError(f'Modals are set and no media keys set')
         return dataset
 
 

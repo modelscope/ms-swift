@@ -61,18 +61,18 @@ def calculate_loss_scale(query: str,
 
 
 def alpha_umi_loss_scale(query: str, response: str):
-    cwd = os.getcwd()
     loss_scale_config_path = 'alpha_umi_loss_scale_config.json'
-    config_path = os.path.join(cwd, loss_scale_config_path)
+    path = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(path, '../agent', loss_scale_config_path)
     with open(config_path, 'r') as json_file:
         loss_scale_map = json.load(json_file)
     return calculate_loss_scale(query, response, loss_scale_map)
 
 
 def agentflan_loss_scale(query: str, response: str):
-    cwd = os.getcwd()
     loss_scale_config_path = 'agentflan.json'
-    config_path = os.path.join(cwd, loss_scale_config_path)
+    path = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(path, '../agent', loss_scale_config_path)
     with open(config_path, 'r') as json_file:
         loss_scale_map = json.load(json_file)
     query_loss_scale_map = loss_scale_map['query']
@@ -81,9 +81,9 @@ def agentflan_loss_scale(query: str, response: str):
 
 
 def react_loss_scale(query: str, response: str):
-    cwd = os.getcwd()
     loss_scale_config_path = 'default_loss_scale_config.json'
-    config_path = os.path.join(cwd, loss_scale_config_path)
+    path = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(path, '../agent', loss_scale_config_path)
     with open(config_path, 'r') as json_file:
         loss_scale_map = json.load(json_file)
     return calculate_loss_scale(query, response, loss_scale_map)

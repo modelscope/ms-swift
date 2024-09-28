@@ -758,12 +758,12 @@ class Template:
 
         assert len(messages) >= 1
         if len(messages) == 1:
-            if messages['role'] == 'response':
-                history = [None, messages['content']]
-                history_roles = [None, messages['role']]
+            if messages[0]['role'] == 'assistant':
+                history = [[None, messages[0]['content']]]
+                history_roles = [[None, messages[0]['role']]]
             else:
-                history = [messages['content'], None]
-                history_roles = [messages['role'], None]
+                history = [[messages[0]['content'], None]]
+                history_roles = [[messages[0]['role'], None]]
         else:
             assert len(messages) % 2 == 0
             history = [[messages[i]['content'], messages[i+1]['content']] for i in range(0, len(messages), 2)]

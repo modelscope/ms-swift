@@ -1485,6 +1485,8 @@ register_dataset(
 
 class OcrvqaPreprocessor(RowPreprocessor):
 
+    modals = ['image']
+    modal_keys = {'image': 'image'}
     column_mapping = {'image': 'images'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1510,6 +1512,8 @@ register_dataset(
 
 
 class ScienceQAPreprocessor(RowPreprocessor):
+    modals = ['image']
+    modal_keys = {'image': 'image'}
     column_mapping = {'image': 'images'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1521,7 +1525,7 @@ class ScienceQAPreprocessor(RowPreprocessor):
             'messages': [
                 {'role': 'user', 'content': query},
                 {'role': 'assistant', 'content': response}
-            ],
+            ]
         }
 
 
@@ -1536,6 +1540,8 @@ register_dataset(
 
 
 class GritPreprocessor(RowPreprocessor):
+
+    modals = ['image']
 
     @staticmethod
     def has_overlap(start_ends):
@@ -1606,6 +1612,8 @@ register_dataset(
 
 class GQAPreprocessor(RowPreprocessor):
 
+    modals = ['image']
+
     def prepare_downloading(self, dataset):
         self.local_cache = MediaResource.download('gqa')
 
@@ -1633,6 +1641,8 @@ register_dataset(
 
 
 class LLaVAMixSFTPreprocessor(RowPreprocessor):
+
+    modals = ['image']
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         messages = row['messages']
@@ -1763,6 +1773,8 @@ register_dataset(
 
 class LatexocrPreprocessor(RowPreprocessor):
 
+    modals = ['image']
+    modal_keys = {'image': 'image'}
     column_mapping = {'image': 'images'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1770,7 +1782,7 @@ class LatexocrPreprocessor(RowPreprocessor):
             'messages': [
                 {'role': 'user', 'content': 'Using LaTeX to perform OCR on the image.'},
                 {'role': 'assistant', 'content': row['text']}
-            ],
+            ]
         }
 
 
@@ -1795,7 +1807,8 @@ register_dataset(
 
 
 class CapchaImagesPreprocessor(RowPreprocessor):
-    column_mapping = {'image': 'images'}
+    modals = ['image']
+    modal_keys = {'image': 'image'}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = 'recognize the content.'
