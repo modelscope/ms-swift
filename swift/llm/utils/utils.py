@@ -603,6 +603,24 @@ class TokenListIteratorStreamer(BaseStreamer):
         else:
             return value
 
+def postprocess_inputs(inputs, device = 'cpu') -> int:
+    if 'input_ids' in inputs:  # 1d
+        input_ids = torch.tensor(inputs['input_ids'])[None]
+        inputs['input_ids'] = input_ids
+        token_len = input_ids.shape[1]
+    if 'inputs_embeds' in inputs:  # 2d
+        inputs_embeds = inputs['inputs_embeds'][None]
+        inputs['inputs_embeds'] = inputs_embeds
+        token_len = inputs_embeds.shape[1]
+
+    inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
+    if 'token_type_ids' in inputs:
+        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
+    if 'inputs_embeds' in inputs:
+        inputs.pop('input_ids', None)
+    inputs.pop('labels', None)
+    inputs = to_device(inputs, device)
+    return token_len
 
 def _prepare_inputs(model: PreTrainedModel,
                     template: Template,
@@ -637,21 +655,9 @@ def _prepare_inputs(model: PreTrainedModel,
         # input_ids exceeds `max_length`. Please increase the value of `max_length`.
         return {}, tokenizer_kwargs, 0, example
 
-    inputs.pop('labels', None)
     tokenizer = template.tokenizer
     device = next(model.parameters()).device
-    if 'input_ids' in inputs:  # 1d
-        input_ids = torch.tensor(inputs['input_ids'])[None]
-        inputs['input_ids'] = input_ids
-        token_len = input_ids.shape[1]
-    if 'inputs_embeds' in inputs:  # 2d
-        inputs_embeds = inputs['inputs_embeds'][None]
-        inputs['inputs_embeds'] = inputs_embeds
-        token_len = inputs_embeds.shape[1]
-
-    inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
-    if 'token_type_ids' in inputs:
-        inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
+    token_len = postprocess_inputs(inputs, device)
     model.eval()
     if not generation_config.do_sample:
         generation_config.temperature = 1.
@@ -672,9 +678,6 @@ def _prepare_inputs(model: PreTrainedModel,
                 raise AssertionError(f'Current sentence length exceeds the model max_length: {max_length}')
     if template.suffix[-1] not in stop_words:
         stop_words.append(template.suffix[-1])
-    inputs = to_device(inputs, device)
-    if 'inputs_embeds' in inputs:
-        inputs.pop('input_ids', None)
     if adapter_names is not None:
         inputs['adapter_names'] = adapter_names
 
