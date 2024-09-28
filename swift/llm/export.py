@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Optional
+from contextlib import contextmanager
+from typing import Dict, List, Optional
 
 import json
 import torch
@@ -9,12 +10,21 @@ from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
                          show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import ExportArguments, Template, get_dataset, postprocess_inputs, swift_to_peft_format
+from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
 
 logger = get_logger()
 
 _args: Optional[ExportArguments] = None
 template: Optional[Template] = None
+
+
+def _prepare_dataset_gptq(examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
+    global _args, template
+    assert template is not None
+    examples = [
+        template.data_collator(examples[start:start + batch_size]) for start in range(0, len(examples), batch_size)
+    ]
+    return examples
 
 
 def _get_dataset(*args, **kwargs):
@@ -45,7 +55,7 @@ def _get_dataset(*args, **kwargs):
         if input_ids is None or len(input_ids) == 0:
             continue
         if _args.is_multimodal:
-            samples.append(postprocess_inputs(inputs))
+            samples.append(inputs)
         else:
             samples.append(torch.tensor(input_ids))
         n_run += 1
@@ -86,18 +96,28 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
         bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
 
 
+@contextmanager
+def _patch_gptq():
+    from optimum.gptq import quantizer
+    _get_dataset_origin = quantizer.get_dataset
+    _prepare_dataset_origin = quantizer.prepare_dataset
+    quantizer.get_dataset = _get_dataset
+    quantizer.prepare_dataset = _prepare_dataset_gptq
+    yield
+    quantizer.get_dataset = _get_dataset_origin  # recover
+    quantizer.prepare_dataset = _prepare_dataset_origin  # recover
+
+
 def gptq_model_quantize(model, tokenizer, batch_size):
-    from optimum.gptq import GPTQQuantizer, quantizer
+    from optimum.gptq import GPTQQuantizer
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
-    gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size)
-    _origin_get_dataset = quantizer.get_dataset
-    quantizer.get_dataset = _get_dataset
-    logger.info('Start quantizing the model...')
-    logger.warning('The process of packing the model takes a long time and there is no progress bar. '
-                   'Please be patient and wait...')
-    gptq_quantizer.quantize_model(model, tokenizer)
-    quantizer.get_dataset = _origin_get_dataset  # recover
+    with _patch_gptq():
+        gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size)
+        logger.info('Start quantizing the model...')
+        logger.warning('The process of packing the model takes a long time and there is no progress bar. '
+                       'Please be patient and wait...')
+        gptq_quantizer.quantize_model(model, tokenizer)
     return gptq_quantizer
 
 
