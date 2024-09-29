@@ -65,6 +65,7 @@ def _get_dataset(*args, **kwargs):
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
     from awq.quantize import quantizer
+    from awq.models.base import BaseAWQForCausalLM
     from transformers import AwqConfig
 
     assert _args is not None
@@ -74,6 +75,11 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
     group_size = 128
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
+    if awq_model.__class__.__name__ != 'BaseAWQForCausalLM':
+        try:
+            del awq_model.__class__.quantize
+        except AttributeError:
+            pass
     awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=batch_size)
     quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
     awq_model.model.config.quantization_config = AwqConfig(
