@@ -60,19 +60,18 @@ def _get_dataset(*args, **kwargs):
         if _args.is_multimodal:
             samples.append(inputs)
         else:
-            samples.append(torch.tensor(input_ids))
+            samples += input_ids
         n_run += 1
         if n_run == n_samples:
             break
     if _args.is_multimodal:
         return samples
     # now concatenate all samples and split according to block size
-    cat_samples = torch.cat(samples, dim=0).tolist()  # shape: [X]
-    n_split = len(cat_samples) // block_size
+    n_split = len(samples) // block_size
     logger.info(f'Split into {n_split} blocks')
     res = []
     for i in range(n_split):
-        input_ids = cat_samples[i * block_size:(i + 1) * block_size]
+        input_ids = samples[i * block_size:(i + 1) * block_size]
         res.append({'input_ids': input_ids})
     return res
 
