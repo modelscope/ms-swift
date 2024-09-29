@@ -19,7 +19,7 @@ _args: Optional[ExportArguments] = None
 template: Optional[Template] = None
 
 
-def _prepare_dataset_gptq(examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
+def _prepare_dataset(examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
     global _args, template
     assert template is not None
     examples = [
@@ -78,10 +78,11 @@ def _get_dataset(*args, **kwargs):
 
 def init_quant(self, n_samples=128, max_seq_len=512):
     # copy from autoawq
+    global _args
     from awq.utils.utils import clear_memory, get_best_device
     modules = self.awq_model.get_model_layers(self.model)
     samples = _get_dataset()
-    samples = torch.cat(samples, dim=0)
+    samples = _prepare_dataset(samples, _args.quant_batch_size)
 
     inps = []
     layer_kwargs = {}
@@ -114,10 +115,14 @@ def init_quant(self, n_samples=128, max_seq_len=512):
 
     # patch layer 0 to catch input and kwargs
     modules[0] = Catcher(modules[0])
-    try:
-        self.model(samples.to(next(self.model.parameters()).device))
-    except ValueError:  # work with early exit
-        pass
+    for data in samples:
+        for k, v in data.items():
+            # put the data on gpu, we won't put them back to cpu
+            data[k] = v.to(best_device)
+        try:
+            self.model(**data)
+        except ValueError:
+            pass
     modules[0] = modules[0].module  # restore
 
     # Update the layer kwargs with `prepare_inputs_for_generation` method
@@ -183,7 +188,7 @@ def _patch_gptq():
     _get_dataset_origin = quantizer.get_dataset
     _prepare_dataset_origin = quantizer.prepare_dataset
     quantizer.get_dataset = _get_dataset
-    quantizer.prepare_dataset = _prepare_dataset_gptq
+    quantizer.prepare_dataset = _prepare_dataset
     yield
     quantizer.get_dataset = _get_dataset_origin  # recover
     quantizer.prepare_dataset = _prepare_dataset_origin  # recover
