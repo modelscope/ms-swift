@@ -76,7 +76,7 @@ def _get_dataset(*args, **kwargs):
     return res
 
 
-def init_quant(self, n_samples=128, max_seq_len=512):
+def init_quant(self, *args, **kwargs):
     # copy from autoawq
     from awq.utils.utils import clear_memory, get_best_device
     modules = self.awq_model.get_model_layers(self.model)
