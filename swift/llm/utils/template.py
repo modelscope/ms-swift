@@ -434,8 +434,9 @@ class Template:
                     num_new_tags = num_media - num_media_tags
                     assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
                     history[0][0] = media_tag * num_new_tags + history[0][0]
-
-        example['query'], example['response'] = history[-1]
+        example['query'] = history[-1][0]
+        if example.get('response') is not None:
+            example['response'] = history[-1][1]
         example['history'] = history[:-1]
 
     def replace_media_tags(self, example) -> None:
@@ -2106,10 +2107,10 @@ register_template(TemplateType.internlm2, Internlm2Template())
 
 
 def replace_img_tag(query: str,
-                    response: str,
+                    response: Optional[str],
                     history: History,
                     replace_token: str,
-                    pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
+                    pattern=r'<img>(.+?)</img>') -> Tuple[str, Optional[str], History, List[str]]:
     images_path = []
     new_history = []
     history.append([query, response])
