@@ -1045,7 +1045,8 @@ def _output_device_map_hook(module, input, output):
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, LlavaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     kwargs['tokenizer'] = processor.tokenizer
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, *args, **kwargs)
     tokenizer.processor = processor
@@ -3630,7 +3631,8 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
                                     **kwargs):
     from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
@@ -3660,10 +3662,16 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
 
     from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
+    elif kwargs['automodel_class'].__name__ == 'AutoAWQForCausalLM':
+        # https://github.com/casper-hansen/AutoAWQ/pull/599
+        from awq.models.qwen2vl import Qwen2VLAWQForConditionalGeneration
+        kwargs['automodel_class'] = Qwen2VLAWQForConditionalGeneration
+        model_kwargs['model_type'] = 'qwen2_vl'
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
-    if model is not None:
+    if model is not None and hasattr(model.model, 'embed_tokens'):
         model.model.embed_tokens.register_forward_hook(_clone_hook)
         model.model.embed_tokens.register_forward_hook(_output_device_map_hook)
     return model, tokenizer
@@ -6246,8 +6254,9 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     tags=['multi-modal', 'vision'],
     hf_model_id='meta-llama/Llama-3.2-90B-Vision-Instruct')
 def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
-    from transformers import MllamaForConditionalGeneration
-    kwargs['automodel_class'] = MllamaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        from transformers import MllamaForConditionalGeneration
+        kwargs['automodel_class'] = MllamaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -6274,8 +6283,9 @@ def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
     tags=['multi-modal', 'vision'],
     hf_model_id='llava-hf/llava-1.5-7b-hf')
 def get_model_tokenizer_llava_1_5(*args, **kwargs):
-    from transformers import LlavaForConditionalGeneration
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        from transformers import LlavaForConditionalGeneration
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -6311,8 +6321,9 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     placeholder_tokens=['<image>'],
     hf_model_id='llava-hf/llava-onevision-qwen2-72b-ov-hf')
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
-    from transformers import LlavaOnevisionForConditionalGeneration
-    kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        from transformers import LlavaOnevisionForConditionalGeneration
+        kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -6564,7 +6575,8 @@ def get_model_tokenizer_llava(model_dir: str,
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, AutoModelForVision2Seq
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = AutoModelForVision2Seq
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = AutoModelForVision2Seq
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
