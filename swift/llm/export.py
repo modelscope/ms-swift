@@ -134,6 +134,10 @@ def init_quant(self, *args, **kwargs):
     return modules, layer_kwargs, inps
 
 def quantize(self):
+    from awq.quantize.quantizer import (
+        clear_memory, get_best_device, get_named_linears, exclude_layers_to_not_quantize,
+        apply_scale, append_str_prefix, get_op_name, apply_clip
+    )
     for i in tqdm(range(len(self.modules)), desc="AWQ"):
         # Move module and inputs to correct device
         common_device = next(self.modules[i].parameters()).device
