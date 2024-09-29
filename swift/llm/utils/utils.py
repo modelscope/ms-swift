@@ -652,7 +652,6 @@ def _prepare_inputs(model: PreTrainedModel,
     inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
-    token_len = inputs['attention_mask'].shape[-1]
     model.eval()
     if not generation_config.do_sample:
         generation_config.temperature = 1.
