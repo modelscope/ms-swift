@@ -191,7 +191,7 @@ class ModelArguments:
 
     def get_model_group(self):
         """Find the model group. This is used to find the model structure"""
-        model_type = self.model_type or self.model_id_or_path
+        model_type = (self.model_type or self.model_id_or_path).replace('-', '_')
         model_group = None
         for key in MODEL_KEYS_MAPPING.keys():
             if key in model_type.lower():

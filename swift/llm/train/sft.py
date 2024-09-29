@@ -2,7 +2,7 @@
 import os
 from functools import partial
 from typing import Any, Dict, Optional, Tuple
-
+from swift.llm.model.config import ConfigReader
 import json
 import torch
 import transformers
@@ -218,11 +218,10 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model.hf_device_map: {model.hf_device_map}')
-    for k in ['gptq', 'awq', 'aqlm']:
-        if getattr(model, f'is_{k}', None):
-            args.quant_method = k
-            logger.info(f'Setting args.quant_method: {args.quant_method}')
-            break
+    quant_method = ConfigReader.read_config('quantization_config.quant_method', args.model_type, args.model_id_or_path, args.model_revision)
+    if quant_method:
+        args.quant_method = quant_method
+        logger.info(f'Setting args.quant_method: {args.quant_method}')
     logger.info(f'model_config: {model.config}')
 
     generation_config = GenerationConfig(

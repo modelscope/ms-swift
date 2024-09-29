@@ -1,6 +1,7 @@
 import os.path
 from typing import Dict, Any, Optional
 import hashlib
+from swift.utils import is_dist
 from modelscope import AutoConfig
 from transformers import PretrainedConfig
 from modelscope.hub.utils.utils import get_cache_dir
@@ -18,8 +19,11 @@ class ConfigReader:
         """Read the config value, key should be like `generation_config.bits`, splits by dots"""
         file_path = hashlib.md5((model_type or model_id_or_path).encode('utf-8')).hexdigest() + '.lock'
         file_path = os.path.join(ConfigReader.lock_dir, file_path)
-        with FileLock(file_path):
+        if is_dist():
             model_dir = safe_snapshot_download(model_type, model_id_or_path, revision, download_model=False)
+        else:
+            with FileLock(file_path):
+                model_dir = safe_snapshot_download(model_type, model_id_or_path, revision, download_model=False)
         if os.path.exists(os.path.join(model_dir, 'config.json')):
             return ConfigReader.read_config_from_hf(key, model_dir)
         else:
@@ -29,6 +33,11 @@ class ConfigReader:
     @staticmethod
     def read_config_from_hf(key, model_dir):
         config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        for k in ['language_config', 'llm_config', 'text_config']:
+            llm_config = getattr(config, k, None)
+            if llm_config is not None:
+                config = llm_config
+                break
         for k in key.split('.'):
             config = getattr(config, k, None)
             if config is None:
