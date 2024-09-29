@@ -6,8 +6,8 @@ from typing import Dict, List, Optional
 
 import json
 import torch
-from tqdm import tqdm
 import torch.nn as nn
+from tqdm import tqdm
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
@@ -132,17 +132,17 @@ def init_quant(self, *args, **kwargs):
     clear_memory()
     return modules, layer_kwargs, inps
 
+
 def quantize(self):
-    from awq.quantize.quantizer import (
-        clear_memory, get_best_device, get_named_linears, exclude_layers_to_not_quantize,
-        apply_scale, append_str_prefix, get_op_name, apply_clip
-    )
-    for i in tqdm(range(len(self.modules)), desc="AWQ"):
+    from awq.quantize.quantizer import (clear_memory, get_best_device, get_named_linears,
+                                        exclude_layers_to_not_quantize, apply_scale, append_str_prefix, get_op_name,
+                                        apply_clip)
+    for i in tqdm(range(len(self.modules)), desc='AWQ'):
         # Move module and inputs to correct device
         common_device = next(self.modules[i].parameters()).device
-        if common_device is None or str(common_device) == "cpu":
+        if common_device is None or str(common_device) == 'cpu':
             if torch.cuda.is_available():
-                best_device = "cuda:" + str(i % torch.cuda.device_count())
+                best_device = 'cuda:' + str(i % torch.cuda.device_count())
             else:
                 best_device = get_best_device()
 
@@ -153,35 +153,26 @@ def quantize(self):
         named_linears = get_named_linears(self.modules[i])
 
         # Filter out the linear layers we don't want to exclude
-        named_linears = exclude_layers_to_not_quantize(
-            named_linears, self.modules_to_not_convert
-        )
+        named_linears = exclude_layers_to_not_quantize(named_linears, self.modules_to_not_convert)
 
         input_feat = self._get_input_feat(self.modules[i], named_linears)
         clear_memory()
 
         # [STEP 2]: Compute and apply scale list
-        module_config: List[Dict] = self.awq_model.get_layers_for_scaling(
-            self.modules[i], input_feat, self.module_kwargs
-        )
+        module_config: List[Dict] = self.awq_model.get_layers_for_scaling(self.modules[i], input_feat,
+                                                                          self.module_kwargs)
         scales_list = [
             self._search_best_scale(self.modules[i], **layer)
-            for layer in tqdm(module_config, desc="Best Scales", leave=False)
+            for layer in tqdm(module_config, desc='Best Scales', leave=False)
         ]
         apply_scale(self.modules[i], scales_list, input_feat_dict=input_feat)
-        scales_list = append_str_prefix(
-            scales_list, get_op_name(self.model, self.modules[i]) + "."
-        )
+        scales_list = append_str_prefix(scales_list, get_op_name(self.model, self.modules[i]) + '.')
 
         # [STEP 3]: Compute and apply clipping list
         if self.apply_clip:
-            clip_list = self._search_best_clip(
-                self.modules[i], named_linears, input_feat
-            )
+            clip_list = self._search_best_clip(self.modules[i], named_linears, input_feat)
             apply_clip(self.modules[i], clip_list)
-            clip_list = append_str_prefix(
-                clip_list, get_op_name(self.model, self.modules[i]) + "."
-            )
+            clip_list = append_str_prefix(clip_list, get_op_name(self.model, self.modules[i]) + '.')
 
         # [STEP 4]: Quantize weights
         if not self.export_compatible:
@@ -189,13 +180,11 @@ def quantize(self):
 
         clear_memory()
 
-def _module_forward(
-    self, x: torch.Tensor, module: torch.nn.Module, module_kwargs: Dict
-) -> torch.Tensor:
+
+def _module_forward(self, x: torch.Tensor, module: torch.nn.Module, module_kwargs: Dict) -> torch.Tensor:
     module_output = []
     for inputs, inputs_kwargs in tqdm(
-        zip(self._inps, self.layer_kwargs), desc="Module forward", leave=False, total=len(self._inps)
-    ):
+            zip(self._inps, self.layer_kwargs), desc='Module forward', leave=False, total=len(self._inps)):
         partial_output = module(inputs, **inputs_kwargs)
 
         if isinstance(partial_output, tuple):
