@@ -871,6 +871,7 @@ class Template:
         return: inputs, tokenizer_kwargs
         """
         history = history.copy()
+        history_roles = history_roles.copy()
 
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
@@ -2113,6 +2114,7 @@ def replace_img_tag(query: str,
                     pattern=r'<img>(.+?)</img>') -> Tuple[str, Optional[str], History, List[str]]:
     images_path = []
     new_history = []
+    history = history.copy()
     history.append([query, response])
     for i, h in enumerate(history):
         new_h = []
