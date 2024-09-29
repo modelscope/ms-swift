@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from contextlib import contextmanager
+from types import MethodType
 from typing import Dict, List, Optional
 
 import json
 import torch
+from tqdm import tqdm
 import torch.nn as nn
 
 from swift.llm import get_model_tokenizer, get_template
@@ -65,14 +67,13 @@ def _get_dataset(*args, **kwargs):
     if _args.is_multimodal:
         return samples
     # now concatenate all samples and split according to block size
-    cat_samples = torch.cat(samples, dim=0)  # shape: [X]
-    n_split = cat_samples.shape[0] // block_size
+    cat_samples = torch.cat(samples, dim=0).tolist()  # shape: [X]
+    n_split = len(cat_samples) // block_size
     logger.info(f'Split into {n_split} blocks')
     res = []
     for i in range(n_split):
-        input_ids = cat_samples[None, i * block_size:(i + 1) * block_size]
-        attention_mask = torch.ones_like(input_ids)
-        res.append({'input_ids': input_ids, 'attention_mask': attention_mask})
+        input_ids = cat_samples[i * block_size:(i + 1) * block_size]
+        res.append({'input_ids': input_ids})
     return res
 
 
@@ -85,7 +86,7 @@ def init_quant(self, *args, **kwargs):
     samples = _prepare_dataset(samples, _args.quant_batch_size)
 
     inps = []
-    layer_kwargs = {}
+    layer_kwargs = []
 
     best_device = get_best_device()
     modules[0] = modules[0].to(best_device)
@@ -110,7 +111,7 @@ def init_quant(self, *args, **kwargs):
                 hidden_states = kwargs.pop(first_key)
 
             inps.append(hidden_states)
-            layer_kwargs.update(kwargs)
+            layer_kwargs.append(kwargs)
             raise ValueError  # early exit to break later inference
 
     # patch layer 0 to catch input and kwargs
@@ -125,24 +126,92 @@ def init_quant(self, *args, **kwargs):
             pass
     modules[0] = modules[0].module  # restore
 
-    # Update the layer kwargs with `prepare_inputs_for_generation` method
-    # that takes care of everything to avoid unexpected errors.
-    layer_kwargs = self.model.prepare_inputs_for_generation(samples, **layer_kwargs)
-    # Pop the input_ids as they are not needed at all.
-    layer_kwargs.pop('input_ids')
-
     del samples
-    inps = inps[0]
-
     modules[0] = modules[0].cpu()
     self.awq_model.move_embed(self.model, 'cpu')
 
     clear_memory()
-
-    if layer_kwargs.get('attention_mask') is not None:
-        layer_kwargs['attention_mask'] = layer_kwargs['attention_mask'].to(best_device)
-
     return modules, layer_kwargs, inps
+
+def quantize(self):
+    for i in tqdm(range(len(self.modules)), desc="AWQ"):
+        # Move module and inputs to correct device
+        common_device = next(self.modules[i].parameters()).device
+        if common_device is None or str(common_device) == "cpu":
+            if torch.cuda.is_available():
+                best_device = "cuda:" + str(i % torch.cuda.device_count())
+            else:
+                best_device = get_best_device()
+
+            self.modules[i] = self.modules[i].to(best_device)
+            common_device = next(self.modules[i].parameters()).device
+
+        if self.module_kwargs.get("position_ids") is not None:
+            self.module_kwargs["position_ids"] = self.module_kwargs[
+                "position_ids"
+            ].to(common_device)
+
+        if self.module_kwargs.get("attention_mask") is not None:
+            self.module_kwargs["attention_mask"] = self.module_kwargs[
+                "attention_mask"
+            ].to(common_device)
+
+        self.inps = self.inps.to(common_device)
+
+        # [STEP 1]: Get layer, extract linear modules, extract input features
+        named_linears = get_named_linears(self.modules[i])
+
+        # Filter out the linear layers we don't want to exclude
+        named_linears = exclude_layers_to_not_quantize(
+            named_linears, self.modules_to_not_convert
+        )
+
+        input_feat = self._get_input_feat(self.modules[i], named_linears)
+        clear_memory()
+
+        # [STEP 2]: Compute and apply scale list
+        module_config: List[Dict] = self.awq_model.get_layers_for_scaling(
+            self.modules[i], input_feat, self.module_kwargs
+        )
+        scales_list = [
+            self._search_best_scale(self.modules[i], **layer)
+            for layer in tqdm(module_config, desc="Best Scales", leave=False)
+        ]
+        apply_scale(self.modules[i], scales_list, input_feat_dict=input_feat)
+        scales_list = append_str_prefix(
+            scales_list, get_op_name(self.model, self.modules[i]) + "."
+        )
+
+        # [STEP 3]: Compute and apply clipping list
+        if self.apply_clip:
+            clip_list = self._search_best_clip(
+                self.modules[i], named_linears, input_feat
+            )
+            apply_clip(self.modules[i], clip_list)
+            clip_list = append_str_prefix(
+                clip_list, get_op_name(self.model, self.modules[i]) + "."
+            )
+
+        # [STEP 4]: Quantize weights
+        if not self.export_compatible:
+            self._apply_quant(self.modules[i], named_linears)
+
+        clear_memory()
+
+def _module_forward(
+    self, x: torch.Tensor, module: torch.nn.Module, module_kwargs: Dict
+) -> torch.Tensor:
+    module_output = []
+    for inputs, inputs_kwargs in tqdm(
+        zip(self._inps, self.layer_kwargs), desc="Module forward", leave=False, total=len(self._inps)
+    ):
+        partial_output = module(inputs, **inputs_kwargs)
+
+        if isinstance(partial_output, tuple):
+            partial_output = partial_output[0]
+
+        module_output.append(partial_output.cpu())
+    return module_output
 
 
 @contextmanager
@@ -157,12 +226,18 @@ def _patch_awq_model(awq_model):
     from awq.quantize.quantizer import AwqQuantizer
     _init_quant_origin = AwqQuantizer.init_quant
     __origin_getattr__ = awq_model.__class__.__getattr__
+    quantize_origin = AwqQuantizer.quantize
 
+    # _module_forward_origin = AwqQuantizer._module_forward
     AwqQuantizer.init_quant = init_quant
+    # AwqQuantizer._module_forward = _module_forward
     awq_model.__class__.__getattr__ = __new_getattr__
+    AwqQuantizer.quantize = quantize
     yield
     awq_model.__class__.__getattr__ = __origin_getattr__
     AwqQuantizer.init_quant = _init_quant_origin
+    AwqQuantizer.quantize = quantize_origin
+    # AwqQuantizer._module_forward = _module_forward_origin
 
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
@@ -176,6 +251,11 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
     group_size = 128
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
+    if awq_model.__class__.__name__ != 'BaseAWQForCausalLM':
+        try:
+            del awq_model.__class__.quantize
+        except AttributeError:
+            pass
     with _patch_awq_model(awq_model):
         awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=batch_size)
         awq_model.config.quantization_config = AwqConfig(
