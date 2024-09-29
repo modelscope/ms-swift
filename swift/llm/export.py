@@ -67,15 +67,102 @@ def _get_dataset(*args, **kwargs):
     cat_samples = torch.cat(samples, dim=0)  # shape: [X]
     n_split = cat_samples.shape[0] // block_size
     logger.info(f'Split into {n_split} blocks')
-    if _args.quant_method == 'awq':
-        return [cat_samples[None, i * block_size:(i + 1) * block_size] for i in range(n_split)]
-    else:  # gptq
-        res = []
-        for i in range(n_split):
-            input_ids = cat_samples[None, i * block_size:(i + 1) * block_size]
-            attention_mask = torch.ones_like(input_ids)
-            res.append({'input_ids': input_ids, 'attention_mask': attention_mask})
-        return res
+    res = []
+    for i in range(n_split):
+        input_ids = cat_samples[None, i * block_size:(i + 1) * block_size]
+        attention_mask = torch.ones_like(input_ids)
+        res.append({'input_ids': input_ids, 'attention_mask': attention_mask})
+    return res
+
+
+def init_quant(self, n_samples=128, max_seq_len=512):
+    # copy from autoawq
+    modules = self.awq_model.get_model_layers(self.model)
+    samples = get_calib_dataset(
+        data=self.calib_data,
+        tokenizer=self.tokenizer,
+        n_samples=n_samples,
+        max_seq_len=max_seq_len,
+        split=self.split,
+        text_column=self.text_column,
+    )
+    samples = torch.cat(samples, dim=0)
+
+    inps = []
+    layer_kwargs = {}
+
+    best_device = get_best_device()
+    modules[0] = modules[0].to(best_device)
+    self.awq_model.move_embed(self.model, best_device)
+
+    # get input and kwargs to layer 0
+    # with_kwargs is only supported in PyTorch 2.0
+    # use this Catcher hack for now
+    class Catcher(nn.Module):
+
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+
+        def forward(self, *args, **kwargs):
+            # assume first input to forward is hidden states
+            if len(args) > 0:
+                hidden_states = args[0]
+                del args
+            else:
+                first_key = list(kwargs.keys())[0]
+                hidden_states = kwargs.pop(first_key)
+
+            inps.append(hidden_states)
+            layer_kwargs.update(kwargs)
+            raise ValueError  # early exit to break later inference
+
+    # patch layer 0 to catch input and kwargs
+    modules[0] = Catcher(modules[0])
+    try:
+        self.model(samples.to(next(self.model.parameters()).device))
+    except ValueError:  # work with early exit
+        pass
+    modules[0] = modules[0].module  # restore
+
+    # Update the layer kwargs with `prepare_inputs_for_generation` method
+    # that takes care of everything to avoid unexpected errors.
+    layer_kwargs = self.model.prepare_inputs_for_generation(samples, **layer_kwargs)
+    # Pop the input_ids as they are not needed at all.
+    layer_kwargs.pop('input_ids')
+
+    del samples
+    inps = inps[0]
+
+    modules[0] = modules[0].cpu()
+    self.awq_model.move_embed(self.model, 'cpu')
+
+    clear_memory()
+
+    if layer_kwargs.get('attention_mask') is not None:
+        layer_kwargs['attention_mask'] = layer_kwargs['attention_mask'].to(best_device)
+
+    return modules, layer_kwargs, inps
+
+
+@contextmanager
+def _patch_awq_model(awq_model):
+
+    def __new_getattr__(self, name: str) -> str:
+        try:
+            return super(self.__class__, self).__getattr__(name)
+        except AttributeError:
+            return getattr(self.model, name)
+
+    from awq.quantize.quantizer import AwqQuantizer
+    _init_quant_origin = AwqQuantizer.init_quant
+    __origin_getattr__ = awq_model.__class__.__getattr__
+
+    AwqQuantizer.init_quant = init_quant
+    awq_model.__class__.__getattr__ = __new_getattr__
+    yield
+    awq_model.__class__.__getattr__ = __origin_getattr__
+    AwqQuantizer.init_quant = _init_quant_origin
 
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
@@ -86,20 +173,13 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
     assert _args is not None
     logger.info(f'Quantization dataset: {_args.dataset}')
-    _origin_get_calib_dataset = quantizer.get_calib_dataset
-    quantizer.get_calib_dataset = _get_dataset
     group_size = 128
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
-    if awq_model.__class__.__name__ != 'BaseAWQForCausalLM':
-        try:
-            del awq_model.__class__.quantize
-        except AttributeError:
-            pass
-    awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=batch_size)
-    quantizer.get_calib_dataset = _origin_get_calib_dataset  # recover
-    awq_model.model.config.quantization_config = AwqConfig(
-        bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
+    with _patch_awq_model(awq_model):
+        awq_model.quantize(tokenizer, quant_config=quant_config, n_parallel_calib_samples=batch_size)
+        awq_model.config.quantization_config = AwqConfig(
+            bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
 
 
 @contextmanager
