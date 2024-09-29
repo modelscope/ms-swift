@@ -88,6 +88,8 @@ class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateAr
 
     loss_scale: str = 'default'
 
+    attn_type: str = 'flash_attention'
+
     # streaming dataset
     streaming: bool = False
     streaming_val_size: int = 0

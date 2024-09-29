@@ -3966,7 +3966,7 @@ def get_model_tokenizer_internlm_xcomposer2(model_dir: str,
                                             **kwargs):
     version = kwargs.pop('version', 'v2')
     model_config = None
-    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
+    attn_type = AttentionType(kwargs.get('use_flash_attn', None), kwargs.get('attn_type', None))
     if version == 'v2-4khd':
         from transformers import CLIPVisionModel
 

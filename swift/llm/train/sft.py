@@ -198,8 +198,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         'use_unsloth': args.tuner_backend == 'unsloth',
         'load_in_4bit': args.quantization_bit == 4
     }
-    if args.use_flash_attn is not None:
-        kwargs['use_flash_attn'] = args.use_flash_attn
+    if args.attn_type is not None:
+        kwargs['attn_type'] = args.attn_type
     if args.local_repo_path:
         kwargs['local_repo_path'] = args.local_repo_path
 
