@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 
 import json
 import torch
+import torch.nn as nn
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
@@ -77,15 +78,9 @@ def _get_dataset(*args, **kwargs):
 
 def init_quant(self, n_samples=128, max_seq_len=512):
     # copy from autoawq
+    from awq.utils.utils import clear_memory, get_best_device
     modules = self.awq_model.get_model_layers(self.model)
-    samples = get_calib_dataset(
-        data=self.calib_data,
-        tokenizer=self.tokenizer,
-        n_samples=n_samples,
-        max_seq_len=max_seq_len,
-        split=self.split,
-        text_column=self.text_column,
-    )
+    samples = _get_dataset()
     samples = torch.cat(samples, dim=0)
 
     inps = []
