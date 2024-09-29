@@ -150,18 +150,6 @@ def quantize(self):
             self.modules[i] = self.modules[i].to(best_device)
             common_device = next(self.modules[i].parameters()).device
 
-        if self.module_kwargs.get("position_ids") is not None:
-            self.module_kwargs["position_ids"] = self.module_kwargs[
-                "position_ids"
-            ].to(common_device)
-
-        if self.module_kwargs.get("attention_mask") is not None:
-            self.module_kwargs["attention_mask"] = self.module_kwargs[
-                "attention_mask"
-            ].to(common_device)
-
-        self.inps = self.inps.to(common_device)
-
         # [STEP 1]: Get layer, extract linear modules, extract input features
         named_linears = get_named_linears(self.modules[i])
 
