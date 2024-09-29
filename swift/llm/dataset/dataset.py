@@ -234,6 +234,8 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
 
 class GPT4vDataset(RowPreprocessor):
 
+    modals = ['image']
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         return {
             'messages': [
@@ -337,6 +339,9 @@ register_dataset(
 
 class COCO2014Preprocess(RowPreprocessor):
 
+    modals = ['image']
+    modal_keys = {'image': 'image'}
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         prompt = 'please describe the image.'
         image_key = 'image'
@@ -360,7 +365,8 @@ class COCO2014Preprocess(RowPreprocessor):
 
     def __call__(self, dataset, **kwargs):
         from datasets import Image
-        return super()(dataset.cast_column('image', Image(decode=False)), **kwargs)
+        dataset = super(COCO2014Preprocess, self).__call__(dataset.cast_column('image', Image(decode=False)), **kwargs)
+        return dataset.remove_columns(['images'])
 
 
 register_dataset(
@@ -456,6 +462,8 @@ register_dataset(
 
 class LLaVADataPreprocessor(RowPreprocessor):
 
+    modals = ['image']
+
     def prepare_downloading(self, dataset):
         self.all_folders = {}
         for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
@@ -464,6 +472,13 @@ class LLaVADataPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         if not row['images']:
             return {}
+        
+        row.update(ConversationsPreprocessor(
+            user_role='user',
+            assistant_role='assistant',
+            conversations_key='conversation',
+            from_key='role',
+            value_key='content').preprocess(row))
         images = [p['path'] for p in row['images']]
         new_images = []
         for image in images:
@@ -484,23 +499,13 @@ class LLaVADataPreprocessor(RowPreprocessor):
             row['images'] = new_images
         else:
             row['images'] = []
+        return row
 
 
 register_dataset(
     DatasetName.llava_data_instruct,
     'swift/llava-data', ['llava_instruct'],
-    ComposePreprocessor([
-        LLaVADataPreprocessor(),
-        ConversationsPreprocessor(
-            user_role='user',
-            assistant_role='assistant',
-            conversations_key='conversation',
-            from_key='role',
-            value_key='content',
-            media_type='image',
-            media_key='images')
-
-    ]),
+    LLaVADataPreprocessor(),
     HubDatasetLoader.dataset_get_function,
     split=['train'],
     tags=['sft', 'multi-modal', 'quality'],
@@ -555,6 +560,8 @@ register_dataset(
 
 class PixelProsePreprocessor(RowPreprocessor):
 
+    models = ['image']
+
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         caption_prompt = [
             'Give the description of this image.', 'Describe this picture', 'What is the proper title of this image?'
@@ -567,7 +574,7 @@ class PixelProsePreprocessor(RowPreprocessor):
                 {'role': 'user', 'content': np.random.choice(caption_prompt)},
                 {'role': 'assistant', 'content': vlm_caption}
             ],
-            'images': vlm_caption
+            'images': row['url']
         }
 
 
@@ -620,6 +627,8 @@ register_dataset(
 
 
 class VideoChatGPTPreprocessor(RowPreprocessor):
+
+    modals = ['video']
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         url = 'https://modelscope.cn/datasets/swift/VideoChatGPT/resolve/master/videos.zip'
@@ -1002,6 +1011,8 @@ register_dataset(
 
 class ShareGPT4VPreprocessor(RowPreprocessor):
 
+    modals = ['image']
+
     def prepare_downloading(self, dataset):
         split = ['ShareGPT4V', 'ShareGPT4V-PT'] if dataset.config_name is None else dataset.config_name
         IMAGE_DATASET_REQUIREMENTS = {
@@ -1018,6 +1029,8 @@ class ShareGPT4VPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         image = row['image']
+        row.update(ConversationsPreprocessor(
+                user_role='human', assistant_role='gpt', error_strategy='delete').preprocess(row))
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
         elif 'sam/' in image:
@@ -1045,11 +1058,7 @@ class ShareGPT4VPreprocessor(RowPreprocessor):
 register_dataset(
     DatasetName.sharegpt4v,
     'AI-ModelScope/ShareGPT4V', ['ShareGPT4V', 'ShareGPT4V-PT'],
-    ComposePreprocessor([
-        ShareGPT4VPreprocessor(),
-        ConversationsPreprocessor(
-                user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
-    ]),
+    ShareGPT4VPreprocessor(),
     HubDatasetLoader.dataset_get_function,
     split=['train'],
     huge_dataset=True,
@@ -1175,12 +1184,16 @@ register_dataset(
 
 class LLaVAInstructPreprocessor(RowPreprocessor):
 
+    modals = ['image']
+
     def prepare_downloading(self, dataset):
         self.all_folders = {}
         for media_type in ['coco', 'gqa', 'ocr_vqa', 'textvqa', 'VG_100K', 'VG_100K_2']:
             self.all_folders[media_type] = MediaResource.download(media_type)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row.update(ConversationsPreprocessor(
+            user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete').preprocess(row))
         image = row['image']
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
@@ -1208,11 +1221,7 @@ register_dataset(
     DatasetName.llava_instruct_150k,
     'AI-ModelScope/LLaVA-Instruct-150K',
     None,
-    ComposePreprocessor([
-        LLaVAInstructPreprocessor(),
-        ConversationsPreprocessor(
-            user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete')
-    ]),
+    LLaVAInstructPreprocessor(),
     HubDatasetLoader.dataset_get_function,
     split=['train'],
     revision='d5db3806e395c60496630a206c336932e85a2d00',
@@ -1258,6 +1267,8 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
             'llava_pretrain')
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        row.update(ConversationsPreprocessor(
+                user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete').preprocess(row))   
         if row['image']:
             file_path = os.path.join(self.media_dir, row['image'])
             if os.path.exists(file_path):
@@ -1274,13 +1285,7 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
 register_dataset(
     DatasetName.llava_pretrain,
     'AI-ModelScope/LLaVA-Pretrain', ['default'],
-    ComposePreprocessor(
-        [
-            LLaVAPretrainPreprocessor(),
-            ConversationsPreprocessor(
-                    user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete')
-        ]
-    ),
+    LLaVAPretrainPreprocessor(),
     HubDatasetLoader.dataset_get_function,
     split=['train'],
     hf_dataset_id='liuhaotian/LLaVA-Pretrain',
@@ -1958,7 +1963,7 @@ register_dataset(
     tags=['chat', 'agent', 'multi-round'])
 
 
-def preprocess_mind2web(dataset):
+def preprocess_mind2web(dataset, **kwargs):
 
     def preprocess_row(row: Dict[str, Any]) -> Dict[str, Any]:
         raw_html = row['cleaned_html']
@@ -1977,30 +1982,44 @@ def preprocess_mind2web(dataset):
 
     conversations = []
     tools = [{
-        'api': 'CLICK',
-        'desc': 'Choose and click an element in the web page',
-        'parameter': [{
-            'element': 'string, the element in the web page to click'
-        }]
+        'function': {
+            'name': 'CLICK',
+            'desc': 'Choose and click an element in the web page',
+            'parameter': [{
+                'element': 'string, the element in the web page to click'
+            }]
+        }
     }, {
-        'api':
-        'TYPE',
-        'desc':
-        'Input some text into a web element like <input> or <textbox>',
-        'parameter': [{
-            'element': 'string, the element in the web page to input to',
-            'content': 'string, what content to input into the textbox elment'
-        }]
+        'function': {
+            'name':
+            'TYPE',
+            'desc':
+            'Input some text into a web element like <input> or <textbox>',
+            'parameter': [{
+                'element': 'string, the element in the web page to input to',
+                'content': 'string, what content to input into the textbox elment'
+            }]
+        }
     }, {
-        'api':
-        'SELECT',
-        'desc':
-        'Select an element from a combobox',
-        'parameter': [{
-            'element': 'string, the combobox or dropdown in the web page on which the select happens',
-            'content': 'string, which choices to choose'
-        }]
+        'function': {
+            'name':
+            'SELECT',
+            'desc':
+            'Select an element from a combobox',
+            'parameter': [{
+                'element': 'string, the combobox or dropdown in the web page on which the select happens',
+                'content': 'string, which choices to choose'
+            }]
+        }
     }]
+
+    def history_to_messages(history):
+        messages = []
+        for h in history:
+            messages.append({'role': 'user', 'content': h[0]})
+            messages.append({'role': 'assistant', 'content': h[1]})
+        return messages
+
     if isinstance(dataset, HfIterableDataset):
 
         def generate_example(dataset):
@@ -2012,24 +2031,19 @@ def preprocess_mind2web(dataset):
                 query = row['query']
                 if target_action_index == '0':
                     if history:
-                        query, response = history.pop(-1)
                         yield {
-                            'messages': None,
-                            'images': None,
-                            'tools': None
+                            'messages': history_to_messages(history),
+                            'images': images,
+                            'tools': tools
                         }
                         images = []
                         history = []
                     query = query + '\n' + row['confirmed_task']
                 history.append([query, row['response']])
-                images.append([row['screenshot']])
+                images.append(row['screenshot'])
 
             if history:
-                messages = []
-                for h in history:
-                    messages.append({'role': 'user', 'content': h[0]})
-                    messages.append({'role': 'assistant', 'content': h[1]})
-                yield {'messages': messages, 'images': images, 'tools': tools}
+                yield {'messages': history_to_messages(history), 'images': images, 'tools': tools}
 
         return HfIterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
 
@@ -2041,11 +2055,8 @@ def preprocess_mind2web(dataset):
         query = row['query']
         if target_action_index == '0':
             if history:
-                query, response = history.pop(-1)
                 conversations.append({
-                    'history': history,
-                    'query': query,
-                    'response': response,
+                    'messages': history_to_messages(history),
                     'images': images,
                     'tools': tools
                 })
@@ -2053,14 +2064,10 @@ def preprocess_mind2web(dataset):
                 history = []
             query = query + '\n' + row['confirmed_task']
         history.append([query, row['response']])
-        images.append([row['screenshot']])
+        images.append(row['screenshot'])
 
     if history:
-        messages = []
-        for h in history:
-            messages.append({'role': 'user', 'content': h[0]})
-            messages.append({'role': 'assistant', 'content': h[1]})
-        conversations.append({'messages': messages, 'images': images, 'tools': tools})
+        conversations.append({'messages': history_to_messages(history), 'images': images, 'tools': tools})
 
     return HfDataset.from_list(conversations)
 

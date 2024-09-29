@@ -138,6 +138,8 @@ class RowPreprocessor(GroundingMixin):
             for m in messages:
                 # Replace to standard tag
                 m['content'] = m['content'].replace(_modal_tag, standard_tag)
+        elif '<img>' in all_content and '</img>' in all_content:
+            pass
         else:
             for m in messages:
                 if m['role'] not in ('tool', 'system', 'assistant'):

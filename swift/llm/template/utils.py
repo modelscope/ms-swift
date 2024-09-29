@@ -335,7 +335,10 @@ def load_file_decorator(func):
 def load_image(image: Union['PIL.Image.Image', BytesIO]) -> 'PIL.Image.Image':
     from PIL import Image
     if isinstance(image, BytesIO):
-        image = Image.open(image)
+        try:
+            image = Image.open(image)
+        except:
+            print()
     if image.mode != 'RGB':
         image = image.convert('RGB')
     return image

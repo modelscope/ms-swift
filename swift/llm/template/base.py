@@ -65,7 +65,7 @@ def replace_img_tag(messages: Messages,
             images_path += re.findall(pattern, m['content'])
             m['content'] = re.sub(pattern, replace_token, m['content'])
             new_messages.append(m)
-    return messages, images_path
+    return new_messages, images_path
 
 
 class StopWordsCriteria(StoppingCriteria):
@@ -759,11 +759,11 @@ class Template:
         assert len(messages) >= 1
         if len(messages) == 1:
             if messages[0]['role'] == 'assistant':
-                history = [[None, messages[0]['content']]]
-                history_roles = [[None, messages[0]['role']]]
+                history = [['', messages[0]['content']]]
+                history_roles = [['', messages[0]['role']]]
             else:
-                history = [[messages[0]['content'], None]]
-                history_roles = [[messages[0]['role'], None]]
+                history = [[messages[0]['content'], '']]
+                history_roles = [[messages[0]['role'], '']]
         else:
             assert len(messages) % 2 == 0
             history = [[messages[i]['content'], messages[i+1]['content']] for i in range(0, len(messages), 2)]
