@@ -197,6 +197,7 @@ def _search_best_scale(
     module2inspect=None,
     kwargs={},
 ):
+    from awq.utils.utils import clear_memory, get_op_name
     if module2inspect is None:
         assert len(layers) == 1
         module2inspect = layers[0]
@@ -323,18 +324,22 @@ def _patch_awq_model(awq_model):
     quantize_origin = AwqQuantizer.quantize
     _get_input_feat_origin = AwqQuantizer._get_input_feat
     _module_forward_origin = AwqQuantizer._module_forward
+    _search_best_scale_origin = AwqQuantizer._search_best_scale
 
     AwqQuantizer.init_quant = init_quant
-    AwqQuantizer._module_forward = _module_forward
     awq_model.__class__.__getattr__ = __new_getattr__
     AwqQuantizer.quantize = quantize
     AwqQuantizer._get_input_feat = _get_input_feat
+    AwqQuantizer._module_forward = _module_forward
+    AwqQuantizer._search_best_scale = _search_best_scale
+
     yield
-    awq_model.__class__.__getattr__ = __origin_getattr__
     AwqQuantizer.init_quant = _init_quant_origin
+    awq_model.__class__.__getattr__ = __origin_getattr__
     AwqQuantizer.quantize = quantize_origin
     AwqQuantizer._get_input_feat = _get_input_feat_origin
     AwqQuantizer._module_forward = _module_forward_origin
+    AwqQuantizer._get_input_feat = _search_best_scale_origin
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
