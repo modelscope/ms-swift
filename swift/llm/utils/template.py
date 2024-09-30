@@ -3560,6 +3560,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         labels = inputs['labels']
         idx_list = _findall(input_ids, -100)
         processor = self.tokenizer.processor
+        inputs = {'_data': {}}
         if images:
             image_inputs = processor.image_processor(images, cut_enable=cut_enable, return_tensors='pt')
             added_tokens_len = 0
@@ -3579,21 +3580,23 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
             _range = torch.arange(len(input_ids))[:, None]
             matrix = (_range > image_token_idx).sum(dim=1)
             media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
-            inputs['_data'] = {'pixel_values': image_inputs['pixel_values']}
-            inputs['media_offset'] = media_offset
-            inputs['num_images'] = image_inputs['pixel_values'].shape[0]
-        inputs['input_ids'] = input_ids
+            inputs['_data'].update({
+                'pixel_values': image_inputs['pixel_values'],
+                'media_offset': media_offset,
+            })
+        inputs['_data']['input_ids'] = input_ids
         inputs['labels'] = labels
         return inputs, {}
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        image_embeds = model.forward_image(data['pixel_values'])
-        return {'image_embeds': image_embeds}
+        if 'pixel_values' in data:
+            pixel_values = data.pop('pixel_values')
+            data['image_embeds'] = model.forward_image(pixel_values)
+        return data
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
-        num_images = [b['num_images'] if 'num_images' in b else 0 for b in batch]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
         media_offset = []
@@ -3609,7 +3612,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
                                                                   curr_media_offset.shape[2])
                     curr_media_offset = torch.concat([curr_media_offset, padding], dim=1)
                 media_offset.append(curr_media_offset + cusum_offset)
-                cusum_offset += num_images[bi]
+                cusum_offset += image_embeds[bi].shape[0]
 
         # media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
 
