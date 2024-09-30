@@ -133,6 +133,51 @@ def init_quant(self, *args, **kwargs):
     return modules, layer_kwargs, inps
 
 
+def _get_input_feat(self, layer, named_linears):
+    # firstly, get input features of all linear layers
+    def cache_input_hook(m, x, y, name, feat_dict):
+        x = x[0]
+        x = x.detach().cpu()
+        feat_dict[name].append(x)
+
+    input_feat = defaultdict(list)
+    handles = []
+
+    # FIXME: Workaround for Mixtral to use block_sparse_moe input features
+    if self.awq_model.model_type == "mixtral":
+        named_linears = {
+            **named_linears,
+            "block_sparse_moe": layer.block_sparse_moe,
+        }
+
+    if self.awq_model.model_type == "deepseek_v2":
+        named_linears = {
+            **named_linears,
+            "mlp": layer.mlp,
+        }
+
+    for name in named_linears:
+        handles.append(
+            named_linears[name].register_forward_hook(
+                functools.partial(cache_input_hook, name=name, feat_dict=input_feat)
+            )
+        )
+    self.inps = self.inps.to(next(layer.parameters()).device)  # in case multi-gpu
+    # get output as next layer's input
+
+    # Sanitize the kwargs in case we use transformers version that contains
+    # kwargs that are not handled by the module.
+    # Useful for trust_remote_code models.
+    module_kwargs = self._sanitize_kwargs(self.module_kwargs, layer)
+
+    self.inps = self._module_forward(self.inps, layer, module_kwargs)
+    for h in handles:
+        h.remove()
+    # now solve for scaling and clipping
+    input_feat = {k: torch.cat(v, dim=0) for k, v in input_feat.items()}
+
+    return input_feat
+
 def quantize(self):
     from awq.quantize.quantizer import (clear_memory, get_best_device, get_named_linears,
                                         exclude_layers_to_not_quantize, apply_scale, append_str_prefix, get_op_name,
@@ -181,19 +226,6 @@ def quantize(self):
         clear_memory()
 
 
-def _module_forward(self, x: torch.Tensor, module: torch.nn.Module, module_kwargs: Dict) -> torch.Tensor:
-    module_output = []
-    for inputs, inputs_kwargs in tqdm(
-            zip(self._inps, self.layer_kwargs), desc='Module forward', leave=False, total=len(self._inps)):
-        partial_output = module(inputs, **inputs_kwargs)
-
-        if isinstance(partial_output, tuple):
-            partial_output = partial_output[0]
-
-        module_output.append(partial_output.cpu())
-    return module_output
-
-
 @contextmanager
 def _patch_awq_model(awq_model):
 
@@ -208,16 +240,13 @@ def _patch_awq_model(awq_model):
     __origin_getattr__ = awq_model.__class__.__getattr__
     quantize_origin = AwqQuantizer.quantize
 
-    # _module_forward_origin = AwqQuantizer._module_forward
     AwqQuantizer.init_quant = init_quant
-    # AwqQuantizer._module_forward = _module_forward
     awq_model.__class__.__getattr__ = __new_getattr__
     AwqQuantizer.quantize = quantize
     yield
     awq_model.__class__.__getattr__ = __origin_getattr__
     AwqQuantizer.init_quant = _init_quant_origin
     AwqQuantizer.quantize = quantize_origin
-    # AwqQuantizer._module_forward = _module_forward_origin
 
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
