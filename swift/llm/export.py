@@ -162,19 +162,103 @@ def _get_input_feat(self, layer, named_linears):
                 functools.partial(cache_input_hook, name=name, feat_dict=input_feat)
             )
         )
-    self.inps = self.inps.to(next(layer.parameters()).device)  # in case multi-gpu
     # get output as next layer's input
 
     # Sanitize the kwargs in case we use transformers version that contains
     # kwargs that are not handled by the module.
     # Useful for trust_remote_code models.
-    module_kwargs = self._sanitize_kwargs(self.module_kwargs, layer)
 
-    self.inps = self._module_forward(self.inps, layer, module_kwargs)
+    self.inps = self._module_forward(self.inps, self.module_kwargs, layer)
     for h in handles:
         h.remove()
     # now solve for scaling and clipping
     return input_feat
+
+def _module_forward(self, x: torch.Tensor, layer_kwargs, module: torch.nn.Module) -> torch.Tensor:
+    module_output = []
+    for inputs, inputs_kwargs in tqdm(
+            zip(x, layer_kwargs), desc='Module forward', leave=False, total=len(x)):
+        partial_output = module(inputs, **inputs_kwargs)
+
+        if isinstance(partial_output, tuple):
+            partial_output = partial_output[0]
+
+        module_output.append(partial_output.cpu())
+    return module_output
+
+
+@torch.no_grad()
+def _search_best_scale(
+    self,
+    module,
+    prev_op,
+    layers: List[nn.Linear],
+    inp: torch.Tensor,
+    module2inspect=None,
+    kwargs={},
+):
+    if module2inspect is None:
+        assert len(layers) == 1
+        module2inspect = layers[0]
+
+    if "use_cache" in kwargs:
+        kwargs.pop("use_cache")
+
+    # Put x on the right device
+    inp = inp.to(next(module2inspect.parameters()).device)
+
+    # [STEP 1]: Compute per-channel mean of normalised weights
+    # All layer weights are concatted together
+    weight = torch.cat([_m.weight for _m in layers], dim=0)
+    org_shape = weight.shape
+    # The weights are reshaped to be organised by quantization group
+    weight = weight.view(-1, self.group_size)
+    # Calculates the relative magnitude of the weights within each of the quantization groups,
+    # and rescales each group individually so that each group has weights on a 0-1 scale.
+    w_scale = weight.abs() / (weight.abs().amax(dim=1, keepdim=True) + 1e-6)
+    # Resizes the rescaled weight matrix back up to its original dimensions
+    w_scale = w_scale.view(org_shape)
+    # Gets the average rescaled magnitude for each output channel
+    w_mean = w_scale.mean(0)
+    clear_memory(weight)
+
+    # [STEP 2]: Compute per-channel mean of the input activation with chunking
+    # move inp to cpu to avoid memory leak
+    inp_flat = inp.cpu().abs().view(-1, inp.shape[-1])
+    num_elements = inp_flat.size(0)
+    num_channels = inp_flat.size(1)
+    element_size_bytes = inp_flat.element_size() * 2 # multiplied by 2 for FP32
+
+    # Calculate chunk size dynamically based on max_chunk_memory
+    chunk_size = int(self.max_chunk_memory // (element_size_bytes * num_channels))
+    chunk_size = min(chunk_size, num_elements)
+
+    # Use float32 for sum calculation
+    x_sum = torch.zeros(num_channels, dtype=torch.float32, device=inp.device)
+    
+    for i in range(0, num_elements, chunk_size):
+        end = min(i + chunk_size, num_elements)
+        chunk_sum = inp_flat[i:end].to(torch.float32).sum(dim=0)
+        x_sum += chunk_sum.to(inp.device)
+
+    x_mean = (x_sum / num_elements).to(inp.dtype)
+    clear_memory(x_sum)
+
+    # [STEP 3]: Compute output of module
+    with torch.no_grad():
+        module_kwargs = self._sanitize_kwargs(kwargs, module2inspect)
+        fp16_output = self._module_forward(inp, module2inspect, module_kwargs)
+
+    # [STEP 4]: Compute loss
+    best_scales = self._compute_best_scale(
+        inp, w_mean, x_mean, module2inspect, layers, fp16_output, module_kwargs
+    )
+
+    return (
+        get_op_name(module, prev_op),
+        tuple([get_op_name(module, m) for m in layers]),
+        best_scales,
+    )
 
 def quantize(self):
     from awq.quantize.quantizer import (clear_memory, get_best_device, get_named_linears,
@@ -237,15 +321,20 @@ def _patch_awq_model(awq_model):
     _init_quant_origin = AwqQuantizer.init_quant
     __origin_getattr__ = awq_model.__class__.__getattr__
     quantize_origin = AwqQuantizer.quantize
+    _get_input_feat_origin = AwqQuantizer._get_input_feat
+    _module_forward_origin = AwqQuantizer._module_forward
 
     AwqQuantizer.init_quant = init_quant
+    AwqQuantizer._module_forward = _module_forward
     awq_model.__class__.__getattr__ = __new_getattr__
     AwqQuantizer.quantize = quantize
+    AwqQuantizer._get_input_feat = _get_input_feat
     yield
     awq_model.__class__.__getattr__ = __origin_getattr__
     AwqQuantizer.init_quant = _init_quant_origin
     AwqQuantizer.quantize = quantize_origin
-
+    AwqQuantizer._get_input_feat = _get_input_feat_origin
+    AwqQuantizer._module_forward = _module_forward_origin
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
@@ -253,7 +342,7 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
     assert _args is not None
     logger.info(f'Quantization dataset: {_args.dataset}')
-    group_size = _args.group_size
+    group_size = 128
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
     if awq_model.__class__.__name__ != 'BaseAWQForCausalLM':
