@@ -3,7 +3,7 @@ from typing import Optional
 
 import json
 import torch
-from modelscope import GenerationConfig
+from transformers import GenerationConfig
 
 from swift.tuners import Swift
 from swift.tuners.rome import RomeConfig

@@ -7,17 +7,16 @@ import json
 import torch
 import transformers
 from datasets import Dataset as HfDataset
-from modelscope import BitsAndBytesConfig, GenerationConfig
 from packaging import version
-from transformers import IntervalStrategy
+from transformers import BitsAndBytesConfig, GenerationConfig, IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import TrainerFactory
 from swift.trainers.utils import can_return_loss, find_labels
-from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_logger,
-                         get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
+from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_dist_setting,
+                         get_logger, get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
 from .accelerator import ta_accelerate
 from .tuner import prepare_model
@@ -115,6 +114,25 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
     return {}
 
 
+def get_default_device_map():
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
+        return None
+    local_rank = get_dist_setting()[1]
+    if is_torch_npu_available():
+        if local_rank >= 0:
+            return f'npu:{local_rank}'
+        else:
+            return 'npu:0'
+    if torch.cuda.device_count() == 0:
+        return 'cpu'
+    elif torch.cuda.device_count() == 1:
+        return 'cuda:0'
+    elif is_dist() and not is_ddp_plus_mp():
+        return f'cuda:{local_rank}'
+    else:
+        return 'auto'
+
+
 def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
 
     if args.gpu_memory_fraction is not None:
@@ -129,21 +147,15 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
           f'world_size: {args.world_size}, local_world_size: {args.local_world_size}')
 
     # Loading Model and Tokenizer
-    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
-        model_kwargs = {'device_map': None}
-    elif is_torch_npu_available():
-        model_kwargs = {'device_map': args.local_rank if args.local_rank >= 0 else 0}
-    elif args.device_map_config is not None:
-        model_kwargs = {'device_map': args.device_map_config}
-    else:
-        model_kwargs = {'low_cpu_mem_usage': True}
-        if is_dist() and not is_ddp_plus_mp():
-            model_kwargs['device_map'] = {'': args.local_rank}
-        elif torch.cuda.device_count() == 1:
-            model_kwargs['device_map'] = 'cuda:0'
-        elif not use_torchacc():
-            model_kwargs['device_map'] = 'auto'
-
+    model_kwargs = {}
+    if not use_torchacc():
+        if args.device_map_config is not None:
+            device_map = args.device_map_config
+        else:
+            device_map = get_default_device_map()
+        model_kwargs['device_map'] = device_map
+        if device_map == 'auto':
+            model_kwargs['low_cpu_mem_usage'] = True
     if args.device_max_memory:
         n_gpu = torch.cuda.device_count()
         assert len(args.device_max_memory) == n_gpu // args.local_world_size
@@ -357,7 +369,6 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
                                    f'Setting args.preprocess_num_proc to: {args.preprocess_num_proc}')
                 else:
                     template.model = None
-            logger.info(f'Using num_proc: {args.preprocess_num_proc}')
         td0, tkwargs0 = template.encode(train_dataset[0])
         print_example(td0, tokenizer, tkwargs0)
         train_dataset = dataset_map(train_dataset, template.encode, args.preprocess_num_proc, streaming=args.streaming)

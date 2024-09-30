@@ -302,7 +302,7 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[s
     # Solving the unordered problem
     data = [None] * len(dataset)
     num_proc = min(num_proc, len(dataset))
-    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset)):
+    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset), desc=f'Map (num_proc={num_proc})'):
         data[d[0]] = d[1]
     return data
 
@@ -317,7 +317,7 @@ def dataset_map(dataset: DATASET_TYPE,
     single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
         data = []
-        for d in tqdm(dataset):
+        for d in tqdm(dataset, desc='Map'):
             d = single_map(d)
             data.append(d)
     else:
@@ -431,7 +431,7 @@ def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
             return
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
             module_lists.append(m)
-    if module_lists is not None:
+    if module_lists:
         return max(module_lists, key=lambda x: len(x))
 
 
@@ -462,7 +462,7 @@ def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
     from swift.utils.module_mapping import MODEL_KEYS_MAPPING
     from .model import MODEL_MAPPING
     model_info = MODEL_MAPPING[model_type]
-    lora_target_modules = model_info.get('lora_target_modules')
+    lora_target_modules = model_info.get('lora_target_modules')  # model_group
 
     if not isinstance(lora_target_modules, str):
         return
@@ -473,6 +473,7 @@ def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
         if module_list is None:
             continue
         _add_gradient_checkpointing(module_list)
+        logger.info(f'Automatically add gradient_checkpointing to {vision_tower.__class__}.')
 
 
 def find_embedding(model: Module) -> List[str]:

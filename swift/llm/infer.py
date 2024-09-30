@@ -8,9 +8,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import json
 import numpy as np
 import torch
-from modelscope import BitsAndBytesConfig, GenerationConfig
 from tqdm import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+from transformers import BitsAndBytesConfig, GenerationConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.utils import is_torch_npu_available
 
 from swift.tuners import Swift
@@ -136,16 +135,15 @@ def prepare_model_template(args: InferArguments,
                            device_map: Optional[str] = None,
                            verbose: bool = True,
                            automodel_class=None) -> Tuple[PreTrainedModel, Template]:
-
-    model_kwargs = {}
+    from .sft import get_default_device_map
     if is_torch_npu_available():
-        logger.info(f'device_count: {torch.npu.device_count()}')
-        if device_map is None:
-            device_map = 'npu:0'
+        print(f'device_count: {torch.npu.device_count()}')
     else:
-        logger.info(f'device_count: {torch.cuda.device_count()}')
-        if device_map is None:
-            device_map = 'auto' if torch.cuda.device_count() > 1 else 'cuda:0'
+        print(f'device_count: {torch.cuda.device_count()}')
+    model_kwargs = {}
+    if device_map is None:
+        device_map = get_default_device_map()
+    model_kwargs['device_map'] = device_map
     if device_map == 'auto':
         model_kwargs['low_cpu_mem_usage'] = True
     model_kwargs['device_map'] = device_map

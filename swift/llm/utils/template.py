@@ -18,6 +18,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import strtobool
 
 from swift.llm.agent.utils import calculate_loss_scale, get_tools_prompt
 from swift.torchacc_utils import pad_and_split_batch
@@ -45,6 +46,7 @@ class TemplateType:
     # chat
     default = 'default'
     qwen = 'qwen'
+    qwen2_5 = 'qwen2_5'
     qwen_vl = 'qwen-vl'
     qwen_audio = 'qwen-audio'
     qwen2_audio = 'qwen2-audio'
@@ -59,6 +61,7 @@ class TemplateType:
     codegeex4 = 'codegeex4'
     llama = 'llama'  # llama2
     llama3 = 'llama3'
+    llama3_1_omni = 'llama3_1-omni'
     reflection = 'reflection'
     longwriter_llama3 = 'longwriter-llama3'
     # llava-hf
@@ -81,6 +84,7 @@ class TemplateType:
 
     idefics3 = 'idefics3'
     mistral_nemo = 'mistral-nemo'
+    pixtral = 'pixtral'
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
     internlm = 'internlm'
@@ -174,6 +178,10 @@ class StopWordsCriteria(StoppingCriteria):
                 if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
                     return True
         return False
+
+
+def is_deepspeed_enabled():
+    return strtobool(os.environ.get('ACCELERATE_USE_DEEPSPEED', 'False'))
 
 
 class Template:
@@ -600,7 +608,8 @@ class Template:
             example=example,
             is_multi_modal=is_multi_modal)
         if self._is_lmdeploy or self._is_vllm:
-            inputs['images'] = example.get('images')
+            for key in ['images', 'audios', 'videos']:
+                inputs[key] = example.get(key)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs, tokenizer_kwargs
@@ -637,6 +646,7 @@ class Template:
                 new_str_list = [system, query, round0, round1]
                 for (old_str, new_str) in zip(old_str_list, new_str_list):
                     if new_str is not None and old_str in context:
+                        assert isinstance(new_str, str), f'new_str: {new_str}'
                         context = context.replace(old_str, new_str)
             if len(context) == 0:
                 continue
@@ -1269,7 +1279,12 @@ class _QwenVLTemplateMixin:
             ]
 
 
+class Qwen2_5Template(QwenTemplate):
+    system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
+
+
 register_template(TemplateType.qwen, QwenTemplate())
+register_template(TemplateType.qwen2_5, Qwen2_5Template())
 
 
 class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
@@ -1365,9 +1380,11 @@ class _Qwen2AudioTemplateMixin:
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = Template.data_collator(self, batch, padding_to)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        feature_attention_mask = [
+            b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
+        ]
         if input_features:
             res['input_features'] = torch.concat(input_features)
-            feature_attention_mask = [b['feature_attention_mask'] for b in batch]
             res['feature_attention_mask'] = torch.concat(feature_attention_mask)
         return res
 
@@ -1427,8 +1444,10 @@ class _Qwen2VLTemplateMixin:
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type in {'image', 'video'}
         if media_type == 'image':
+            example['images'][index] = _process_image_qwen(example['images'][index])
             return ['<|vision_start|><|image_pad|><|vision_end|>']
         else:
+            example['videos'][index] = load_video_qwen2(example['videos'][index])
             return ['<|vision_start|><|video_pad|><|vision_end|>']
 
     def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
@@ -1469,12 +1488,10 @@ class _Qwen2VLTemplateMixin:
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
-                    images = load_batch(images, _process_image_qwen)
                     media_token = 151655
                     media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
-                    videos = load_batch(videos, load_video_qwen2)
                     media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
                     media_grid_thw = media_inputs['video_grid_thw']
                     media_token = 151656
@@ -1494,7 +1511,28 @@ class _Qwen2VLTemplateMixin:
 
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
+        inputs['_data'] = {'plain_text': not images and not videos, 'input_ids': torch.tensor(input_ids)[None]}
         return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        plain_text = data.pop('plain_text', False)
+        if is_deepspeed_enabled() and plain_text:
+            from PIL import Image
+            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+            processor = self.tokenizer.processor
+            media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+            input_ids = data['input_ids']
+            device = input_ids.device
+            pixel_values = media_inputs['pixel_values'].to(device)
+            _model = model.model
+            if not hasattr(_model, 'embed_tokens'):
+                _model = _model.model  # LoRA
+            inputs_embeds = _model.embed_tokens(input_ids)
+            pixel_values = pixel_values.type(model.visual.get_dtype())
+            image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            inputs_embeds += image_embeds.mean() * 0.
+            return {'inputs_embeds': inputs_embeds[0]}
+        return {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
@@ -1521,6 +1559,69 @@ class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate
 register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
 
 register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+
+
+def _gather_list(batch: List[Dict[str, Any]], attr_name: str) -> Optional[List[Any]]:
+    # List[Tensor] ->  List[Tensor]
+    res = []
+    for b in batch:
+        if b.get(attr_name) is not None:
+            res += b.pop(attr_name)
+    return res
+
+
+class PixtralTemplate(Template):
+
+    def __init__(self):
+        super().__init__(['<s>{{SYSTEM}}'], ['[INST]{{QUERY}}[/INST]'], ['</s>'], ['</s>'], None)
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        return ['[IMG]']
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        processor = self.tokenizer.processor
+        images = example['images']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        idx_list = _findall(input_ids, 10)
+        if idx_list:
+            image_inputs = processor.image_processor(images, patch_size=processor.patch_size, return_tensors='pt')
+            inputs['pixel_values'] = image_inputs['pixel_values'][0]
+            image_sizes = image_inputs['image_sizes'][0]
+            added_tokens_len = 0
+            for idx, image_size in zip(idx_list, image_sizes):
+                height, width = image_size
+                num_height_tokens = height // processor.patch_size
+                num_width_tokens = width // processor.patch_size
+                replace_tokens = [processor.image_token * num_width_tokens + processor.image_break_token] * (
+                    num_height_tokens - 1)
+                replace_tokens += [processor.image_token * num_width_tokens + processor.image_end_token]
+                # Flatten list
+                replace_str = ''.join(replace_tokens)
+                img_tokens: List[int] = self.tokenizer.encode(replace_str, add_special_tokens=False)
+                input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+                if labels is not None:
+                    labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                                 + 1:]
+                added_tokens_len += len(img_tokens) - 1
+            inputs['input_ids'] = input_ids
+            inputs['labels'] = labels
+
+        return inputs, {}
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        pixel_values = _gather_list(batch, 'pixel_values')
+        res = super().data_collator(batch, padding_to)
+        if pixel_values:
+            res['pixel_values'] = pixel_values
+        return res
+
+
+register_template(TemplateType.pixtral, PixtralTemplate(), lazy_tokenize=True)
 
 
 class YiCoderTemplate(ChatmlTemplate):
@@ -1740,6 +1841,57 @@ class ReflectionTemplate(Llama3TemplateMixin, Template):
 
 register_template(TemplateType.reflection, ReflectionTemplate())
 register_template(TemplateType.llama3, Llama3Template())
+
+
+class Llama3_1OmniTemplate(Llama3Template):
+    system = ('You are a helpful language and speech assistant. '
+              'You are able to understand the speech content that the user provides, '
+              'and assist the user with a variety of tasks using natural language.')
+
+    def replace_tag(self, media_type, index, example) -> List[Context]:
+        assert media_type == 'audio'
+        return [[-200]]
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        import whisper
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        audios = example['audios']
+        input_ids = inputs['input_ids']
+        labels = inputs['labels']
+        inputs['_data'] = {'input_ids': torch.tensor(input_ids)[None]}
+        if labels is not None:
+            inputs['_data']['labels'] = torch.tensor(labels)[None]
+        if audios:
+            audios = load_batch(audios, whisper.load_audio)
+            n_mels = get_env_args('n_mels', int, 128)
+            for i, audio in enumerate(audios):
+                audio = whisper.pad_or_trim(audio)
+                audios[i] = whisper.log_mel_spectrogram(audio, n_mels=n_mels).permute(1, 0)
+            audios = torch.stack(audios)
+            inputs['_data'].update({'speech': audios, 'speech_lengths': torch.tensor([[audios.shape[1]]])})
+
+        return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        speech = data.get('speech')
+        input_ids = data['input_ids']
+        labels = data.get('labels')
+        if speech is not None:
+            speech_lengths = data['speech_lengths']
+            speech = speech.to(model.dtype)
+            inputs_embeds, labels = model.prepare_inputs_labels_for_speech_and_text(input_ids, None, None, None, labels,
+                                                                                    speech, speech_lengths)[4:]
+        else:
+            inputs_embeds = model.get_model().embed_tokens(input_ids)
+        res = {'inputs_embeds': inputs_embeds[0]}
+        if labels is not None:
+            res['labels'] = labels[0]
+        return res
+
+
+register_template(TemplateType.llama3_1_omni, Llama3_1OmniTemplate(), lazy_tokenize=True)
 
 OPENBUDDY_DEFAULT_SYSTEM = (
     'You are a helpful, respectful and honest INTP-T AI Assistant named Buddy. You are talking to a human User.\n'
@@ -2026,7 +2178,7 @@ class InternvlTemplate(Template):
             vit_embeds = model.extract_feature(pixel_values).to(device=device)
             selected = (input_ids == self.tokenizer.encode('<IMG_CONTEXT>', add_special_tokens=False)[0])
             inputs_embeds[selected] = vit_embeds.reshape(-1, vit_embeds.shape[-1])
-        elif is_deepspeed_zero3_enabled():
+        elif is_deepspeed_enabled():
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=inputs_embeds.dtype)
             vit_embeds = model.extract_feature(dummy_pixel_values).to(device=device)
             inputs_embeds += vit_embeds.mean() * 0.
@@ -2340,6 +2492,7 @@ class LlavaVideoTemplate(Template):
         if media_file.rsplit('.', 1)[-1] in {'jpg', 'png'}:
             return ['<image>\n']
         else:
+            example['videos'][index] = load_video_llava(example['videos'][index])
             return ['<video>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -2349,7 +2502,6 @@ class LlavaVideoTemplate(Template):
         images = example.get('images') or []
         videos_path = example.get('videos') or []
         if len(videos_path) > 0:
-            videos = load_batch(videos_path, load_video_llava)
             video_processor = self.tokenizer.processor.video_processor
             video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
@@ -3290,6 +3442,7 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
             media_offset = torch.stack([torch.zeros(matrix.shape[0], dtype=torch.long), matrix], dim=-1)[None]
             inputs['_data'] = {'pixel_values': image_inputs['pixel_values']}
             inputs['media_offset'] = media_offset
+            inputs['num_images'] = image_inputs['pixel_values'].shape[0]
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         return inputs, {}
@@ -3301,9 +3454,26 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
         image_embeds = [b['image_embeds'] for b in batch if 'image_embeds' in b]
+        num_images = [b['num_images'] if 'num_images' in b else 0 for b in batch]
         if image_embeds:
             res['image_embeds'] = torch.concat(image_embeds)
-        media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+        media_offset = []
+        cusum_offset = 0
+
+        for bi, b in enumerate(batch):
+            if 'media_offset' in b:
+                max_sequence_length = res['input_ids'].shape[1]
+                curr_media_offset = b['media_offset']
+                if curr_media_offset.shape[1] < max_sequence_length:
+                    padding = curr_media_offset[:, -1:, :].expand(curr_media_offset.shape[0],
+                                                                  max_sequence_length - curr_media_offset.shape[1],
+                                                                  curr_media_offset.shape[2])
+                    curr_media_offset = torch.concat([curr_media_offset, padding], dim=1)
+                media_offset.append(curr_media_offset + cusum_offset)
+                cusum_offset += num_images[bi]
+
+        # media_offset = [b['media_offset'] for b in batch if 'media_offset' in b]
+
         if media_offset:
             res['media_offset'] = torch.concat(media_offset)
         return res
