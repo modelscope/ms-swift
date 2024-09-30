@@ -46,7 +46,10 @@ class TrainerFactory:
         training_args_kwargs = {}
         if args.train_type == 'sft':
             training_args_kwargs['predict_with_generate'] = args.predict_with_generate
-        check_parameters = ['beta', 'label_smoothing', 'loss_type', 'rpo_alpha', 'cpo_alpha', 'simpo_gamma']
+        check_parameters = [
+            'beta', 'label_smoothing', 'loss_type', 'rpo_alpha', 'cpo_alpha', 'simpo_gamma', 'desirable_weight',
+            'undesirable_weight'
+        ]
         parameters = inspect.signature(training_args_cls.__init__).parameters
         for p_name in check_parameters:
             if p_name in parameters:

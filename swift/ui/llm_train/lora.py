@@ -90,7 +90,8 @@ class LoRA(BaseUI):
         with gr.Accordion(elem_id='lora_tab', open=True):
             with gr.Blocks():
                 with gr.Row():
-                    lora_target_modules = gr.Textbox(elem_id='lora_target_modules', lines=1, scale=5, is_list=True)
+                    lora_target_modules = gr.Textbox(
+                        elem_id='lora_target_modules', lines=1, scale=5, value='ALL', is_list=True)
                     gr.Slider(elem_id='lora_rank', value=32, minimum=1, maximum=512, step=8, scale=2)
                     gr.Slider(elem_id='lora_alpha', value=8, minimum=1, maximum=512, step=8, scale=2)
                     gr.Textbox(elem_id='lora_dropout', scale=2)

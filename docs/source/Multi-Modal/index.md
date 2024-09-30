@@ -19,6 +19,7 @@
 7. [Internlm2-Xcomposers最佳实践](internlm-xcomposer2最佳实践.md)
 8. [Phi3-Vision最佳实践](phi3-vision最佳实践.md), [Phi3.5-Vision最佳实践](https://github.com/modelscope/ms-swift/issues/1809)
 9. [mPLUG-Owl2最佳实践](mplug-owl2最佳实践.md), [mPLUG-Owl3最佳实践](https://github.com/modelscope/ms-swift/issues/1969)
+10. [GOT-OCR2最佳实践](https://github.com/modelscope/ms-swift/issues/2122)
 
 
 一轮对话只能包含一张图片（可能可以不含图片）:

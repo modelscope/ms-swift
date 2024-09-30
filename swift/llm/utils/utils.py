@@ -36,7 +36,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.hub import ModelScopeConfig
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, stat_array, upper_bound, use_torchacc
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+from swift.utils.module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
 from .template import History, StopWords, StopWordsCriteria, Template
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -302,7 +302,7 @@ def _map_mp(dataset: HfDataset, map_func: MapFunc, num_proc: int) -> List[Dict[s
     # Solving the unordered problem
     data = [None] * len(dataset)
     num_proc = min(num_proc, len(dataset))
-    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset)):
+    for d in tqdm(_map_mp_i(dataset, map_func, num_proc), total=len(dataset), desc=f'Map (num_proc={num_proc})'):
         data[d[0]] = d[1]
     return data
 
@@ -317,7 +317,7 @@ def dataset_map(dataset: DATASET_TYPE,
     single_map = partial(_single_map, map_func=map_func)
     if num_proc == 1:
         data = []
-        for d in tqdm(dataset):
+        for d in tqdm(dataset, desc='Map'):
             d = single_map(d)
             data.append(d)
     else:
@@ -431,7 +431,7 @@ def _find_module_list(vision_tower) -> Optional[nn.ModuleList]:
             return
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
             module_lists.append(m)
-    if module_lists is not None:
+    if module_lists:
         return max(module_lists, key=lambda x: len(x))
 
 
@@ -458,21 +458,26 @@ def deep_getattr(model, attr: str):
     return model
 
 
-def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
-    from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+def get_mllm_arch(model_type: str) -> MultiModelKeys:
     from .model import MODEL_MAPPING
     model_info = MODEL_MAPPING[model_type]
-    lora_target_modules = model_info.get('lora_target_modules')
-
+    lora_target_modules = model_info.get('lora_target_modules')  # model_group
     if not isinstance(lora_target_modules, str):
+        return None
+    return MODEL_KEYS_MAPPING[lora_target_modules]
+
+
+def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
+    mllm_arch = get_mllm_arch(model_type)
+    if mllm_arch is None:
         return
-    vision_tower_list = MODEL_KEYS_MAPPING[lora_target_modules].vision_tower
-    for vision_tower_name in vision_tower_list:
+    for vision_tower_name in mllm_arch.vision_tower:
         vision_tower = deep_getattr(model, vision_tower_name)
         module_list = _find_module_list(vision_tower)
         if module_list is None:
             continue
         _add_gradient_checkpointing(module_list)
+        logger.info(f'Automatically add gradient_checkpointing to {vision_tower.__class__}.')
 
 
 def find_embedding(model: Module) -> List[str]:

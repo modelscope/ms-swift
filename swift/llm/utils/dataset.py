@@ -46,15 +46,23 @@ datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
 
 
-def partialed_map(self, *args, **kwargs):
-    if 'num_proc' not in kwargs:
-        num_proc = os.environ.get('DATASET_MAP_NPROC')
-        kwargs['num_proc'] = int(num_proc) if num_proc else num_proc
-    return self._origin_map(*args, **kwargs)
+def patch_num_proc(func_name: str):
+    _origin_func_name = f'_origin_{func_name}'
+    _old_func = getattr(HfDataset, func_name)
+
+    def new_func(self, *args, **kwargs):
+        if 'num_proc' not in kwargs:
+            num_proc = os.environ.get('DATASET_MAP_NPROC')
+            if num_proc:
+                kwargs['num_proc'] = int(num_proc)
+        return _old_func(self, *args, **kwargs)
+
+    setattr(HfDataset, _origin_func_name, _old_func)
+    setattr(HfDataset, func_name, new_func)
 
 
-datasets.Dataset._origin_map = datasets.Dataset.map
-datasets.Dataset.map = partialed_map
+for func_name in ['map', 'filter']:
+    patch_num_proc(func_name)
 
 standard_keys = {
     'query', 'query_role', 'response', 'rejected_response', 'system', 'history', 'history_roles', 'images', 'objects',
@@ -174,6 +182,7 @@ class DatasetName:
     aishell1_zh_mini = 'aishell1-zh-mini'
     # for video
     video_chatgpt = 'video-chatgpt'
+    egoschema = 'egoschema'
 
     # rlhf
     hh_rlhf = 'hh-rlhf'
@@ -889,6 +898,43 @@ register_dataset(
     split=['test'],
     hf_dataset_id='lmms-lab/VideoChatGPT',
     tags=['chat', 'multi-modal', 'video', '🔥'])
+
+
+def _preprocess_egoschema(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    for i in range(1, 6):
+        url = f'https://modelscope.cn/datasets/AI-ModelScope/egoschema/resolve/master/videos_chunked_0{i}.zip'
+        local_dir = MediaCache.download(url, 'egoschema')
+
+    local_dir = os.path.join(local_dir, 'videos')
+    mp4_set = [file[:-4] for file in os.listdir(local_dir) if file.endswith('mp4')]
+
+    def _process(d):
+        transfer_to_option = {
+            '0': 'A',
+            '1': 'B',
+            '2': 'C',
+            '3': 'D',
+            '4': 'E',
+        }
+        if d['video_idx'] not in mp4_set:
+            return {'query': None, 'response': None, 'videos': None}
+        return {
+            'query': d['question'] + '\n' + str(d['option']),
+            'response': transfer_to_option[d['answer']],
+            'videos': [os.path.join(local_dir, f"{d['video_idx']}.mp4")],
+        }
+
+    return dataset.map(_process).filter(lambda row: row['query'] is not None)
+
+
+register_dataset(
+    DatasetName.egoschema,
+    'AI-ModelScope/egoschema', ['Subset'],
+    _preprocess_egoschema,
+    get_dataset_from_repo,
+    split=['test'],
+    hf_dataset_id='lmms-lab/egoschema',
+    tags=['chat', 'multi-modal', 'video'])
 
 
 def _repair_agent_conversations(conversations: str, use_mini: bool) -> Optional[List[Dict[str, str]]]:
@@ -2805,7 +2851,7 @@ def load_dataset_from_local(dataset_path_list: Optional[Union[str, List[str]]],
         dataset = preprocess_func(dataset)
         if streaming:
             dataset = dataset.to_iterable_dataset()
-        dataset_list.append(preprocess_func(dataset))
+        dataset_list.append(dataset)
 
     if len(dataset_list) == 1:
         return dataset_list[0]

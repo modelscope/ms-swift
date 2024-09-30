@@ -188,7 +188,7 @@ def save_ta_ddp_checkpoint(self_model, tokenizer, args, output_dir: Optional[str
 
     model = self_model
 
-    if xm.is_master_ordinal():
+    if xm.is_master_ordinal(local=False):
         os.makedirs(output_dir, exist_ok=True)
         torch.save(args, os.path.join(output_dir, 'training_args.bin'))
 
@@ -277,6 +277,8 @@ def save_ta_fsdp_checkpoint(self_model, tokenizer, args, output_dir):
                 torch.save(full_state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
 
     xm.rendezvous('ckpt_consolidation')
+    # delete the sharded checkpoint.
+    os.remove(ckpt_path)
 
 
 def ta_trim_graph():

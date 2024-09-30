@@ -9,7 +9,7 @@ einops
 importlib_metadata
 jieba
 matplotlib
-modelscope[datasets]>=1.17
+modelscope[datasets]>=1.17,<1.19
 nltk
 numpy<2.0
 oss2
@@ -20,6 +20,6 @@ rouge
 safetensors
 tensorboard
 tqdm
-transformers>=4.33,<4.46
+transformers>=4.33,<4.47
 transformers_stream_generator
 trl>=0.10.1
