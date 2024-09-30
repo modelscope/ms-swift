@@ -1791,6 +1791,8 @@ class RLHFArguments(SftArguments):
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
                 self.loss_type = 'sigmoid'  # else None
+            elif self.rlhf_type in ['kto']:
+                self.loss_type = 'kto'
 
 
 @dataclass
