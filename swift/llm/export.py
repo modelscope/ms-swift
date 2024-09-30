@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from contextlib import contextmanager
-from types import MethodType
+from collections import defaultdict
 from typing import Dict, List, Optional
-
+import functools
 import json
 import torch
 import torch.nn as nn
@@ -174,8 +174,6 @@ def _get_input_feat(self, layer, named_linears):
     for h in handles:
         h.remove()
     # now solve for scaling and clipping
-    input_feat = {k: torch.cat(v, dim=0) for k, v in input_feat.items()}
-
     return input_feat
 
 def quantize(self):
@@ -251,13 +249,11 @@ def _patch_awq_model(awq_model):
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
-    from awq.quantize import quantizer
-    from awq.models.base import BaseAWQForCausalLM
     from transformers import AwqConfig
 
     assert _args is not None
     logger.info(f'Quantization dataset: {_args.dataset}')
-    group_size = 128
+    group_size = _args.group_size
     quant_config = {'zero_point': True, 'q_group_size': group_size, 'w_bit': _args.quant_bits, 'version': 'GEMM'}
     logger.info('Start quantizing the model...')
     if awq_model.__class__.__name__ != 'BaseAWQForCausalLM':
