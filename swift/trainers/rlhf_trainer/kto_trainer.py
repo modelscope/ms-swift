@@ -8,7 +8,7 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.llm import LLMDataset
+from swift.llm import LLMDataset, LazyLLMDataset
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.utils import get_dist_setting, get_logger
 
@@ -21,7 +21,7 @@ def _add_kl_dataset(dataset: LLMDataset, total_batch_size: int, seed: Optional[i
     # Shift one position to the right in each batch.
     raw_dataset: List[Dict[str, Any]] = dataset.data
     random_state = np.random.RandomState(seed)
-    dataset = dataset.select(random_state.permutation(len(dataset)))
+    random_state.shuffle(raw_dataset)
 
     i = 0
     while i < len(raw_dataset):
