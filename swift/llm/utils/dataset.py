@@ -182,6 +182,7 @@ class DatasetName:
     aishell1_zh_mini = 'aishell1-zh-mini'
     # for video
     video_chatgpt = 'video-chatgpt'
+    egoschema = 'egoschema'
 
     # rlhf
     hh_rlhf = 'hh-rlhf'
@@ -897,6 +898,43 @@ register_dataset(
     split=['test'],
     hf_dataset_id='lmms-lab/VideoChatGPT',
     tags=['chat', 'multi-modal', 'video', '🔥'])
+
+
+def _preprocess_egoschema(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    for i in range(1, 6):
+        url = f'https://modelscope.cn/datasets/AI-ModelScope/egoschema/resolve/master/videos_chunked_0{i}.zip'
+        local_dir = MediaCache.download(url, 'egoschema')
+
+    local_dir = os.path.join(local_dir, 'videos')
+    mp4_set = [file[:-4] for file in os.listdir(local_dir) if file.endswith('mp4')]
+
+    def _process(d):
+        transfer_to_option = {
+            '0': 'A',
+            '1': 'B',
+            '2': 'C',
+            '3': 'D',
+            '4': 'E',
+        }
+        if d['video_idx'] not in mp4_set:
+            return {'query': None, 'response': None, 'videos': None}
+        return {
+            'query': d['question'] + '\n' + str(d['option']),
+            'response': transfer_to_option[d['answer']],
+            'videos': [os.path.join(local_dir, f"{d['video_idx']}.mp4")],
+        }
+
+    return dataset.map(_process).filter(lambda row: row['query'] is not None)
+
+
+register_dataset(
+    DatasetName.egoschema,
+    'AI-ModelScope/egoschema', ['Subset'],
+    _preprocess_egoschema,
+    get_dataset_from_repo,
+    split=['test'],
+    hf_dataset_id='lmms-lab/egoschema',
+    tags=['chat', 'multi-modal', 'video'])
 
 
 def _repair_agent_conversations(conversations: str, use_mini: bool) -> Optional[List[Dict[str, str]]]:
