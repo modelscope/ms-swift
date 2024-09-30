@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
-from typing import List, Optional
+from contextlib import contextmanager
+from typing import Dict, List, Optional
 
 import json
 import torch
@@ -15,6 +16,15 @@ logger = get_logger()
 
 _args: Optional[ExportArguments] = None
 template: Optional[Template] = None
+
+
+def _prepare_dataset(examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
+    global _args, template
+    assert template is not None
+    examples = [
+        template.data_collator(examples[start:start + batch_size]) for start in range(0, len(examples), batch_size)
+    ]
+    return examples
 
 
 def _get_dataset(*args, **kwargs):
@@ -39,27 +49,31 @@ def _get_dataset(*args, **kwargs):
     samples = []
     n_run = 0
     for data in dataset:
-        input_ids = template.encode(data)[0].get('input_ids')
+        inputs = template.encode(data)[0]
+        input_ids = inputs['input_ids']
         if input_ids is None or len(input_ids) == 0:
             continue
-        sample = torch.tensor(input_ids)
-        samples.append(sample)
+        if _args.is_multimodal:
+            inputs.pop('labels', None)
+            samples.append(inputs)
+        else:
+            samples += input_ids
         n_run += 1
         if n_run == n_samples:
             break
+    if _args.is_multimodal and _args.quant_method == 'gptq':
+        return samples
     # now concatenate all samples and split according to block size
-    cat_samples = torch.cat(samples, dim=0)  # shape: [X]
-    n_split = cat_samples.shape[0] // block_size
+    n_split = len(samples) // block_size
     logger.info(f'Split into {n_split} blocks')
-    if _args.quant_method == 'awq':
-        return [cat_samples[None, i * block_size:(i + 1) * block_size] for i in range(n_split)]
-    else:  # gptq
-        res = []
-        for i in range(n_split):
-            input_ids = cat_samples[None, i * block_size:(i + 1) * block_size]
-            attention_mask = torch.ones_like(input_ids)
-            res.append({'input_ids': input_ids, 'attention_mask': attention_mask})
-        return res
+    res = []
+    for i in range(n_split):
+        input_ids = samples[i * block_size:(i + 1) * block_size]
+        if _args.quant_method == 'awq':
+            res.append(input_ids)
+        else:
+            res.append({'input_ids': input_ids})
+    return res
 
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
@@ -80,18 +94,28 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
         bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
 
 
+@contextmanager
+def _patch_gptq():
+    from optimum.gptq import quantizer
+    _get_dataset_origin = quantizer.get_dataset
+    _prepare_dataset_origin = quantizer.prepare_dataset
+    quantizer.get_dataset = _get_dataset
+    quantizer.prepare_dataset = _prepare_dataset
+    yield
+    quantizer.get_dataset = _get_dataset_origin  # recover
+    quantizer.prepare_dataset = _prepare_dataset_origin  # recover
+
+
 def gptq_model_quantize(model, tokenizer, batch_size):
-    from optimum.gptq import GPTQQuantizer, quantizer
+    from optimum.gptq import GPTQQuantizer
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
-    gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size)
-    _origin_get_dataset = quantizer.get_dataset
-    quantizer.get_dataset = _get_dataset
-    logger.info('Start quantizing the model...')
-    logger.warning('The process of packing the model takes a long time and there is no progress bar. '
-                   'Please be patient and wait...')
-    gptq_quantizer.quantize_model(model, tokenizer)
-    quantizer.get_dataset = _origin_get_dataset  # recover
+    with _patch_gptq():
+        gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size)
+        logger.info('Start quantizing the model...')
+        logger.warning('The process of packing the model takes a long time and there is no progress bar. '
+                       'Please be patient and wait...')
+        gptq_quantizer.quantize_model(model, tokenizer)
     return gptq_quantizer
 
 
