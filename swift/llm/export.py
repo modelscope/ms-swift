@@ -53,7 +53,7 @@ def _get_dataset(*args, **kwargs):
         input_ids = inputs['input_ids']
         if input_ids is None or len(input_ids) == 0:
             continue
-        if _args.is_multimodal:
+        if _args.is_multimodal and _args.quant_method == 'gptq':
             inputs.pop('labels', None)
             samples.append(inputs)
         else:
@@ -70,7 +70,7 @@ def _get_dataset(*args, **kwargs):
     for i in range(n_split):
         input_ids = samples[i * block_size:(i + 1) * block_size]
         if _args.quant_method == 'awq':
-            res.append(input_ids)
+            res.append(torch.tensor(input_ids)[None])
         else:
             res.append({'input_ids': input_ids})
     return res
@@ -115,6 +115,8 @@ def gptq_model_quantize(model, tokenizer, batch_size):
         logger.info('Start quantizing the model...')
         logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                        'Please be patient and wait...')
+        if not hasattr(model.config, 'use_cache'):
+            model.config.use_cache = None
         gptq_quantizer.quantize_model(model, tokenizer)
     return gptq_quantizer
 

@@ -1045,7 +1045,8 @@ def _output_device_map_hook(module, input, output):
 def get_model_tokenizer_pixtral(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, LlavaForConditionalGeneration
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     kwargs['tokenizer'] = processor.tokenizer
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, *args, **kwargs)
     tokenizer.processor = processor
@@ -1117,14 +1118,10 @@ def get_model_tokenizer_llava_llama(model_dir: str,
 
     model_config = LlavaConfig.from_pretrained(model_dir)
     processor = AutoProcessor.from_pretrained(model_dir)
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir,
-        torch_dtype,
-        model_kwargs,
-        load_model,
-        model_config=model_config,
-        automodel_class=LlavaForConditionalGeneration,
-        **kwargs)
+        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
 
@@ -6275,7 +6272,8 @@ def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
     hf_model_id='llava-hf/llava-1.5-7b-hf')
 def get_model_tokenizer_llava_1_5(*args, **kwargs):
     from transformers import LlavaForConditionalGeneration
-    kwargs['automodel_class'] = LlavaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -6387,7 +6385,8 @@ def get_model_tokenizer_llava_onevision(*args, **kwargs):
     tags=['multi-modal', 'vision'])
 def get_model_tokenizer_llava_next(*args, **kwargs):
     from transformers import LlavaNextForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaNextForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
