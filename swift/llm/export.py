@@ -79,7 +79,7 @@ def _get_dataset(*args, **kwargs):
 def init_quant(self, *args, **kwargs):
     # copy from autoawq
     global _args
-    from awq.utils.utils import clear_memory, get_best_device
+    from awq.quantize.quantizer import clear_memory, get_best_device
     modules = self.awq_model.get_model_layers(self.model)
     samples = _get_dataset()
     samples = _prepare_dataset(samples, _args.quant_batch_size)
@@ -193,20 +193,17 @@ def _search_best_scale(
     module,
     prev_op,
     layers: List[nn.Linear],
-    inp: torch.Tensor,
+    inps: List[torch.Tensor],
     module2inspect=None,
     kwargs={},
 ):
-    from awq.utils.utils import clear_memory, get_op_name
+    from awq.quantize.quantizer import clear_memory, get_op_name
     if module2inspect is None:
         assert len(layers) == 1
         module2inspect = layers[0]
 
     if "use_cache" in kwargs:
         kwargs.pop("use_cache")
-
-    # Put x on the right device
-    inp = inp.to(next(module2inspect.parameters()).device)
 
     # [STEP 1]: Compute per-channel mean of normalised weights
     # All layer weights are concatted together
@@ -225,7 +222,8 @@ def _search_best_scale(
 
     # [STEP 2]: Compute per-channel mean of the input activation with chunking
     # move inp to cpu to avoid memory leak
-    inp_flat = inp.cpu().abs().view(-1, inp.shape[-1])
+    device = next(module2inspect.parameters()).device
+    inp_flat = torch.concat([inp.view(-1, inp.shape[-1]) for inp in inps])
     num_elements = inp_flat.size(0)
     num_channels = inp_flat.size(1)
     element_size_bytes = inp_flat.element_size() * 2 # multiplied by 2 for FP32
@@ -235,24 +233,23 @@ def _search_best_scale(
     chunk_size = min(chunk_size, num_elements)
 
     # Use float32 for sum calculation
-    x_sum = torch.zeros(num_channels, dtype=torch.float32, device=inp.device)
+    x_sum = torch.zeros(num_channels, dtype=torch.float32, device=device)
     
     for i in range(0, num_elements, chunk_size):
         end = min(i + chunk_size, num_elements)
         chunk_sum = inp_flat[i:end].to(torch.float32).sum(dim=0)
-        x_sum += chunk_sum.to(inp.device)
+        x_sum += chunk_sum.to(device)
 
-    x_mean = (x_sum / num_elements).to(inp.dtype)
+    x_mean = (x_sum / num_elements).to(inp_flat.dtype)
     clear_memory(x_sum)
 
     # [STEP 3]: Compute output of module
     with torch.no_grad():
-        module_kwargs = self._sanitize_kwargs(kwargs, module2inspect)
-        fp16_output = self._module_forward(inp, module2inspect, module_kwargs)
+        fp16_output = self._module_forward(inp, self.module_kwargs, module2inspect)
 
     # [STEP 4]: Compute loss
     best_scales = self._compute_best_scale(
-        inp, w_mean, x_mean, module2inspect, layers, fp16_output, module_kwargs
+        inp, w_mean, x_mean, module2inspect, layers, fp16_output
     )
 
     return (
@@ -261,6 +258,82 @@ def _search_best_scale(
         best_scales,
     )
 
+
+def _compute_best_scale(
+    self,
+    x: torch.Tensor,
+    w_mean: torch.Tensor,
+    x_mean: torch.Tensor,
+    module2inspect: torch.nn.Module,
+    linears2scale: List[nn.Linear],
+    fp16_output: torch.Tensor,
+    kwargs: Dict={},
+):
+    """
+    Compute loss and select best scales
+
+    L(s) = || Q(W * s) (s^-1 * X) - W * X ||
+    Q: weight quantization function | pseudo_quantize_tensor(W * s)
+    X: inputs from calib dataset    | X
+    W: original weights in FP16     | layer
+    s: per channel scaling factor   | s^-1 * X
+    """
+    n_grid = 20
+    history = []
+    best_ratio = -1
+    best_scales = None
+    best_error = float("inf")
+
+    org_sd = {k: v.cpu() for k, v in module2inspect.state_dict().items()}
+
+    device = x.device
+    x_mean = x_mean.view(-1).to(device)
+    w_mean = w_mean.view(-1).to(device)
+
+    for ratio in range(n_grid):
+        # create new scales
+        ratio = ratio / n_grid
+
+        # NOTE: s^-1 * x is fused here, according to paper
+        if self.duo_scaling:
+            scales = (x_mean.pow(ratio) / (w_mean.pow(1 - ratio) + 1e-4)).clamp(min=1e-4)
+        else:
+            scales = x_mean.pow(ratio).clamp(min=1e-4).view(-1)
+        scales = scales / (scales.max() * scales.min()).sqrt()
+        scales_view = scales.view(1, -1).to(device)
+
+        # avoid scaling values that overflow
+        scales[torch.isinf(scales)] = 1
+        scales[torch.isnan(scales)] = 1
+
+        # Q(W * s)
+        for fc in linears2scale:
+            fc.weight.mul_(scales_view)
+            fc.weight.data = (
+                self.pseudo_quantize_tensor(fc.weight.data)[0] / scales_view
+            )
+
+        # W * X
+        int_w_output = self._module_forward(x, module2inspect, kwargs)
+
+        # compute mean squared error (L2 norm)
+        loss = self._compute_loss(fp16_output, int_w_output, device)
+
+        history.append(loss)
+        if loss < best_error:
+            best_error = loss
+            best_ratio = ratio
+            best_scales = scales.clone()
+        module2inspect.load_state_dict(org_sd)
+
+    if best_ratio == -1:
+        logging.debug(history)
+        raise Exception
+
+    assert torch.isnan(best_scales).sum() == 0, best_scales
+
+    return best_scales.detach().cpu()
+    
 def quantize(self):
     from awq.quantize.quantizer import (clear_memory, get_best_device, get_named_linears,
                                         exclude_layers_to_not_quantize, apply_scale, append_str_prefix, get_op_name,
