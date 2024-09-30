@@ -77,6 +77,7 @@ def _get_dataset(*args, **kwargs):
     return res
 
 
+
 def init_quant(self, *args, **kwargs):
     # copy from autoawq
     global _args
@@ -173,9 +174,15 @@ def _get_input_feat(self, layer, named_linears):
     return input_feat
 
 
+@torch.no_grad()
 def _module_forward(self, x: torch.Tensor, layer_kwargs, module: torch.nn.Module) -> torch.Tensor:
+    from swift.llm import to_device
     module_output = []
+    device = next(module.parameters()).device
     for inputs, inputs_kwargs in tqdm(zip(x, layer_kwargs), desc='Module forward', leave=False, total=len(x)):
+        inputs = to_device(inputs, device)
+        inputs_kwargs = self._sanitize_kwargs(inputs_kwargs, module)
+        inputs_kwargs = to_device(inputs_kwargs, device)
         partial_output = module(inputs, **inputs_kwargs)
 
         if isinstance(partial_output, tuple):
@@ -191,10 +198,12 @@ def _search_best_scale(
     module,
     prev_op,
     layers: List[nn.Linear],
-    inps: List[torch.Tensor],
+    inp: List[torch.Tensor],
     module2inspect=None,
     kwargs={},
 ):
+    inps = inp
+    del inp
     from awq.quantize.quantizer import clear_memory, get_op_name
     if module2inspect is None:
         assert len(layers) == 1
@@ -221,7 +230,7 @@ def _search_best_scale(
     # [STEP 2]: Compute per-channel mean of the input activation with chunking
     # move inp to cpu to avoid memory leak
     device = next(module2inspect.parameters()).device
-    inp_flat = torch.concat([inp.view(-1, inp.shape[-1]) for inp in inps])
+    inp_flat = flatten_list_tensor(inps)
     num_elements = inp_flat.size(0)
     num_channels = inp_flat.size(1)
     element_size_bytes = inp_flat.element_size() * 2  # multiplied by 2 for FP32
@@ -254,10 +263,18 @@ def _search_best_scale(
         best_scales,
     )
 
+def flatten_list_tensor(list_tensor) -> torch.Tensor:
+    if isinstance(list_tensor, dict):
+        res = {}
+        for k, v in list_tensor.items():
+            res[k] = flatten_list_tensor(v)
+    elif isinstance(list_tensor, (list, tuple)):
+        res = torch.concat([tensor.view(-1, tensor.shape[-1]) for tensor in list_tensor])
+    return res
 
 def _compute_best_scale(
     self,
-    x: torch.Tensor,
+    x: List[torch.Tensor],
     w_mean: torch.Tensor,
     x_mean: torch.Tensor,
     module2inspect: torch.nn.Module,
@@ -280,10 +297,9 @@ def _compute_best_scale(
     best_error = float('inf')
 
     org_sd = {k: v.cpu() for k, v in module2inspect.state_dict().items()}
-
-    device = x.device
-    x_mean = x_mean.view(-1).to(device)
-    w_mean = w_mean.view(-1).to(device)
+    device = w_mean.device
+    x_mean = x_mean.view(-1)
+    w_mean = w_mean.view(-1)
 
     for ratio in range(n_grid):
         # create new scales
@@ -310,7 +326,9 @@ def _compute_best_scale(
         int_w_output = self._module_forward(x, self.module_kwargs, module2inspect)
 
         # compute mean squared error (L2 norm)
-        loss = self._compute_loss(fp16_output, int_w_output, device)
+        fp16_output_flat = flatten_list_tensor(fp16_output)
+        int_w_output_flat = flatten_list_tensor(int_w_output)
+        loss = self._compute_loss(fp16_output_flat, int_w_output_flat, device)
 
         history.append(loss)
         if loss < best_error:
@@ -360,6 +378,7 @@ def quantize(self):
             self._search_best_scale(self.modules[i], **layer)
             for layer in tqdm(module_config, desc='Best Scales', leave=False)
         ]
+        input_feat = flatten_list_tensor(input_feat)
         apply_scale(self.modules[i], scales_list, input_feat_dict=input_feat)
         scales_list = append_str_prefix(scales_list, get_op_name(self.model, self.modules[i]) + '.')
 
@@ -392,6 +411,7 @@ def _patch_awq_model(awq_model):
     _get_input_feat_origin = AwqQuantizer._get_input_feat
     _module_forward_origin = AwqQuantizer._module_forward
     _search_best_scale_origin = AwqQuantizer._search_best_scale
+    _compute_best_scale_origin = AwqQuantizer._compute_best_scale
 
     AwqQuantizer.init_quant = init_quant
     awq_model.__class__.__getattr__ = __new_getattr__
@@ -399,7 +419,7 @@ def _patch_awq_model(awq_model):
     AwqQuantizer._get_input_feat = _get_input_feat
     AwqQuantizer._module_forward = _module_forward
     AwqQuantizer._search_best_scale = _search_best_scale
-
+    AwqQuantizer._compute_best_scale = _compute_best_scale
     yield
     AwqQuantizer.init_quant = _init_quant_origin
     awq_model.__class__.__getattr__ = __origin_getattr__
@@ -407,6 +427,7 @@ def _patch_awq_model(awq_model):
     AwqQuantizer._get_input_feat = _get_input_feat_origin
     AwqQuantizer._module_forward = _module_forward_origin
     AwqQuantizer._get_input_feat = _search_best_scale_origin
+    AwqQuantizer._compute_best_scale = _compute_best_scale_origin
 
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
