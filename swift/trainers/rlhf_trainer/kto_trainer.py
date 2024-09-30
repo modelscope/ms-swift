@@ -8,7 +8,7 @@ from peft import PeftModel
 from transformers import PreTrainedModel
 from trl import KTOTrainer as HFKTOTrainer
 
-from swift.llm import LLMDataset, LazyLLMDataset
+from swift.llm import LLMDataset
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 from swift.utils import get_dist_setting, get_logger
 
