@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-from contextlib import contextmanager
-from collections import defaultdict
-from typing import Dict, List, Optional
 import functools
+import os
+from collections import defaultdict
+from contextlib import contextmanager
+from typing import Dict, List, Optional
+
 import json
 import torch
 import torch.nn as nn
@@ -144,24 +145,21 @@ def _get_input_feat(self, layer, named_linears):
     handles = []
 
     # FIXME: Workaround for Mixtral to use block_sparse_moe input features
-    if self.awq_model.model_type == "mixtral":
+    if self.awq_model.model_type == 'mixtral':
         named_linears = {
             **named_linears,
-            "block_sparse_moe": layer.block_sparse_moe,
+            'block_sparse_moe': layer.block_sparse_moe,
         }
 
-    if self.awq_model.model_type == "deepseek_v2":
+    if self.awq_model.model_type == 'deepseek_v2':
         named_linears = {
             **named_linears,
-            "mlp": layer.mlp,
+            'mlp': layer.mlp,
         }
 
     for name in named_linears:
-        handles.append(
-            named_linears[name].register_forward_hook(
-                functools.partial(cache_input_hook, name=name, feat_dict=input_feat)
-            )
-        )
+        handles.append(named_linears[name].register_forward_hook(
+            functools.partial(cache_input_hook, name=name, feat_dict=input_feat)))
     # get output as next layer's input
 
     # Sanitize the kwargs in case we use transformers version that contains
@@ -174,10 +172,10 @@ def _get_input_feat(self, layer, named_linears):
     # now solve for scaling and clipping
     return input_feat
 
+
 def _module_forward(self, x: torch.Tensor, layer_kwargs, module: torch.nn.Module) -> torch.Tensor:
     module_output = []
-    for inputs, inputs_kwargs in tqdm(
-            zip(x, layer_kwargs), desc='Module forward', leave=False, total=len(x)):
+    for inputs, inputs_kwargs in tqdm(zip(x, layer_kwargs), desc='Module forward', leave=False, total=len(x)):
         partial_output = module(inputs, **inputs_kwargs)
 
         if isinstance(partial_output, tuple):
@@ -202,8 +200,8 @@ def _search_best_scale(
         assert len(layers) == 1
         module2inspect = layers[0]
 
-    if "use_cache" in kwargs:
-        kwargs.pop("use_cache")
+    if 'use_cache' in kwargs:
+        kwargs.pop('use_cache')
 
     # [STEP 1]: Compute per-channel mean of normalised weights
     # All layer weights are concatted together
@@ -226,7 +224,7 @@ def _search_best_scale(
     inp_flat = torch.concat([inp.view(-1, inp.shape[-1]) for inp in inps])
     num_elements = inp_flat.size(0)
     num_channels = inp_flat.size(1)
-    element_size_bytes = inp_flat.element_size() * 2 # multiplied by 2 for FP32
+    element_size_bytes = inp_flat.element_size() * 2  # multiplied by 2 for FP32
 
     # Calculate chunk size dynamically based on max_chunk_memory
     chunk_size = int(self.max_chunk_memory // (element_size_bytes * num_channels))
@@ -234,7 +232,7 @@ def _search_best_scale(
 
     # Use float32 for sum calculation
     x_sum = torch.zeros(num_channels, dtype=torch.float32, device=device)
-    
+
     for i in range(0, num_elements, chunk_size):
         end = min(i + chunk_size, num_elements)
         chunk_sum = inp_flat[i:end].to(torch.float32).sum(dim=0)
@@ -245,12 +243,10 @@ def _search_best_scale(
 
     # [STEP 3]: Compute output of module
     with torch.no_grad():
-        fp16_output = self._module_forward(inp, self.module_kwargs, module2inspect)
+        fp16_output = self._module_forward(inps, self.module_kwargs, module2inspect)
 
     # [STEP 4]: Compute loss
-    best_scales = self._compute_best_scale(
-        inp, w_mean, x_mean, module2inspect, layers, fp16_output
-    )
+    best_scales = self._compute_best_scale(inps, w_mean, x_mean, module2inspect, layers, fp16_output)
 
     return (
         get_op_name(module, prev_op),
@@ -267,7 +263,6 @@ def _compute_best_scale(
     module2inspect: torch.nn.Module,
     linears2scale: List[nn.Linear],
     fp16_output: torch.Tensor,
-    kwargs: Dict={},
 ):
     """
     Compute loss and select best scales
@@ -282,7 +277,7 @@ def _compute_best_scale(
     history = []
     best_ratio = -1
     best_scales = None
-    best_error = float("inf")
+    best_error = float('inf')
 
     org_sd = {k: v.cpu() for k, v in module2inspect.state_dict().items()}
 
@@ -309,12 +304,10 @@ def _compute_best_scale(
         # Q(W * s)
         for fc in linears2scale:
             fc.weight.mul_(scales_view)
-            fc.weight.data = (
-                self.pseudo_quantize_tensor(fc.weight.data)[0] / scales_view
-            )
+            fc.weight.data = (self.pseudo_quantize_tensor(fc.weight.data)[0] / scales_view)
 
         # W * X
-        int_w_output = self._module_forward(x, module2inspect, kwargs)
+        int_w_output = self._module_forward(x, self.module_kwargs, module2inspect)
 
         # compute mean squared error (L2 norm)
         loss = self._compute_loss(fp16_output, int_w_output, device)
@@ -327,13 +320,14 @@ def _compute_best_scale(
         module2inspect.load_state_dict(org_sd)
 
     if best_ratio == -1:
-        logging.debug(history)
+        logger.debug(history)
         raise Exception
 
     assert torch.isnan(best_scales).sum() == 0, best_scales
 
     return best_scales.detach().cpu()
-    
+
+
 def quantize(self):
     from awq.quantize.quantizer import (clear_memory, get_best_device, get_named_linears,
                                         exclude_layers_to_not_quantize, apply_scale, append_str_prefix, get_op_name,
@@ -413,6 +407,7 @@ def _patch_awq_model(awq_model):
     AwqQuantizer._get_input_feat = _get_input_feat_origin
     AwqQuantizer._module_forward = _module_forward_origin
     AwqQuantizer._get_input_feat = _search_best_scale_origin
+
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
