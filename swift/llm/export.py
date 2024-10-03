@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from contextlib import contextmanager
+from types import MethodType
 from typing import Dict, List, Optional
 
 import json
 import torch
 import torch.nn as nn
-from types import MethodType
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
@@ -109,9 +109,12 @@ def _patch_gptq():
 
 
 def _patch_model_forward(module_list):
+
     def _new_forward(self, *args, **kwargs):
+        if 'use_cache' in kwargs:
+            kwargs['use_cache'] = False
         layer_ret = self.__old_forward(*args, **kwargs)
-        return layer_ret
+        return layer_ret + args[len(layer_ret):]
 
     for module in module_list:
         if hasattr(module, '_old_forward'):  # device_map
