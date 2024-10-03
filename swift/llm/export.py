@@ -5,12 +5,13 @@ from typing import Dict, List, Optional
 
 import json
 import torch
-
+import torch.nn as nn
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
                          show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
+from .utils import (ExportArguments, Template, get_dataset, swift_to_peft_format, get_mllm_arch,
+                    deep_getattr)
 
 logger = get_logger()
 
@@ -106,12 +107,26 @@ def _patch_gptq():
     quantizer.prepare_dataset = _prepare_dataset_origin  # recover
 
 
+def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[str]:
+    mllm_arch = get_mllm_arch(model_type)
+    if mllm_arch is not None:
+        model = deep_getattr(model, mllm_arch.language_model)
+
+    module_lists = []
+    for n, m in model.named_modules():
+        if isinstance(m, nn.ModuleList) and len(m) >= 10:
+            module_lists.append((n, m))
+    if module_lists:
+        return max(module_lists, key=lambda x: len(x[1]))[0]
+
 def gptq_model_quantize(model, tokenizer, batch_size):
     from optimum.gptq import GPTQQuantizer
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
+    block_name_to_quantize = get_block_name_to_quantize
     with _patch_gptq():
-        gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size)
+        gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size,
+                                       block_name_to_quantize=block_name_to_quantize)
         logger.info('Start quantizing the model...')
         logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                        'Please be patient and wait...')
