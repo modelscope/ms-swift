@@ -109,15 +109,18 @@ def _patch_gptq():
 
 def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[str]:
     mllm_arch = get_mllm_arch(model_type)
+    prefix = ''
     if mllm_arch is not None:
-        model = deep_getattr(model, mllm_arch.language_model)
+        assert len(mllm_arch.language_model) == 1, f'mllm_arch.language_model: {mllm_arch.language_model}'
+        prefix = mllm_arch.language_model[0]
+        model = deep_getattr(model, prefix)
 
     module_lists = []
     for n, m in model.named_modules():
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
             module_lists.append((n, m))
     if module_lists:
-        return max(module_lists, key=lambda x: len(x[1]))[0]
+        return f'{prefix}.{max(module_lists, key=lambda x: len(x[1]))[0]}'
 
 def gptq_model_quantize(model, tokenizer, batch_size):
     from optimum.gptq import GPTQQuantizer
@@ -125,7 +128,7 @@ def gptq_model_quantize(model, tokenizer, batch_size):
     logger.info(f'Quantization dataset: {_args.dataset}')
     with _patch_gptq():
         gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size,
-                                       block_name_to_quantize=get_block_name_to_quantize())
+                                       block_name_to_quantize=get_block_name_to_quantize(model, _args.model_type))
         logger.info('Start quantizing the model...')
         logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                        'Please be patient and wait...')

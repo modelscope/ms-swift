@@ -535,14 +535,14 @@ CUDA_VISIBLE_DEVICES=0 swift eval --ckpt_dir xxx/checkpoint-xxx \
 原始模型:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export --model_type qwen1half-7b-chat \
-    --quant_bits 4 --quant_method awq
+    --quant_bits 4 --quant_method gptq
 ```
 
 LoRA微调后:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
     --ckpt_dir xxx/checkpoint-xxx --load_dataset_config true \
-    --quant_method awq --quant_bits 4 \
+    --quant_method gptq --quant_bits 4 \
     --merge_lora true \
 ```
 
