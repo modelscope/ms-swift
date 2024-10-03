@@ -103,8 +103,8 @@ def _patch_gptq():
     quantizer.get_dataset = _get_dataset
     quantizer.prepare_dataset = _prepare_dataset
     yield
-    quantizer.get_dataset = _get_dataset_origin  # recover
-    quantizer.prepare_dataset = _prepare_dataset_origin  # recover
+    quantizer.get_dataset = _get_dataset_origin
+    quantizer.prepare_dataset = _prepare_dataset_origin
 
 
 def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[str]:
@@ -142,7 +142,7 @@ def gptq_model_quantize(model, tokenizer, batch_size):
     return gptq_quantizer
 
 
-def replace_and_concat(template: 'Template', template_list: List, placeholder: str, keyword: str):
+def replace_and_concat(template: Template, template_list: List, placeholder: str, keyword: str):
     final_str = ''
     for t in template_list:
         if isinstance(t, str):
