@@ -94,10 +94,10 @@ class MediaTag:
             raise NotImplementedError
         else:
             pass
-        standard_tag = self.standard_tags[self.media_type]
 
         all_queries = ''.join([h[0] for h in history]) + query
         if self.media_tag in all_queries:
+            standard_tag = self.standard_tags[self.media_type]
             assert all_queries.count(self.media_tag) == media_cnt
             for h in history:
                 h[0] = h[0].replace(self.media_tag, standard_tag)

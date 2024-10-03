@@ -196,6 +196,8 @@ class AlpacaPreprocessor(MediaMixin, RowPreprocessMixin):
             'response': output,
             'tools': tool,
         }
+        medias = self.parse_medias(d)
+        self.media_replacer(row, medias)
         return row
 
     def __call__(self, dataset: DATASET_TYPE) -> DATASET_TYPE:
@@ -288,6 +290,8 @@ class ConversationsPreprocessor(MediaMixin, RowPreprocessMixin):
                 'response': response,
                 'tools': tools,
             })
+            medias = self.parse_medias(d)
+            self.media_replacer(row, medias)
             return row
         except (AssertionError, SyntaxError) as e:
             logger.error(e)
@@ -341,6 +345,8 @@ class ListPreprocessor(MediaMixin, RowPreprocessMixin):
                 'query': query,
                 'response': response,
             }
+            medias = self.parse_medias(d)
+            self.media_replacer(row, medias)
         except Exception:
             if self.error_strategy == 'raise':
                 raise ValueError(f'conversations: {conversations}')
