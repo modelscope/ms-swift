@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import json
 import torch
 import torch.nn as nn
+from types import MethodType
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
@@ -107,6 +108,21 @@ def _patch_gptq():
     quantizer.prepare_dataset = _prepare_dataset_origin
 
 
+def _patch_model_forward(module_list):
+    def _new_forward(self, *args, **kwargs):
+        layer_ret = self.__old_forward(*args, **kwargs)
+        return layer_ret
+
+    for module in module_list:
+        if hasattr(module, '_old_forward'):  # device_map
+            __old_forward = module._old_forward
+            module._old_forward = MethodType(_new_forward, module)
+        else:
+            __old_forward = module.forward
+            module.forward = MethodType(_new_forward, module)
+        module.__old_forward = __old_forward
+
+
 def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[str]:
     mllm_arch = get_mllm_arch(model_type)
     prefix = ''
@@ -120,7 +136,9 @@ def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[st
         if isinstance(m, nn.ModuleList) and len(m) >= 10:
             module_lists.append((n, m))
     if module_lists:
-        return f'{prefix}.{max(module_lists, key=lambda x: len(x[1]))[0]}'
+        module_list = max(module_lists, key=lambda x: len(x[1]))
+        _patch_model_forward(module_list[1])
+        return f'{prefix}.{module_list[0]}'
 
 
 def gptq_model_quantize(model, tokenizer, batch_size):
