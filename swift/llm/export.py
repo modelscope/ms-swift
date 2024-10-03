@@ -6,12 +6,12 @@ from typing import Dict, List, Optional
 import json
 import torch
 import torch.nn as nn
+
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
                          show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import (ExportArguments, Template, get_dataset, swift_to_peft_format, get_mllm_arch,
-                    deep_getattr)
+from .utils import ExportArguments, Template, deep_getattr, get_dataset, get_mllm_arch, swift_to_peft_format
 
 logger = get_logger()
 
@@ -122,13 +122,17 @@ def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[st
     if module_lists:
         return f'{prefix}.{max(module_lists, key=lambda x: len(x[1]))[0]}'
 
+
 def gptq_model_quantize(model, tokenizer, batch_size):
     from optimum.gptq import GPTQQuantizer
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
     with _patch_gptq():
-        gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size,
-                                       block_name_to_quantize=get_block_name_to_quantize(model, _args.model_type))
+        gptq_quantizer = GPTQQuantizer(
+            bits=_args.quant_bits,
+            dataset=','.join(_args.dataset),
+            batch_size=batch_size,
+            block_name_to_quantize=get_block_name_to_quantize(model, _args.model_type))
         logger.info('Start quantizing the model...')
         logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                        'Please be patient and wait...')
