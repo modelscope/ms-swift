@@ -31,16 +31,17 @@ from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME, Trai
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 from transformers.utils import is_sagemaker_mp_enabled, is_torch_npu_available
+
 from swift.torchacc_utils import (save_ta_ddp_checkpoint, save_ta_fsdp_checkpoint, ta_eval_dataloader,
                                   ta_load_optimizer_and_scheduler, ta_save_optimizer_and_scheduler, ta_test_dataloader,
                                   ta_train_dataloader, ta_trim_graph)
 from swift.tuners import SwiftModel
 from swift.utils import check_json_format, get_logger, use_torchacc
 from swift.utils.constants import Invoke
+from ..plugin.tuner import Tuner, extra_tuners
 from .callback import DefaultFlowCallbackNew, PrinterCallbackNew, ProgressCallbackNew
 from .optimizers.galore import create_optimizer_and_scheduler
 from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms_model
-from ..plugin.tuner import extra_tuners, Tuner
 
 logger = get_logger()
 

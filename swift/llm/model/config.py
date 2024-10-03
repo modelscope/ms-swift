@@ -1,12 +1,14 @@
-import os.path
-from typing import Dict, Any, Optional
 import hashlib
-from swift.utils import is_dist
-from modelscope import AutoConfig
-from transformers import PretrainedConfig
-from modelscope.hub.utils.utils import get_cache_dir
+import os.path
+from typing import Any, Dict, Optional
+
 from datasets.utils.filelock import FileLock
+from modelscope import AutoConfig
+from modelscope.hub.utils.utils import get_cache_dir
+from transformers import PretrainedConfig
+
 from swift.llm.model.loader import safe_snapshot_download
+from swift.utils import is_dist
 
 
 class ConfigReader:

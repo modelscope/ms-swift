@@ -2,8 +2,9 @@
 import importlib.util
 import inspect
 from contextlib import contextmanager
-from typing import Dict
 from types import MethodType
+from typing import Dict
+
 from swift.plugin.custom_trainer import custom_trainer_class
 from swift.utils import get_logger
 

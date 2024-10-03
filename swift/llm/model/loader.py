@@ -1,6 +1,6 @@
 import os
 from contextlib import nullcontext
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from transformers.utils.versions import require_version
 
@@ -72,8 +72,8 @@ def load_by_unsloth(model_dir, torch_dtype, **kwargs):
     )
 
 
-def load_by_transformers(automodel_class, model_dir, model_config, torch_dtype,
-                      is_aqlm, is_training, model_kwargs, **kwargs):
+def load_by_transformers(automodel_class, model_dir, model_config, torch_dtype, is_aqlm, is_training, model_kwargs,
+                         **kwargs):
     """Load model by transformers"""
     context = kwargs.get('context', None)
     if is_aqlm and is_training:

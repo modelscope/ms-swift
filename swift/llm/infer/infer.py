@@ -1,19 +1,19 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import datetime as dt
-import json
 import os
 import re
 import shutil
 from typing import Any, Dict, List, Literal, Optional
 
+import json
 import numpy as np
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
-from swift.llm import InferArguments, standard_keys, standard_tags, DatasetLoader
+from swift.llm import DatasetLoader, InferArguments, standard_keys, standard_tags
 from swift.llm.infer.base import InferFramework
 from swift.llm.infer.transformers import TransformersFramework
 from swift.tuners import Swift
-from swift.utils import (append_to_jsonl, get_logger, get_main, read_multi_line, seed_everything)
+from swift.utils import append_to_jsonl, get_logger, get_main, read_multi_line, seed_everything
 
 logger = get_logger()
 
@@ -88,7 +88,7 @@ def merge_lora(args: InferArguments,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
-    assert args.sft_type in args.adapters_can_be_merged(), 'Only supports lora & llamapro series models'
+    assert args.sft_type in args.adapters_can_be_merged, 'Only supports lora & llamapro series models'
     assert not args.is_quant_model(), f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '

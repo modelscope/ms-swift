@@ -5,15 +5,14 @@ import sys
 from contextlib import contextmanager
 from functools import partial, update_wrapper, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
-from typing import List
-from swift.llm.utils import to_device
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+
 import torch
 import torch.utils.checkpoint
 import transformers
 from accelerate.utils import find_device
-from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
-                        GenerationConfig, snapshot_download)
+from modelscope import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, GenerationConfig,
+                        snapshot_download)
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
@@ -24,12 +23,13 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.llm.template.template import TemplateType, get_env_args
+from swift.llm.utils import to_device
 from swift.utils import get_dist_setting, subprocess_run, use_torchacc
-from . import ConfigReader
-from .loader import load_by_unsloth, load_by_transformers, MODEL_MAPPING, safe_snapshot_download
-from .patcher import patch_rope_scaling, patch_tokenizer, patch_hidden_size, \
-    patch_output_to_input_device, patch_output_clone, patch_baichuan2_lm_head_forward, patch_fixed_device
 from ...utils.torch_utils import safe_ddp_context
+from . import ConfigReader
+from .loader import MODEL_MAPPING, load_by_transformers, load_by_unsloth, safe_snapshot_download
+from .patcher import (patch_baichuan2_lm_head_forward, patch_fixed_device, patch_hidden_size, patch_output_clone,
+                      patch_output_to_input_device, patch_rope_scaling, patch_tokenizer)
 
 logger = get_logger()
 
@@ -41,7 +41,7 @@ class MMModelType:
     qwen_vl_chat = 'qwen-vl-chat'
     qwen_vl_chat_int4 = 'qwen-vl-chat-int4'
 
-    #qwen2-vl
+    # qwen2-vl
     qwen2_vl_2b_instruct = 'qwen2-vl-2b-instruct'
     qwen2_vl_2b_instruct_gptq_int4 = 'qwen2-vl-2b-instruct-gptq-int4'
     qwen2_vl_2b_instruct_gptq_int8 = 'qwen2-vl-2b-instruct-gptq-int8'
@@ -879,7 +879,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     quant_method = None
     if quantization_config is not None:
         quant_method = quantization_config.quant_method
-        quant_bits = quantization_config.bits
+        # quant_bits = quantization_config.bits
 
     is_training = kwargs.pop('is_training', False)
 
@@ -894,18 +894,19 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
-    patch_tokenizer(tokenizer,
-                    eos_token=kwargs.get('eos_token'),
-                    pad_token=kwargs.get('pad_token'),
-                    placeholder_tokens=kwargs.get('placeholder_tokens'))
+    patch_tokenizer(
+        tokenizer,
+        eos_token=kwargs.get('eos_token'),
+        pad_token=kwargs.get('pad_token'),
+        placeholder_tokens=kwargs.get('placeholder_tokens'))
     patch_rope_scaling(model_config, kwargs.pop('rope_scaling', None), kwargs.pop('max_length', None))
     if load_model:
         if kwargs.get('use_unsloth', False):
             model, tokenizer = load_by_unsloth(model_dir, torch_dtype, **kwargs)
         else:
             logger.info(f'model_kwargs: {model_kwargs}')
-            model = load_by_transformers(automodel_class, model_dir, model_config, torch_dtype,
-                      quant_method=='aqlm', is_training, model_kwargs, **kwargs)
+            model = load_by_transformers(automodel_class, model_dir, model_config, torch_dtype, quant_method == 'aqlm',
+                                         is_training, model_kwargs, **kwargs)
     else:
         model = None
     tokenizer.config = model_config
@@ -1436,6 +1437,7 @@ def get_model_tokenizer_chatglm(model_dir: str,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
+
     def remove_property(tokenizer_cls: Type[PreTrainedTokenizerBase], tokenizer_config: Dict[str, Any]) -> None:
         for k, v in tokenizer_cls.__dict__.items():
             if k.endswith('_token') and isinstance(v, property) and k in tokenizer_config:
@@ -4952,9 +4954,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     template=TemplateType.qwen_vl,
     requires=['auto_gptq>=0.5'],
     torch_dtype=torch.float16,
-    function_kwargs={
-        'get_qwen_function': get_model_tokenizer_qwen_vl
-    },
+    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_vl},
     support_flash_attn=True,
     tags=['multi-modal', 'vision'],
     hf_model_id='Qwen/Qwen-VL-Chat-Int4')
@@ -5905,4 +5905,3 @@ def get_model_tokenizer(model_type: Optional[str] = None,
 
 def get_default_template_type(model_type: str) -> Optional[str]:
     return MODEL_MAPPING[model_type].get('template')
-

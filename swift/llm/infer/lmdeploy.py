@@ -19,12 +19,12 @@ from lmdeploy.serve.vl_async_engine import VLAsyncEngine
 from tqdm import tqdm
 from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
+from swift.llm import InferArguments, InferTemplate
 from swift.llm.infer.base import InferFramework
 from swift.llm.model import ConfigReader
-from swift.utils import get_logger, get_seed
-from swift.llm import InferArguments, InferTemplate
 from swift.llm.model.model import get_model_tokenizer
 from swift.llm.template.template import Template, get_template
+from swift.utils import get_logger, get_seed
 
 try:
     from lmdeploy import EngineGenerationConfig as _LmdeployGenerationConfig
@@ -203,8 +203,14 @@ class LMDeployFramework(InferFramework):
             query = request['query']
             messages = request['messages']
             messages.extend([
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response},
+                {
+                    'role': 'user',
+                    'content': query
+                },
+                {
+                    'role': 'assistant',
+                    'content': response
+                },
             ])
 
             generation_info['num_generated_tokens'] += len(output.token_ids)
@@ -229,15 +235,16 @@ class LMDeployFramework(InferFramework):
         return resp_list
 
     @torch.inference_mode()
-    def inference_stream(self,
-                         request_list: List[Dict[str, Any]],
-                         *,
-                         generation_config: Optional[Any] = None,
-                         generation_info: Optional[Dict[str, Any]] = None,
-                         lora_request: Optional[Any] = None,
-                         use_tqdm: bool = False,
-                         flush_steps: Optional[int] = None,  # Ensuring efficiency
-                         **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    def inference_stream(
+            self,
+            request_list: List[Dict[str, Any]],
+            *,
+            generation_config: Optional[Any] = None,
+            generation_info: Optional[Dict[str, Any]] = None,
+            lora_request: Optional[Any] = None,
+            use_tqdm: bool = False,
+            flush_steps: Optional[int] = None,  # Ensuring efficiency
+            **kwargs) -> Iterator[List[Dict[str, Any]]]:
         """
         request_list: e.g. [{'query': 'hello!'}].
             The keys that can be included are: 'query', 'messages', 'system', 'images'.
@@ -300,14 +307,20 @@ class LMDeployFramework(InferFramework):
             outputs[i] = output
             request = request_list[i]
             logprobs = output.logprobs
-            safe_response = self.template.generate_ids_to_response(output.token_ids, is_finished,
-                                                              print_idx=print_idx_list[i])
+            safe_response = self.template.generate_ids_to_response(
+                output.token_ids, is_finished, print_idx=print_idx_list[i])
             query = request['query']
             messages = request['messages']
             if resp_list[i] is None:
                 messages.extend([
-                    {'role': 'user', 'content': None},
-                    {'role': 'assistant', 'content': None},
+                    {
+                        'role': 'user',
+                        'content': None
+                    },
+                    {
+                        'role': 'assistant',
+                        'content': None
+                    },
                 ])
             messages[-2]['content'] = query
             messages[-1]['content'] = safe_response
@@ -474,8 +487,7 @@ class LMDeployFramework(InferFramework):
             prog_bar.update()
             return inputs
 
-        with concurrent.futures.ThreadPoolExecutor(
-                max_workers=min(max_workers, len(request_list))) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_workers, len(request_list))) as executor:
             futures = [executor.submit(_prepare_inputs, request) for request in request_list]
             concurrent.futures.wait(futures)
             inputs_list = [future.result() for future in futures]

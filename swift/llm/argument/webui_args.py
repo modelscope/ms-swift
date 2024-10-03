@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from swift.llm.argument.infer_args import InferArguments
+from .infer_args import InferArguments
 
 
 @dataclass

@@ -18,15 +18,16 @@ from modelscope import GenerationConfig
 from packaging import version
 from peft import PeftModel
 
-from swift.llm import DeployArguments, Template, TEMPLATE_MAPPING, merge_lora
+from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
 from swift.llm.infer.base import InferFramework
 from swift.llm.infer.client_utils import compat_openai
 from swift.llm.infer.lmdeploy import LMDeployFramework
-from swift.llm.infer.protocol import ModelList, Model, ChatCompletionRequest, CompletionRequest, \
-    messages_join_observation, random_uuid, UsageInfo, ChatCompletionMessageToolCall, ChatCompletionResponseChoice, \
-    Function, ChatMessage, ChatCompletionResponse, CompletionResponseChoice, CompletionResponse, \
-    ChatCompletionResponseStreamChoice, DeltaMessage, ChatCompletionStreamResponse, CompletionResponseStreamChoice, \
-    CompletionStreamResponse
+from swift.llm.infer.protocol import (ChatCompletionMessageToolCall, ChatCompletionRequest, ChatCompletionResponse,
+                                      ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                                      ChatCompletionStreamResponse, ChatMessage, CompletionRequest, CompletionResponse,
+                                      CompletionResponseChoice, CompletionResponseStreamChoice,
+                                      CompletionStreamResponse, DeltaMessage, Function, Model, ModelList, UsageInfo,
+                                      messages_join_observation, random_uuid)
 from swift.llm.infer.transformers import TransformersFramework
 from swift.llm.infer.vllm import VLLMFramework
 from swift.llm.utils import set_generation_config
@@ -196,9 +197,7 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
             compat_openai(messages, request)
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)
-        example = {
-            'messages': messages
-        }
+        example = {'messages': messages}
         if request.tool_choice is not None and request.tools is not None:
             if isinstance(request.tool_choice, dict):
                 name = request.tool_choice['function']['name']

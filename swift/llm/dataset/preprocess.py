@@ -30,8 +30,7 @@ class GroundingMixin:
                    ('Detect <ref-object>', '<bbox>'), ('Locate <ref-object>', '<bbox>'),
                    ('Tell me the location of <ref-object>', '<bbox>'), ('Give the location of <ref-object>', '<bbox>'),
                    ('Provide the bounding box coordinate of <ref-object>', '<bbox>')],
-            'zh': [('<ref-object>', '<bbox>'), ('<ref-object>的位置在图片中', '<bbox>'),
-                   ('<ref-object>在图片中', '<bbox>'),
+            'zh': [('<ref-object>', '<bbox>'), ('<ref-object>的位置在图片中', '<bbox>'), ('<ref-object>在图片中', '<bbox>'),
                    ('<ref-object>在', '<bbox>'), ('找到<ref-object>的位置', '<bbox>'), ('<ref-object>在哪里', '<bbox>'),
                    ('提供<ref-object>的坐标位置', '<bbox>')]
         },
@@ -228,8 +227,14 @@ class RowPreprocessor(GroundingMixin):
             if self.task_type in self._grounding_prompts.keys():
                 query, response = self.construct_grounding_prompt()
                 row['messages'].extend([
-                    {'role': 'user', 'content': query},
-                    {'role': 'assistant', 'content': response},
+                    {
+                        'role': 'user',
+                        'content': query
+                    },
+                    {
+                        'role': 'assistant',
+                        'content': response
+                    },
                 ])
             if medias:
                 row['messages'] = self.replace_standard_tag(row['messages'], medias, modal)
@@ -252,9 +257,7 @@ class RowPreprocessor(GroundingMixin):
         """Override this method to prepare extra resources downloading"""
         pass
 
-    def __call__(self,
-                 dataset: DATASET_TYPE,
-                 **kwargs) -> DATASET_TYPE:
+    def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
         """Preprocess a dataset.
         Args:
             dataset: The dataset to be mapped and filtered.
@@ -263,9 +266,7 @@ class RowPreprocessor(GroundingMixin):
         Returns:
             The processed dataset
         """
-        maybe_multi_modal_keys = [
-            'image', 'images', 'audio', 'audios', 'video', 'videos'
-        ]
+        maybe_multi_modal_keys = ['image', 'images', 'audio', 'audios', 'video', 'videos']
         maybe_multi_modal = any([key in dataset.features for key in maybe_multi_modal_keys])
         kwargs = self.prepare_map_kwargs(dataset, **kwargs)
         self.prepare_downloading(dataset)
@@ -284,7 +285,8 @@ class RowPreprocessor(GroundingMixin):
         if column_mapping:
             dataset = self.rename_columns(dataset, column_mapping)
         all_keys = list(multimodal_keys.values())
-        if (maybe_multi_modal and not self.modals) or (maybe_multi_modal and not any([key in dataset.features for key in all_keys])):
+        if (maybe_multi_modal and not self.modals) or (maybe_multi_modal
+                                                       and not any([key in dataset.features for key in all_keys])):
             logger.warn('FOUND MULTI MODAL IN DATASETS, BUT NO KEY IN DATASET, MAYBE THE DATASET IS NOT CORRECT')
         if self.modals and not any([key in dataset.features for key in all_keys]):
             raise ValueError(f'Modals are set and no media keys set')
@@ -306,9 +308,7 @@ class SwiftPreprocessor(RowPreprocessor):
 class AlpacaPreprocessor(RowPreprocessor):
     concat_inst_inp = None
 
-    def __init__(self,
-                 *,
-                 concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
+    def __init__(self, *, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
         """Alpaca format preprocessor
 
         Args:
@@ -338,27 +338,12 @@ class AlpacaPreprocessor(RowPreprocessor):
 
         messages = []
         if system:
-            messages.append({
-                'role': 'system',
-                'content': system
-            })
+            messages.append({'role': 'system', 'content': system})
         for h in history:
-            messages.append({
-                'role': 'user',
-                'content': h[0]
-            })
-            messages.append({
-                'role': 'assistant',
-                'content': h[1]
-            })
-        messages.append({
-            'role': 'user',
-            'content': query
-        })
-        messages.append({
-            'role': 'assistant',
-            'content': output
-        })
+            messages.append({'role': 'user', 'content': h[0]})
+            messages.append({'role': 'assistant', 'content': h[1]})
+        messages.append({'role': 'user', 'content': query})
+        messages.append({'role': 'assistant', 'content': output})
 
         row = {
             'messages': messages,
@@ -399,7 +384,7 @@ class ConversationsPreprocessor(RowPreprocessor):
         self.repair_conversations = repair_conversations
         self.error_strategy = error_strategy
         super().__init__(**kwargs)
-    
+
     def query_to_message(self, row: Dict[str, Any]):
         return row
 
@@ -416,10 +401,7 @@ class ConversationsPreprocessor(RowPreprocessor):
                 system_message = conversations.pop(0)
 
             if system_message:
-                messages.append({
-                    'role': 'system',
-                    'content': system_message[self.value_key]
-                })
+                messages.append({'role': 'system', 'content': system_message[self.value_key]})
             for idx, c in enumerate(conversations):
                 if idx % 2 == 0:
                     assert c[self.from_key] in [self.user_role, self.tool_role]
@@ -429,10 +411,7 @@ class ConversationsPreprocessor(RowPreprocessor):
                     })
                 else:
                     assert c[self.from_key] == self.assistant_role
-                    messages.append({
-                        'role': 'assistant',
-                        'content': c[self.value_key]
-                    })
+                    messages.append({'role': 'assistant', 'content': c[self.value_key]})
 
             row = {
                 'messages': messages,
@@ -480,31 +459,22 @@ class ListPreprocessor(RowPreprocessor):
                 conversations = conversations[self.inner_key]
             messages = []
             if self.system_key and row.get(self.system_key):
-                messages.append({
-                    'role': 'system',
-                    'content': row[self.system_key]
-                })
+                messages.append({'role': 'system', 'content': row[self.system_key]})
             for c in conversations:
                 if self.user_key in c:
-                    messages.append(
-                        {
-                            'role': 'user',
-                            'content': c[self.user_key],
-                        }
-                    )
+                    messages.append({
+                        'role': 'user',
+                        'content': c[self.user_key],
+                    })
                 else:
-                    messages.append(
-                        {
-                            'role': 'tool',
-                            'content': c[self.tool_key],
-                        }
-                    )
-                messages.append(
-                    {
-                        'role': 'assistant',
-                        'content': c[self.assistant_key],
-                    }
-                )
+                    messages.append({
+                        'role': 'tool',
+                        'content': c[self.tool_key],
+                    })
+                messages.append({
+                    'role': 'assistant',
+                    'content': c[self.assistant_key],
+                })
 
             row = {
                 'messages': messages,
@@ -550,9 +520,7 @@ class RenameColumnsPreprocessor:
             messages.append({'role': 'assistant', 'content': response})
         old_messages = row.get('messages', [])
         old_messages.extend(messages)
-        return {
-            'messages': old_messages
-        }
+        return {'messages': old_messages}
 
     def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
         for old_name, new_name in self.rename_mapping.items():
@@ -586,8 +554,8 @@ class SmartPreprocessor:
             },
             'sharegpt': {
                 'required': ['conversation'],
-                'preprocessor': ListPreprocessor(conversations_key='conversation', user_key='human',
-                                                 assistant_key='assistant')
+                'preprocessor':
+                ListPreprocessor(conversations_key='conversation', user_key='human', assistant_key='assistant')
             },
             'pretrain': {
                 'required': ['text'],
@@ -617,12 +585,7 @@ class SmartPreprocessor:
 
 class TextGenerationPreprocessor(RowPreprocessor):
 
-    def __init__(self,
-                 *,
-                 prompt: str,
-                 query_key: str = 'query',
-                 response_key: str = 'response',
-                 **kwargs) -> None:
+    def __init__(self, *, prompt: str, query_key: str = 'query', response_key: str = 'response', **kwargs) -> None:
         self.prompt = prompt
         self.query_key = query_key
         self.response_key = response_key
@@ -631,16 +594,13 @@ class TextGenerationPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         query = self.prompt.format(query=row[self.query_key])
         response = row[self.response_key]
-        messages = [
-            {
-                'role': 'user',
-                'content': query,
-            },
-            {
-                'role': 'assistant',
-                'content': response,
-            }
-        ]
+        messages = [{
+            'role': 'user',
+            'content': query,
+        }, {
+            'role': 'assistant',
+            'content': response,
+        }]
         row = {
             'messages': messages,
         }

@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from typing import List, Optional, Set, Union
 
+import json
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
-from swift.utils import (get_logger)
+from swift.utils import get_logger
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]

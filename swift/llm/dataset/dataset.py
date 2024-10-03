@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
 import itertools
-import json
 import os
 import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import json
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
@@ -16,11 +16,10 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.llm.dataset.preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor,
-                                          ConversationsPreprocessor,
-                                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor,
-                                          TextGenerationPreprocessor, RowPreprocessor)
+                                          ConversationsPreprocessor, ListPreprocessor, PreprocessFunc,
+                                          RenameColumnsPreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from swift.utils import get_logger
-from .loader import HubDatasetLoader, DatasetLoader
+from .loader import DatasetLoader, HubDatasetLoader
 from .media import MediaResource
 from .register import register_dataset
 
@@ -28,11 +27,7 @@ dataset_enable_cache = strtobool(os.environ.get('DATASET_ENABLE_CACHE', 'False')
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-standard_keys = {
-    'messages', 'rejected_response', 'images', 'objects',
-    'videos', 'audios', 'tools', 'label'
-}
-
+standard_keys = {'messages', 'rejected_response', 'images', 'objects', 'videos', 'audios', 'tools', 'label'}
 
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
 
@@ -220,16 +215,22 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
         if not os.path.exists(image):
             return self.empty_row()
         row = ConversationsPreprocessor(
-                user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete',
-                modals=['image'], modal_keys={'image': 'image'}).preprocess(row)
+            user_role='human',
+            assistant_role='gpt',
+            media_type='image',
+            error_strategy='delete',
+            modals=['image'],
+            modal_keys={
+                'image': 'image'
+            }).preprocess(row)
         row['image'] = [image]
         return row
 
     def prepare_downloading(self, dataset):
-        url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
+        url = ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?'
+               'Revision=master&FilePath=images.zip')
         local_dir = MediaResource.download(url, 'sharegpt_4o_images')
         self.prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
-
 
 
 class GPT4vDataset(RowPreprocessor):
@@ -238,11 +239,15 @@ class GPT4vDataset(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         return {
-            'messages': [
-                {'role': 'user', 'content': 'What is the caption of this image?'},
-                {'role': 'assistant', 'content': row['caption']}
-            ],
-            'images': row['link']
+            'messages': [{
+                'role': 'user',
+                'content': 'What is the caption of this image?'
+            }, {
+                'role': 'assistant',
+                'content': row['caption']
+            }],
+            'images':
+            row['link']
         }
 
 
@@ -252,9 +257,8 @@ register_dataset(
     GPT4vDataset(),
     HubDatasetLoader.dataset_get_function,
     split=['train'],
-    tags=["en", "caption", "multi-modal", "quality"],
+    tags=['en', 'caption', 'multi-modal', 'quality'],
     hf_dataset_id='laion/gpt4v-dataset')
-
 
 register_dataset(
     DatasetName.sharegpt_4o_image,
@@ -269,24 +273,21 @@ register_dataset(
 class SA1BPairedCaptionPreprocessor(RowPreprocessor):
 
     column_mapping = {
-            'opensource_url': 'images',
-        }
+        'opensource_url': 'images',
+    }
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
         response = row['global_caption']
         query = np.random.choice(prompt)
         return {
-            'messages': [
-                {
-                    'role': 'user',
-                    'content': query,
-                },
-                {
-                    'query': 'assistant',
-                    'content': response,
-                }
-            ]
+            'messages': [{
+                'role': 'user',
+                'content': query,
+            }, {
+                'query': 'assistant',
+                'content': response,
+            }]
         }
 
 
@@ -304,8 +305,8 @@ register_dataset(
 class SA1BDenseCaptionPreprocessor(RowPreprocessor):
 
     column_mapping = {
-            'url': 'images',
-        }
+        'url': 'images',
+    }
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         prompt = ['图片中展示了什么', '讲述一下图片中内容', '告诉我里面有什么', '图片内容是啥']
@@ -313,16 +314,13 @@ class SA1BDenseCaptionPreprocessor(RowPreprocessor):
         response = response.get('global_caption')
         query = np.random.choice(prompt)
         return {
-            'messages': [
-                {
-                    'role': 'user',
-                    'content': query,
-                },
-                {
-                    'query': 'assistant',
-                    'content': response,
-                }
-            ]
+            'messages': [{
+                'role': 'user',
+                'content': query,
+            }, {
+                'query': 'assistant',
+                'content': response,
+            }]
         }
 
 
@@ -351,16 +349,13 @@ class COCO2014Preprocess(RowPreprocessor):
             row[response_key] = row[response_key].split('&&')[0]
 
         return {
-            'messages': [
-                {
-                    'role': 'user',
-                    'content': query_format.format(image_path=row[image_key]['path']),
-                },
-                {
-                    'query': 'assistant',
-                    'content': row[response_key],
-                }
-            ]
+            'messages': [{
+                'role': 'user',
+                'content': query_format.format(image_path=row[image_key]['path']),
+            }, {
+                'query': 'assistant',
+                'content': row[response_key],
+            }]
         }
 
     def __call__(self, dataset, **kwargs):
@@ -435,7 +430,7 @@ def get_mantis_dataset(dataset_id: str,
     else:
         dataset = all_datasets[0]
     return HubDatasetLoader.post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
-                            remove_useless_columns, **kwargs)
+                                            remove_useless_columns, **kwargs)
 
 
 register_dataset(
@@ -472,13 +467,14 @@ class LLaVADataPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         if not row['images']:
             return {}
-        
-        row.update(ConversationsPreprocessor(
-            user_role='user',
-            assistant_role='assistant',
-            conversations_key='conversation',
-            from_key='role',
-            value_key='content').preprocess(row))
+
+        row.update(
+            ConversationsPreprocessor(
+                user_role='user',
+                assistant_role='assistant',
+                conversations_key='conversation',
+                from_key='role',
+                value_key='content').preprocess(row))
         images = [p['path'] for p in row['images']]
         new_images = []
         for image in images:
@@ -522,16 +518,16 @@ class COCOEn2Preprocessor(RowPreprocessor):
         if '&&' in row[response_key]:
             row[response_key] = row[response_key].split('&&')[0]
         response = row[response_key]
-        return {'messages': [
-            {
+        return {
+            'messages': [{
                 'role': 'user',
                 'content': query,
-            },
-            {
+            }, {
                 'role': 'assistant',
                 'content': response,
-            }
-        ], 'images': images}
+            }],
+            'images': images
+        }
 
     def __call__(self, dataset, **kwargs):
         from datasets import Image
@@ -570,11 +566,15 @@ class PixelProsePreprocessor(RowPreprocessor):
         if vlm_caption.startswith('This image displays:'):
             vlm_caption = vlm_caption[len('This image displays:'):].strip()
         return {
-            'messages': [
-                {'role': 'user', 'content': np.random.choice(caption_prompt)},
-                {'role': 'assistant', 'content': vlm_caption}
-            ],
-            'images': row['url']
+            'messages': [{
+                'role': 'user',
+                'content': np.random.choice(caption_prompt)
+            }, {
+                'role': 'assistant',
+                'content': vlm_caption
+            }],
+            'images':
+            row['url']
         }
 
 
@@ -599,10 +599,13 @@ class AIShell1Preprocessor(RowPreprocessor):
         response_key = 'Text:LABEL'
         query_format = f'<audio>{{audio_path}}</audio>{prompt}'
         return {
-            'messages': [
-                {'role': 'user', 'content': query_format.format(audio_path=row[audio_key])},
-                {'role': 'assistant', 'content': row[response_key].replace(' ', '')}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': query_format.format(audio_path=row[audio_key])
+            }, {
+                'role': 'assistant',
+                'content': row[response_key].replace(' ', '')
+            }],
         }
 
 
@@ -639,10 +642,13 @@ class VideoChatGPTPreprocessor(RowPreprocessor):
         if row['video_name'] not in mp4_set:
             return self.empty_row()
         return {
-            'messages': [
-                {'role': 'user', 'content': row['question'] or row['question_1'] or row['question_2']},
-                {'role': 'assistant', 'content': row['answer']}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': row['question'] or row['question_1'] or row['question_2']
+            }, {
+                'role': 'assistant',
+                'content': row['answer']
+            }],
             'videos': [os.path.join(local_dir, f"{row['video_name']}.mp4")],
         }
 
@@ -671,10 +677,7 @@ register_dataset(
     DatasetName.long_alpaca_12k,
     'AI-ModelScope/LongAlpaca-12k',
     None,
-    ComposePreprocessor([
-        AlpacaPreprocessor(),
-        LongAlpacaPreprocessor()
-    ]),
+    ComposePreprocessor([AlpacaPreprocessor(), LongAlpacaPreprocessor()]),
     HubDatasetLoader.dataset_get_function,
     tags=['longlora', 'QA'],
     hf_dataset_id='Yukang/LongAlpaca-12k')
@@ -797,10 +800,13 @@ class FireflyPreprocessor(RowPreprocessor):
         if row['kind'] not in FireflyPreprocessor._firefly_kind_list:
             return self.empty_row()
         return {
-            'messages': [
-                {'role': 'user', 'content': row['input']},
-                {'role': 'assistant', 'content': row['target']}
-            ]
+            'messages': [{
+                'role': 'user',
+                'content': row['input']
+            }, {
+                'role': 'assistant',
+                'content': row['target']
+            }]
         }
 
 
@@ -850,10 +856,15 @@ Context: {context}
 Answer: {answer}
 Question:"""
         answer, context = row['text1'].split('[SEP]')
-        return {'messages': {
-            {'role': 'user', 'content': prompt.format(context=context, answer=answer)},
-            {'role': 'assistant', 'content': row['text2']}
-        }}
+        return {
+            'messages': {{
+                'role': 'user',
+                'content': prompt.format(context=context, answer=answer)
+            }, {
+                'role': 'assistant',
+                'content': row['text2']
+            }}
+        }
 
 
 register_dataset(
@@ -1029,8 +1040,8 @@ class ShareGPT4VPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         image = row['image']
-        row.update(ConversationsPreprocessor(
-                user_role='human', assistant_role='gpt', error_strategy='delete').preprocess(row))
+        row.update(
+            ConversationsPreprocessor(user_role='human', assistant_role='gpt', error_strategy='delete').preprocess(row))
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
         elif 'sam/' in image:
@@ -1077,10 +1088,17 @@ class TextCapsPreprocessor(RowPreprocessor):
             response = row['reference_strs']
             return {
                 'messages': [
-                    {'role': 'user', 'content': query},
-                    {'role': 'assistant', 'content': response[np.random.choice(range(len(response)))]},
+                    {
+                        'role': 'user',
+                        'content': query
+                    },
+                    {
+                        'role': 'assistant',
+                        'content': response[np.random.choice(range(len(response)))]
+                    },
                 ],
-                'image': image
+                'image':
+                image
             }
         except Exception:
             return self.empty_row()
@@ -1192,8 +1210,13 @@ class LLaVAInstructPreprocessor(RowPreprocessor):
             self.all_folders[media_type] = MediaResource.download(media_type)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row.update(ConversationsPreprocessor(
-            user_role='human', assistant_role='gpt', media_type='image', media_key='images', error_strategy='delete').preprocess(row))
+        row.update(
+            ConversationsPreprocessor(
+                user_role='human',
+                assistant_role='gpt',
+                media_type='image',
+                media_key='images',
+                error_strategy='delete').preprocess(row))
         image = row['image']
         if 'coco/' in image:
             image = os.path.join(self.all_folders['coco'], image.replace('coco/', ''))
@@ -1267,8 +1290,9 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
             'llava_pretrain')
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row.update(ConversationsPreprocessor(
-                user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete').preprocess(row))   
+        row.update(
+            ConversationsPreprocessor(
+                user_role='human', assistant_role='gpt', media_type='image', error_strategy='delete').preprocess(row))
         if row['image']:
             file_path = os.path.join(self.media_dir, row['image'])
             if os.path.exists(file_path):
@@ -1299,8 +1323,14 @@ class ShareAIDPOPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         return {
             'messages': [
-                {'role': 'user', 'content': row['question']},
-                {'role': 'assistant', 'content': row['answer_zh']},
+                {
+                    'role': 'user',
+                    'content': row['question']
+                },
+                {
+                    'role': 'assistant',
+                    'content': row['answer_zh']
+                },
             ],
             'rejected_response': row['answer_en'],
         }
@@ -1407,10 +1437,13 @@ class Dolly15kPreprocessor(RowPreprocessor):
             query += '\n'
         query += instruction
         return {
-            'messages': [
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': query
+            }, {
+                'role': 'assistant',
+                'content': response
+            }],
         }
 
 
@@ -1421,7 +1454,6 @@ register_dataset(
     HubDatasetLoader.dataset_get_function,
     hf_dataset_id='databricks/databricks-dolly-15k',
     tags=['multi-task', 'en', 'quality'])
-
 
 register_dataset(
     DatasetName.midefics,
@@ -1446,10 +1478,13 @@ class OkvqaPreprocessor(RowPreprocessor):
         query = row['question']
         response = np.random.choice(row['answers'])
         return {
-            'messages': [
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': query
+            }, {
+                'role': 'assistant',
+                'content': response
+            }],
         }
 
 
@@ -1471,10 +1506,13 @@ class AOkvqaPreprocessor(RowPreprocessor):
         query = row['question']
         response = np.random.choice(row['rationales'])
         return {
-            'messages': [
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': query
+            }, {
+                'role': 'assistant',
+                'content': response
+            }],
         }
 
 
@@ -1499,10 +1537,13 @@ class OcrvqaPreprocessor(RowPreprocessor):
         query = row['questions'][idx]
         response = row['answers'][idx]
         return {
-            'messages': [
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': query
+            }, {
+                'role': 'assistant',
+                'content': response
+            }],
         }
 
 
@@ -1526,12 +1567,7 @@ class ScienceQAPreprocessor(RowPreprocessor):
         response = row['choices'][row['answer']]
         solution = row['solution']
         response = f'{solution}\nSo the final answer is: {response}'
-        return {
-            'messages': [
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response}
-            ]
-        }
+        return {'messages': [{'role': 'user', 'content': query}, {'role': 'assistant', 'content': response}]}
 
 
 register_dataset(
@@ -1592,12 +1628,17 @@ class GritPreprocessor(RowPreprocessor):
 
         response = self.replace_intervals_with_tags(caption, start_end_pairs)
         return {
-            'messages': [
-                {'role': 'user', 'content': 'what is the proper caption of this image?'},
-                {'role': 'assistant', 'content': response}
-            ],
-            'images': images,
-            'objects': json.dumps(objects or [], ensure_ascii=False)
+            'messages': [{
+                'role': 'user',
+                'content': 'what is the proper caption of this image?'
+            }, {
+                'role': 'assistant',
+                'content': response
+            }],
+            'images':
+            images,
+            'objects':
+            json.dumps(objects or [], ensure_ascii=False)
         }
 
     def filter(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1625,11 +1666,15 @@ class GQAPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         if os.path.join(self.local_cache, 'images', row['imageId'] + '.jpg'):
             return {
-                'messages': [
-                    {'role': 'user', 'content': row['question']},
-                    {'role': 'assistant', 'content': row['fullAnswer']}
-                ],
-                'images': os.path.join(self.local_cache, 'images', row['imageId'] + '.jpg'),
+                'messages': [{
+                    'role': 'user',
+                    'content': row['question']
+                }, {
+                    'role': 'assistant',
+                    'content': row['fullAnswer']
+                }],
+                'images':
+                os.path.join(self.local_cache, 'images', row['imageId'] + '.jpg'),
             }
         else:
             return self.empty_row()
@@ -1753,10 +1798,13 @@ class SyntheticText2SqlPreprocessor(RowPreprocessor):
         query = f'Sql Table information:\n{sql_context}\n{sql_prompt}'
         response = f'Let\'s think step by step:\n{sql_explanation}\nSo the final sql is:\n{sql}'
         return {
-            'messages': [
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': query
+            }, {
+                'role': 'assistant',
+                'content': response
+            }],
         }
 
 
@@ -1784,10 +1832,13 @@ class LatexocrPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         return {
-            'messages': [
-                {'role': 'user', 'content': 'Using LaTeX to perform OCR on the image.'},
-                {'role': 'assistant', 'content': row['text']}
-            ]
+            'messages': [{
+                'role': 'user',
+                'content': 'Using LaTeX to perform OCR on the image.'
+            }, {
+                'role': 'assistant',
+                'content': row['text']
+            }]
         }
 
 
@@ -1819,10 +1870,13 @@ class CapchaImagesPreprocessor(RowPreprocessor):
         query = 'recognize the content.'
         response_key = 'solution'
         return {
-            'messages': [
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': row[response_key]}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': query
+            }, {
+                'role': 'assistant',
+                'content': row[response_key]
+            }],
         }
 
 
@@ -1845,7 +1899,8 @@ def _repair_toolbench(conversations: List[Dict[str, str]]) -> List[Dict[str, str
 
 register_dataset(
     DatasetName.toolbench_for_alpha_umi,
-    'shenweizhou/alpha-umi-toolbench-processed-v2', ['backbone', 'caller', 'planner', 'summarizer'],
+    'shenweizhou/alpha-umi-toolbench-processed-v2',
+    ['backbone', 'caller', 'planner', 'summarizer'],
     # TODO
     ConversationsPreprocessor(system_role='system', repair_conversations=_repair_toolbench),
     HubDatasetLoader.dataset_get_function,
@@ -1858,10 +1913,13 @@ class BlossomMathPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         output, answer = row['output'], row['answer']
         return {
-            'messages': [
-                {'role': 'user', 'content': row['input']},
-                {'role': 'assistant', 'content': f'{output}\n\nAnswer: {answer}'}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': row['input']
+            }, {
+                'role': 'assistant',
+                'content': f'{output}\n\nAnswer: {answer}'
+            }],
         }
 
 
@@ -1904,9 +1962,10 @@ class TigerBotLawPreprocessor(RowPreprocessor):
                 cur_prompt += f'{chapter}'
         cur_prompt += f'{row["content"]}'
         return {
-            'messages': [
-                {'role': 'assistant', 'content': cur_prompt}
-            ],
+            'messages': [{
+                'role': 'assistant',
+                'content': cur_prompt
+            }],
         }
 
 
@@ -1931,10 +1990,13 @@ class LeetcodePythonPreprocessor(RowPreprocessor):
         code = code_with_problem[idx:].strip()
         explanation = row['explanation_only']
         return {
-            'messages': [
-                {'role': 'user', 'content': problem},
-                {'role': 'assistant', 'content': f'{code}\n\n{explanation}'}
-            ],
+            'messages': [{
+                'role': 'user',
+                'content': problem
+            }, {
+                'role': 'assistant',
+                'content': f'{code}\n\n{explanation}'
+            }],
         }
 
 
@@ -1957,8 +2019,8 @@ def _repair_conversations_agent_instruct(s: str) -> List[Dict[str, Any]]:
 register_dataset(
     DatasetName.agent_instruct_all_en,
     'huangjintao/AgentInstruct_copy', ['alfworld', 'db', 'kg', 'mind2web', 'os', 'webshop'],
-    ConversationsPreprocessor(user_role='human', assistant_role='gpt',
-                              repair_conversations=_repair_conversations_agent_instruct),
+    ConversationsPreprocessor(
+        user_role='human', assistant_role='gpt', repair_conversations=_repair_conversations_agent_instruct),
     HubDatasetLoader.dataset_get_function,
     tags=['chat', 'agent', 'multi-round'])
 
@@ -2031,11 +2093,7 @@ def preprocess_mind2web(dataset, **kwargs):
                 query = row['query']
                 if target_action_index == '0':
                     if history:
-                        yield {
-                            'messages': history_to_messages(history),
-                            'images': images,
-                            'tools': tools
-                        }
+                        yield {'messages': history_to_messages(history), 'images': images, 'tools': tools}
                         images = []
                         history = []
                     query = query + '\n' + row['confirmed_task']
@@ -2055,11 +2113,7 @@ def preprocess_mind2web(dataset, **kwargs):
         query = row['query']
         if target_action_index == '0':
             if history:
-                conversations.append({
-                    'messages': history_to_messages(history),
-                    'images': images,
-                    'tools': tools
-                })
+                conversations.append({'messages': history_to_messages(history), 'images': images, 'tools': tools})
                 images = []
                 history = []
             query = query + '\n' + row['confirmed_task']
@@ -2100,11 +2154,16 @@ class MultiRoleAgentPreprocessor(RowPreprocessor):
             system += ''.join([conv_prompt.format(name=c['from'], content=c['value']) for c in conv[1:-1]])
 
         return {
-            'messages': [
-                {'role': 'system', 'content': system},
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response}
-            ],
+            'messages': [{
+                'role': 'system',
+                'content': system
+            }, {
+                'role': 'user',
+                'content': query
+            }, {
+                'role': 'assistant',
+                'content': response
+            }],
         }
 
 
@@ -2115,7 +2174,6 @@ register_dataset(
     MultiRoleAgentPreprocessor(),
     HubDatasetLoader.dataset_get_function,
     tags=['chat', 'agent', 'multi-round', 'role-play', 'multi-agent'])
-
 
 register_dataset(
     DatasetName.toolbench,
@@ -2187,8 +2245,14 @@ class RLAIFVPreprocessor(RowPreprocessor):
         return {
             'images': row['image'],
             'messages': [
-                {'role': 'user', 'content': row['question']},
-                {'role': 'assistant', 'content': row['chosen']},
+                {
+                    'role': 'user',
+                    'content': row['question']
+                },
+                {
+                    'role': 'assistant',
+                    'content': row['chosen']
+                },
             ],
             'rejected_response': row['rejected']
         }

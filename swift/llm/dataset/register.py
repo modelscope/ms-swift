@@ -1,20 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from copy import deepcopy
 from functools import partial
-from typing import List, Optional, Tuple, Union, Dict, Any, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
+import json
+from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HfIterableDataset
 
-from swift.llm.dataset.preprocess import RenameColumnsPreprocessor, ConversationsPreprocessor, \
-    SmartPreprocessor
+from swift.llm.dataset.preprocess import ConversationsPreprocessor, RenameColumnsPreprocessor, SmartPreprocessor
 from swift.utils import get_logger
+from .loader import DATASET_MAPPING
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 SubsetSplit = Union[str, Tuple[str, str], List[str]]
-from .loader import DATASET_MAPPING
 PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 
@@ -109,7 +109,12 @@ def register_local_dataset(
                 dataset_path[i] = os.path.join(base_dir, dataset_path[i])
     from swift.llm.dataset.loader import LocalDatasetLoader
     register_dataset(
-        dataset_name, get_function=LocalDatasetLoader.dataset_get_function, split=dataset_path, exist_ok=True, is_local=True, **kwargs)
+        dataset_name,
+        get_function=LocalDatasetLoader.dataset_get_function,
+        split=dataset_path,
+        exist_ok=True,
+        is_local=True,
+        **kwargs)
 
 
 def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs) -> None:
@@ -140,8 +145,14 @@ def register_single_dataset(dataset_name: str, d_info: Dict[str, Any], **kwargs)
         subsets = d_info.pop('subsets', None)
         preprocess_func = d_info.pop('preprocess_func', None)
         from swift.llm.dataset.loader import LocalDatasetLoader, HubDatasetLoader
-        register_dataset(dataset_name, dataset_id, subsets, preprocess_func, HubDatasetLoader.dataset_get_function, **d_info,
-                         exist_ok=True)
+        register_dataset(
+            dataset_name,
+            dataset_id,
+            subsets,
+            preprocess_func,
+            HubDatasetLoader.dataset_get_function,
+            **d_info,
+            exist_ok=True)
 
 
 def register_dataset_info_file(dataset_info_path: Optional[str] = None) -> None:

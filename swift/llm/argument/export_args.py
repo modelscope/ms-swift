@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 import torch.distributed as dist
 
-from swift.utils import (is_dist, get_logger)
+from swift.utils import get_logger, is_dist
 from .infer_args import InferArguments
 
 logger = get_logger()
@@ -22,8 +22,8 @@ class ExportArguments(InferArguments):
     quant_bits: int = 0  # e.g. 4
     quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
-    quant_seqlen: int = 2048
-    quant_device_map: str = 'cpu'  # e.g. 'cpu', 'auto'
+    quant_seqlen: Optional[int] = None  # use max_length
+    quant_device_map: Optional[str] = None  # e.g. 'cpu', 'auto'
     quant_output_dir: Optional[str] = None
     quant_batch_size: int = 1
 
@@ -46,8 +46,10 @@ class ExportArguments(InferArguments):
     # merge_lora, hub_token
 
     def __post_init__(self):
-        if self.merge_device_map is None:
-            self.merge_device_map = 'cpu' if self.quant_bits > 0 else 'auto'
+        if self.quant_seqlen is None:
+            self.quant_seqlen = self.max_length
+        if self.merge_device_map is None and self.quant_bits > 0:
+            self.merge_device_map = 'cpu'
         if self.quant_bits > 0 and self.dtype == 'AUTO':
             self.dtype = 'fp16'
             logger.info(f'Setting args.dtype: {self.dtype}')
@@ -67,8 +69,8 @@ class ExportArguments(InferArguments):
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
         elif self.to_ollama:
-            assert self.sft_type in ['full'] + self.adapters_can_be_merged()
-            if self.sft_type in self.adapters_can_be_merged():
+            assert self.sft_type in ['full'] + self.adapters_can_be_merged
+            if self.sft_type in self.adapters_can_be_merged:
                 self.merge_lora = True
             if not self.ollama_output_dir:
                 self.ollama_output_dir = f'{self.model_type}-ollama'

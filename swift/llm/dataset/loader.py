@@ -4,10 +4,11 @@ import os
 import shutil
 from abc import ABC
 from tempfile import TemporaryDirectory
-from typing import List, Literal, Optional, Tuple, Union, Dict, Any, Callable
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
-from datasets import Dataset as HfDataset, IterableDataset as HfIterableDataset
+from datasets import Dataset as HfDataset
+from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
@@ -17,8 +18,7 @@ from transformers.utils import strtobool
 
 from swift.hub.hub import HFHub, MSHub
 from swift.llm.dataset.preprocess import RowPreprocessor
-from swift.utils import get_logger
-from swift.utils import get_seed
+from swift.utils import get_logger, get_seed
 from swift.utils.io_utils import download_files
 from swift.utils.torch_utils import safe_ddp_context
 from swift.utils.utils import _safe_split
@@ -73,9 +73,7 @@ class DatasetLoader(ABC):
         Returns:
             The processed dataset instance
         """
-        standard_keys = {
-            'messages', 'rejected_response', 'images', 'objects', 'videos', 'audios', 'tools', 'label'
-        }
+        standard_keys = {'messages', 'rejected_response', 'images', 'objects', 'videos', 'audios', 'tools', 'label'}
         k_list = []
         if isinstance(dataset, HfIterableDataset) and dataset.features is None:
             features = next(iter(dataset)).keys()
@@ -89,7 +87,9 @@ class DatasetLoader(ABC):
         return dataset
 
     @classmethod
-    def sample_dataset(cls, dataset: HfDataset, dataset_sample: int,
+    def sample_dataset(cls,
+                       dataset: HfDataset,
+                       dataset_sample: int,
                        random_state: Optional[RandomState] = None) -> HfDataset:
         """Sample dataset by a dataset_sample number
 
@@ -114,14 +114,14 @@ class DatasetLoader(ABC):
 
     @classmethod
     def post_preprocess(
-            cls,
-            train_dataset: DATASET_TYPE,
-            dataset_sample: int,
-            random_state: Optional[RandomState] = None,
-            preprocess_func: Optional[PreprocessFunc] = None,
-            dataset_test_ratio: float = 0.,
-            remove_useless_columns: bool = True,
-            **kwargs,
+        cls,
+        train_dataset: DATASET_TYPE,
+        dataset_sample: int,
+        random_state: Optional[RandomState] = None,
+        preprocess_func: Optional[PreprocessFunc] = None,
+        dataset_test_ratio: float = 0.,
+        remove_useless_columns: bool = True,
+        **kwargs,
     ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         """Post process the dataset, this function will do the following things:
         1. Sample from dataset
@@ -165,7 +165,8 @@ class DatasetLoader(ABC):
                     train_sample = dataset_sample - val_sample
                     assert isinstance(val_sample, int)
                     train_dataset, val_dataset = train_dataset.train_test_split(
-                        test_size=val_sample, seed=get_seed(random_state),
+                        test_size=val_sample,
+                        seed=get_seed(random_state),
                         load_from_cache_file=kwargs.get('dataset_enable_cache', False)).values()
 
                 assert train_sample > 0
@@ -178,8 +179,8 @@ class DatasetLoader(ABC):
                 streaming_val_size = kwargs.get('streaming_val_size', 0)
                 streaming_buffer_size = kwargs.get('streaming_buffer_size', 16384)
                 if streaming_val_size > 0:
-                    train_dataset = train_dataset.shuffle(seed=get_seed(random_state),
-                                                          buffer_size=streaming_buffer_size)
+                    train_dataset = train_dataset.shuffle(
+                        seed=get_seed(random_state), buffer_size=streaming_buffer_size)
                     val_dataset = train_dataset.take(int(streaming_val_size))
                     train_dataset = train_dataset.skip(int(streaming_val_size))
 
@@ -385,10 +386,10 @@ class DatasetLoader(ABC):
 
     @classmethod
     def preprocess_self_cognition_dataset(
-            cls,
-            dataset_list: Tuple[DATASET_TYPE, Optional[DATASET_TYPE]],
-            model_name: Tuple[str, Optional[str]],
-            model_author: Tuple[str, Optional[str]],
+        cls,
+        dataset_list: Tuple[DATASET_TYPE, Optional[DATASET_TYPE]],
+        model_name: Tuple[str, Optional[str]],
+        model_author: Tuple[str, Optional[str]],
     ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         """Preprocess for self cognition task
 
@@ -422,16 +423,17 @@ class DatasetLoader(ABC):
                         else:
                             model_n, model_a = model_name[1], model_author[1]
                         yield {
-                            'messages': [
-                                {
-                                    'role': 'user',
-                                    'content': row['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                                },
-                                {
-                                    'role': 'assistant',
-                                    'content': row['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                                }
-                            ]
+                            'messages': [{
+                                'role':
+                                'user',
+                                'content':
+                                row['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                            }, {
+                                'role':
+                                'assistant',
+                                'content':
+                                row['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                            }]
                         }
 
                 dataset = HfIterableDataset.from_generator(generate_example, gen_kwargs={'dataset': dataset})
@@ -443,15 +445,17 @@ class DatasetLoader(ABC):
                     else:
                         model_n, model_a = model_name[1], model_author[1]
 
-                    messages.append({'messages':
-                        [{
-                                    'role': 'user',
-                                    'content': row['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                                },
-                    {
-                                    'role': 'assistant',
-                                    'content': row['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
-                                }]})
+                    messages.append({
+                        'messages': [{
+                            'role': 'user',
+                            'content': row['query'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                        }, {
+                            'role':
+                            'assistant',
+                            'content':
+                            row['response'].replace('{{NAME}}', model_n).replace('{{AUTHOR}}', model_a)
+                        }]
+                    })
                 dataset = HfDataset.from_list(messages)
             res_d_list.append(dataset)
         return tuple(res_d_list)
@@ -568,11 +572,11 @@ class LocalDatasetLoader(DatasetLoader):
                              **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         dataset = cls.load_dataset_from_local(split, preprocess_func, streaming=kwargs.get('streaming', False))
         return cls.post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio,
-                                   remove_useless_columns,
-                                   **kwargs)
+                                   remove_useless_columns, **kwargs)
 
     @classmethod
-    def load_dataset_from_local(cls, dataset_path_list: Optional[Union[str, List[str]]],
+    def load_dataset_from_local(cls,
+                                dataset_path_list: Optional[Union[str, List[str]]],
                                 preprocess_func: PreprocessFunc,
                                 streaming: bool = False) -> Optional[DATASET_TYPE]:
         if isinstance(dataset_path_list, str):

@@ -6,8 +6,7 @@ from datasets import Dataset as HfDataset
 from modelscope import AutoConfig, AutoModelForCausalLM, AutoTokenizer, MsDataset
 from transformers.utils.versions import require_version
 
-from swift.llm import (LoRATM, Template, TemplateType, get_dataset_from_repo,
-                       register_dataset, register_model,
+from swift.llm import (LoRATM, Template, TemplateType, get_dataset_from_repo, register_dataset, register_model,
                        register_template)
 from swift.utils import get_logger
 

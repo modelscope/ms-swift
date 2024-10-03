@@ -1,12 +1,13 @@
-from dataclasses import field, dataclass
-from typing import Literal, List, Optional
+from dataclasses import dataclass, field
+from typing import List, Literal, Optional
 
 
 @dataclass
 class TunerArguments:
     """This dataclass manages the training types"""
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
-    sft_type: str = 'lora'
+    sft_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft',
+                      'reft'] = 'lora'
 
     # tuners
     target_modules: List[str] = field(default_factory=lambda: ['ALL'])
@@ -92,17 +93,16 @@ class TunerArguments:
     reft_layers: Optional[List[int]] = None
     reft_rank: int = 4
     reft_intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
-    'LobireftIntervention', 'DireftIntervention',
-    'NodireftIntervention'] = 'LoreftIntervention'
+                                    'LobireftIntervention', 'DireftIntervention',
+                                    'NodireftIntervention'] = 'LoreftIntervention'
     reft_args: Optional[str] = None
 
     # use_liger
     use_liger: bool = False
 
     def is_adapter(self) -> bool:
-        return self.sft_type in {
-            'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
-        }
+        return self.sft_type not in {'full'}
 
+    @property
     def adapters_can_be_merged(self):
         return ['lora', 'longlora', 'llamapro', 'adalora']

@@ -6,20 +6,18 @@ import re
 from collections.abc import Mapping
 from copy import deepcopy
 from io import BytesIO
-from typing import Any, Callable, List, TypeVar, Union, Tuple, Set, Dict, Type, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 import numpy as np
 import requests
 import torch
 from packaging import version
 
-
 History = List[Union[Tuple[str, str], List[str]]]
 Prompt = List[Union[str, List[int], List[str]]]
 StopWords = Prompt
 Context = Union[str, List[int]]
 Messages = List[Dict[str, Union[str, List[Dict]]]]
-
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -337,7 +335,7 @@ def load_image(image: Union['PIL.Image.Image', BytesIO]) -> 'PIL.Image.Image':
     if isinstance(image, BytesIO):
         try:
             image = Image.open(image)
-        except:
+        except Exception:
             print()
     if image.mode != 'RGB':
         image = image.convert('RGB')

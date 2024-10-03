@@ -1,9 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from typing import Dict, List, Optional, Tuple
 
-from .utils import split_str_parts_by, split_parts_by_regex
+import json
+
+from .utils import split_parts_by_regex, split_str_parts_by
 
 
 def calculate_loss_scale(query: str,

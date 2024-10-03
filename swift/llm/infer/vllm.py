@@ -13,11 +13,11 @@ from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
-from swift.llm.infer.base import InferFramework
-from swift.utils import get_logger
 from swift.llm import InferArguments, InferTemplate
+from swift.llm.infer.base import InferFramework
 from swift.llm.model.model import get_model_tokenizer
 from swift.llm.template.template import Template, get_template
+from swift.utils import get_logger
 
 try:
     from vllm.lora.request import LoRARequest
@@ -48,21 +48,21 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
     class VllmGenerationConfig(_VllmGenerationConfigMixin, SamplingParams):
 
         def __init__(
-                self,
-                max_tokens: int = 64,  # max_tokens
-                temperature: float = 1.,
-                top_k: int = 50,  # -1: all
-                top_p: float = 1.,
-                repetition_penalty: float = 1.,
-                num_beams: int = 1,
-                *,
-                n: int = 1,
-                logprobs: Optional[int] = None,
-                seed: Optional[int] = None,
-                length_penalty: float = 1.,
-                stop: Optional[List[str]] = None,
-                skip_special_tokens: bool = False,
-                **kwargs,
+            self,
+            max_tokens: int = 64,  # max_tokens
+            temperature: float = 1.,
+            top_k: int = 50,  # -1: all
+            top_p: float = 1.,
+            repetition_penalty: float = 1.,
+            num_beams: int = 1,
+            *,
+            n: int = 1,
+            logprobs: Optional[int] = None,
+            seed: Optional[int] = None,
+            length_penalty: float = 1.,
+            stop: Optional[List[str]] = None,
+            skip_special_tokens: bool = False,
+            **kwargs,
         ) -> None:
             # compat
             max_new_tokens = kwargs.pop('max_new_tokens', None)
@@ -249,8 +249,8 @@ class VLLMFramework(InferFramework):
         tokenizer = self.template.tokenizer
         if use_tqdm:
             assert verbose is False
-        prog_bar = tqdm(total=generation_info['num_samples'] - old_num_samples, dynamic_ncols=True,
-                        disable=not use_tqdm)
+        prog_bar = tqdm(
+            total=generation_info['num_samples'] - old_num_samples, dynamic_ncols=True, disable=not use_tqdm)
         outputs = []
         while self.llm_engine.has_unfinished_requests():
             step_outputs = self.llm_engine.step()
@@ -270,8 +270,14 @@ class VLLMFramework(InferFramework):
             messages = request['messages']
             if not agent_state[i][0]:
                 messages.extend([
-                    {'role': 'user', 'content': query},
-                    {'role': 'assistant', 'content': response},
+                    {
+                        'role': 'user',
+                        'content': query
+                    },
+                    {
+                        'role': 'assistant',
+                        'content': response
+                    },
                 ])
             else:
                 messages[-1]['content'] = messages[-1]['content'] + response
@@ -304,7 +310,8 @@ class VLLMFramework(InferFramework):
         request_list: e.g. [{'query': 'hello!'}].
             The keys that can be included are: 'query', 'messages', 'system', 'images'.
         generation_config: Priority: generation_config > model.generation_config.
-        return: e.g. [{'response': 'hi!', 'messages': [{'role': 'user', 'content': 'question'}, {'role': 'assistant', 'content': 'answer'}]}].
+        return: e.g. [{'response': 'hi!', 'messages': [{'role': 'user', 'content': 'question'},
+                                                       {'role': 'assistant', 'content': 'answer'}]}].
             The keys to be included will be: 'response', 'messages'.
         """
         if len(request_list) == 0:
@@ -357,8 +364,14 @@ class VLLMFramework(InferFramework):
                 messages = request['messages']
                 if resp_list[i] is None and not agent_state[i][0]:
                     messages.extend([
-                        {'role': 'user', 'content': None},
-                        {'role': 'assistant', 'content': None},
+                        {
+                            'role': 'user',
+                            'content': None
+                        },
+                        {
+                            'role': 'assistant',
+                            'content': None
+                        },
                     ])
                 if not agent_state[i][0]:
                     messages[-2]['content'] = query
@@ -578,7 +591,8 @@ class VLLMFramework(InferFramework):
             system = [{'role': 'system', 'content': system}] if system else []
             messages = system + messages + [{'role': 'user', 'content': query}]
             # agent support
-            is_observation = messages[-1]['content'].endswith('Observation:') if messages and messages[-1]['content'] else False
+            is_observation = messages[-1]['content'].endswith(
+                'Observation:') if messages and messages[-1]['content'] else False
             act_length = None
             if is_observation:
                 messages[-1]['content'] = messages[-1]['content'] + request['query']
@@ -591,8 +605,7 @@ class VLLMFramework(InferFramework):
             prog_bar.update()
             return inputs
 
-        with concurrent.futures.ThreadPoolExecutor(
-                max_workers=min(max_workers, len(request_list))) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_workers, len(request_list))) as executor:
             futures = [executor.submit(_prepare_inputs, request) for request in request_list]
             concurrent.futures.wait(futures)
             inputs_list = [future.result() for future in futures]

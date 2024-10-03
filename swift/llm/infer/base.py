@@ -1,10 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Optional, Dict, Any, List, Iterator
 from types import MethodType
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple
 
-from swift.llm.template.base import Template, Context, _findall
+from swift.llm.template.base import Context, Template, _findall
 
 
 class InferTemplate:
@@ -12,8 +11,8 @@ class InferTemplate:
     This class is used in inference, and wraps the operations needed by vLLM and LMDeploy.
     """
 
-    def __init__(self, template: Template, framework: str):
-        if framework in ('vllm', 'lmdeploy'):
+    def __init__(self, template: Template, infer_backend: Literal['vllm', 'lmdeploy']):
+        if infer_backend in {'vllm', 'lmdeploy'}:
             template.load_medias = True
             template._encode = MethodType(self._encode, template)
             template.check_example = MethodType(self.check_example, template)
@@ -29,7 +28,8 @@ class InferTemplate:
         return inputs, tokenizer_kwargs
 
     def check_example(self, example):
-        if self.template.name in ('minicpm-v-v2_5', 'minicpm-v-v2_6', 'qwen-vl') and self.framework in ('vllm', 'lmdeploy'):
+        if self.template.name in ('minicpm-v-v2_5', 'minicpm-v-v2_6', 'qwen-vl') and self.framework in ('vllm',
+                                                                                                        'lmdeploy'):
             return
         return self.template.check_example(example)
 
@@ -121,33 +121,34 @@ class InferTemplate:
         inputs['input_ids'] = new_input_ids
 
 
-class InferFramework:
+class InferEngine:
 
     def __init__(self, llm_engine, template):
         self.llm_engine = llm_engine
         self.template = template
 
-    def inference(self,
-                  request_list: List[Dict[str, Any]],
-                  *,
-                  generation_config: Optional[Any] = None,
-                  generation_info: Optional[Dict[str, Any]] = None,
-                  max_batch_size: Optional[int] = None,
-                  lora_request: Optional[Any] = None,
-                  use_tqdm: bool = False,
-                  verbose: bool = False,
-                  prompt_prefix: str = '[PROMPT]',
-                  output_prefix: str = '[OUTPUT]',
-                  **kwargs) -> List[Dict[str, Any]]:
+    def infer(self,
+              request_list: List[Dict[str, Any]],
+              *,
+              generation_config: Optional[Any] = None,
+              generation_info: Optional[Dict[str, Any]] = None,
+              max_batch_size: Optional[int] = None,
+              lora_request: Optional[Any] = None,
+              use_tqdm: bool = False,
+              verbose: bool = False,
+              prompt_prefix: str = '[PROMPT]',
+              output_prefix: str = '[OUTPUT]',
+              **kwargs) -> List[Dict[str, Any]]:
         pass
 
-    def inference_stream(self,
-                         request_list: List[Dict[str, Any]],
-                         *,
-                         generation_config: Optional[Any] = None,
-                         generation_info: Optional[Dict[str, Any]] = None,
-                         lora_request: Optional['LoRARequest'] = None,
-                         use_tqdm: bool = False,
-                         flush_steps: Optional[int] = None,  # Ensuring efficiency
-                         **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    def inference_stream(
+            self,
+            request_list: List[Dict[str, Any]],
+            *,
+            generation_config: Optional[Any] = None,
+            generation_info: Optional[Dict[str, Any]] = None,
+            lora_request: Optional['LoRARequest'] = None,
+            use_tqdm: bool = False,
+            flush_steps: Optional[int] = None,  # Ensuring efficiency
+            **kwargs) -> Iterator[List[Dict[str, Any]]]:
         pass

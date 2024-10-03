@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Literal, Union, Set
+from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 import numpy as np
 import torch.distributed as dist

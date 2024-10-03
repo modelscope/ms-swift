@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from examples.customization.custom import CustomDatasetName, CustomModelType, CustomTemplateType
-from swift.llm import (dataset_map, get_dataset, get_model_tokenizer, get_template, print_example)
+
+from swift.llm import dataset_map, get_dataset, get_model_tokenizer, get_template, print_example
 from swift.utils import get_logger
 
 logger = get_logger()

@@ -1,4 +1,5 @@
 from openai import OpenAI
+
 client = OpenAI(
     api_key='EMPTY',
     base_url='http://localhost:8000/v1',
@@ -24,14 +25,19 @@ query = '描述这段视频'
 messages = [{
     'role': 'user',
     'content': [
-        {'type': 'video_url', 'video_url': {'url': video_url}},
-        {'type': 'text', 'text': query},
+        {
+            'type': 'video_url',
+            'video_url': {
+                'url': video_url
+            }
+        },
+        {
+            'type': 'text',
+            'text': query
+        },
     ]
 }]
-resp = client.chat.completions.create(
-    model=model_type,
-    messages=messages,
-    temperature=0)
+resp = client.chat.completions.create(model=model_type, messages=messages, temperature=0)
 response = resp.choices[0].message.content
 print(f'query: {query}')
 print(f'response: {response}')
@@ -42,15 +48,19 @@ image_url = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/animal.p
 messages = [{
     'role': 'user',
     'content': [
-        {'type': 'image_url', 'image_url': {'url': image_url}},
-        {'type': 'text', 'text': query},
+        {
+            'type': 'image_url',
+            'image_url': {
+                'url': image_url
+            }
+        },
+        {
+            'type': 'text',
+            'text': query
+        },
     ]
 }]
-stream_resp = client.chat.completions.create(
-    model=model_type,
-    messages=messages,
-    stream=True,
-    temperature=0)
+stream_resp = client.chat.completions.create(model=model_type, messages=messages, stream=True, temperature=0)
 
 print(f'query: {query}')
 print('response: ', end='')

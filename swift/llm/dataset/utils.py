@@ -13,7 +13,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HFIterableDataset
 from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
-from transformers import (PreTrainedTokenizerBase)
+from transformers import PreTrainedTokenizerBase
 
 from swift.utils import get_logger, stat_array
 
