@@ -3,6 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
