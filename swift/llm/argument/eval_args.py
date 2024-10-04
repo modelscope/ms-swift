@@ -4,6 +4,8 @@ from typing import List, Literal, Optional
 
 from .infer_args import InferArguments
 
+# [TODO]
+
 
 @dataclass
 class EvalArguments(InferArguments):
@@ -34,6 +36,7 @@ class EvalArguments(InferArguments):
         if len(self.eval_dataset) == 1 and self.eval_dataset[0] == 'no':
             self.eval_dataset = []
         if self.eval_url is not None and (self.eval_is_chat_model is None or self.model_type is None):
+            # [TODO]
             from swift.llm.infer.client_utils import get_model_list_client
             model = get_model_list_client(url=self.eval_url).data[0]
             if self.eval_is_chat_model is None:
@@ -46,6 +49,7 @@ class EvalArguments(InferArguments):
         if self.eval_url is None:
             super().select_dtype()
 
+    # [TODO]
     def select_model_type(self) -> None:
         """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
@@ -56,7 +60,7 @@ class EvalArguments(InferArguments):
         if self.eval_url is None:
             super().check_flash_attn()
 
-    def prepare_template(self) -> None:
+    def select_template(self) -> None:
         """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
             super().select_template()

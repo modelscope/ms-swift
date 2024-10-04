@@ -83,15 +83,15 @@ class HubOperation:
     def download_model(cls,
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
-                       download_bin_files: bool = True,
-                       ignore_file_pattern: Optional[str] = None,
+                       download_model: bool = True,
+                       ignore_file_pattern: Optional[List[str]] = None,
                        **kwargs):
         """Download model from the hub
 
         Args:
             model_id_or_path: The model id
             revision: The model revision
-            download_bin_files: Whether downloading bin files, like *.safetensors, this is usually useful when only
+            download_model: Whether downloading bin/safetensors files, this is usually useful when only
                 using tokenizer
             ignore_file_pattern: Custom ignore pattern
             **kwargs:
@@ -134,7 +134,7 @@ def upload_folder(
 
 class MSHub(HubOperation):
     ms_token = None
-
+    # [TODO:check py38 compat]
     if not use_hf_hub():
         import huggingface_hub
         from transformers import trainer
@@ -260,7 +260,7 @@ class MSHub(HubOperation):
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
                        download_model: bool = True,
-                       ignore_file_pattern: Optional[str] = None,
+                       ignore_file_pattern: Optional[List[str]] = None,
                        token: Optional[str] = None,
                        **kwargs):
         cls.try_login(token)
@@ -394,8 +394,8 @@ class HFHub(HubOperation):
     def download_model(cls,
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
-                       download_bin_files: bool = True,
-                       ignore_file_pattern: Optional[str] = None,
+                       download_model: bool = True,
+                       ignore_file_pattern: Optional[List[str]] = None,
                        **kwargs):
         if revision is None or revision == 'master':
             revision = 'main'
@@ -405,7 +405,7 @@ class HFHub(HubOperation):
             from huggingface_hub import _snapshot_download
             _snapshot_download.HF_HUB_ENABLE_HF_TRANSFER = True
         from huggingface_hub import snapshot_download
-        if not download_bin_files:
+        if not download_model:
             if ignore_file_pattern is None:
                 ignore_file_pattern = []
             ignore_file_pattern += ['*.bin', '*.safetensors']
@@ -414,6 +414,6 @@ class HFHub(HubOperation):
 
 
 if use_hf_hub():
-    hub = HFHub
+    default_hub = HFHub
 else:
-    hub = MSHub
+    default_hub = MSHub

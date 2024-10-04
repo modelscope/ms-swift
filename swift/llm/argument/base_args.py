@@ -1,20 +1,25 @@
-import inspect
 import os
-from typing import List, Union
+from dataclasses import dataclass, field
+from typing import List, Optional, Union
 
 import json
 
 from swift.utils import get_logger
 from .data_args import DataArguments, TemplateArguments
 from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
-from .tuner_args import TunerArguments
 
 logger = get_logger()
 
 
-class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments,
-                    DataArguments):
+@dataclass
+class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
     seed: int = 42
+
+    ignore_args_error: bool = False  # True: notebook compatibility
+    save_safetensors: bool = True
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     def __init__(self: Union['SftArguments', 'InferArguments']):
         ModelArguments.__post_init__(self)
@@ -23,8 +28,8 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
         QuantizeArguments.__post_init__(self)
         GenerationArguments.__post_init__(self)
         self.handle_path()
-        from swift.hub import hub
-        if hub.try_login(self.hub_token):
+        from swift.hub import default_hub
+        if default_hub.try_login(self.hub_token):
             logger.info('hub login successful!')
 
     def parse_to_dict(self, key: str) -> None:
@@ -53,8 +58,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
         """
         if isinstance(path, str):
             # Remove user path prefix and convert to absolute path.
-            path = os.path.expanduser(path)
-            path = os.path.abspath(path)
+            path = os.path.abspath(os.path.expanduser(path))
             if check_path_exist and not os.path.exists(path):
                 raise FileNotFoundError(f"path: '{path}'")
             return path
@@ -72,7 +76,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
         maybe_check_exist_path = ['model_id_or_path', 'custom_dataset_info', 'deepspeed']
         for k in maybe_check_exist_path:
             v = getattr(self, k, None)
-            if isinstance(v, str) and (v.startswith('~') or v.startswith('/') or os.path.exists(v)):
+            if os.path.exists(v) or isinstance(v, str) and v[:1] in {'~', '/'}:  # startswith
                 check_exist_path.add(k)
         # check path
         for k in check_exist_path | other_path:
@@ -82,7 +86,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
             value = self.check_path_validity(value, k in check_exist_path)
             setattr(self, k, value)
 
-    def load_from_ckpt_dir(self) -> None:
+    def load_from_ckpt_dir(self: Union['SftArguments', 'InferArguments']) -> None:
         """Load specific attributes from sft_args.json"""
         from swift.llm import SftArguments, ExportArguments, InferArguments
         if isinstance(self, SftArguments):
@@ -116,7 +120,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
             imported_keys += ['sft_type', 'rope_scaling', 'system']
             if getattr(self, 'load_dataset_config', False) and from_sft_args:
                 imported_keys += [
-                    'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
+                    'dataset', 'val_dataset', 'dataset_seed', 'val_dataset_ratio', 'check_dataset_strategy',
                     'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
                 ]
         # read settings

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebuiArguments, AppUIArguments)
     from .template import TEMPLATE_MAPPING, StopWords, get_template, TemplateType
-    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, get_default_template_type
+    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, get_default_template_type, ConfigReader
     from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                           TextGenerationPreprocessor, DatasetName, DatasetLoader, HubDatasetLoader, LocalDatasetLoader,
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
                           stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset,
                           print_example, sort_by_max_length, standard_keys, multimodal_keys, multimodal_tags)
     from .utils import deep_getattr, to_device
+    from .module_mapping import MODEL_KEYS_MAPPING
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -40,7 +41,7 @@ else:
             'RLHFArguments', 'AppUIArguments'
         ],
         'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'get_template', 'TemplateType'],
-        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'get_default_template_type'],
+        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'get_default_template_type', 'ConfigReader'],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'ConversationsPreprocessor',
             'ListPreprocessor', 'PreprocessFunc', 'RenameColumnsPreprocessor', 'SmartPreprocessor',
@@ -50,7 +51,8 @@ else:
             'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset',
             'print_example', 'sort_by_max_length', 'standard_keys', 'multimodal_keys', 'multimodal_tags'
         ],
-        'utils': ['deep_getattr', 'to_device']
+        'utils': ['deep_getattr', 'to_device'],
+        'module_mapping': ['MODEL_KEYS_MAPPING']
     }
 
     import sys
