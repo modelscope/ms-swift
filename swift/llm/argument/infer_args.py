@@ -19,7 +19,7 @@ logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
-class VLLMArguments:
+class VllmArguments:
 
     # vllm
     gpu_memory_utilization: float = 0.9
@@ -34,7 +34,7 @@ class VLLMArguments:
     max_logprobs: int = 20
 
 
-class LMDeployArguments:
+class LmdeployArguments:
     # lmdeploy
     tp: int = 1
     cache_max_entry_count: float = 0.8
@@ -48,20 +48,19 @@ class MergeArguments:
 
 
 @dataclass
-class InferArguments(BaseArguments, MergeArguments, VLLMArguments, LMDeployArguments):
+class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArguments):
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
+
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
-
-    seed: int = 42
     show_dataset_sample: int = -1
     save_result: bool = True
 
     # other
-    use_flash_attn: Optional[bool] = None
+
     ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
     save_safetensors: bool = True
@@ -73,21 +72,6 @@ class InferArguments(BaseArguments, MergeArguments, VLLMArguments, LMDeployArgum
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
-        self.handle_path()
-        from swift.hub import hub
-        hub.try_login(self.hub_token)
-        if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
-            self.load_args_from_ckpt_dir = False
-            logger.info('Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.')
-        if self.load_args_from_ckpt_dir:
-            self.load_from_ckpt_dir()
-        else:
-            assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
-
-        if self.ckpt_dir is None:
-            self.sft_type = 'full'
-        if self.dataset_seed is None:
-            self.dataset_seed = self.seed
 
         if self.eval_human is None:
             if len(self.dataset) == 0 and len(self.val_dataset) == 0:
@@ -98,18 +82,23 @@ class InferArguments(BaseArguments, MergeArguments, VLLMArguments, LMDeployArgum
         elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
             raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
 
-        # compatibility
-        if self.quantization_bit > 0 and self.quant_method is None:
-            if self.quantization_bit == 4 or self.quantization_bit == 8:
-                logger.info('Since you have specified quantization_bit as greater than 0 '
-                            "and have not designated a quant_method, quant_method will be set to 'bnb'.")
-                self.quant_method = 'bnb'
-            else:
-                self.quant_method = 'hqq'
-                logger.info('Since you have specified quantization_bit as greater than 0 '
-                            "and have not designated a quant_method, quant_method will be set to 'hqq'.")
-
         self.handle_infer_backend()
+        self.handle_merge_device_map()
+
+    def handle_ckpt_dir(self):
+        if self.ckpt_dir is None:
+            if self.ckpt_dir is None:
+                # The original model is the complete model.
+                self.train_type = 'full'
+            if self.load_args_from_ckpt_dir:
+                self.load_args_from_ckpt_dir = False
+        if self.load_args_from_ckpt_dir:
+            self.load_from_ckpt_dir()
+        else:
+            assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
+
+    def handle_dataset(self):
+        pass
 
     def handle_infer_backend(self):
         model_info = MODEL_MAPPING.get(self.model_type, {})
@@ -160,6 +149,8 @@ class InferArguments(BaseArguments, MergeArguments, VLLMArguments, LMDeployArgum
             self.infer_media_type = 'interleave'
         self.media_type = template_info.get('media_type', 'image')
         self.media_key = multimodal_keys.get(self.media_type, 'images')
+
+    def handle_merge_device_map(self):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 
