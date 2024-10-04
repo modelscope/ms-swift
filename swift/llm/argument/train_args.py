@@ -153,7 +153,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             dataloader_drop_last=self.dataloader_drop_last,
             seed=self.seed,
             data_seed=self.dataset_seed,
-            loss_name=self.loss_name,
+            loss_type=self.loss_type,
             ddp_timeout=self.ddp_timeout,
             **kwargs)
         # not use training_args post_init
@@ -421,6 +421,9 @@ class PtArguments(SftArguments):
     train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
     lazy_tokenize: Optional[bool] = True
 
+    def prepare_train_stage(self):
+        self.train_stage = 'pt'
+
 
 @dataclass
 class RLHFArguments(SftArguments):
@@ -453,6 +456,9 @@ class RLHFArguments(SftArguments):
         self._set_default()
         self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
         super().__post_init__()
+
+    def prepare_train_stage(self):
+        self.train_stage = self.rlhf_type
 
     def _prepare_simpo(self):
         if self.rlhf_type != 'simpo':

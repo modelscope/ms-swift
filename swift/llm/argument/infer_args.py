@@ -64,17 +64,10 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
 
-        if self.eval_human is None:
-            if len(self.dataset) == 0 and len(self.val_dataset) == 0:
-                self.eval_human = True
-            else:
-                self.eval_human = False
-            logger.info(f'Setting args.eval_human: {self.eval_human}')
-        elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
-            raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
-
-        self.handle_infer_backend()
-        self.handle_merge_device_map()
+        self.handle_ckpt_dir()
+        self.prepare_eval_human()
+        self.prepare_infer_backend()
+        self.prepare_merge_device_map()
 
     def handle_ckpt_dir(self):
         if self.ckpt_dir is None:
@@ -88,10 +81,17 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
 
-    def handle_dataset(self):
-        pass
+    def prepare_eval_human(self):
+        if self.eval_human is None:
+            if len(self.dataset) == 0 and len(self.val_dataset) == 0:
+                self.eval_human = True
+            else:
+                self.eval_human = False
+            logger.info(f'Setting args.eval_human: {self.eval_human}')
+        elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
+            raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
 
-    def handle_infer_backend(self):
+    def prepare_infer_backend(self):
         model_info = MODEL_MAPPING.get(self.model_type, {})
         support_vllm = model_info.get('support_vllm', False)
         support_lmdeploy = model_info.get('support_lmdeploy', False)
@@ -141,7 +141,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         self.media_type = template_info.get('media_type', 'image')
         self.media_key = multimodal_keys.get(self.media_type, 'images')
 
-    def handle_merge_device_map(self):
+    def prepare_merge_device_map(self):
         if self.merge_device_map is None:
             self.merge_device_map = 'cpu'
 
@@ -178,18 +178,6 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         else:
             use_dora = True
         return lora_request_list, use_dora
-
-    @staticmethod
-    def check_ckpt_dir_correct(ckpt_dir) -> bool:
-        """Check the checkpoint dir is correct, which means it must contain a `configuration.json` file.
-        Args:
-            ckpt_dir: The checkpoint dir
-        Returns:
-            A bool value represents the dir is valid or not.
-        """
-        if not os.path.exists(ckpt_dir):
-            return False
-        return os.path.isfile(os.path.join(ckpt_dir, 'configuration.json'))
 
 
 @dataclass
