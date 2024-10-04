@@ -4,7 +4,7 @@ import torch
 from torch.nn import CrossEntropyLoss
 
 
-class LossName:
+class LossType:
     long_ce = 'long-ce'
     loss_scale = 'loss-scale'
 
@@ -61,10 +61,10 @@ class LongCrossEntropy:
         return loss
 
 
-register_loss_func(LossName.long_ce, LongCrossEntropy())
+register_loss_func(LossType.long_ce, LongCrossEntropy())
 
 
-@register_loss_func(LossName.loss_scale)
+@register_loss_func(LossType.loss_scale)
 def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
     loss, masks = ce_loss_func(outputs, labels)
     if loss_scale is None:

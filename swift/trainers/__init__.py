@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .mixin import SwiftMixin, RLHFTrainerMixin
+    from .loss import LossType, LOSS_MAPPING
 else:
     _import_structure = {
         'arguments':
@@ -18,7 +19,7 @@ else:
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'mixin': ['SwiftMixin', 'RLHFTrainerMixin'],
         'push_to_ms': ['PushToMsHubMixin'],
-        'loss': ['LOSS_MAPPING', 'LossName', 'register_loss_func', 'get_loss_func'],
+        'loss': ['LOSS_MAPPING', 'LossType', 'register_loss_func', 'get_loss_func'],
         'utils': [
             'EvaluationStrategy', 'FSDPOption', 'HPSearchBackend', 'HubStrategy', 'IntervalStrategy', 'SchedulerType',
             'ShardedDDPOption', 'TrainerCallback'
