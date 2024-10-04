@@ -12,6 +12,7 @@ class WebuiArguments:
     share: bool = False
     lang: str = 'zh'
 
+
 @dataclass
 class AppUIArguments(InferArguments):
     host: str = '127.0.0.1'

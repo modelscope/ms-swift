@@ -7,6 +7,7 @@ import torch.distributed as dist
 
 from swift.utils import get_logger, is_dist
 from .infer_args import InferArguments
+from .tuner_args import adapters_can_be_merged
 
 logger = get_logger()
 
@@ -22,7 +23,7 @@ class ExportArguments(InferArguments):
     quant_bits: int = 0  # e.g. 4
     quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
     quant_n_samples: int = 256
-    quant_seqlen: Optional[int] = None  # use max_length
+    quant_seqlen: int = 2048
     quant_device_map: Optional[str] = None  # e.g. 'cpu', 'auto'
     quant_output_dir: Optional[str] = None
     quant_batch_size: int = 1
@@ -45,16 +46,6 @@ class ExportArguments(InferArguments):
     # The parameter has been defined in InferArguments.
     # merge_lora, hub_token
 
-    def select_dtype(self) -> None:
-        if self.quant_bits > 0 and self.dtype == 'auto':
-            self.dtype = 'fp16'
-            logger.info(f'Setting args.dtype: {self.dtype}')
-        super().select_dtype()
-
-    def handle_merge_device_map(self):
-        if self.merge_device_map is None and self.quant_bits > 0:
-            self.merge_device_map = 'cpu'
-
     def __post_init__(self):
         super().__post_init__()
         if self.quant_seqlen is None:
@@ -74,8 +65,8 @@ class ExportArguments(InferArguments):
                 logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
             assert not os.path.exists(self.quant_output_dir), f'args.quant_output_dir: {self.quant_output_dir}'
         elif self.to_ollama:
-            assert self.sft_type in ['full'] + self.adapters_can_be_merged
-            if self.sft_type in self.adapters_can_be_merged:
+            assert self.train_type in ['full'] + adapters_can_be_merged()
+            if self.train_type != 'full':
                 self.merge_lora = True
             if not self.ollama_output_dir:
                 self.ollama_output_dir = f'{self.model_type}-ollama'
@@ -102,3 +93,13 @@ class ExportArguments(InferArguments):
                 self.hf_output_dir = os.path.join(self.ckpt_dir, f'{self.model_type}-hf')
             self.hf_output_dir = self.check_path_validity(self.hf_output_dir)
             logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
+
+    def select_dtype(self) -> None:
+        if self.quant_bits > 0 and self.dtype == 'auto':
+            self.dtype = 'fp16'
+            logger.info(f'Setting args.dtype: {self.dtype}')
+        super().select_dtype()
+
+    def handle_merge_device_map(self):
+        if self.merge_device_map is None and self.quant_bits > 0:
+            self.merge_device_map = 'cpu'

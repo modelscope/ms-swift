@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, Optional, Tuple
+
 from transformers import PretrainedConfig
 
 from swift.utils import deep_getattr

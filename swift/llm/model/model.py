@@ -35,6 +35,7 @@ logger = get_logger()
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
+
 class MMModelType:
 
     # qwen-vl

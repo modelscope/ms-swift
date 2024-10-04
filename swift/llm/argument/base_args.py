@@ -1,19 +1,25 @@
 import os
-from typing import List, Union
+from dataclasses import dataclass, field
+from typing import List, Optional, Union
 
 import json
 
 from swift.utils import get_logger
 from .data_args import DataArguments, TemplateArguments
 from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
-from .tuner_args import TunerArguments
 
 logger = get_logger()
 
 
-class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments,
-                    DataArguments):
+@dataclass
+class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
     seed: int = 42
+
+    ignore_args_error: bool = False  # True: notebook compatibility
+    save_safetensors: bool = True
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     def __init__(self: Union['SftArguments', 'InferArguments']):
         ModelArguments.__post_init__(self)
@@ -80,7 +86,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
             value = self.check_path_validity(value, k in check_exist_path)
             setattr(self, k, value)
 
-    def load_from_ckpt_dir(self) -> None:
+    def load_from_ckpt_dir(self: Union['SftArguments', 'InferArguments']) -> None:
         """Load specific attributes from sft_args.json"""
         from swift.llm import SftArguments, ExportArguments, InferArguments
         if isinstance(self, SftArguments):

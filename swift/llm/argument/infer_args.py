@@ -1,22 +1,18 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import Any, List, Literal, Optional, Tuple, Union
+from typing import Any, List, Literal, Optional, Tuple
 
 import json
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
 from transformers.utils.versions import require_version
 
-from swift.llm.dataset.preprocess import multimodal_keys
-from swift.llm.model.loader import MODEL_MAPPING
-from swift.llm.template import TEMPLATE_MAPPING
-from swift.tuners.utils import swift_to_peft_format
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, multimodal_keys
+from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments
+from .tuner_args import adapters_can_be_merged
 
 logger = get_logger()
-DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 class VllmArguments:
@@ -28,6 +24,7 @@ class VllmArguments:
     max_model_len: Optional[int] = None
     disable_custom_all_reduce: bool = True  # Default values different from vllm
     enforce_eager: bool = False
+    limit_mm_per_prompt: Optional[str] = None  # '{"image": 10, "video": 5}'
     vllm_enable_lora: bool = False
     vllm_max_lora_rank: int = 16
     lora_modules: List[str] = field(default_factory=list)
@@ -49,10 +46,10 @@ class MergeArguments:
 
 @dataclass
 class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArguments):
-    infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
+    infer_backend: Literal['auto', 'vllm', 'pt', 'lmdeploy'] = 'auto'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
-
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
+
     load_args_from_ckpt_dir: bool = True
     load_dataset_config: bool = False
     eval_human: Optional[bool] = None
@@ -60,15 +57,9 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
     save_result: bool = True
 
     # other
-
-    ignore_args_error: bool = False  # True: notebook compatibility
     stream: bool = True
-    save_safetensors: bool = True
-    overwrite_generation_config: bool = False
     verbose: Optional[bool] = None
-    # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = field(
-        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
+    overwrite_generation_config: bool = False
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
@@ -105,23 +96,23 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         support_vllm = model_info.get('support_vllm', False)
         support_lmdeploy = model_info.get('support_lmdeploy', False)
         self.lora_request_list = None
-        if self.infer_backend == 'AUTO':
+        if self.infer_backend == 'auto':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm and not self.is_multimodal:
-                if ((self.sft_type == 'full' or self.sft_type in self.adapters_can_be_merged and self.merge_lora)
+                if ((self.train_type == 'full' or self.train_type in adapters_can_be_merged() and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
                 if self.vllm_enable_lora:
                     self.infer_backend = 'vllm'
             if is_lmdeploy_available() and support_lmdeploy and self.is_multimodal:
-                if ((self.sft_type == 'full' or self.sft_type == 'lora' and self.merge_lora)
+                if ((self.train_type == 'full' or self.train_type == 'lora' and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'lmdeploy'
         if self.infer_backend == 'vllm':
             require_version('vllm')
             if not support_vllm:
                 logger.warning(f'vllm not support `{self.model_type}`')
-            if self.sft_type == 'lora' and not self.vllm_enable_lora:
+            if self.train_type == 'lora' and not self.vllm_enable_lora:
                 assert self.merge_lora, ('To use vLLM, you need to provide the complete weight parameters. '
                                          'Please set `--merge_lora true`.')
         if self.infer_backend == 'lmdeploy':
@@ -129,12 +120,12 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
             assert self.quantization_bit == 0, 'lmdeploy does not support bnb.'
             if not support_lmdeploy:
                 logger.warning(f'lmdeploy not support `{self.model_type}`')
-            if self.sft_type == 'lora':
+            if self.train_type == 'lora':
                 assert self.merge_lora, ('To use LMDeploy, you need to provide the complete weight parameters. '
                                          'Please set `--merge_lora true`.')
 
         if (self.infer_backend == 'vllm' and self.vllm_enable_lora
-                or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
+                or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.train_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
             self.lora_request_list, self.use_dora = self._parse_lora_modules(self.lora_modules,

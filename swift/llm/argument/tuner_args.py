@@ -3,12 +3,19 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 
+def get_supported_tuners():
+    return {'lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'}
+
+
+def adapters_can_be_merged():
+    return ['lora', 'longlora', 'llamapro', 'adalora']
+
+
 @dataclass
 class TunerArguments:
     """This dataclass manages the training types"""
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
-    train_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
-                        'fourierft', 'reft'] = 'lora'
+    train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
 
     # tuners
     target_modules: List[str] = field(default_factory=lambda: ['ALL'])
@@ -82,9 +89,6 @@ class TunerArguments:
     llamapro_num_new_blocks: int = 4
     llamapro_num_groups: Optional[int] = None
 
-    # neftune
-    neftune_noise_alpha: Optional[float] = None  # e.g. 5, 10, 15
-
     # lisa
     lisa_activated_layers: int = 0
     lisa_step_interval: int = 20
@@ -104,7 +108,3 @@ class TunerArguments:
     @property
     def is_adapter(self) -> bool:
         return self.train_type not in {'full'}
-
-    @property
-    def adapters_can_be_merged(self):
-        return ['lora', 'longlora', 'llamapro', 'adalora']

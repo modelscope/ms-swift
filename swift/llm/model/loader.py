@@ -1,18 +1,19 @@
+import hashlib
 import os
-from typing import Any, Dict, Optional, List
+from typing import List, Optional
+
+import torch.distributed as dist
+from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 
-from datasets.utils.filelock import FileLock
 from swift import get_logger
-from swift.hub import MSHub, HFHub
-from swift.utils import is_unsloth_available, safe_ddp_context, is_dist, is_dist_ta
-import torch.distributed as dist
-
-import hashlib
+from swift.hub import HFHub, MSHub
+from swift.utils import is_dist, is_dist_ta, safe_ddp_context
 
 logger = get_logger()
 
 # Model Home: 'https://modelscope.cn/models/{model_id_or_path}'
+
 
 def safe_snapshot_download(model_id_or_path: str,
                            revision: Optional[str] = None,

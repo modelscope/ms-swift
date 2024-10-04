@@ -11,12 +11,13 @@ from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING, MODEL_KEYS_MAPPING
+from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING
 from swift.plugin import LOSS_MAPPING, extra_tuners
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from .base_args import BaseArguments
+from .tuner_args import TunerArguments, get_supported_tuners
 
 logger = get_logger()
 
@@ -78,7 +79,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def init_transformers(self: 'SftArguments') -> None:
         """Init transformer if you are using transformers models"""
-        self.train_stage = self.rlhf_type if hasattr(self, 'rlhf_type') else 'sft'
         training_args_cls, kwargs = TrainerFactory.get_training_args(self.train_stage, self)
         additional_saved_files = self.get_additional_saved_files() if self.train_type == 'full' else []
 
@@ -212,21 +212,20 @@ class TorchAccArguments:
 
 
 @dataclass
-class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, MegatronArguments, TorchAccArguments):
+class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArguments, MegatronArguments,
+                   TorchAccArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
 
     add_output_dir_suffix: Optional[bool] = None
+    resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
     check_model_is_latest: bool = True
 
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
     loss_scale: str = 'default'
-    # flash_attention: It will automatically convert names based on the model.
-    # auto: It will be automatically selected between sdpa and eager.
-    attn_impl: Literal['flash_attention', 'sdpa', 'eager', 'auto'] = 'auto'
 
     # dataset
     preprocess_num_proc: int = 1
@@ -245,9 +244,41 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, MegatronArgu
             'If set to True, the train_dataset will be sorted in descending order based on max_length, '
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
-    ignore_args_error: bool = False  # True: notebook compatibility
     acc_strategy: Literal['token', 'sentence'] = 'token'
     gpu_memory_fraction: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        BaseArguments.__post_init__(self)
+        Seq2SeqTrainingOverrideArguments.__post_init__(self)
+        MegatronArguments.__post_init__(self)
+        TorchAccArguments.__post_init__(self)
+        self._handle_pai_compat()
+        self.prepare_deepspeed()
+        if self.resume_from_checkpoint:
+            self.load_from_ckpt_dir()
+            if self.train_type == 'full':
+                self.model_id_or_path = self.resume_from_checkpoint
+
+        self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
+
+        if len(self.dataset) == 0:
+            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
+
+        self.prepare_train_type()
+        self.prepare_liger()
+
+        self._handle_streaming_args()
+        if self.lazy_tokenize is None and not self.streaming:
+            self.lazy_tokenize = self.is_multimodal
+            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+        self._check_args_valid()
+        self.prepare_train_stage()
+        if self.train_backend == 'transformers':
+            self.init_transformers()
+        else:
+            self.init_megatron()
+
+        self.prepare_output_dir()
 
     def prepare_deepspeed(self):
         """Prepare deepspeed settings"""
@@ -314,39 +345,12 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, MegatronArgu
                 logger.warn('use_liger is not compatible with `loss_scale`, setting to default...')
                 self.loss_scale = 'default'
 
-    def __post_init__(self) -> None:
-        BaseArguments.__post_init__(self)
-        Seq2SeqTrainingOverrideArguments.__post_init__(self)
-        MegatronArguments.__post_init__(self)
-        TorchAccArguments.__post_init__(self)
-        self._handle_pai_compat()
-        self.prepare_deepspeed()
-        if self.resume_from_checkpoint:
-            self.load_from_ckpt_dir()
-            if self.train_type == 'full':
-                self.model_id_or_path = self.resume_from_checkpoint
-
-        self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
-
-        if len(self.dataset) == 0:
-            raise ValueError(f'self.dataset: {self.dataset}, Please input the training dataset.')
-
-        self.prepare_train_type()
-        self.prepare_liger()
-
-        self._handle_streaming_args()
-        if self.lazy_tokenize is None and not self.streaming:
-            self.lazy_tokenize = self.is_multimodal
-            logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
+    def _check_args_valid(self):
         if 'qwen-audio' in self.model_type:
             assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
 
-        if self.train_backend == 'transformers':
-            self.init_transformers()
-        else:
-            self.init_megatron()
-
-        self.prepare_output_dir()
+    def prepare_train_stage(self):
+        self.train_stage = 'sft'
 
     def _handle_pai_compat(self) -> None:
         if not is_pai_training_job():
@@ -414,9 +418,9 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, MegatronArgu
 
 @dataclass
 class PtArguments(SftArguments):
-    train_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
-                        'fourierft', 'reft'] = 'full'
+    train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
     lazy_tokenize: Optional[bool] = True
+
 
 @dataclass
 class RLHFArguments(SftArguments):

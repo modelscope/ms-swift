@@ -7,7 +7,7 @@ import torch
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING, ConfigReader, MODEL_KEYS_MAPPING
+from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING, ConfigReader
 from swift.utils import get_dist_setting, get_logger, use_hf_hub
 
 logger = get_logger()
@@ -110,16 +110,15 @@ class ModelArguments:
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     model_id_or_path: Optional[str] = None
-    ckpt_dir: Optional[str] = None
-    resume_from_checkpoint: Optional[str] = None
     model_revision: Optional[str] = None
 
+    dtype: Literal['bf16', 'fp16', 'fp32', 'auto'] = 'auto'
     model_kwargs: Optional[str] = None
-    use_flash_attn: Optional[bool] = None
+    # flash_attn: It will automatically convert names based on the model.
+    # auto: It will be automatically selected between sdpa and eager.
+    attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto'
     # rope-scaling
     rope_scaling: Literal['linear', 'dynamic'] = None
-
-    dtype: Literal['bf16', 'fp16', 'fp32', 'auto'] = 'auto'
 
     local_repo_path: Optional[str] = None
 
