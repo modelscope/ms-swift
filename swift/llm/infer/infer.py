@@ -88,7 +88,7 @@ def merge_lora(args: InferArguments,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
-    assert args.sft_type in args.adapters_can_be_merged(), 'Only supports lora & llamapro series models'
+    assert args.sft_type in args.adapters_can_be_merged, 'Only supports lora & llamapro series models'
     assert not args.is_quant_model(), f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '

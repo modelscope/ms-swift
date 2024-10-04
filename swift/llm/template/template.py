@@ -2262,7 +2262,7 @@ class RLHFTemplateMixin:
                     new_batch.append(new_inputs)
         try:
             assert len(new_batch) in {0, len(batch) * 2}, f'new_batch: {new_batch}'
-        except:
+        except Exception:
             print()
         return _data_collator(new_batch or batch, padding_to)
 

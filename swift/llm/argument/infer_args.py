@@ -12,11 +12,8 @@ from swift.llm.dataset.preprocess import multimodal_keys
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.template import TEMPLATE_MAPPING
 from swift.tuners.utils import swift_to_peft_format
-from swift.utils import get_logger
-from .data_args import DataArguments, TemplateArguments
-from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
-from .tuner_args import TunerArguments
-from .utils import handle_path, load_from_ckpt_dir
+from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
+from .base_args import BaseArguments
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -51,8 +48,7 @@ class MergeArguments:
 
 
 @dataclass
-class InferArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments,
-                     DataArguments, VLLMArguments, LMDeployArguments, MergeArguments):
+class InferArguments(BaseArguments, MergeArguments, VLLMArguments, LMDeployArguments):
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
@@ -76,19 +72,15 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     def __post_init__(self) -> None:
-        ModelArguments.__post_init__(self)
-        TemplateArguments.__post_init__(self)
-        QuantizeArguments.__post_init__(self)
-        GenerationArguments.__post_init__(self)
-        DataArguments.__post_init__(self)
-        handle_path(self)
+        BaseArguments.__post_init__(self)
+        self.handle_path()
         from swift.hub import hub
         hub.try_login(self.hub_token)
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:
             self.load_args_from_ckpt_dir = False
             logger.info('Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.')
         if self.load_args_from_ckpt_dir:
-            load_from_ckpt_dir(self)
+            self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
 
@@ -127,7 +119,7 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
         if self.infer_backend == 'AUTO':
             self.infer_backend = 'pt'
             if is_vllm_available() and support_vllm and not self.is_multimodal:
-                if ((self.sft_type == 'full' or self.sft_type in self.adapters_can_be_merged() and self.merge_lora)
+                if ((self.sft_type == 'full' or self.sft_type in self.adapters_can_be_merged and self.merge_lora)
                         and self.quantization_bit == 0):
                     self.infer_backend = 'vllm'
                 if self.vllm_enable_lora:

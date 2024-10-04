@@ -4,17 +4,10 @@ import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
-
-from swift.llm.dataset.loader import DATASET_MAPPING
-from swift.llm.dataset.register import register_dataset_info_file
-from swift.llm.model.model import get_default_template_type
-from swift.llm.template import TEMPLATE_MAPPING
+from swift.llm import DATASET_MAPPING, TEMPLATE_MAPPING, get_default_template_type, register_dataset_info_file
 from swift.utils import get_logger
 
 logger = get_logger()
-DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 @dataclass
@@ -26,7 +19,7 @@ class DataArguments:
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     dataset_seed: Optional[int] = None
-    max_length: int = 2048  # -1: no limit
+    max_length: Optional[int] = None
 
     dataset_test_ratio: float = 0.01
 
@@ -56,8 +49,6 @@ class DataArguments:
         register_dataset_info_file(self.custom_dataset_info)
 
     def __post_init__(self: Union['SftArguments', 'InferArguments']):
-        if self.max_length == -1:
-            self.max_length = None
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         if len(self.val_dataset) > 0:
@@ -70,17 +61,17 @@ class DataArguments:
 @dataclass
 class TemplateArguments:
     template_type: str = field(
-        default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
+        default='auto', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     system: Optional[str] = None
     tools_prompt: str = 'react_en'
     # multi-modal
     rescale_image: int = -1
 
-    def select_template(self):
-        """If setting template to `AUTO`, find a proper one"""
-        if self.template_type == 'AUTO':
+    def select_template(self: Union['SftArguments', 'InferArguments']):
+        """If setting template to `auto`, find a proper one"""
+        if self.template_type == 'auto':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
 
-    def __post_init__(self: Union['SftArguments', 'InferArguments']):
+    def __post_init__(self):
         self.select_template()

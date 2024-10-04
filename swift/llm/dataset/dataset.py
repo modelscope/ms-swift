@@ -227,7 +227,8 @@ class ShareGPT4oPreprocessor(RowPreprocessor):
         return row
 
     def prepare_downloading(self, dataset):
-        url = 'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?Revision=master&FilePath=images.zip'
+        url = ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/ShareGPT-4o/repo?'
+               'Revision=master&FilePath=images.zip')
         local_dir = MediaResource.download(url, 'sharegpt_4o_images')
         self.prefix_path = os.path.join(local_dir, 'mnt', 'petrelfs', 'wangwenhai', 'workspace_cef', '4o', 'image')
 
@@ -1284,7 +1285,8 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
 
     def prepare_downloading(self, dataset):
         self.media_dir = MediaResource.download(
-            'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip',
+            ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?'
+             'Revision=master&FilePath=images.zip'),
             # noqa
             'llava_pretrain')
 

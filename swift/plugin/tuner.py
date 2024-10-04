@@ -27,7 +27,7 @@ class IA3(Tuner):
         mapping: ModelKeys = MODEL_KEYS_MAPPING.get(model_group)
 
         if not mapping:
-            raise ValueError(f'Module not supported')
+            raise ValueError('Module not supported')
         ia3_config = IA3Config(
             target_modules=find_all_linears(model, 0, args.model_type, None),
             feedforward_modules=mapping.mlp.split('{}')[1])

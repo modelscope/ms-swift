@@ -310,7 +310,8 @@ class VLLMFramework(InferFramework):
         request_list: e.g. [{'query': 'hello!'}].
             The keys that can be included are: 'query', 'messages', 'system', 'images'.
         generation_config: Priority: generation_config > model.generation_config.
-        return: e.g. [{'response': 'hi!', 'messages': [{'role': 'user', 'content': 'question'}, {'role': 'assistant', 'content': 'answer'}]}].
+        return: e.g. [{'response': 'hi!', 'messages': [{'role': 'user', 'content': 'question'},
+                                                       {'role': 'assistant', 'content': 'answer'}]}].
             The keys to be included will be: 'response', 'messages'.
         """
         if len(request_list) == 0:

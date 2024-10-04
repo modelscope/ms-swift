@@ -17,7 +17,6 @@ from transformers.utils import is_torch_npu_available
 from swift import get_logger
 from swift.llm import DeployArguments, InferArguments, StopWords, Template, get_model_tokenizer, get_template
 from swift.llm.dataset.utils import safe_tokenizer_decode
-from swift.llm.infer.base import InferFramework
 from swift.llm.model import ConfigReader
 from swift.llm.model.utils import to_device
 from swift.llm.template.base import StopWordsCriteria
@@ -25,6 +24,7 @@ from swift.llm.utils import Messages, set_generation_config
 from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import Swift
 from swift.utils import get_model_info, show_layers
+from .infer import InferEngine
 
 logger = get_logger()
 
@@ -56,7 +56,7 @@ class TokenListIteratorStreamer(BaseStreamer):
             return value
 
 
-class TransformersFramework(InferFramework):
+class PtEngine(InferEngine):
 
     def __init__(self, args: InferArguments, use_async: bool = False, **kwargs):
         self.stop_words = args.stop_words
@@ -170,7 +170,7 @@ class TransformersFramework(InferFramework):
                 content = json.load(f)
             tuner: Tuner = extra_tuners[content['sft_type']]
             model = tuner.from_pretrained(model, args.ckpt_dir)
-        elif args.is_adapter() and args.ckpt_dir is not None:
+        elif args.is_adapter and args.ckpt_dir is not None:
             if isinstance(args, DeployArguments) and args.lora_request_list is not None:
                 logger.info(f'args.lora_request_list: {args.lora_request_list}')
                 for lora_request in args.lora_request_list:
@@ -261,7 +261,8 @@ class TransformersFramework(InferFramework):
             if 'input_ids' in inputs:
                 input_ids = inputs['input_ids']
                 print(
-                    f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}{output_prefix}',
+                    f'{prompt_prefix}{safe_tokenizer_decode(tokenizer, input_ids[0], **tokenizer_kwargs)}'
+                    f'{output_prefix}',
                     end='')
             else:
                 print(f'[QUERY]{query}\n{output_prefix}', end='')

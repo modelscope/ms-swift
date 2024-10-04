@@ -289,7 +289,7 @@ class RowPreprocessor(GroundingMixin):
                                                        and not any([key in dataset.features for key in all_keys])):
             logger.warn('FOUND MULTI MODAL IN DATASETS, BUT NO KEY IN DATASET, MAYBE THE DATASET IS NOT CORRECT')
         if self.modals and not any([key in dataset.features for key in all_keys]):
-            raise ValueError(f'Modals are set and no media keys set')
+            raise ValueError('Modals are set and no media keys set')
         return dataset
 
 

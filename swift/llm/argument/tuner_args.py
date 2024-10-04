@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
@@ -6,7 +7,8 @@ from typing import List, Literal, Optional
 class TunerArguments:
     """This dataclass manages the training types"""
     tuner_backend: Literal['swift', 'peft', 'unsloth'] = 'peft'
-    sft_type: str = 'lora'
+    train_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
+                        'fourierft', 'reft'] = 'lora'
 
     # tuners
     target_modules: List[str] = field(default_factory=lambda: ['ALL'])
@@ -99,10 +101,10 @@ class TunerArguments:
     # use_liger
     use_liger: bool = False
 
+    @property
     def is_adapter(self) -> bool:
-        return self.sft_type in {
-            'lora', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft'
-        }
+        return self.train_type not in {'full'}
 
+    @property
     def adapters_can_be_merged(self):
         return ['lora', 'longlora', 'llamapro', 'adalora']

@@ -41,7 +41,7 @@ class MMModelType:
     qwen_vl_chat = 'qwen-vl-chat'
     qwen_vl_chat_int4 = 'qwen-vl-chat-int4'
 
-    #qwen2-vl
+    # qwen2-vl
     qwen2_vl_2b_instruct = 'qwen2-vl-2b-instruct'
     qwen2_vl_2b_instruct_gptq_int4 = 'qwen2-vl-2b-instruct-gptq-int4'
     qwen2_vl_2b_instruct_gptq_int8 = 'qwen2-vl-2b-instruct-gptq-int8'
@@ -879,7 +879,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
     quant_method = None
     if quantization_config is not None:
         quant_method = quantization_config.quant_method
-        quant_bits = quantization_config.bits
+        # quant_bits = quantization_config.bits
 
     is_training = kwargs.pop('is_training', False)
 
@@ -4613,9 +4613,6 @@ def get_model_tokenizer_polylm(model_dir: str,
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True, use_fast=False, legacy=True)
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
-
-
-dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32'}
 
 
 def get_model_tokenizer_qwen(model_dir: str,

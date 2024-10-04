@@ -98,7 +98,7 @@ class StopWordsCriteria(StoppingCriteria):
         return False
 
 
-class Template:
+class _Template:
     """A template class for all supported models.
 
     Args:
