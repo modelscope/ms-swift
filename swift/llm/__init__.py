@@ -11,8 +11,11 @@ if TYPE_CHECKING:
     from .export import export_main
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
-    from .argument import EvalArguments, InferArguments, SftArguments, ExportArguments, WebuiArguments, DeployArguments, RLHFArguments, WebuiArguments, AppUIArguments
-    from .template import TEMPLATE_MAPPING, Template, StopWords, get_template, TemplateType, to_device
+    from .argument import (
+        EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments,
+        RLHFArguments, WebuiArguments, AppUIArguments
+    )
+    from .template import TEMPLATE_MAPPING, StopWords, get_template, TemplateType, to_device
     from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, get_default_template_type
     from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
@@ -35,7 +38,7 @@ else:
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
             'EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebuiArguments', 'DeployArguments',
-            'RLHFArguments', 'WebuiArguments', 'AppUIArguments'
+            'RLHFArguments', 'AppUIArguments'
         ],
         'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'get_template', 'TemplateType', 'to_device'],
         'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'get_default_template_type'],

@@ -4,16 +4,10 @@ import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
-
-from swift.llm.dataset import DATASET_MAPPING, register_dataset_info_file
-from swift.llm.model import get_default_template_type
-from swift.llm.template import TEMPLATE_MAPPING
+from swift.llm import DATASET_MAPPING, TEMPLATE_MAPPING, get_default_template_type, register_dataset_info_file
 from swift.utils import get_logger
 
 logger = get_logger()
-DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
 @dataclass

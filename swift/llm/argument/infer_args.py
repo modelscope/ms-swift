@@ -12,7 +12,7 @@ from swift.llm.dataset.preprocess import multimodal_keys
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.template import TEMPLATE_MAPPING
 from swift.tuners.utils import swift_to_peft_format
-from swift.utils import get_logger, is_vllm_available, is_lmdeploy_available
+from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments
 
 logger = get_logger()

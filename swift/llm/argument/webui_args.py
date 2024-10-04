@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass
 from typing import Optional
 
