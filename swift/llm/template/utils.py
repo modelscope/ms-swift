@@ -3,7 +3,6 @@ import hashlib
 import math
 import os
 import re
-from collections.abc import Mapping
 from copy import deepcopy
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
@@ -167,35 +166,6 @@ def decode_base64(*,
             res_images.append(image)
         res['images'] = res_images
     return res
-
-
-def to_device(inputs: Any, device: torch.device) -> Any:
-    """Move inputs to a device"""
-    if callable(getattr(inputs, 'to', None)):
-        return inputs.to(device=device)
-
-    if isinstance(inputs, Mapping):
-        res = {}
-        for k, v in inputs.items():
-            res[k] = to_device(v, device)
-    elif isinstance(inputs, Sequence) and not isinstance(inputs, str):
-        res = []
-        for b in inputs:
-            res.append(to_device(b, device))
-    else:
-        res = inputs
-    return res
-
-
-def upper_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
-    # The upper bound satisfying the condition "cond".
-    while lo < hi:
-        mid = (lo + hi + 1) >> 1  # lo + (hi-lo+1)>>1
-        if cond(mid):
-            lo = mid
-        else:
-            hi = mid - 1
-    return lo
 
 
 def fetch_one(element: Union[Tuple, List, Set, Dict, Any], type: Type = None) -> Any:

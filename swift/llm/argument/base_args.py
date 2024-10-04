@@ -14,15 +14,20 @@ logger = get_logger()
 
 class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments,
                     DataArguments):
+    seed: int = 42
 
-    def __init__(self):
+    def __init__(self: Union['SftArguments', 'InferArguments']):
         ModelArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
+        DataArguments.__post_init__(self)
         QuantizeArguments.__post_init__(self)
         GenerationArguments.__post_init__(self)
-        DataArguments.__post_init__(self)
+        self.handle_path()
+        from swift.hub import hub
+        if hub.try_login(self.hub_token):
+            logger.info('hub login successful!')
 
-    def load_json_or_path(self: Union['SftArguments', 'InferArguments'], key: str) -> None:
+    def parse_to_dict(self, key: str) -> None:
         """Convert a JSON string or JSON file into a dict"""
         value = getattr(self, key)
         if value is None:
@@ -59,7 +64,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
             res.append(BaseArguments.check_path_validity(v, check_path_exist))
         return res
 
-    def handle_path(self: Union['SftArguments', 'InferArguments']) -> None:
+    def handle_path(self) -> None:
         """Check all paths in the args correct and exist"""
         check_exist_path = {'ckpt_dir', 'resume_from_checkpoint', 'custom_register_path', 'deepspeed_config_path'}
         other_path = {'output_dir', 'logging_dir'}
@@ -77,7 +82,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
             value = self.check_path_validity(value, k in check_exist_path)
             setattr(self, k, value)
 
-    def load_from_ckpt_dir(self: Union['SftArguments', 'InferArguments']) -> None:
+    def load_from_ckpt_dir(self) -> None:
         """Load specific attributes from sft_args.json"""
         from swift.llm import SftArguments, ExportArguments, InferArguments
         if isinstance(self, SftArguments):

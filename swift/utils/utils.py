@@ -6,7 +6,6 @@ import re
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence, Set, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -133,6 +132,15 @@ def _safe_split(s: str,
     else:
         assert len(part) == 2
     return part
+
+
+def deep_getattr(obj, attr: str):
+    attrs = attr.split('.')
+    for a in attrs:
+        if obj is None:
+            break
+        obj = getattr(obj, a)
+    return obj
 
 
 def seed_everything(seed: Optional[int] = None, full_determinism: bool = False, *, verbose: bool = True) -> int:

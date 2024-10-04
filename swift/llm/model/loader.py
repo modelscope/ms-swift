@@ -6,9 +6,7 @@ from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.hub import hub
-from swift.utils.env import use_hf_hub
-from swift.utils.import_utils import is_unsloth_available
-from swift.utils.torch_utils import safe_ddp_context
+from swift.utils import is_unsloth_available, safe_ddp_context, use_hf_hub
 
 logger = get_logger()
 

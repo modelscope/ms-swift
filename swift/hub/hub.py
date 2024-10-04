@@ -259,7 +259,7 @@ class MSHub(HubOperation):
     def download_model(cls,
                        model_id_or_path: Optional[str] = None,
                        revision: Optional[str] = None,
-                       download_bin_files: bool = True,
+                       download_model: bool = True,
                        ignore_file_pattern: Optional[str] = None,
                        token: Optional[str] = None,
                        **kwargs):
@@ -267,7 +267,7 @@ class MSHub(HubOperation):
         if revision is None or revision == 'main':
             revision = 'master'
         logger.info(f'Downloading the model from ModelScope Hub, model_id: {model_id_or_path}')
-        if not download_bin_files:
+        if not download_model:
             if ignore_file_pattern is None:
                 ignore_file_pattern = []
             ignore_file_pattern += [r'.+\.bin$', r'.+\.safetensors$']

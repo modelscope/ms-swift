@@ -1285,7 +1285,8 @@ class LLaVAPretrainPreprocessor(RowPreprocessor):
 
     def prepare_downloading(self, dataset):
         self.media_dir = MediaResource.download(
-            'https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?Revision=master&FilePath=images.zip',
+            ('https://www.modelscope.cn/api/v1/datasets/AI-ModelScope/LLaVA-Pretrain/repo?'
+             'Revision=master&FilePath=images.zip'),
             # noqa
             'llava_pretrain')
 

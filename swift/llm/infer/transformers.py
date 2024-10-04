@@ -170,7 +170,7 @@ class PtEngine(InferEngine):
                 content = json.load(f)
             tuner: Tuner = extra_tuners[content['sft_type']]
             model = tuner.from_pretrained(model, args.ckpt_dir)
-        elif args.is_adapter() and args.ckpt_dir is not None:
+        elif args.is_adapter and args.ckpt_dir is not None:
             if isinstance(args, DeployArguments) and args.lora_request_list is not None:
                 logger.info(f'args.lora_request_list: {args.lora_request_list}')
                 for lora_request in args.lora_request_list:

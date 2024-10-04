@@ -130,16 +130,16 @@ class ModelArguments:
     device_map_config: Optional[str] = None
     device_max_memory: List[str] = field(default_factory=list)
 
-    def prepare_model_extra_args(self):
+    def prepare_model_extra_args(self: 'SftArguments'):
         """Prepare model kwargs and set them to the env"""
-        self.load_json_or_path(self, 'model_kwargs')
+        self.parse_to_dict(self, 'model_kwargs')
         for k, v in self.model_kwargs.items():
             k = k.upper()
             os.environ[k] = str(v)
 
-    def prepare_device_map_args(self):
+    def prepare_device_map_args(self: 'SftArguments'):
         """Prepare device map args"""
-        self.load_json_or_path('device_map_config')
+        self.parse_to_dict('device_map_config')
         _, local_rank, _, local_world_size = get_dist_setting()
         # compat mp&ddp
         if local_world_size > 1 and isinstance(self.device_map_config, dict) and local_rank > 0:
