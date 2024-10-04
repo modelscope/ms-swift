@@ -1,19 +1,20 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import re
 from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 import torch.nn.functional as F
 from modelscope import get_logger
 from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
+
 from .loss_scale import loss_scale_map
 from .tools_prompt import get_tools_prompt
-from .utils import load_batch, load_image, rescale_image, fetch_one, to_device, decode_base64
-from .utils import History, Prompt, StopWords, Context, Messages
+from .utils import (Context, History, Messages, Prompt, StopWords, decode_base64, fetch_one, load_batch, load_image,
+                    rescale_image, to_device)
 
 logger = get_logger()
 
@@ -72,6 +73,7 @@ class StopWordsCriteria(StoppingCriteria):
     """Adding extra stop words in template to prevent unstoppable generation
         Like suffixes and chat seps in the template.
     """
+
     def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: StopWords, **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
@@ -196,13 +198,13 @@ class Template:
         return res_value
 
     def init_template(self,
-                       tokenizer: PreTrainedTokenizerBase,
-                       default_system: Optional[str] = None,
-                       max_length: Optional[int] = None,
-                       truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                       loss_scale: str = 'default',
-                       rescale_image: int = -1,
-                       **kwargs) -> None:
+                      tokenizer: PreTrainedTokenizerBase,
+                      default_system: Optional[str] = None,
+                      max_length: Optional[int] = None,
+                      truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                      loss_scale: str = 'default',
+                      rescale_image: int = -1,
+                      **kwargs) -> None:
         """Init template by a tokenizer
         Args:
             tokenizer: The tokenizer to tokenize the sentence
@@ -231,7 +233,7 @@ class Template:
         else:
             self.loss_scale_name = ''
             self.loss_scale = loss_scale
-        
+
         self.rescale_image = rescale_image
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
@@ -262,10 +264,10 @@ class Template:
         messages = example['messages']
         for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
             if example.get(media_key):
-                _messages = [message for message in messages if message['role']!='system']
+                _messages = [message for message in messages if message['role'] != 'system']
                 n_round = len(_messages)
                 assert n_round % 2 == 0
-                history = [_messages[i:i+2] for i in range(n_round // 2)]
+                history = [_messages[i:i + 2] for i in range(n_round // 2)]
                 if self.infer_media_type == 'round':
                     for i, h, m in zip(range(n_round // 2), history, example[media_key]):
                         num_media_tags = len(re.findall(media_tag, h[0]['content']))
@@ -294,8 +296,7 @@ class Template:
         """
         # Parse <img></img> format images and merged into images key
         if self.is_multimodal in {True, None}:  # If False, do not perform replace_img_tag
-            example['messages'], images_path = replace_img_tag(
-                example.get('messages'), '<image>')
+            example['messages'], images_path = replace_img_tag(example.get('messages'), '<image>')
 
             if example.get('images') and images_path:
                 raise ValueError('Do not mix use the <img></img> tag and <image> tag.')
@@ -305,8 +306,7 @@ class Template:
         if self.is_multimodal in {True, None}:
             for k, tag, pattern in zip(['audios', 'videos'], ['<audio>', '<video>'],
                                        [r'<audio>(.+?)</audio>', r'<video>(.+?)</video>']):
-                example['messages'], medias_path = replace_img_tag(
-                    example.get('messages'), tag, pattern)
+                example['messages'], medias_path = replace_img_tag(example.get('messages'), tag, pattern)
 
                 example[k] = example.get(k) or [] + medias_path
 
@@ -409,7 +409,11 @@ class Template:
         self.check_example(example)
         return example
 
-    def encode(self, example: Dict[str, Any], streaming: bool = False, is_training: bool = False, **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def encode(self,
+               example: Dict[str, Any],
+               streaming: bool = False,
+               is_training: bool = False,
+               **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """The entrance method of Template!
 
         Args:
@@ -605,8 +609,8 @@ class Template:
             return ['<bbox>']
 
     @classmethod
-    def normalize_bbox(cls, objects: List[Dict[str, Any]], images: List[Any],
-                       to_type: Literal['real', 'norm_1000', 'norm_1']) -> None:
+    def normalize_bbox(cls, objects: List[Dict[str, Any]], images: List[Any], to_type: Literal['real', 'norm_1000',
+                                                                                               'norm_1']) -> None:
         """Normalize bbox to needed.
         to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
             or normalized by 1.
@@ -766,7 +770,7 @@ class Template:
                 history_roles = [[messages[0]['role'], '']]
         else:
             assert len(messages) % 2 == 0
-            history = [[messages[i]['content'], messages[i+1]['content']] for i in range(0, len(messages), 2)]
+            history = [[messages[i]['content'], messages[i + 1]['content']] for i in range(0, len(messages), 2)]
             history_roles = [[messages[i]['role'], messages[i + 1]['role']] for i in range(0, len(messages), 2)]
 
         res_context_list: List[Context] = []

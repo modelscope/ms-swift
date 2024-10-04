@@ -1,22 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from typing import Dict, List, Optional
 
+import json
 import torch
 import transformers
 from packaging import version
 
+from swift.hub import hub
 from swift.llm.argument import ExportArguments
 from swift.llm.dataset.loader import DatasetLoader
-from swift.llm.infer.infer import prepare_model_template, merge_lora, save_checkpoint
+from swift.llm.infer.infer import merge_lora, prepare_model_template, save_checkpoint
 from swift.llm.model.model import get_model_tokenizer
 from swift.llm.template import Template
 from swift.llm.template.template import get_template
 from swift.tuners.utils import swift_to_peft_format
-from swift.hub import hub
-from swift.utils import get_logger, get_main, seed_everything, get_model_info, show_layers, \
-    check_json_format
+from swift.utils import check_json_format, get_logger, get_main, get_model_info, seed_everything, show_layers
 
 logger = get_logger()
 
@@ -340,8 +339,13 @@ def llm_export(args: ExportArguments) -> None:
             convert_megatron_to_hf(hf_model, extra_args)
             if args.torch_dtype is not None:
                 hf_model.to(args.torch_dtype)
-            save_checkpoint(hf_model, tokenizer, hf_model.model_dir, args.ckpt_dir, args.hf_output_dir,
-                            additional_saved_files=args.get_additional_saved_files())
+            save_checkpoint(
+                hf_model,
+                tokenizer,
+                hf_model.model_dir,
+                args.ckpt_dir,
+                args.hf_output_dir,
+                additional_saved_files=args.get_additional_saved_files())
             logger.info('Successfully converted Megatron format to HF format and '
                         f'saved it in the {args.hf_output_dir} directory.')
     if args.push_to_hub:
@@ -349,8 +353,12 @@ def llm_export(args: ExportArguments) -> None:
         if ckpt_dir is None:
             ckpt_dir = args.model_id_or_path
         assert ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
-        hub.push_to_hub(args.hub_model_id, ckpt_dir, token=args.hub_token, private=args.hub_private_repo,
-                        commit_message=args.commit_message)
+        hub.push_to_hub(
+            args.hub_model_id,
+            ckpt_dir,
+            token=args.hub_token,
+            private=args.hub_private_repo,
+            commit_message=args.commit_message)
 
 
 export_main = get_main(ExportArguments, llm_export)

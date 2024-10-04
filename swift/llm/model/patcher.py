@@ -108,6 +108,7 @@ def patch_fixed_device(module: torch.nn.Module, device):
     """Move the output to the specific device"""
 
     def get_device_hook(device):
+
         def _device_hook(module, input, output):
             return to_device(output, device)
 
@@ -154,7 +155,7 @@ def patch_output_to_input_device(module: torch.nn.Module):
         elif isinstance(data, (tuple, list)):
             return type(data)(recursive_set_device(v, device) for v in data)
         elif isinstance(data, torch.Tensor):
-            kwargs = {"device": device}
+            kwargs = {'device': device}
             return data.to(**kwargs)
 
     def _output_to_input_device_hook(module, args, kwargs, output):

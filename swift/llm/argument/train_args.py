@@ -1,32 +1,31 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
-import json
 import math
 import os
 import platform
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
+import json
 import torch
 import torch.distributed as dist
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.utils import (add_version_to_work_dir, get_dist_setting, get_pai_tensorboard_dir, is_dist,
+from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_local_master, is_mp, is_pai_training_job, use_torchacc)
-from swift.utils import get_logger
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-from .data_args import TemplateArguments, DataArguments
-from .model_args import ModelArguments, QuantizeArguments, GenerationArguments
-from .tuner_args import TunerArguments
-from .utils import handle_path, load_from_ckpt_dir
-from ..model.loader import MODEL_MAPPING
-from ..template import TEMPLATE_MAPPING
 from ...plugin.loss import LOSS_MAPPING
 from ...plugin.tuner import extra_tuners
 from ...trainers import TrainerFactory
 from ...utils.import_utils import is_liger_available
+from ..model.loader import MODEL_MAPPING
+from ..template import TEMPLATE_MAPPING
+from .data_args import DataArguments, TemplateArguments
+from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
+from .tuner_args import TunerArguments
+from .utils import handle_path, load_from_ckpt_dir
 
 logger = get_logger()
 
@@ -72,7 +71,8 @@ class MegatronArguments:
 
 
 @dataclass
-class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments, Seq2SeqTrainingOverrideArguments):
+class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments,
+                   GenerationArguments, DataArguments, Seq2SeqTrainingOverrideArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1

@@ -1,9 +1,9 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+import torch
 from torch.nn import Module
 from transformers import GenerationConfig
-from typing import Any, Mapping, Sequence
-import torch
+
 from swift.utils import upper_bound
 
 History = List[Union[Tuple[str, str], List[str]]]

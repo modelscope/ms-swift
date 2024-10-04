@@ -1,22 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union, Tuple, Any
+from typing import Any, List, Literal, Optional, Tuple, Union
 
+import json
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
-
-from .tuner_args import TunerArguments
-from .utils import handle_path, load_from_ckpt_dir
-from swift.llm.dataset.preprocess import multimodal_keys
 from transformers.utils.versions import require_version
-from .data_args import DataArguments, TemplateArguments
-from .model_args import QuantizeArguments, ModelArguments, GenerationArguments
+
+from swift.llm.dataset.preprocess import multimodal_keys
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.template import TEMPLATE_MAPPING
 from swift.tuners.utils import swift_to_peft_format
-from swift.utils import (get_logger)
+from swift.utils import get_logger
+from .data_args import DataArguments, TemplateArguments
+from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
+from .tuner_args import TunerArguments
+from .utils import handle_path, load_from_ckpt_dir
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -51,7 +51,8 @@ class MergeArguments:
 
 
 @dataclass
-class InferArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments, VLLMArguments, LMDeployArguments, MergeArguments):
+class InferArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments,
+                     DataArguments, VLLMArguments, LMDeployArguments, MergeArguments):
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
@@ -155,7 +156,8 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
                 or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.sft_type == 'lora'):
             assert self.ckpt_dir is not None
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
-            self.lora_request_list, self.use_dora = self._parse_lora_modules(self.lora_modules, self.infer_backend == 'vllm')
+            self.lora_request_list, self.use_dora = self._parse_lora_modules(self.lora_modules,
+                                                                             self.infer_backend == 'vllm')
 
         template_info = TEMPLATE_MAPPING[self.template_type]
         if self.num_beams != 1 or not template_info.get('stream', True):

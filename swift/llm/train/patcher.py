@@ -1,21 +1,20 @@
 import inspect
 from contextlib import contextmanager
-from functools import partial
-from functools import wraps
-from typing import Dict, List, Optional, Union, Any, Literal
+from functools import partial, wraps
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import accelerate
 import torch
 import transformers
 from torch.nn import Module
 from torch.nn.parallel import DistributedDataParallel as DDP
-from transformers import (trainer, PreTrainedTokenizerBase)
+from transformers import PreTrainedTokenizerBase, trainer
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift import get_logger
 from swift.llm import Template
 from swift.llm.utils import to_device
-from swift.utils import is_ddp_plus_mp, get_dist_setting, use_torchacc
+from swift.utils import get_dist_setting, is_ddp_plus_mp, use_torchacc
 from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
 
 logger = get_logger()
@@ -116,16 +115,16 @@ class TrainTemplate:
         self.sequence_parallel_size = 1
 
     def init_template(self,
-                       tokenizer: PreTrainedTokenizerBase,
-                       default_system: Optional[str] = None,
-                       max_length: Optional[int] = None,
-                       truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                       loss_scale: str = 'default',
-                       rescale_image: int = -1,
-                       **kwargs) -> None:
+                      tokenizer: PreTrainedTokenizerBase,
+                      default_system: Optional[str] = None,
+                      max_length: Optional[int] = None,
+                      truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                      loss_scale: str = 'default',
+                      rescale_image: int = -1,
+                      **kwargs) -> None:
         self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
-        return self.template.init_template(tokenizer, default_system, max_length, truncation_strategy,
-                                           loss_scale, rescale_image, **kwargs)
+        return self.template.init_template(tokenizer, default_system, max_length, truncation_strategy, loss_scale,
+                                           rescale_image, **kwargs)
 
     def __getattr__(self, name: str):
         """Forward missing attributes to the wrapped module."""

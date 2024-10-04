@@ -1,4 +1,3 @@
-import json
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import time
@@ -6,9 +5,9 @@ from copy import deepcopy
 from functools import partial
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, List, Optional, Tuple
-from typing import Iterator
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+import json
 import torch
 from modelscope import BitsAndBytesConfig, GenerationConfig
 from transformers import PreTrainedModel, StoppingCriteriaList
@@ -16,16 +15,16 @@ from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available
 
 from swift import get_logger
-from swift.llm import InferArguments, Template, get_model_tokenizer, DeployArguments, get_template, StopWords
+from swift.llm import DeployArguments, InferArguments, StopWords, Template, get_model_tokenizer, get_template
 from swift.llm.dataset.utils import safe_tokenizer_decode
 from swift.llm.infer.base import InferFramework
 from swift.llm.model import ConfigReader
 from swift.llm.model.utils import to_device
 from swift.llm.template.base import StopWordsCriteria
-from swift.llm.utils import set_generation_config, Messages
+from swift.llm.utils import Messages, set_generation_config
 from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import Swift
-from swift.utils import (get_model_info, show_layers)
+from swift.utils import get_model_info, show_layers
 
 logger = get_logger()
 
@@ -162,8 +161,9 @@ class TransformersFramework(InferFramework):
             if args.max_model_len <= model.max_model_len:
                 model.max_model_len = args.max_model_len
             else:
-                raise ValueError('args.max_model_len exceeds the maximum max_model_len supported by the model.'
-                                 f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
+                raise ValueError(
+                    'args.max_model_len exceeds the maximum max_model_len supported by the model.'
+                    f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
 
         if getattr(model, 'is_tuner_plugin', False):
             with open(os.path.join(args.ckpt_dir, 'sft_args.json'), 'r') as f:
@@ -250,7 +250,8 @@ class TransformersFramework(InferFramework):
             return ''
 
         # agent support
-        is_observation = messages[-1]['content'].endswith('Observation:') if messages and messages[-1]['content'] else False
+        is_observation = messages[-1]['content'].endswith(
+            'Observation:') if messages and messages[-1]['content'] else False
         if is_observation:
             messages[-1]['content'] = messages[-1]['content'] + query
             query = None
@@ -279,8 +280,14 @@ class TransformersFramework(InferFramework):
         response = self.template.post_process_generate_response(response=response, example=example)
         if not is_observation:
             messages.extend([
-                {'role': 'user', 'content': query},
-                {'role': 'assistant', 'content': response},
+                {
+                    'role': 'user',
+                    'content': query
+                },
+                {
+                    'role': 'assistant',
+                    'content': response
+                },
             ])
         else:
             messages[-1]['content'] = messages[-1]['content'] + response
@@ -296,15 +303,16 @@ class TransformersFramework(InferFramework):
             return response, messages
 
     @torch.inference_mode()
-    def inference_stream(self,
-                         request_list: List[Dict[str, Any]],
-                         *,
-                         generation_config: Optional[Any] = None,
-                         generation_info: Optional[Dict[str, Any]] = None,
-                         lora_request: Optional['LoRARequest'] = None,
-                         use_tqdm: bool = False,
-                         flush_steps: Optional[int] = None,  # Ensuring efficiency
-                         **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    def inference_stream(
+            self,
+            request_list: List[Dict[str, Any]],
+            *,
+            generation_config: Optional[Any] = None,
+            generation_info: Optional[Dict[str, Any]] = None,
+            lora_request: Optional['LoRARequest'] = None,
+            use_tqdm: bool = False,
+            flush_steps: Optional[int] = None,  # Ensuring efficiency
+            **kwargs) -> Iterator[List[Dict[str, Any]]]:
         """
         generation_config: Priority: generation_config > model.generation_config.
         """
@@ -341,7 +349,8 @@ class TransformersFramework(InferFramework):
             return '', messages
 
         # agent support
-        is_observation = messages[-1]['content'].endswith('Observation:') if messages and messages[-1]['content'] else False
+        is_observation = messages[-1]['content'].endswith(
+            'Observation:') if messages and messages[-1]['content'] else False
         if is_observation:
             messages[-1]['content'] = messages[-1]['content'] + query
             act_length = len(messages[-1]['content'])
@@ -370,8 +379,14 @@ class TransformersFramework(InferFramework):
         if not is_observation:
             # To be replaced by code below
             messages.extend([
-                {'role': 'user', 'content': None},
-                {'role': 'assistant', 'content': None},
+                {
+                    'role': 'user',
+                    'content': None
+                },
+                {
+                    'role': 'assistant',
+                    'content': None
+                },
             ])
 
         print_idx = [0]
@@ -417,19 +432,18 @@ class TransformersFramework(InferFramework):
                 }]
 
     @staticmethod
-    def _prepare_inputs(
-            model: PreTrainedModel,
-            template: Template,
-            query: str,
-            messages: Messages,
-            system: Optional[str] = None,
-            images: Optional[List[str]] = None,
-            *,
-            generation_config: GenerationConfig,
-            generation_info: Dict[str, Any],
-            stop_words: Optional[StopWords] = None,
-            adapter_names: Optional[List[str]] = None,
-            **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
+    def _prepare_inputs(model: PreTrainedModel,
+                        template: Template,
+                        query: str,
+                        messages: Messages,
+                        system: Optional[str] = None,
+                        images: Optional[List[str]] = None,
+                        *,
+                        generation_config: GenerationConfig,
+                        generation_info: Dict[str, Any],
+                        stop_words: Optional[StopWords] = None,
+                        adapter_names: Optional[List[str]] = None,
+                        **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any], int, Dict[str, Any]]:
         if stop_words is None:
             stop_words = []
         system = [{'role': 'system', 'content': system}] if system else []

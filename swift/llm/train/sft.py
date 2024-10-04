@@ -2,7 +2,7 @@
 import os
 from functools import partial
 from typing import Any, Dict, Optional, Tuple
-from swift.llm.model.config import ConfigReader
+
 import json
 import torch
 import transformers
@@ -13,25 +13,26 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
 
+from swift.llm.argument import PtArguments, RLHFArguments, SftArguments
+from swift.llm.model.config import ConfigReader
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import TrainerFactory
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
-from .accelerator import ta_accelerate
-from swift.llm.argument import SftArguments, RLHFArguments, PtArguments
+from ...utils.utils import get_time_info
 from ..dataset.loader import DatasetLoader
-from ..dataset.utils import print_example, LazyLLMDataset, ConstantLengthDataset, stat_dataset, dataset_map, \
-    sort_by_max_length
+from ..dataset.utils import (ConstantLengthDataset, LazyLLMDataset, dataset_map, print_example, sort_by_max_length,
+                             stat_dataset)
 from ..model.model import get_model_tokenizer
-from .patcher import training_context, patch_ddp_mp, TrainTemplate
 from ..template import Template
 from ..template.base import get_template
 from ..template.template import TEMPLATE_MAPPING
 from ..tuner import prepare_modules
 from ..utils import set_generation_config
-from ...utils.utils import get_time_info
+from .accelerator import ta_accelerate
+from .patcher import TrainTemplate, patch_ddp_mp, training_context
 
 logger = get_logger()
 
@@ -218,7 +219,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model.hf_device_map: {model.hf_device_map}')
-    quant_method = ConfigReader.read_config('quantization_config.quant_method', args.model_type, args.model_id_or_path, args.model_revision)
+    quant_method = ConfigReader.read_config('quantization_config.quant_method', args.model_type, args.model_id_or_path,
+                                            args.model_revision)
     if quant_method:
         args.quant_method = quant_method
         logger.info(f'Setting args.quant_method: {args.quant_method}')
@@ -287,7 +289,8 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         model=model,
         **template_kwargs)
     template._is_training = True
-    template.encode = partial(template.encode, streaming=args.streaming, is_training=True, dtype=model.dtype, device=model.device)
+    template.encode = partial(
+        template.encode, streaming=args.streaming, is_training=True, dtype=model.dtype, device=model.device)
     args.system = template.default_system
     logger.info(f'system: {args.system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
@@ -450,7 +453,8 @@ def trainer_train(args,
                 json.dump(check_json_format(args_obj.__dict__), f, ensure_ascii=False, indent=2)
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
-    with training_context([model] if ref_model is None else [model, ref_model], [template] if ref_model is None else [template, template]):
+    with training_context([model] if ref_model is None else [model, ref_model],
+                          [template] if ref_model is None else [template, template]):
         trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
@@ -502,7 +506,8 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     model, template, callbacks, optimizers = prepare_train_model_template(args, msg)
     template = TrainTemplate(template)
     train_dataset, val_dataset = prepare_dataset(args, template, msg)
-    return trainer_train(args, model, template, train_dataset, val_dataset, callbacks=callbacks, optimizers=optimizers, msg=msg)
+    return trainer_train(
+        args, model, template, train_dataset, val_dataset, callbacks=callbacks, optimizers=optimizers, msg=msg)
 
 
 def get_sft_main(args, llm):

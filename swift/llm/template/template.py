@@ -1,22 +1,22 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 import re
+from copy import deepcopy
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
-from copy import deepcopy
+
+import json
 import torch
 import transformers
+from modelscope import get_logger
 from packaging import version
 from transformers import PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from modelscope import get_logger
-from .base import Template, TEMPLATE_MAPPING
-from .utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                    load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2,
-                    transform_image, upper_bound, fetch_one)
+from .base import TEMPLATE_MAPPING, Template
+from .utils import (fetch_one, load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
+                    load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2, transform_image, upper_bound)
 
 logger = get_logger()
 
@@ -1083,7 +1083,11 @@ register_template(
     TemplateType.internvl, InternvlTemplate(), use_model=False, lazy_tokenize=True, infer_media_type='dialogue')
 
 register_template(
-    TemplateType.internvl_phi3, InternvlPhi3Template(), use_model=False, lazy_tokenize=True, infer_media_type='dialogue')
+    TemplateType.internvl_phi3,
+    InternvlPhi3Template(),
+    use_model=False,
+    lazy_tokenize=True,
+    infer_media_type='dialogue')
 
 register_template(TemplateType.internvl2, Internvl2Template(), use_model=False, lazy_tokenize=True)
 
@@ -1772,7 +1776,8 @@ class CogTemplate(Template):
             inputs['images'] = [[img.to(dtype=kwargs['dtype'])] for img in inputs2['images']]
             if 'cross_images' in inputs2:
                 # is cogagent
-                inputs['cross_images'] = [[cross_img.to(dtype=kwargs['dtype'])] for cross_img in inputs2['cross_images']]
+                inputs['cross_images'] = [[cross_img.to(dtype=kwargs['dtype'])]
+                                          for cross_img in inputs2['cross_images']]
         return inputs, {}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
@@ -1971,8 +1976,7 @@ class MiniCPMV2_6Template(QwenTemplateMixin, MiniCPMVTemplate):
         idx_list.insert(0, -1)
 
         image_processor = self.tokenizer.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt',
-                                       max_slice_nums=max_slice_nums).to(kwargs['dtype'])
+        image_inputs = image_processor([images], return_tensors='pt', max_slice_nums=max_slice_nums).to(kwargs['dtype'])
 
         res_input_ids = []
         res_labels = []
@@ -2026,7 +2030,11 @@ class MiniCPMV2_5Template(Llama3TemplateMixin, MiniCPMVTemplate):
 
 
 register_template(
-    TemplateType.minicpm_v_v2_5, MiniCPMV2_5Template(), use_model=False, lazy_tokenize=True, infer_media_type='dialogue')
+    TemplateType.minicpm_v_v2_5,
+    MiniCPMV2_5Template(),
+    use_model=False,
+    lazy_tokenize=True,
+    infer_media_type='dialogue')
 
 register_template(
     TemplateType.minicpm_v,
@@ -2234,7 +2242,9 @@ class RLHFTemplateMixin:
                 data = locals()[f'{prefix}_{suffix}']
                 for k, v in data.items():
                     res[f'{prefix}_{k}'] = v
-        if ('rejected_input_ids' not in inputs and 'chosen_input_ids' in inputs) or ('rejected_input_ids' in inputs and 'chosen_input_ids' not in inputs):
+        if ('rejected_input_ids' not in inputs
+                and 'chosen_input_ids' in inputs) or ('rejected_input_ids' in inputs
+                                                      and 'chosen_input_ids' not in inputs):
             inputs = {}
         return inputs, tokenizer_kwargs
 

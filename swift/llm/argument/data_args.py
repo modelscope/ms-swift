@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 import sys
-from dataclasses import field, dataclass
+from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
 from datasets import Dataset as HfDataset

@@ -1,9 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
@@ -13,7 +13,7 @@ from transformers.utils.versions import require_version
 from swift.llm.model.config import ConfigReader
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.model.model import dtype_mapping
-from swift.utils import (get_logger, get_dist_setting)
+from swift.utils import get_dist_setting, get_logger
 from swift.utils.env import use_hf_hub
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 
@@ -42,8 +42,8 @@ class GenerationArguments:
         if self.temperature == 0:
             self.do_sample = False
         from swift.llm.argument import InferArguments, SftArguments
-        if self.do_sample is False and (
-                isinstance(self, SftArguments) or (isinstance(self, InferArguments) and self.infer_backend == 'pt')):
+        if self.do_sample is False and (isinstance(self, SftArguments) or
+                                        (isinstance(self, InferArguments) and self.infer_backend == 'pt')):
             # fix warning
             self.temperature = 1.
             self.top_p = 1.

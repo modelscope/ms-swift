@@ -221,7 +221,7 @@ def messages_join_observation(messages: Messages):
         """
 
     if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'] and messages[-2][
-        'content'].endswith('Observation:'):
+            'content'].endswith('Observation:'):
         assert messages[-1]['role'] == 'tool'
         observations = messages[-1]['content']
         messages.pop(-1)

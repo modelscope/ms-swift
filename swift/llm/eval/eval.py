@@ -20,12 +20,12 @@ from modelscope import GenerationConfig
 from openai import APIConnectionError
 from tqdm import tqdm
 
-from swift.llm.argument import EvalArguments, DeployArguments
+from swift.llm.argument import DeployArguments, EvalArguments
 from swift.llm.infer.client_utils import inference_client_async
-from swift.llm.infer.infer import prepare_model_template, merge_lora
+from swift.llm.infer.infer import merge_lora, prepare_model_template
 from swift.llm.infer.protocol import XRequestConfig
 from swift.llm.infer.utils import inference
-from swift.llm.infer.vllm_utils import prepare_vllm_engine_template, VllmGenerationConfig, inference_vllm
+from swift.llm.infer.vllm_utils import VllmGenerationConfig, inference_vllm, prepare_vllm_engine_template
 from swift.utils import append_to_jsonl, get_logger, get_main, seed_everything
 
 logger = get_logger()

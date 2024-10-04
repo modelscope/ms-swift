@@ -1,5 +1,5 @@
-from dataclasses import field, dataclass
-from typing import Literal, List, Optional
+from dataclasses import dataclass, field
+from typing import List, Literal, Optional
 
 
 @dataclass
@@ -92,8 +92,8 @@ class TunerArguments:
     reft_layers: Optional[List[int]] = None
     reft_rank: int = 4
     reft_intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
-    'LobireftIntervention', 'DireftIntervention',
-    'NodireftIntervention'] = 'LoreftIntervention'
+                                    'LobireftIntervention', 'DireftIntervention',
+                                    'NodireftIntervention'] = 'LoreftIntervention'
     reft_args: Optional[str] = None
 
     # use_liger

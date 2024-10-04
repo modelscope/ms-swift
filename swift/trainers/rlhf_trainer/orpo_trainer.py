@@ -6,7 +6,7 @@ import torch.nn as nn
 from transformers import PreTrainedModel
 from trl import ORPOTrainer as HFORPOTrainer
 
-from swift.trainers import  RLHFTrainerMixin, SwiftMixin
+from swift.trainers import RLHFTrainerMixin, SwiftMixin
 
 del HFORPOTrainer.__init__
 

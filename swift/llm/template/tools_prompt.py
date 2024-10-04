@@ -1,4 +1,4 @@
-from typing import List, Dict, Union, Optional
+from typing import Dict, List, Optional, Union
 
 
 def format_react_en(tool_names, tool_descs):
@@ -103,5 +103,3 @@ def get_tools_prompt(TOOLS: List[Dict[str, Union[str, dict]]], prompt_format: st
             return None
     prompt_format = tools_prompt.get(prompt_format) or format_toolbench
     return prompt_format(tool_names, tool_descs)
-
-

@@ -2,19 +2,18 @@
 import os
 
 import datasets.fingerprint
-from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor,
-                         ConversationsPreprocessor,
-                         ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor,
-                         SmartPreprocessor,
-                         TextGenerationPreprocessor, multimodal_keys, multimodal_tags)
-from .loader import DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists, parse_dataset_name, \
-    DATASET_MAPPING
-from .media import MediaResource
-from .register import register_dataset, register_local_dataset, register_dataset_info_file, register_single_dataset
-from .utils import dataset_map, stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, \
-    print_example, sort_by_max_length
+
 from swift.utils.torch_utils import _find_local_mac
-from .dataset import standard_keys, DatasetName
+from .dataset import DatasetName, standard_keys
+from .loader import (DATASET_MAPPING, DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists,
+                     parse_dataset_name)
+from .media import MediaResource
+from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
+                         ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
+                         TextGenerationPreprocessor, multimodal_keys, multimodal_tags)
+from .register import register_dataset, register_dataset_info_file, register_local_dataset, register_single_dataset
+from .utils import (ConstantLengthDataset, LazyLLMDataset, LLMDataset, LLMIterableDataset, dataset_map, print_example,
+                    sort_by_max_length, stat_dataset)
 
 
 def _update_fingerprint_mac(*args, **kwargs):

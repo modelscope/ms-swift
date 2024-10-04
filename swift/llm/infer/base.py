@@ -1,10 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Optional, Dict, Any, List, Iterator
 from types import MethodType
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple
 
-from swift.llm.template.base import Template, Context, _findall
+from swift.llm.template.base import Context, Template, _findall
 
 
 class InferTemplate:
@@ -29,7 +28,8 @@ class InferTemplate:
         return inputs, tokenizer_kwargs
 
     def check_example(self, example):
-        if self.template.name in ('minicpm-v-v2_5', 'minicpm-v-v2_6', 'qwen-vl') and self.framework in ('vllm', 'lmdeploy'):
+        if self.template.name in ('minicpm-v-v2_5', 'minicpm-v-v2_6', 'qwen-vl') and self.framework in ('vllm',
+                                                                                                        'lmdeploy'):
             return
         return self.template.check_example(example)
 
@@ -141,13 +141,14 @@ class InferFramework:
                   **kwargs) -> List[Dict[str, Any]]:
         pass
 
-    def inference_stream(self,
-                         request_list: List[Dict[str, Any]],
-                         *,
-                         generation_config: Optional[Any] = None,
-                         generation_info: Optional[Dict[str, Any]] = None,
-                         lora_request: Optional['LoRARequest'] = None,
-                         use_tqdm: bool = False,
-                         flush_steps: Optional[int] = None,  # Ensuring efficiency
-                         **kwargs) -> Iterator[List[Dict[str, Any]]]:
+    def inference_stream(
+            self,
+            request_list: List[Dict[str, Any]],
+            *,
+            generation_config: Optional[Any] = None,
+            generation_info: Optional[Dict[str, Any]] = None,
+            lora_request: Optional['LoRARequest'] = None,
+            use_tqdm: bool = False,
+            flush_steps: Optional[int] = None,  # Ensuring efficiency
+            **kwargs) -> Iterator[List[Dict[str, Any]]]:
         pass

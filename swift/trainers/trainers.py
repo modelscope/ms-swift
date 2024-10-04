@@ -12,9 +12,9 @@ from transformers.modeling_utils import unwrap_model
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import is_peft_available
 
+from swift.plugin.loss import get_loss_func
 from swift.torchacc_utils import patch_clip_grad_norm, ta_trim_graph
 from swift.utils import use_torchacc
-from swift.plugin.loss import get_loss_func
 from .mixin import SwiftMixin
 
 

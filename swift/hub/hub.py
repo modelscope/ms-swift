@@ -3,11 +3,12 @@ import tempfile
 from functools import partial
 from pathlib import Path
 from typing import List, Optional, Union
+
 from huggingface_hub import RepoUrl
-from huggingface_hub.hf_api import api
-from huggingface_hub.hf_api import CommitInfo, future_compatible
+from huggingface_hub.hf_api import CommitInfo, api, future_compatible
 from requests.exceptions import HTTPError
 from transformers.utils import logging, strtobool
+
 from swift.utils.env import use_hf_hub
 
 logger = logging.get_logger(__name__)
@@ -63,8 +64,7 @@ class HubOperation:
                      subset_name: str,
                      split: str,
                      streaming: bool = False,
-                     revision: Optional[str] = None
-                     ):
+                     revision: Optional[str] = None):
         """Load a dataset from the repo
 
         Args:
@@ -109,33 +109,27 @@ def create_repo(repo_id: str, *, token: Union[str, bool, None] = None, private: 
 
 @future_compatible
 def upload_folder(
-        self,
-        *,
-        repo_id: str,
-        folder_path: Union[str, Path],
-        path_in_repo: Optional[str] = None,
-        commit_message: Optional[str] = None,
-        commit_description: Optional[str] = None,
-        token: Union[str, bool, None] = None,
-        revision: Optional[str] = 'master',
-        ignore_patterns: Optional[Union[List[str], str]] = None,
-        run_as_future: bool = False,
-        **kwargs,
+    self,
+    *,
+    repo_id: str,
+    folder_path: Union[str, Path],
+    path_in_repo: Optional[str] = None,
+    commit_message: Optional[str] = None,
+    commit_description: Optional[str] = None,
+    token: Union[str, bool, None] = None,
+    revision: Optional[str] = 'master',
+    ignore_patterns: Optional[Union[List[str], str]] = None,
+    run_as_future: bool = False,
+    **kwargs,
 ):
-    MSHub.push_to_hub(repo_id,
-                             folder_path,
-                             path_in_repo,
-                             commit_message,
-                             commit_description,
-                             token,
-                             revision,
-                             ignore_patterns)
+    MSHub.push_to_hub(repo_id, folder_path, path_in_repo, commit_message, commit_description, token, revision,
+                      ignore_patterns)
     return CommitInfo(
         commit_url=f'https://www.modelscope.cn/models/{repo_id}/files',
         commit_message=commit_message,
         commit_description=commit_description,
         oid=None,
-)
+    )
 
 
 class MSHub(HubOperation):
@@ -148,7 +142,7 @@ class MSHub(HubOperation):
         huggingface_hub.upload_folder = partial(upload_folder, api)
         trainer.create_repo = create_repo
         trainer.upload_folder = partial(upload_folder, api)
-    
+
     @classmethod
     def try_login(cls, token: Optional[str] = None) -> bool:
         from modelscope import HubApi
@@ -161,8 +155,7 @@ class MSHub(HubOperation):
         return False
 
     @classmethod
-    def create_model_repo(cls, repo_id: str, token: Optional[str] = None,
-                          private: bool = False) -> str:
+    def create_model_repo(cls, repo_id: str, token: Optional[str] = None, private: bool = False) -> str:
         from modelscope.hub.api import ModelScopeConfig
         from modelscope.hub.constants import ModelVisibility
         assert repo_id is not None, 'Please enter a valid hub_model_id'
@@ -238,15 +231,16 @@ class MSHub(HubOperation):
             tag=path_in_repo)
 
     @classmethod
-    def load_dataset(cls,
-                     dataset_id: str,
-                     subset_name: str,
-                     split: str,
-                     streaming: bool = False,
-                     revision: Optional[str] = None,
-                     force_redownload: bool = False,
-                     token: Optional[str] = None,
-                     ):
+    def load_dataset(
+        cls,
+        dataset_id: str,
+        subset_name: str,
+        split: str,
+        streaming: bool = False,
+        revision: Optional[str] = None,
+        force_redownload: bool = False,
+        token: Optional[str] = None,
+    ):
         from modelscope import MsDataset
         cls.try_login(token)
         download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
@@ -345,8 +339,7 @@ class HFHub(HubOperation):
         pass
 
     @classmethod
-    def create_model_repo(cls, repo_id: str, token: Optional[str] = None,
-                          private: bool = False) -> str:
+    def create_model_repo(cls, repo_id: str, token: Optional[str] = None, private: bool = False) -> str:
         return api.create_model(repo_id, token=token, private=private)
 
     @classmethod
@@ -364,31 +357,37 @@ class HFHub(HubOperation):
         cls.create_model_repo(repo_id, token, private)
         if revision is None or revision == 'master':
             revision = 'main'
-        return api.upload_folder(repo_id,
-                                 folder_path=folder_path,
-                                 path_in_repo=path_in_repo,
-                                 commit_message=commit_message,
-                                 commit_description=commit_description,
-                                 token=token,
-                                 revision=revision,
-                                 ignore_patterns=ignore_patterns,
-                                 **kwargs)
+        return api.upload_folder(
+            repo_id,
+            folder_path=folder_path,
+            path_in_repo=path_in_repo,
+            commit_message=commit_message,
+            commit_description=commit_description,
+            token=token,
+            revision=revision,
+            ignore_patterns=ignore_patterns,
+            **kwargs)
 
     @classmethod
-    def load_dataset(cls,
-                     dataset_id: str,
-                     subset_name: str,
-                     split: str,
-                     streaming: bool = False,
-                     revision: Optional[str] = None,
-                     force_redownload: bool = False,
-                     ):
+    def load_dataset(
+        cls,
+        dataset_id: str,
+        subset_name: str,
+        split: str,
+        streaming: bool = False,
+        revision: Optional[str] = None,
+        force_redownload: bool = False,
+    ):
         from datasets import load_dataset
         download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         if revision is None or revision == 'master':
             revision = 'main'
         return load_dataset(
-            dataset_id, name=subset_name, split=split, streaming=streaming, revision=revision,
+            dataset_id,
+            name=subset_name,
+            split=split,
+            streaming=streaming,
+            revision=revision,
             download_mode=download_mode)
 
     @classmethod

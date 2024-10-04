@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 import torch.distributed as dist
 
-from swift.utils import (is_dist, get_logger)
+from swift.utils import get_logger, is_dist
 from .infer_args import InferArguments
 
 logger = get_logger()

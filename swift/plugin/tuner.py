@@ -1,5 +1,5 @@
-from peft import get_peft_model, PeftModel
-from peft import IA3Config
+from peft import IA3Config, PeftModel, get_peft_model
+
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from swift.utils.torch_utils import find_all_linears
 
@@ -30,8 +30,7 @@ class IA3(Tuner):
             raise ValueError(f'Module not supported')
         ia3_config = IA3Config(
             target_modules=find_all_linears(model, 0, args.model_type, None),
-            feedforward_modules=mapping.mlp.split('{}')[1]
-        )
+            feedforward_modules=mapping.mlp.split('{}')[1])
         return get_peft_model(model, ia3_config)
 
     @staticmethod
@@ -44,6 +43,4 @@ class IA3(Tuner):
         return PeftModel.from_pretrained(model, output_dir)
 
 
-extra_tuners = {
-    'ia3': IA3
-}
+extra_tuners = {'ia3': IA3}

@@ -3,10 +3,10 @@ from typing import Any, Dict
 
 from swift.trainers import TrainerFactory
 from swift.utils import get_logger, get_main, seed_everything
-from .sft import prepare_dataset, prepare_train_model_template, trainer_train
 from ..argument import RLHFArguments
 from ..template import TEMPLATE_MAPPING
 from .patcher import TrainTemplate
+from .sft import prepare_dataset, prepare_train_model_template, trainer_train
 
 logger = get_logger()
 
@@ -26,7 +26,15 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
 
         return trainer_train(
-            args, model, template, train_dataset, val_dataset, callbacks=callbacks, optimizers=optimizers, msg=msg, ref_model=ref_model)
+            args,
+            model,
+            template,
+            train_dataset,
+            val_dataset,
+            callbacks=callbacks,
+            optimizers=optimizers,
+            msg=msg,
+            ref_model=ref_model)
 
 
 rlhf_main = get_main(RLHFArguments, llm_rlhf)
