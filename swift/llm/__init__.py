@@ -23,6 +23,7 @@ if TYPE_CHECKING:
                           stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset,
                           print_example, sort_by_max_length, standard_keys, multimodal_keys, multimodal_tags)
     from .utils import deep_getattr, to_device
+    from .module_mapping import MODEL_KEYS_MAPPING
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -50,7 +51,8 @@ else:
             'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset',
             'print_example', 'sort_by_max_length', 'standard_keys', 'multimodal_keys', 'multimodal_tags'
         ],
-        'utils': ['deep_getattr', 'to_device']
+        'utils': ['deep_getattr', 'to_device'],
+        'module_mapping': ['MODEL_KEYS_MAPPING']
     }
 
     import sys

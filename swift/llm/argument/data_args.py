@@ -18,10 +18,9 @@ class DataArguments:
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
     val_dataset: List[str] = field(
         default_factory=list, metadata={'help': f'dataset choices: {list(DATASET_MAPPING.keys())}'})
+    val_dataset_ratio: float = 0.01  # If val_dataset is empty, use a split from the dataset as the validation set.
     dataset_seed: Optional[int] = None
     max_length: Optional[int] = None
-
-    dataset_test_ratio: float = 0.01
 
     truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
@@ -52,8 +51,8 @@ class DataArguments:
         if self.dataset_seed is None:
             self.dataset_seed = self.seed
         if len(self.val_dataset) > 0:
-            self.dataset_test_ratio = 0.0
-            logger.info('Using val_dataset, ignoring dataset_test_ratio')
+            self.val_dataset_ratio = 0.0
+            logger.info('Using val_dataset, ignoring val_dataset_ratio')
         self.handle_custom_dataset_info()
         self.handle_custom_register()
 

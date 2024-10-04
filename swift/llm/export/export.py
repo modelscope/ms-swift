@@ -7,7 +7,7 @@ import torch
 import transformers
 from packaging import version
 
-from swift.hub import hub
+from swift.hub import default_hub
 from swift.llm.argument import ExportArguments
 from swift.llm.dataset.loader import DatasetLoader
 from swift.llm.infer.infer import merge_lora, prepare_model_template, save_checkpoint
@@ -353,7 +353,7 @@ def llm_export(args: ExportArguments) -> None:
         if ckpt_dir is None:
             ckpt_dir = args.model_id_or_path
         assert ckpt_dir is not None, 'You need to specify `ckpt_dir`.'
-        hub.push_to_hub(
+        default_hub.push_to_hub(
             args.hub_model_id,
             ckpt_dir,
             token=args.hub_token,

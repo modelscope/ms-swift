@@ -5,19 +5,17 @@ import platform
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-import json
 import torch
 import torch.distributed as dist
 from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING
+from swift.llm import MODEL_MAPPING, MODEL_KEYS_MAPPING
 from swift.plugin import LOSS_MAPPING, extra_tuners
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .base_args import BaseArguments
 
 logger = get_logger()
@@ -35,11 +33,11 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     logging_steps: int = 5
     adam_beta2: float = 0.95
     learning_rate: Optional[float] = None
+    dataloader_num_workers: Optional[int] = None
     weight_decay: float = 0.1
     lr_scheduler_type: str = 'cosine'
     lr_scheduler_kwargs: Optional[str] = None  # json
     warmup_ratio: float = 0.05
-    dataloader_num_workers: Optional[int] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     eval_strategy: Literal['steps', 'epoch', 'no'] = 'steps'
 
@@ -57,6 +55,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             else:
                 self.learning_rate = 1e-4
         self.parse_to_dict('lr_scheduler_kwargs')
+        if len(self.val_dataset) == 0 and self.val_dataset_ratio:
+            self.eval_strategy = 'no'
 
     def prepare_dataloader(self: 'SftArguments'):
         """Prepare dataloader arguments"""
@@ -380,11 +380,11 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, MegatronArgu
             self.lazy_tokenize = False
             logger.info('lazy_tokenize set to False in streaming dataset')
 
-        if self.dataset_test_ratio > 0:
-            logger.info('Set dataset_test_ratio to 0 in streaming mode.'
+        if self.val_dataset_ratio > 0:
+            logger.info('Set val_dataset_ratio to 0 in streaming mode.'
                         'You can manually set val_dataset and val_dataset_sample.'
                         'or set streaming_val_size instead to split from train dataset')
-            self.dataset_test_ratio = 0
+            self.val_dataset_ratio = 0
 
         if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
             logger.info('Set dataloader_num_workers to 0 in streaming mode')
@@ -414,10 +414,9 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, MegatronArgu
 
 @dataclass
 class PtArguments(SftArguments):
-    train_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'vera', 'boft'] = 'full'
+    train_type: Literal['lora', 'full', 'longlora', 'adalora', 'ia3', 'llamapro', 'adapter', 'vera', 'boft',
+                        'fourierft', 'reft'] = 'full'
     lazy_tokenize: Optional[bool] = True
-    save_steps: int = 500
-
 
 @dataclass
 class RLHFArguments(SftArguments):
@@ -446,12 +445,12 @@ class RLHFArguments(SftArguments):
     undesirable_weight: float = 1.0
 
     def __post_init__(self):
-        self._check_simpo()
+        self._prepare_simpo()
         self._set_default()
         self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
         super().__post_init__()
 
-    def _check_simpo(self):
+    def _prepare_simpo(self):
         if self.rlhf_type != 'simpo':
             return
 
@@ -467,3 +466,5 @@ class RLHFArguments(SftArguments):
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
                 self.loss_type = 'sigmoid'  # else None
+            elif self.rlhf_type in ['kto']:
+                self.loss_type = 'kto'

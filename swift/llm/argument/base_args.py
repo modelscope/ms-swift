@@ -1,4 +1,3 @@
-import inspect
 import os
 from typing import List, Union
 
@@ -23,8 +22,8 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
         QuantizeArguments.__post_init__(self)
         GenerationArguments.__post_init__(self)
         self.handle_path()
-        from swift.hub import hub
-        if hub.try_login(self.hub_token):
+        from swift.hub import default_hub
+        if default_hub.try_login(self.hub_token):
             logger.info('hub login successful!')
 
     def parse_to_dict(self, key: str) -> None:
@@ -115,7 +114,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
             imported_keys += ['sft_type', 'rope_scaling', 'system']
             if getattr(self, 'load_dataset_config', False) and from_sft_args:
                 imported_keys += [
-                    'dataset', 'val_dataset', 'dataset_seed', 'dataset_test_ratio', 'check_dataset_strategy',
+                    'dataset', 'val_dataset', 'dataset_seed', 'val_dataset_ratio', 'check_dataset_strategy',
                     'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
                 ]
         # read settings
