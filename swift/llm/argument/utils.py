@@ -12,50 +12,6 @@ logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 
-def _check_path(value: Union[str, List[str]],
-                k: Optional[str] = None,
-                check_exist_path_set: Optional[Set[str]] = None) -> Union[str, List[str]]:
-    if check_exist_path_set is None:
-        check_exist_path_set = set()
-    if isinstance(value, str):
-        value = os.path.expanduser(value)
-        value = os.path.abspath(value)
-        if k in check_exist_path_set and not os.path.exists(value):
-            if k is not None:
-                raise FileNotFoundError(f"`{k}`: '{value}'")
-            else:
-                raise FileNotFoundError(f"path: '{value}'")
-    elif isinstance(value, list):
-        res = []
-        for v in value:
-            res.append(cls._check_path(v, k, check_exist_path_set))
-        value = res
-    return value
-
-
-def handle_path(args: Union['SftArguments', 'InferArguments']) -> None:
-    """Check all paths in the args correct and exist"""
-    check_exist_path = ['ckpt_dir', 'resume_from_checkpoint', 'custom_register_path']
-    maybe_check_exist_path = ['model_id_or_path', 'custom_dataset_info']
-    from swift.llm.argument import SftArguments
-    if isinstance(args, SftArguments):
-        check_exist_path.append('deepspeed_config_path')
-        maybe_check_exist_path.append('deepspeed')
-
-    for k in maybe_check_exist_path:
-        v = getattr(args, k)
-        if isinstance(v, str) and v is not None and (v.startswith('~') or v.startswith('/') or os.path.exists(v)):
-            check_exist_path.append(k)
-    check_exist_path_set = set(check_exist_path)
-    other_path = ['output_dir', 'logging_dir']
-    for k in check_exist_path + other_path:
-        value = getattr(args, k, None)
-        if value is None:
-            continue
-        value = _check_path(value, k, check_exist_path_set)
-        setattr(args, k, value)
-
-
 def load_from_ckpt_dir(args: Union['SftArguments', 'InferArguments']) -> None:
     """Load specific attributes from sft_args.json"""
     from swift.llm.argument import SftArguments, ExportArguments
