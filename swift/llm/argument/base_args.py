@@ -53,8 +53,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
         """
         if isinstance(path, str):
             # Remove user path prefix and convert to absolute path.
-            path = os.path.expanduser(path)
-            path = os.path.abspath(path)
+            path = os.path.abspath(os.path.expanduser(path))
             if check_path_exist and not os.path.exists(path):
                 raise FileNotFoundError(f"path: '{path}'")
             return path
@@ -72,7 +71,7 @@ class BaseArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeA
         maybe_check_exist_path = ['model_id_or_path', 'custom_dataset_info', 'deepspeed']
         for k in maybe_check_exist_path:
             v = getattr(self, k, None)
-            if isinstance(v, str) and (v.startswith('~') or v.startswith('/') or os.path.exists(v)):
+            if os.path.exists(v) or isinstance(v, str) and v[:1] in {'~', '/'}:  # startswith
                 check_exist_path.add(k)
         # check path
         for k in check_exist_path | other_path:

@@ -27,12 +27,13 @@ from swift.llm.utils import to_device
 from swift.utils import get_dist_setting, subprocess_run, use_torchacc
 from ...utils.torch_utils import safe_ddp_context
 from . import ConfigReader
-from .loader import MODEL_MAPPING, load_by_transformers, load_by_unsloth, safe_snapshot_download
+from .loader import safe_snapshot_download
 from .patcher import (patch_baichuan2_lm_head_forward, patch_fixed_device, patch_hidden_size, patch_output_clone,
                       patch_output_to_input_device, patch_rope_scaling, patch_tokenizer)
 
 logger = get_logger()
 
+MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 class MMModelType:
 
