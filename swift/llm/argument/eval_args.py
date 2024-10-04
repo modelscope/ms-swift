@@ -47,7 +47,7 @@ class EvalArguments(InferArguments):
         """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:
             super().select_dtype()
-
+    # [TODO]
     def select_model_type(self) -> None:
         """Override the super one because eval_url does not have a proper model_type"""
         if self.eval_url is None:

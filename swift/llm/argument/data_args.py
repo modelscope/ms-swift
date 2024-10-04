@@ -67,6 +67,7 @@ class TemplateArguments:
     rescale_image: int = -1
 
     def select_template(self: Union['SftArguments', 'InferArguments']):
+        # [TODO:]
         """If setting template to `auto`, find a proper one"""
         if self.template_type == 'auto':
             self.template_type = get_default_template_type(self.model_type)

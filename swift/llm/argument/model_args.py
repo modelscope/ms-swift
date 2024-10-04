@@ -1,20 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Union
 
-import json
 import torch
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm.model import MODEL_MAPPING, ConfigReader
-from swift.utils import MODEL_KEYS_MAPPING, get_dist_setting, get_logger, use_hf_hub
+from swift.llm import MODEL_MAPPING, ConfigReader, MODEL_KEYS_MAPPING
+from swift.utils import get_dist_setting, get_logger, use_hf_hub
 
 logger = get_logger()
-DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32', None: 'auto'}
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
