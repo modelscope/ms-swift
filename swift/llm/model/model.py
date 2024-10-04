@@ -4615,9 +4615,6 @@ def get_model_tokenizer_polylm(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
-dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32'}
-
-
 def get_model_tokenizer_qwen(model_dir: str,
                              torch_dtype: torch.dtype,
                              model_kwargs: Dict[str, Any],

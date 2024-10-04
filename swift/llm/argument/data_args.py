@@ -67,15 +67,15 @@ class DataArguments:
 @dataclass
 class TemplateArguments:
     template_type: str = field(
-        default='AUTO', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
+        default='auto', metadata={'help': f"template_type choices: {list(TEMPLATE_MAPPING.keys()) + ['AUTO']}"})
     system: Optional[str] = None
     tools_prompt: str = 'react_en'
     # multi-modal
     rescale_image: int = -1
 
     def select_template(self: Union['SftArguments', 'InferArguments']):
-        """If setting template to `AUTO`, find a proper one"""
-        if self.template_type == 'AUTO':
+        """If setting template to `auto`, find a proper one"""
+        if self.template_type == 'auto':
             self.template_type = get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
 

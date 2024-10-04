@@ -13,10 +13,10 @@ from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.template import TEMPLATE_MAPPING
 from swift.tuners.utils import swift_to_peft_format
 from swift.utils import get_logger
+from .base_args import BaseArguments
 from .data_args import DataArguments, TemplateArguments
 from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
 from .tuner_args import TunerArguments
-from .utils import handle_path, load_from_ckpt_dir
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -52,7 +52,7 @@ class MergeArguments:
 
 @dataclass
 class InferArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments,
-                     DataArguments, VLLMArguments, LMDeployArguments, MergeArguments):
+                     DataArguments, VLLMArguments, LMDeployArguments, MergeArguments, BaseArguments):
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
@@ -81,7 +81,7 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
         QuantizeArguments.__post_init__(self)
         GenerationArguments.__post_init__(self)
         DataArguments.__post_init__(self)
-        handle_path(self)
+        self.handle_path()
         from swift.hub import hub
         hub.try_login(self.hub_token)
         if self.ckpt_dir is None and self.load_args_from_ckpt_dir:

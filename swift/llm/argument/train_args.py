@@ -13,19 +13,16 @@ from transformers import Seq2SeqTrainingArguments
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
+from swift.plugin import LOSS_MAPPING, extra_tuners
+from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
-                         is_local_master, is_mp, is_pai_training_job, use_torchacc)
+                         is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-from ...plugin.loss import LOSS_MAPPING
-from ...plugin.tuner import extra_tuners
-from ...trainers import TrainerFactory
-from ...utils.import_utils import is_liger_available
-from ..model.loader import MODEL_MAPPING
-from ..template import TEMPLATE_MAPPING
+from .base_args import BaseArguments
 from .data_args import DataArguments, TemplateArguments
 from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
 from .tuner_args import TunerArguments
-from .utils import handle_path, load_from_ckpt_dir
 
 logger = get_logger()
 
@@ -36,9 +33,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     output_dir: str = 'output'
     gradient_checkpointing: Optional[bool] = None
-
-    num_train_epochs: int = 1
-    # if max_steps >= 0, override num_train_epochs
 
     save_steps: Optional[int] = None
     save_total_limit: int = 2  # save last and best. -1: all checkpoints
@@ -72,7 +66,7 @@ class MegatronArguments:
 
 @dataclass
 class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments,
-                   GenerationArguments, DataArguments, Seq2SeqTrainingOverrideArguments):
+                   GenerationArguments, DataArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
