@@ -20,9 +20,6 @@ from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, 
                          is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
 from .base_args import BaseArguments
-from .data_args import DataArguments, TemplateArguments
-from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
-from .tuner_args import TunerArguments
 
 logger = get_logger()
 
@@ -65,8 +62,7 @@ class MegatronArguments:
 
 
 @dataclass
-class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments,
-                   GenerationArguments, DataArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
+class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
@@ -232,20 +228,16 @@ class SftArguments(MegatronArguments, ModelArguments, TunerArguments, TemplateAr
             self.dataloader_drop_last = True
 
     def __post_init__(self) -> None:
+        BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
-        ModelArguments.__post_init__(self)
-        TemplateArguments.__post_init__(self)
-        QuantizeArguments.__post_init__(self)
-        GenerationArguments.__post_init__(self)
-        DataArguments.__post_init__(self)
         if is_pai_training_job():
             self._handle_pai_compat()
         self.prepare_deepspeed()
-        handle_path(self)
+        self.handle_path()
         if self.sft_type == 'full' or self.train_backend == 'megatron':
             self.model_id_or_path = self.resume_from_checkpoint
         if self.resume_from_checkpoint:
-            load_from_ckpt_dir(self)
+            self.load_from_ckpt_dir()
 
         if self.save_steps is None:
             self.save_steps = self.eval_steps

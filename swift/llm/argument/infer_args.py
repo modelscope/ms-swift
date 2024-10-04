@@ -51,8 +51,7 @@ class MergeArguments:
 
 
 @dataclass
-class InferArguments(ModelArguments, TunerArguments, TemplateArguments, QuantizeArguments, GenerationArguments,
-                     DataArguments, VLLMArguments, LMDeployArguments, MergeArguments, BaseArguments):
+class InferArguments(VLLMArguments, LMDeployArguments, MergeArguments, BaseArguments):
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
@@ -76,11 +75,7 @@ class InferArguments(ModelArguments, TunerArguments, TemplateArguments, Quantize
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
     def __post_init__(self) -> None:
-        ModelArguments.__post_init__(self)
-        TemplateArguments.__post_init__(self)
-        QuantizeArguments.__post_init__(self)
-        GenerationArguments.__post_init__(self)
-        DataArguments.__post_init__(self)
+        BaseArguments.__post_init__(self)
         self.handle_path()
         from swift.hub import hub
         hub.try_login(self.hub_token)
