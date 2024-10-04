@@ -146,10 +146,10 @@ class MSHub(HubOperation):
     @classmethod
     def try_login(cls, token: Optional[str] = None) -> bool:
         from modelscope import HubApi
-        api = HubApi()
         if token is None:
             token = os.environ.get('MODELSCOPE_API_TOKEN')
         if token is not None:
+            api = HubApi()
             api.login(token)
             return True
         return False

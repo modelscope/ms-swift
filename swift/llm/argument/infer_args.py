@@ -12,11 +12,8 @@ from swift.llm.dataset.preprocess import multimodal_keys
 from swift.llm.model.loader import MODEL_MAPPING
 from swift.llm.template import TEMPLATE_MAPPING
 from swift.tuners.utils import swift_to_peft_format
-from swift.utils import get_logger
+from swift.utils import get_logger, is_vllm_available, is_lmdeploy_available
 from .base_args import BaseArguments
-from .data_args import DataArguments, TemplateArguments
-from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
-from .tuner_args import TunerArguments
 
 logger = get_logger()
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -51,7 +48,7 @@ class MergeArguments:
 
 
 @dataclass
-class InferArguments(VLLMArguments, LMDeployArguments, MergeArguments, BaseArguments):
+class InferArguments(BaseArguments, MergeArguments, VLLMArguments, LMDeployArguments):
     infer_backend: Literal['AUTO', 'vllm', 'pt', 'lmdeploy'] = 'AUTO'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
@@ -83,7 +80,7 @@ class InferArguments(VLLMArguments, LMDeployArguments, MergeArguments, BaseArgum
             self.load_args_from_ckpt_dir = False
             logger.info('Due to `ckpt_dir` being `None`, `load_args_from_ckpt_dir` is set to `False`.')
         if self.load_args_from_ckpt_dir:
-            load_from_ckpt_dir(self)
+            self.load_from_ckpt_dir()
         else:
             assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
 

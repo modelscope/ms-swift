@@ -47,7 +47,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 
     def __post_init__(self):
         from swift.hub import hub
-        hub.try_login(self.hub_token)
+        if hub.try_login(self.hub_token):
+            logger.info('hub login successful!')
 
 
 @dataclass
@@ -62,7 +63,21 @@ class MegatronArguments:
 
 
 @dataclass
-class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, BaseArguments):
+class TorchAccArguments:
+    model_layer_cls_name: Optional[str] = field(
+        default=None,
+        metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
+    metric_warmup_step: Optional[float] = 0
+    fsdp_num: int = 1
+
+    def __post_init__(self):
+        """Prepare torchacc"""
+        if use_torchacc():
+            self.dataloader_drop_last = True
+
+
+@dataclass
+class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, MegatronArguments, TorchAccArguments):
     freeze_parameters: List[str] = field(default_factory=list)
     freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
@@ -105,19 +120,6 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, BaseArgu
     gpu_memory_fraction: Optional[float] = None
 
     sequence_parallel_size: int = 1
-    # for torchacc
-    model_layer_cls_name: Optional[str] = field(
-        default=None,
-        metadata={'help': "Decoder Class name of model, e.g. 'QWenBlock' for QWen, 'LlamaDecoderLayer' for LLama"})
-    metric_warmup_step: Optional[float] = 0
-    fsdp_num: int = 1
-
-    def handle_lr_scheduler_kwargs(self):
-        """Load the passed lr_scheduler kwargs"""
-        if self.lr_scheduler_kwargs is None:
-            self.lr_scheduler_kwargs = {}
-        elif isinstance(self.lr_scheduler_kwargs, str):
-            self.lr_scheduler_kwargs = json.loads(self.lr_scheduler_kwargs)
 
     def prepare_deepspeed(self):
         """Prepare deepspeed settings"""
@@ -222,14 +224,10 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, BaseArgu
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(f'{self.model_type} not support gradient_checkpointing.')
 
-    def prepare_torchacc(self):
-        """Prepare torchacc"""
-        if use_torchacc():
-            self.dataloader_drop_last = True
-
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
         Seq2SeqTrainingOverrideArguments.__post_init__(self)
+        TorchAccArguments.__post_init__(self)
         if is_pai_training_job():
             self._handle_pai_compat()
         self.prepare_deepspeed()
@@ -242,7 +240,7 @@ class SftArguments(MegatronArguments, Seq2SeqTrainingOverrideArguments, BaseArgu
         if self.save_steps is None:
             self.save_steps = self.eval_steps
         self.train_sampler_random = not self.test_oom_error
-        self.handle_lr_scheduler_kwargs()
+        self.load_json_or_path('lr_scheduler_kwargs')
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
 
         if self.train_backend == 'megatron' and self.sft_type == 'lora':
