@@ -1,8 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import hashlib
 import os
-from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
+import torch
 import torch.distributed as dist
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
@@ -76,16 +77,29 @@ class ConfigReader:
         return max_model_len
 
     @staticmethod
-    def get_quant_method(config: PretrainedConfig) -> Literal['gptq', 'awq', 'bnb', 'aqlm', None]:
-        # [TODO:hqq,eetq]
+    def get_quant_info(config: PretrainedConfig) -> Dict[str, Any]:
+        """Get quant_method, quant_bits, dtype. not support hqq/eetq now, support awq/gptq/bnb/aqlm"""
         quantization_config = dict(getattr(config, 'quantization_config'))
         quant_method = quantization_config.get('quant_method')
-        if quant_method in {'gptq', 'awq'}:
-            return quant_method
+        res = {}
+        if quant_method in {'gptq', 'awq', 'aqlm'}:
+            res['quant_method'] = quant_method
+            res['torch_type'] = torch.float16
+            bits = quantization_config.get('bits')
+            if bits is not None:
+                res['bits'] = bits
         elif quant_method == 'bitsandbytes':
-            return 'bnb'
-        else:
-            return None
+            res['quant_method'] = quant_method
+            load_in_4bit = quantization_config.get('load_in_4bit')
+            load_in_8bit = quantization_config.get('load_in_8bit')
+            bnb_4bit_compute_dtype = quantization_config.get('bnb_4bit_compute_dtype')
+            if load_in_4bit:
+                res['bits'] = 4
+            elif load_in_8bit:
+                res['bits'] = 8
+            # [TODO:check torch.bfloat16,'bfloat16']
+            res['bnb_4bit_compute_dtype'] = bnb_4bit_compute_dtype
+        return res
 
 
 def safe_snapshot_download(model_id_or_path: str,

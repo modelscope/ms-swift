@@ -11,7 +11,7 @@ from transformers import GPTQConfig, PretrainedConfig
 
 from swift import get_logger
 from swift.llm.utils import to_device
-from .config import ConfigReader
+from .utils import ConfigReader
 
 logger = get_logger()
 
