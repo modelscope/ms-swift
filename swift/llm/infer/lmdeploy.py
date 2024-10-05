@@ -21,7 +21,7 @@ from transformers import AutoConfig, AutoTokenizer, GenerationConfig
 
 from swift.llm import InferArguments, InferTemplate
 from swift.llm.infer.base import InferFramework
-from swift.llm.model import ConfigReader
+from swift.llm.model import HfConfigFactory
 from swift.llm.model.model import get_model_tokenizer
 from swift.llm.template.template import Template, get_template
 from swift.utils import get_logger, get_seed
@@ -411,7 +411,7 @@ class LMDeployFramework(InferFramework):
         lmdeploy_engine.is_multimodal = is_multimodal
         lmdeploy_engine.hf_tokenizer = tokenizer
         lmdeploy_engine.model_config = model_config
-        lmdeploy_engine.max_model_len = ConfigReader.get_max_model_len(model_config)
+        lmdeploy_engine.max_model_len = HfConfigFactory.get_max_model_len(model_config)
 
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
         if os.path.isfile(generation_config_path):

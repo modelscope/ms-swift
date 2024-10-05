@@ -14,7 +14,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
 
 from swift.llm.argument import PtArguments, RLHFArguments, SftArguments
-from swift.llm.model.config import ConfigReader
+from swift.llm import HfConfigFactory
 from swift.torchacc_utils import patch_acc_model
 from swift.trainers import TrainerFactory
 from swift.trainers.utils import can_return_loss, find_labels
@@ -219,7 +219,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
 
     if hasattr(model, 'hf_device_map'):
         logger.info(f'model.hf_device_map: {model.hf_device_map}')
-    quant_method = ConfigReader.read_config('quantization_config.quant_method', args.model_type, args.model_id_or_path,
+    quant_method = HfConfigFactory.read_config('quantization_config.quant_method', args.model_type, args.model_id_or_path,
                                             args.model_revision)
     if quant_method:
         args.quant_method = quant_method

@@ -12,7 +12,6 @@ from transformers import PretrainedConfig
 from swift import get_logger
 from swift.hub import HFHub, MSHub, default_hub
 from swift.utils import deep_getattr, is_dist, is_dist_ta, safe_ddp_context
-from .register import get_arch_mapping
 
 logger = get_logger()
 
@@ -117,6 +116,7 @@ class HfConfigFactory:
     def get_matched_model_types(config: PretrainedConfig, model_dir: Optional[str] = None) -> List[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.
+        from .register import get_arch_mapping
         arch_mapping = get_arch_mapping()
         model_name = None
         if model_dir is not None:

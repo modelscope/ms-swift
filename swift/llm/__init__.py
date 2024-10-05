@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebuiArguments, AppUIArguments)
-    from .template import TEMPLATE_MAPPING, StopWords, get_template, TemplateType
-    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, get_default_template_type, ConfigReader
+    from .template import TEMPLATE_MAPPING, Template, StopWords, get_template, TemplateType
+    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, get_default_template_type, HfConfigFactory
     from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                           TextGenerationPreprocessor, DatasetName, DatasetLoader, HubDatasetLoader, LocalDatasetLoader,
@@ -41,7 +41,7 @@ else:
             'RLHFArguments', 'AppUIArguments'
         ],
         'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'get_template', 'TemplateType'],
-        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'get_default_template_type', 'ConfigReader'],
+        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'get_default_template_type', 'HfConfigFactory'],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'ConversationsPreprocessor',
             'ListPreprocessor', 'PreprocessFunc', 'RenameColumnsPreprocessor', 'SmartPreprocessor',

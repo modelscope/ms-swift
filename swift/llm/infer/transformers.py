@@ -17,8 +17,7 @@ from transformers.utils import is_torch_npu_available
 from swift import get_logger
 from swift.llm import DeployArguments, InferArguments, StopWords, Template, get_model_tokenizer, get_template
 from swift.llm.dataset.utils import safe_tokenizer_decode
-from swift.llm.model import ConfigReader
-from swift.llm.model.utils import to_device
+from swift.llm import to_device, HfConfigFactory
 from swift.llm.template.base import StopWordsCriteria
 from swift.llm.utils import Messages, set_generation_config
 from swift.plugin.tuner import Tuner, extra_tuners
@@ -493,7 +492,7 @@ class PtEngine(InferEngine):
             generation_config.bos_token_id = tokenizer.bos_token_id
         if generation_config.max_new_tokens is not None:
             generation_config.max_length = 20  # fix max_length, max_new_tokens warning
-            max_length = ConfigReader.get_max_model_len(model.config)
+            max_length = HfConfigFactory.get_max_model_len(model.config)
             if max_length and token_len + generation_config.max_new_tokens > max_length:
                 generation_config.max_new_tokens = max_length - token_len
                 if generation_config.max_new_tokens <= 0:

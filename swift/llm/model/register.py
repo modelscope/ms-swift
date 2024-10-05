@@ -201,7 +201,7 @@ def fix_do_sample_warning(generation_config) -> None:
 
 def get_model_tokenizer(model_id_or_path: Optional[str] = None,
                         torch_dtype: Optional[torch.dtype] = None,
-                        device_map: Optional[str, Dict[str, Any]] = 'auto',
+                        device_map: Union[str, Dict[str, Any], None] = 'auto',
                         model_kwargs: Optional[Dict[str, Any]] = None,
                         load_model: bool = True,
                         *,
