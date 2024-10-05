@@ -193,11 +193,6 @@ class DefaultGenerationTemplate(Template):
 
 
 register_template(TemplateType.default_generation, DefaultGenerationTemplate(), is_generation=True)
-register_template(
-    TemplateType.default_generation_bos,
-    Template([['bos_token_id']], ['{{QUERY}}'], None, [['eos_token_id']]),
-    is_generation=True)
-
 
 class ChatmlTemplateMixin:
     system = None
