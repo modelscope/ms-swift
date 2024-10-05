@@ -1,3 +1,4 @@
 from .constant import LLMModelType, MLLMModelType, ModelType
-from .model import MODEL_MAPPING, get_default_template_type, get_model_tokenizer
-from .utils import ConfigReader, safe_snapshot_download
+from .register import (MODEL_MAPPING, Model, ModelGroup, TemplateGroup, fix_do_sample_warning,
+                       get_default_template_type, get_model_tokenizer)
+from .utils import HfConfigFactory, safe_snapshot_download

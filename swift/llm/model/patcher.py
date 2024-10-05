@@ -10,8 +10,8 @@ from torch import Tensor
 from transformers import GPTQConfig, PretrainedConfig
 
 from swift import get_logger
-from swift.llm.utils import to_device
-from .utils import ConfigReader
+from swift.llm import to_device
+from .utils import HfConfigFactory
 
 logger = get_logger()
 
@@ -60,48 +60,12 @@ def patch_rope_scaling(model_config: PretrainedConfig, rope_scaling: Dict[str, A
         rope_scaling: The rope scaling config
         max_length: The model max length
     """
-    max_position_embeddings = ConfigReader.get_max_model_len(model_config)
+    max_position_embeddings = HfConfigFactory.get_max_model_len(model_config)
     if rope_scaling and max_position_embeddings:
         max_length = max_length or max_position_embeddings
         rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
-        ConfigReader.set_rope_scaling(model_config, {'type': rope_scaling, 'factor': rope_scaling_factor})
-        logger.info(f'rope_scaling is set to type: {ConfigReader.get_rope_scaling(model_config)}')
-
-
-def patch_tokenizer(tokenizer, eos_token, pad_token, placeholder_tokens):
-    """Patch tokenizer to add extra eos_token/pad_token/placeholder_tokens.
-
-    Args:
-        tokenizer: The tokenizer to be patched
-        eos_token: The eos_token
-        pad_token: The pad_token
-        placeholder_tokens: The placeholder_tokens
-    """
-    if isinstance(eos_token, str):
-        tokenizer.eos_token = eos_token
-    elif isinstance(eos_token, int):
-        tokenizer.eos_token_id = eos_token
-    if pad_token is not None:
-        tokenizer.pad_token = pad_token
-    if placeholder_tokens is not None:
-        tokenizer.placeholder_tokens = placeholder_tokens
-        tokenizer.placeholder_tokens_id = [tokenizer.convert_tokens_to_ids(token) for token in placeholder_tokens]
-
-
-def patch_hidden_size(model_config):
-    """Sometimes model config need `hidden_size` key, this will copy the value in llm domain to the outer config.
-
-    Args:
-        model_config: The model config
-    """
-    # multimodal
-    llm_config = None
-    for k in ['language_config', 'llm_config', 'text_config']:
-        llm_config = getattr(model_config, k, None)
-        if llm_config:
-            break
-    if llm_config and hasattr(llm_config, 'hidden_size') and not hasattr(model_config, 'hidden_size'):
-        model_config.hidden_size = llm_config.hidden_size
+        HfConfigFactory.set_rope_scaling(model_config, {'type': rope_scaling, 'factor': rope_scaling_factor})
+        logger.info(f'rope_scaling is set to type: {HfConfigFactory.get_rope_scaling(model_config)}')
 
 
 def patch_fixed_device(module: torch.nn.Module, device):
@@ -115,19 +79,6 @@ def patch_fixed_device(module: torch.nn.Module, device):
         return _device_hook
 
     module.register_forward_hook(get_device_hook(device))
-
-
-def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
-    # patch: baichuan2 lm_head (fp32 bug)
-    if self.training:
-        norm_weight = F.normalize(self.weight).to(self.weight.dtype)
-    elif self.first_flag:
-        self.first_flag = False
-        self.weight.data = F.normalize(self.weight).to(self.weight.dtype)
-        norm_weight = self.weight
-    else:
-        norm_weight = self.weight
-    return F.linear(hidden_states, norm_weight)
 
 
 def patch_output_clone(module: torch.nn.Module):

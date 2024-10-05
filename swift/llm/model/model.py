@@ -18,91 +18,14 @@ from packaging import version
 from transformers import PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
-from transformers.utils import is_torch_bf16_gpu_available
-from transformers.utils.versions import require_version
 
 from swift import get_logger
 from swift.llm.template.template import TemplateType, get_env_args
 from swift.llm.utils import to_device
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
-from .patcher import (patch_baichuan2_lm_head_forward, patch_fixed_device, patch_hidden_size, patch_output_clone,
-                      patch_output_to_input_device, patch_rope_scaling, patch_tokenizer)
-from .utils import ConfigReader, safe_snapshot_download
+from .patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device, patch_rope_scaling
 
 logger = get_logger()
-
-MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
-
-GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
-
-
-class Model(NamedTuple):
-    ms_model_id: Optional[str] = None
-    hf_model_id: Optional[str] = None
-    model_path: Optional[str] = None
-    ms_revision: Optional[str] = None
-
-
-class TemplateGroup(NamedTuple):
-    chat_template: str
-    generation_template: Optional[str] = TemplateType.default_generation
-
-
-class ModelGroup(NamedTuple):
-    models: List[Model]
-    template: TemplateGroup
-    tags: Optional[List[str]] = None
-
-
-# [TODO:eos_token -> template]
-def register_model(model_type: str,
-                   architectures: str,
-                   model_groups: Union[ModelGroup, List[ModelGroup]],
-                   get_function: Optional[GetModelTokenizerFunction],
-                   *,
-                   requires: Optional[List[str]] = None,
-                   ignore_file_pattern: Optional[List[str]] = None,
-                   support_flash_attn: bool = False,
-                   support_vllm: bool = False,
-                   support_lmdeploy: bool = False,
-                   function_kwargs: Optional[Dict[str, Any]] = None,
-                   exist_ok: bool = False,
-                   **kwargs) -> Optional[Callable[[GetModelTokenizerFunction], GetModelTokenizerFunction]]:
-    if not exist_ok and model_type in MODEL_MAPPING:
-        raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
-    if requires is None:
-        requires = []
-    if not isinstance(model_groups, (list, tuple)):
-        model_groups = [model_groups]
-    if function_kwargs is None:
-        function_kwargs = {}
-    model_info = {
-        'architectures': architectures,
-        'model_groups': model_groups,
-        'requires': requires,
-        'ignore_file_pattern': ignore_file_pattern,
-        'support_flash_attn': support_flash_attn,
-        'support_vllm': support_vllm,
-        'support_lmdeploy': support_lmdeploy,
-        **kwargs
-    }
-
-    if get_function is not None:
-        if len(function_kwargs) > 0:
-            get_function = partial(get_function, **function_kwargs)
-        model_info['get_function'] = get_function
-        MODEL_MAPPING[model_type] = model_info
-        return
-
-    def _register_model(get_function: GetModelTokenizerFunction) -> GetModelTokenizerFunction:
-        _old_get_function = get_function
-        if len(function_kwargs) > 0:
-            get_function = partial(get_function, **function_kwargs)
-        model_info['get_function'] = get_function
-        MODEL_MAPPING[model_type] = model_info
-        return _old_get_function
-
-    return _register_model
 
 
 def check_awq_ext() -> None:
@@ -113,57 +36,6 @@ def check_awq_ext() -> None:
         raise ImportError('You are training awq models, remember installing awq_ext by '
                           '`git clone https://github.com/casper-hansen/AutoAWQ_kernels '
                           '&& cd AutoAWQ_kernels && pip install -e .`') from e
-
-
-def get_model_tokenizer_from_repo(model_dir: str,
-                                  torch_dtype: Optional[torch.dtype],
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  model_config=None,
-                                  tokenizer=None,
-                                  automodel_class=AutoModelForCausalLM,
-                                  **kwargs):
-    """load from an independent repository"""
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    patch_hidden_size(model_config)
-
-    quantization_config = getattr(model_config, 'quantization_config', None)
-    quant_method = None
-    if quantization_config is not None:
-        quant_method = quantization_config.quant_method
-        # quant_bits = quantization_config.bits
-
-    is_training = kwargs.pop('is_training', False)
-
-    # if quant_method == 'awq' and is_training:
-    #     check_awq_ext()
-    # if quant_method == 'gptq' and is_training:
-    #     patch_gptq_model(quant_bits, model_config, model_kwargs)
-
-    if torch_dtype is not None:
-        model_config.torch_dtype = torch_dtype
-
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-
-    patch_tokenizer(
-        tokenizer,
-        eos_token=kwargs.get('eos_token'),
-        pad_token=kwargs.get('pad_token'),
-        placeholder_tokens=kwargs.get('placeholder_tokens'))
-    patch_rope_scaling(model_config, kwargs.pop('rope_scaling', None), kwargs.pop('max_length', None))
-    if load_model:
-        if kwargs.get('use_unsloth', False):
-            model, tokenizer = load_by_unsloth(model_dir, torch_dtype, **kwargs)
-        else:
-            logger.info(f'model_kwargs: {model_kwargs}')
-            model = load_by_transformers(automodel_class, model_dir, model_config, torch_dtype, quant_method == 'aqlm',
-                                         is_training, model_kwargs, **kwargs)
-    else:
-        model = None
-    tokenizer.config = model_config
-    return model, tokenizer
 
 
 @register_model(
@@ -238,6 +110,19 @@ def get_model_tokenizer_llava_llama(model_dir: str,
         **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
+
+
+def patch_baichuan2_lm_head_forward(self, hidden_states: Tensor) -> Tensor:
+    # patch: baichuan2 lm_head (fp32 bug)
+    if self.training:
+        norm_weight = F.normalize(self.weight).to(self.weight.dtype)
+    elif self.first_flag:
+        self.first_flag = False
+        self.weight.data = F.normalize(self.weight).to(self.weight.dtype)
+        norm_weight = self.weight
+    else:
+        norm_weight = self.weight
+    return F.linear(hidden_states, norm_weight)
 
 
 @register_model(
@@ -814,27 +699,6 @@ def get_model_tokenizer_glm4v(model_dir: str,
             model.transformer.vision.boi.data = model.transformer.vision.boi.to(device)
             model.transformer.vision.eoi.data = model.transformer.vision.eoi.to(device)
     return model, tokenizer
-
-
-def get_model_tokenizer_with_flash_attn(model_dir: str,
-                                        torch_dtype: torch.dtype,
-                                        model_kwargs: Dict[str, Any],
-                                        load_model: bool = True,
-                                        model_config=None,
-                                        **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    config_list = [model_config]
-    for k in ['language_config', 'llm_config', 'text_config']:
-        llm_config = getattr(model_config, k, None)
-        if llm_config:
-            config_list.append(llm_config)
-            break
-    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    for config in config_list:
-        attn_type.update_config(config)
-    return get_model_tokenizer_from_repo(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
 
 @register_model(
@@ -1669,85 +1533,6 @@ def get_model_tokenizer_polylm(model_dir: str,
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
 
 
-def _qwen_vl_visual_block_forward(
-    self,
-    q_x: torch.Tensor,
-    k_x: Optional[torch.Tensor] = None,
-    v_x: Optional[torch.Tensor] = None,
-    attn_mask: Optional[torch.Tensor] = None,
-):
-    k_x = self.ln_1_kv(k_x) if hasattr(self, 'ln_1_kv') and k_x is not None else None
-    v_x = self.ln_1_kv(v_x) if hasattr(self, 'ln_1_kv') and v_x is not None else None
-
-    x = q_x + self.attention(q_x=self.ln_1(q_x), k_x=k_x, v_x=v_x, attn_mask=attn_mask)
-    z = self.mlp(self.ln_2(x))
-    x = x.to(z.device) + z  # FIX
-    return x
-
-
-@register_model(
-    ModelType.qwen_vl_chat,
-    'qwen/Qwen-VL-Chat',
-    template=TemplateType.qwen_vl,
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    tags=['multi-modal', 'vision'],
-    hf_model_id='Qwen/Qwen-VL-Chat')
-@register_model(
-    ModelType.qwen_vl,
-    'qwen/Qwen-VL',
-    template=TemplateType.qwen_vl_generation,
-    function_kwargs={'get_qwen_function': get_model_tokenizer_qwen_base},
-    support_flash_attn=True,
-    support_lmdeploy=True,
-    tags=['multi-modal', 'vision'],
-    hf_model_id='Qwen/Qwen-VL')
-def get_model_tokenizer_qwen_vl(model_dir: str,
-                                torch_dtype: torch.dtype,
-                                model_kwargs: Dict[str, Any],
-                                load_model: bool = True,
-                                **kwargs):
-    if (model_kwargs.get('quantization_config') is not None
-            and isinstance(model_kwargs['quantization_config'], BitsAndBytesConfig)):
-        # https://github.com/pytorch/pytorch/issues/58969
-        model_kwargs['quantization_config'].llm_int8_skip_modules = ['lm_head', 'attn_pool.attn']
-        _TransformerBlock = get_class_from_dynamic_module('visual.TransformerBlock', model_dir)
-
-        def _get_cast_dtype(self) -> torch.dtype:
-            return self.resblocks[0].ln_1.weight.dtype
-
-        _TransformerBlock.__old_get_cast_dtype = _TransformerBlock.get_cast_dtype
-        _TransformerBlock.get_cast_dtype = _get_cast_dtype
-
-    get_qwen_function = kwargs.pop('get_qwen_function', get_model_tokenizer_qwen_chat)
-    tokenizer_config = get_tokenizer_config(model_dir)
-    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
-    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
-    tokenizer_cls._auto_class = 'AutoTokenizer'
-    tokenizer_cls.IMAGE_ST = ()  # fix no attr `self.IMAGE_ST` bug
-    tokenizer_cls._old_decode = tokenizer_cls._decode
-    tokenizer_cls._decode = _qwen_vl_audio_decode
-    # fix device_map is 4
-    n_gpu = torch.cuda.device_count()
-    local_world_size = get_dist_setting()[3]
-    if n_gpu // local_world_size >= 4:
-        visual_block_cls = get_class_from_dynamic_module('visual.VisualAttentionBlock', model_dir)
-        visual_block_cls.__old_forward = visual_block_cls.forward
-        visual_block_cls.forward = _qwen_vl_visual_block_forward
-
-    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
-    if model is not None:
-        fix_qwen_inplace_bug(model)
-        # fix device_map is 4
-        if n_gpu // local_world_size >= 4:
-            model.transformer.visual.proj.data = model.transformer.visual.proj.to(
-                model.transformer.visual.ln_post.bias.device)
-        # fix images cuda:1 bug
-        patch_fixed_device(model.transformer.visual, 0)
-    return model, tokenizer
-
-
 @register_model(
     ModelType.tongyi_finance_14b_chat_int4,
     'TongyiFinance/Tongyi-Finance-14B-Chat-Int4',
@@ -2535,147 +2320,3 @@ def get_model_tokenizer_mplug_owl2(model_dir: str,
     processor = CLIPImageProcessor.from_pretrained(model_dir)
     tokenizer.processor = processor
     return model, tokenizer
-
-
-def fix_transformers_upgrade(module: PreTrainedModel) -> None:
-    # from 4.35, transformers changes its arguments of _set_gradient_checkpointing
-    if version.parse(transformers.__version__) >= version.parse('4.35'):
-        if isinstance(module, PreTrainedModel) and hasattr(module, '_set_gradient_checkpointing') \
-                and 'value' in inspect.signature(module._set_gradient_checkpointing).parameters.keys():
-            module._set_gradient_checkpointing = MethodType(PreTrainedModel._set_gradient_checkpointing, module)
-
-
-def fix_gradient_checkpointing_warning(is_moe: bool = False) -> None:
-    torch_version = version.parse(torch.__version__)
-    if torch_version < version.parse('2'):
-        return
-    elif torch_version < version.parse('2.1'):
-        # fix https://github.com/Dao-AILab/flash-attention/issues/341
-        _use_reentrant = True
-    else:
-        _use_reentrant = is_moe
-    _old_checkpoint = torch.utils.checkpoint.checkpoint
-    if not hasattr(torch.utils.checkpoint, '_old_checkpoint'):  # avoid double patching
-
-        torch.utils.checkpoint._old_checkpoint = _old_checkpoint
-        torch.utils.checkpoint.checkpoint = update_wrapper(
-            lambda *args, use_reentrant=_use_reentrant, **kwargs: _old_checkpoint(
-                *args, use_reentrant=use_reentrant, **kwargs),
-            _old_checkpoint)
-    try:
-        import transformers.modeling_utils
-        if hasattr(transformers.modeling_utils, 'checkpoint'):
-            transformers.modeling_utils.checkpoint = (lambda *args, use_reentrant=_use_reentrant, **kwargs:
-                                                      _old_checkpoint(*args, use_reentrant=use_reentrant, **kwargs))
-    except ImportError:
-        pass
-
-
-def get_torch_dtype(model_dir: str) -> torch.dtype:
-    model_config = PretrainedConfig.get_config_dict(model_dir)[0]
-    torch_dtype = model_config.get('torch_dtype', None)
-    if isinstance(torch_dtype, str):
-        torch_dtype = eval(f'torch.{torch_dtype}')
-    if torch_dtype in {torch.float32, None}:
-        torch_dtype = torch.bfloat16 if is_torch_bf16_gpu_available() else torch.float16
-    return torch_dtype
-
-
-def get_model_tokenizer(model_type: Optional[str] = None,
-                        torch_dtype: Optional[torch.dtype] = None,
-                        model_kwargs: Optional[Dict[str, Any]] = None,
-                        load_model: bool = True,
-                        *,
-                        model_id_or_path: Optional[str] = None,
-                        revision: Optional[str] = None,
-                        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
-    """
-    torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
-        However, if torch.float32 is retrieved, torch.float16 will be used.
-    """
-    model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
-    download_model = kwargs.pop('download_model', load_model)
-    model_dir = safe_snapshot_download(
-        model_type, model_id_or_path, revision=revision, download_model=download_model, model_dir=model_dir)
-
-    model_info = MODEL_MAPPING.get(model_type, {})
-    requires = model_info.get('requires', [])
-    for require in requires:
-        require_version(require)
-    get_function = model_info.get('get_function', get_model_tokenizer_from_repo)
-    if model_kwargs is None:
-        model_kwargs = {}
-
-    if load_model:
-        # Decide device_map
-        if 'device_map' not in model_kwargs and not use_torchacc():
-            model_kwargs['device_map'] = 'auto'
-
-        if model_info.get('torch_dtype') is not None:
-            # Validate torch_dtype with config.torch_dtype
-            model_torch_dtype = model_info['torch_dtype']
-            if torch_dtype is None:
-                torch_dtype = model_torch_dtype
-                logger.info(f'Setting torch_dtype: {torch_dtype}')
-            else:
-                assert torch_dtype == model_torch_dtype, f'please use `{model_torch_dtype}`'
-        else:
-            if torch_dtype is None:
-                torch_dtype = get_torch_dtype(model_dir)
-                logger.info(f'Setting torch_dtype: {torch_dtype}')
-                quantization_config = model_kwargs.get('quantization_config')
-                if (isinstance(quantization_config, BitsAndBytesConfig)
-                        and quantization_config.bnb_4bit_compute_dtype is None):
-                    quantization_config.bnb_4bit_compute_dtype = torch_dtype
-                    logger.info(f'Setting quantization_config.bnb_4bit_compute_dtype: {torch_dtype}')
-
-    eos_token = model_info.get('eos_token')
-    if eos_token:
-        kwargs['eos_token'] = eos_token
-    pad_token = model_info.get('pad_token')
-    if pad_token is not None:
-        kwargs['pad_token'] = pad_token
-    placeholder_tokens = model_info.get('placeholder_tokens')
-    if placeholder_tokens is not None:
-        kwargs['placeholder_tokens'] = placeholder_tokens
-
-    if 'is_training' not in kwargs:
-        kwargs['is_training'] = False
-
-    model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
-    is_multimodal = 'multi-modal' in model_info.get('tags', [])
-
-    if model is not None:
-        model.max_model_len = ConfigReader.get_max_model_len(model.config)
-        logger.info(f'model.max_model_len: {model.max_model_len}')
-        model.model_type = model_type
-        model.model_dir = model_dir
-        model.is_multimodal = is_multimodal
-        fix_transformers_upgrade(model)
-
-    is_moe = '-moe' in model_type or 'moe' in model_info.get('tags', [])
-    fix_gradient_checkpointing_warning(is_moe)
-
-    tokenizer.model_type = model_type
-    tokenizer.model_dir = model_dir
-    tokenizer.is_multimodal = is_multimodal
-    assert tokenizer.eos_token is not None, 'tokenizer.eos_token has not been set.'
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    if model is not None and model_dir is not None:
-        generation_config_path = os.path.join(model_dir, 'generation_config.json')
-        generation_config = getattr(model, 'generation_config', None)
-        if os.path.isfile(generation_config_path) and generation_config is None:
-            model.generation_config = GenerationConfig.from_pretrained(model_dir)
-        generation_config = getattr(model, 'generation_config', None)
-        # fix llama2 bug
-        if (generation_config is not None and 0 < generation_config.temperature < 1
-                and generation_config.do_sample is False):
-            model.generation_config.do_sample = True
-            logger.warning('Setting model.generation_config.do_sample: True')
-    return model, tokenizer
-
-
-def get_default_template_type(model_type: str) -> Optional[str]:
-    return MODEL_MAPPING[model_type].get('template')

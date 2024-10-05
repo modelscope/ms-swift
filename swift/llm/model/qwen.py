@@ -1,4 +1,4 @@
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 
 import torch
 from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase
@@ -6,10 +6,11 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
-from swift.utils import get_logger
+from swift.utils import get_dist_setting, get_logger
 from .constant import LLMModelType, MLLMModelType
-from .model import Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_repo, register_model
-from .patcher import patch_output_clone
+from .patcher import patch_fixed_device, patch_output_clone
+from .register import (Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_repo,
+                       get_model_tokenizer_with_flash_attn, register_model)
 from .utils import AttnImpl
 
 logger = get_logger()
@@ -54,45 +55,49 @@ register_model(
     'QWenLMHeadModel',
     [
         # qwen
-        ModelGroup(
-            [
-                # base
-                Model('qwen/Qwen-1_8B', 'Qwen/Qwen-1_8B'),
-                Model('qwen/Qwen-7B', 'Qwen/Qwen-7B'),
-                Model('qwen/Qwen-14B', 'Qwen/Qwen-14B'),
-                Model('qwen/Qwen-72B', 'Qwen/Qwen-72B'),
-                # chat
-                Model('qwen/Qwen-1_8B-Chat', 'Qwen/Qwen-1_8B-Chat'),
-                Model('qwen/Qwen-7B-Chat', 'Qwen/Qwen-7B-Chat'),
-                Model('qwen/Qwen-14B-Chat', 'Qwen/Qwen-14B-Chat'),
-                Model('qwen/Qwen-72B-Chat', 'Qwen/Qwen-72B-Chat'),
-                # gptq-int4
-                Model('qwen/Qwen-1_8B-Chat-Int4', 'Qwen/Qwen-1_8B-Chat-Int4'),
-                Model('qwen/Qwen-7B-Chat-Int4', 'Qwen/Qwen-7B-Chat-Int4'),
-                Model('qwen/Qwen-14B-Chat-Int4', 'Qwen/Qwen-14B-Chat-Int4'),
-                Model('qwen/Qwen-72B-Chat-Int4', 'Qwen/Qwen-72B-Chat-Int4'),
-                # gptq-int8
-                Model('qwen/Qwen-1_8B-Chat-Int8', 'Qwen/Qwen-1_8B-Chat-Int8'),
-                Model('qwen/Qwen-7B-Chat-Int8', 'Qwen/Qwen-7B-Chat-Int8'),
-                Model('qwen/Qwen-14B-Chat-Int8', 'Qwen/Qwen-14B-Chat-Int8'),
-                Model('qwen/Qwen-72B-Chat-Int8', 'Qwen/Qwen-72B-Chat-Int8'),
-            ],
-            TemplateGroup(TemplateType.qwen)),
+        ModelGroup([
+            # base
+            Model('qwen/Qwen-1_8B', 'Qwen/Qwen-1_8B'),
+            Model('qwen/Qwen-7B', 'Qwen/Qwen-7B'),
+            Model('qwen/Qwen-14B', 'Qwen/Qwen-14B'),
+            Model('qwen/Qwen-72B', 'Qwen/Qwen-72B'),
+            # chat
+            Model('qwen/Qwen-1_8B-Chat', 'Qwen/Qwen-1_8B-Chat'),
+            Model('qwen/Qwen-7B-Chat', 'Qwen/Qwen-7B-Chat'),
+            Model('qwen/Qwen-14B-Chat', 'Qwen/Qwen-14B-Chat'),
+            Model('qwen/Qwen-72B-Chat', 'Qwen/Qwen-72B-Chat'),
+            # gptq-int4
+            Model('qwen/Qwen-1_8B-Chat-Int4', 'Qwen/Qwen-1_8B-Chat-Int4'),
+            Model('qwen/Qwen-7B-Chat-Int4', 'Qwen/Qwen-7B-Chat-Int4'),
+            Model('qwen/Qwen-14B-Chat-Int4', 'Qwen/Qwen-14B-Chat-Int4'),
+            Model('qwen/Qwen-72B-Chat-Int4', 'Qwen/Qwen-72B-Chat-Int4'),
+            # gptq-int8
+            Model('qwen/Qwen-1_8B-Chat-Int8', 'Qwen/Qwen-1_8B-Chat-Int8'),
+            Model('qwen/Qwen-7B-Chat-Int8', 'Qwen/Qwen-7B-Chat-Int8'),
+            Model('qwen/Qwen-14B-Chat-Int8', 'Qwen/Qwen-14B-Chat-Int8'),
+            Model('qwen/Qwen-72B-Chat-Int8', 'Qwen/Qwen-72B-Chat-Int8'),
+        ]),
         # tongyi-finance
         ModelGroup([
             Model('TongyiFinance/Tongyi-Finance-14B'),
             Model('TongyiFinance/Tongyi-Finance-14B-Chat', 'jxy/Tongyi-Finance-14B-Chat'),
             Model('TongyiFinance/Tongyi-Finance-14B-Chat-Int4', 'jxy/Tongyi-Finance-14B-Chat-Int4'),
         ],
-                   TemplateGroup(TemplateType.qwen),
                    tags=['financial']),
-        # codefuse-qwen
-        ModelGroup([
-            Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
-        ],
-                   TemplateGroup(TemplateType.codefuse),
-                   tags=['coding'])
     ],
+    TemplateGroup(TemplateType.qwen),
+    get_model_tokenizer_qwen,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True)
+
+register_model(
+    LLMModelType.codefuse_qwen,
+    'QWenLMHeadModel',
+    [ModelGroup([
+        Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
+    ], tags=['coding'])],
+    TemplateGroup(TemplateType.codefuse),
     get_model_tokenizer_qwen,
     support_flash_attn=True,
     support_vllm=True,
@@ -100,12 +105,11 @@ register_model(
 
 register_model(
     LLMModelType.modelscope_agent,
-    'QWenLMHeadModel', [
-        ModelGroup([
-            Model('iic/ModelScope-Agent-7B'),
-            Model('iic/ModelScope-Agent-14B'),
-        ], TemplateGroup(TemplateType.modelscope_agent))
-    ],
+    'QWenLMHeadModel', [ModelGroup([
+        Model('iic/ModelScope-Agent-7B'),
+        Model('iic/ModelScope-Agent-14B'),
+    ])],
+    TemplateGroup(TemplateType.modelscope_agent),
     get_model_tokenizer_qwen,
     support_flash_attn=True,
     support_vllm=False)
@@ -156,11 +160,28 @@ register_model(
             Model('qwen/Qwen-Audio', 'Qwen/Qwen-Audio'),
             Model('qwen/Qwen-Audio-Chat', 'Qwen/Qwen-Audio-Chat'),
         ],
-                   TemplateGroup(TemplateType.qwen_audio, TemplateType.qwen_audio_generation),
                    tags=['audio'])
     ],
+    TemplateGroup(TemplateType.qwen_audio, TemplateType.qwen_audio_generation),
     get_model_tokenizer_qwen_audio,
-    support_flash_attn=True)
+    support_flash_attn=True,
+    is_multimodal=True)
+
+
+def _qwen_vl_visual_block_forward(
+    self,
+    q_x: torch.Tensor,
+    k_x: Optional[torch.Tensor] = None,
+    v_x: Optional[torch.Tensor] = None,
+    attn_mask: Optional[torch.Tensor] = None,
+):
+    k_x = self.ln_1_kv(k_x) if hasattr(self, 'ln_1_kv') and k_x is not None else None
+    v_x = self.ln_1_kv(v_x) if hasattr(self, 'ln_1_kv') and v_x is not None else None
+
+    x = q_x + self.attention(q_x=self.ln_1(q_x), k_x=k_x, v_x=v_x, attn_mask=attn_mask)
+    z = self.mlp(self.ln_2(x))
+    x = x.to(z.device) + z  # FIX
+    return x
 
 
 def get_model_tokenizer_qwen_vl(model_dir: str,
@@ -180,7 +201,6 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         _TransformerBlock.__old_get_cast_dtype = _TransformerBlock.get_cast_dtype
         _TransformerBlock.get_cast_dtype = _get_cast_dtype
 
-    get_qwen_function = kwargs.pop('get_qwen_function', get_model_tokenizer_qwen_chat)
     tokenizer_config = get_tokenizer_config(model_dir)
     class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
     tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
@@ -197,7 +217,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         visual_block_cls.forward = _qwen_vl_visual_block_forward
 
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
         # fix device_map is 4
@@ -205,7 +225,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
             model.transformer.visual.proj.data = model.transformer.visual.proj.to(
                 model.transformer.visual.ln_post.bias.device)
         # fix images cuda:1 bug
-        model.transformer.visual.register_forward_hook(get_device_hook(0))
+        patch_fixed_device(model.transformer.visual, 0)
     return model, tokenizer
 
 
@@ -217,10 +237,70 @@ register_model(
             Model('qwen/Qwen-VL-Chat', 'Qwen/Qwen-VL-Chat'),
             Model('qwen/Qwen-VL-Chat-Int4', 'Qwen/Qwen-VL-Chat-Int4'),
         ],
-                   TemplateGroup(TemplateType.qwen_vl, TemplateType.qwen_vl_generation),
                    tags=['vision'])
     ],
+    TemplateGroup(TemplateType.qwen_vl, TemplateType.qwen_vl_generation),
     get_model_tokenizer_qwen_vl,
     support_flash_attn=True,
     support_vllm=True,
+    support_lmdeploy=True,
+    is_multimodal=True)
+
+register_model(
+    LLMModelType.qwen2,
+    'Qwen2ForCausalLM',
+    [
+        # qwen
+        ModelGroup([
+            # base
+            Model('qwen/Qwen1.5-0.5B', 'Qwen/Qwen1.5-0.5B'),
+            Model('qwen/Qwen1.5-1.8B', 'Qwen/Qwen1.5-1.8B'),
+            Model('qwen/Qwen1.5-4B', 'Qwen/Qwen1.5-4B'),
+            Model('qwen/Qwen1.5-7B', 'Qwen/Qwen1.5-7B'),
+            Model('qwen/Qwen1.5-14B', 'Qwen/Qwen1.5-14B'),
+            Model('qwen/Qwen1.5-32B', 'Qwen/Qwen1.5-32B'),
+            Model('qwen/Qwen1.5-72B', 'Qwen/Qwen1.5-72B'),
+            Model('qwen/Qwen1.5-110B', 'Qwen/Qwen1.5-110B'),
+            # chat
+            Model('qwen/Qwen1.5-0.5B-Chat', 'Qwen/Qwen1.5-0.5B-Chat'),
+            Model('qwen/Qwen1.5-1.8B-Chat', 'Qwen/Qwen1.5-1.8B-Chat'),
+            Model('qwen/Qwen1.5-4B-Chat', 'Qwen/Qwen1.5-4B-Chat'),
+            Model('qwen/Qwen1.5-7B-Chat', 'Qwen/Qwen1.5-7B-Chat'),
+            Model('qwen/Qwen1.5-14B-Chat', 'Qwen/Qwen1.5-14B-Chat'),
+            Model('qwen/Qwen1.5-32B-Chat', 'Qwen/Qwen1.5-32B-Chat'),
+            Model('qwen/Qwen1.5-72B-Chat', 'Qwen/Qwen1.5-72B-Chat'),
+            Model('qwen/Qwen1.5-110B-Chat', 'Qwen/Qwen1.5-110B-Chat'),
+            # gptq-int4
+            Model('qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4'),
+            Model('qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4'),
+            Model('qwen/Qwen1.5-4B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-4B-Chat-GPTQ-Int4'),
+            Model('qwen/Qwen1.5-7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-7B-Chat-GPTQ-Int4'),
+            Model('qwen/Qwen1.5-14B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-14B-Chat-GPTQ-Int4'),
+            Model('qwen/Qwen1.5-32B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-32B-Chat-GPTQ-Int4'),
+            Model('qwen/Qwen1.5-72B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-72B-Chat-GPTQ-Int4'),
+            Model('qwen/Qwen1.5-110B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-110B-Chat-GPTQ-Int4'),
+            # gptq-int8
+            Model('qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8'),
+            Model('qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8'),
+            Model('qwen/Qwen1.5-4B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-4B-Chat-GPTQ-Int8'),
+            Model('qwen/Qwen1.5-7B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-7B-Chat-GPTQ-Int8'),
+            Model('qwen/Qwen1.5-14B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-14B-Chat-GPTQ-Int8'),
+            Model('qwen/Qwen1.5-72B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-72B-Chat-GPTQ-Int8'),
+            # awq-int4
+            Model('qwen/Qwen1.5-0.5B-Chat-AWQ', 'Qwen/Qwen1.5-0.5B-Chat-AWQ'),
+            Model('qwen/Qwen1.5-1.8B-Chat-AWQ', 'Qwen/Qwen1.5-1.8B-Chat-AWQ'),
+            Model('qwen/Qwen1.5-4B-Chat-AWQ', 'Qwen/Qwen1.5-4B-Chat-AWQ'),
+            Model('qwen/Qwen1.5-7B-Chat-AWQ', 'Qwen/Qwen1.5-7B-Chat-AWQ'),
+            Model('qwen/Qwen1.5-14B-Chat-AWQ', 'Qwen/Qwen1.5-14B-Chat-AWQ'),
+            Model('qwen/Qwen1.5-32B-Chat-AWQ', 'Qwen/Qwen1.5-32B-Chat-AWQ'),
+            Model('qwen/Qwen1.5-72B-Chat-AWQ', 'Qwen/Qwen1.5-72B-Chat-AWQ'),
+            Model('qwen/Qwen1.5-110B-Chat-AWQ', 'Qwen/Qwen1.5-110B-Chat-AWQ'),
+        ])
+    ],
+    TemplateGroup(TemplateType.qwen),
+    get_model_tokenizer_with_flash_attn,
+    requires=['transformers>=4.37'],
+    support_flash_attn=True,
+    support_vllm=True,
+    support_megatron=True,
     support_lmdeploy=True)

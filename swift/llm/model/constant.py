@@ -25,6 +25,8 @@ class LLMModelType:
 
     atom = 'atom'
 
+    codefuse_qwen = 'codefuse_qwen'
+
 
 class MLLMModelType:
     qwen_vl = 'qwen_vl'

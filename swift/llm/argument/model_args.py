@@ -7,7 +7,8 @@ import torch
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING, ConfigReader
+from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING, RLHFArguments
+from swift.llm.model import fix_do_sample_warning
 from swift.utils import get_dist_setting, get_logger, use_hf_hub
 
 logger = get_logger()
@@ -35,12 +36,8 @@ class GenerationArguments:
         if self.temperature == 0:
             self.do_sample = False
         from swift.llm import InferArguments, SftArguments
-        if self.do_sample is False and (isinstance(self, SftArguments) or
-                                        (isinstance(self, InferArguments) and self.infer_backend == 'pt')):
-            # fix warning
-            self.temperature = 1.
-            self.top_p = 1.
-            self.top_k = 50
+        if (isinstance(self, SftArguments) or (isinstance(self, InferArguments) and self.infer_backend == 'pt')):
+            fix_do_sample_warning(self)
             logger.info('Due to do_sample=False, the following settings are applied: args.temperature: '
                         f'{self.temperature}, args.top_p: {self.top_p}, args.top_k: {self.top_k}.')
 
@@ -85,19 +82,6 @@ class QuantizeArguments:
                                'Or specify another quantization method; No quantization will be performed here.')
         self.bnb_4bit_compute_dtype = bnb_4bit_compute_dtype
         self.load_in_4bit, self.load_in_8bit = load_in_4bit, load_in_8bit
-
-    def is_quant_model(self: Union['SftArguments', 'InferArguments']) -> bool:
-        """Judge if the current model has already been a quantized model"""
-        # Check if the model is gptq, awq, aqlm model. Do not check for other quantization situations such as bnb.
-        if self.model_type is not None:
-            for k in ['int4', 'int8', 'awq', 'aqlm']:
-                if k in self.model_type:
-                    return True
-
-        model_path = self.model_id_or_path or self.resume_from_checkpoint or self.ckpt_dir
-        bits = ConfigReader.read_config('quantization_config.bits', self.model_type, model_path, self.model_revision)
-        if bits:
-            return True
 
     def __post_init__(self: Union['SftArguments', 'InferArguments']):
         self.select_bnb()

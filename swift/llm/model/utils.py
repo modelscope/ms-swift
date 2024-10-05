@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import hashlib
 import os
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar, Union
 
 import torch
 import torch.distributed as dist
@@ -10,13 +10,14 @@ from modelscope.hub.utils.utils import get_cache_dir
 from transformers import PretrainedConfig
 
 from swift import get_logger
-from swift.hub import HFHub, MSHub
+from swift.hub import HFHub, MSHub, default_hub
 from swift.utils import deep_getattr, is_dist, is_dist_ta, safe_ddp_context
+from .register import get_arch_mapping
 
 logger = get_logger()
 
 
-class ConfigReader:
+class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
@@ -30,25 +31,35 @@ class ConfigReader:
 
     @staticmethod
     def get_config_attr(config, attr_name: str) -> Optional[Any]:
-        value = ConfigReader._get_config_attr(config, attr_name) or (None, None)
+        value = HfConfigFactory._get_config_attr(config, attr_name) or (None, None)
         return value[1]
 
     @staticmethod
+    def get_torch_dtype(config) -> Optional[torch.dtype]:
+        for key in ['torch_dtype', 'params_dtype']:
+            torch_dtype = HfConfigFactory.get_config_attr(config, key)
+            if torch_dtype is None:
+                continue
+            if isinstance(torch_dtype, str):
+                torch_dtype = eval(f'torch.{torch_dtype}')
+            return torch_dtype
+
+    @staticmethod
     def set_config_attr(config, attr_name: str, value: Any) -> None:
-        config, _ = ConfigReader._get_config_attr(config, attr_name) or (config, None)
+        config, _ = HfConfigFactory._get_config_attr(config, attr_name) or (config, None)
         setattr(config, attr_name, value)
 
     @staticmethod
     def set_rope_scaling(config: PretrainedConfig, rope_scaling: Dict[str, Any]):
         """Set rope scaling to the config"""
         # [TODO:check]
-        ConfigReader.set_config_attr(config, 'rope_scaling', rope_scaling)
+        HfConfigFactory.set_config_attr(config, 'rope_scaling', rope_scaling)
 
     @staticmethod
     def get_rope_scaling(config: PretrainedConfig) -> Dict[str, Any]:
         """Get rope scaling from the config"""
         # [TODO:check]
-        return ConfigReader.get_config_attr(config, 'rope_scaling')
+        return HfConfigFactory.get_config_attr(config, 'rope_scaling')
 
     @staticmethod
     def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
@@ -68,13 +79,18 @@ class ConfigReader:
             'max_seq_length',
         ]
         for key in possible_keys:
-            max_len_key = ConfigReader.get_config_attr(config, key)
+            max_len_key = HfConfigFactory.get_config_attr(config, key)
             if max_len_key is not None:
                 max_model_len = min(max_model_len, max_len_key)
         if max_model_len == INF:
             max_model_len = None
 
         return max_model_len
+
+    @staticmethod
+    def compat_zero3(config) -> None:
+        value = HfConfigFactory.get_config_attr(config, 'hidden_size')
+        config.hidden_size = value
 
     @staticmethod
     def get_quant_info(config: PretrainedConfig) -> Dict[str, Any]:
@@ -84,7 +100,6 @@ class ConfigReader:
         res = {}
         if quant_method in {'gptq', 'awq', 'aqlm'}:
             res['quant_method'] = quant_method
-            res['torch_type'] = torch.float16
             bits = quantization_config.get('bits')
             if bits is not None:
                 res['bits'] = bits
@@ -92,20 +107,40 @@ class ConfigReader:
             res['quant_method'] = quant_method
             load_in_4bit = quantization_config.get('load_in_4bit')
             load_in_8bit = quantization_config.get('load_in_8bit')
-            bnb_4bit_compute_dtype = quantization_config.get('bnb_4bit_compute_dtype')
             if load_in_4bit:
                 res['bits'] = 4
             elif load_in_8bit:
                 res['bits'] = 8
-            # [TODO:check torch.bfloat16,'bfloat16']
-            res['bnb_4bit_compute_dtype'] = bnb_4bit_compute_dtype
         return res
+
+    @staticmethod
+    def get_matched_model_types(config: PretrainedConfig, model_dir: Optional[str] = None) -> List[str]:
+        """Get possible model_type."""
+        # get possible model_types based on the model architecture.
+        arch_mapping = get_arch_mapping()
+        model_name = None
+        if model_dir is not None:
+            model_name = model_dir.rsplit('/', 1)[-1].lower()
+        arch = config.architectures
+        model_type_dict: Dict[str, Set[str]] = arch_mapping[arch]
+        model_type_list = list(model_type_dict.keys())
+        if len(model_type_list) == 1 or model_dir is None:
+            return model_type_list
+        # Filter again based on model_dir.
+        model_type_dict_reversed = {}
+        for model_type, model_names in model_type_dict.items():
+            model_type = model_type.lower()
+            model_type_dict_reversed.update({model_name: model_type for model_name in model_names})
+        model_type = model_type_dict_reversed.get(model_name)
+        if model_type is None:
+            return model_type_list
+        return [model_type]
 
 
 def safe_snapshot_download(model_id_or_path: str,
                            revision: Optional[str] = None,
                            download_model: bool = True,
-                           use_hf: bool = False,
+                           use_hf: Optional[bool] = None,
                            ignore_file_pattern: Optional[List[str]] = None,
                            **kwargs) -> str:
     """Download model protected by DDP context
@@ -127,7 +162,7 @@ def safe_snapshot_download(model_id_or_path: str,
         context = FileLock(file_path)
     else:
         context = safe_ddp_context()
-    hub = HFHub if use_hf else MSHub
+    hub = {True: HFHub, False: MSHub, None: default_hub}[use_hf]
     with context:
         if os.path.exists(model_id_or_path):
             model_dir = model_id_or_path
