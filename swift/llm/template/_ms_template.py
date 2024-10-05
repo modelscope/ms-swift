@@ -11,11 +11,11 @@ from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
+from swift.llm import to_device
 from .loss_scale import loss_scale_map
 from .tools_prompt import get_tools_prompt
 from .utils import (Context, History, Messages, Prompt, StopWords, decode_base64, fetch_one, load_batch, load_image,
                     rescale_image)
-from swift.llm import to_device
 
 logger = get_logger()
 

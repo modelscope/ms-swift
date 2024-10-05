@@ -24,7 +24,7 @@ class HfConfigFactory:
         for key in [None, 'language_config', 'llm_config', 'text_config']:
             if key is not None:
                 config = getattr(config, key, None)
-            value = deep_getattr(config, attr_name)
+            value = deep_getattr(config, attr_name, None)
             if value is not None:
                 return config, value
 
@@ -39,9 +39,7 @@ class HfConfigFactory:
             torch_dtype = HfConfigFactory.get_config_attr(config, key)
             if torch_dtype is None:
                 continue
-            if isinstance(torch_dtype, str):
-                torch_dtype = eval(f'torch.{torch_dtype}')
-            return torch_dtype
+            return HfConfigFactory._to_torch_dtype(torch_dtype)
 
     @staticmethod
     def set_config_attr(config, attr_name: str, value: Any) -> None:
@@ -92,6 +90,12 @@ class HfConfigFactory:
         config.hidden_size = value
 
     @staticmethod
+    def _to_torch_dtype(torch_dtype: Union[str, torch.dtype]) -> torch.dtype:
+        if isinstance(torch_dtype, str):
+            torch_dtype = eval(f'torch.{torch_dtype}')
+        return torch_dtype
+
+    @staticmethod
     def get_quant_info(config: PretrainedConfig) -> Dict[str, Any]:
         """Get quant_method, quant_bits, dtype. not support hqq/eetq now, support awq/gptq/bnb/aqlm"""
         quantization_config = dict(getattr(config, 'quantization_config'))
@@ -99,6 +103,7 @@ class HfConfigFactory:
         res = {}
         if quant_method in {'gptq', 'awq', 'aqlm'}:
             res['quant_method'] = quant_method
+            res['torch_dtype'] = torch.float16
             bits = quantization_config.get('bits')
             if bits is not None:
                 res['bits'] = bits
@@ -106,10 +111,12 @@ class HfConfigFactory:
             res['quant_method'] = quant_method
             load_in_4bit = quantization_config.get('load_in_4bit')
             load_in_8bit = quantization_config.get('load_in_8bit')
+            bnb_4bit_compute_dtype = quantization_config.get('bnb_4bit_compute_dtype')
             if load_in_4bit:
                 res['bits'] = 4
             elif load_in_8bit:
                 res['bits'] = 8
+            res['torch_dtype'] = HfConfigFactory._to_torch_dtype(bnb_4bit_compute_dtype)
         return res
 
     @staticmethod
@@ -121,7 +128,7 @@ class HfConfigFactory:
         model_name = None
         if model_dir is not None:
             model_name = model_dir.rsplit('/', 1)[-1].lower()
-        arch = config.architectures
+        arch = config.architectures[0]
         model_type_dict: Dict[str, List[str]] = arch_mapping[arch]
         model_type_list = list(model_type_dict.keys())
         if len(model_type_list) == 1 or model_dir is None:
@@ -129,8 +136,7 @@ class HfConfigFactory:
         # Filter again based on model_dir.
         model_type_dict_reversed = {}
         for model_type, model_names in model_type_dict.items():
-            model_type = model_type.lower()
-            model_type_dict_reversed.update({model_name: model_type for model_name in model_names})
+            model_type_dict_reversed.update({model_name.lower(): model_type for model_name in model_names})
         model_type = model_type_dict_reversed.get(model_name)
         if model_type is None:
             return model_type_list

@@ -14,10 +14,10 @@ from transformers import PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
 
+from swift.utils import upper_bound
 from .base import TEMPLATE_MAPPING, Template
 from .utils import (fetch_one, load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
                     load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2, transform_image)
-from swift.utils import upper_bound
 
 logger = get_logger()
 

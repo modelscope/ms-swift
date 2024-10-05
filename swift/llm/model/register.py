@@ -223,6 +223,8 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
         model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
     if load_model:
+        if use_torchacc():
+            device_map = None
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         kwargs['model_config'] = model_config
         if model_type is None:
@@ -232,18 +234,20 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
                                  f'Please explicitly provide the model_type. Available model_types: {model_types}')
             model_type = model_types[0]
             logger.info(f'Setting model_type: {model_type}')
+        quant_info = HfConfigFactory.get_quant_info(model_config)
         if torch_dtype is None:
-            # params_dtype
             torch_dtype = HfConfigFactory.get_torch_dtype(model_config)
+            if torch_dtype is None:
+                torch_dtype = quant_info.get('torch_dtype')
             if torch_dtype in {torch.float32, None}:
                 torch_dtype = torch.bfloat16 if is_torch_bf16_gpu_available() else torch.float16
+
             logger.info(f'Setting torch_dtype: {torch_dtype}')
 
-        quant_info = HfConfigFactory.get_quant_info(model_config)
         if quant_info is not None:
+            quant_info.pop('torch_dtype', None)
             kwargs.update(quant_info)
-        if use_torchacc():
-            device_map = None
+
         model_kwargs['device_map'] = device_map
         kwargs['is_training'] = is_training
 

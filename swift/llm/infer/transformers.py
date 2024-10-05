@@ -15,9 +15,9 @@ from transformers.generation.streamers import BaseStreamer
 from transformers.utils import is_torch_npu_available
 
 from swift import get_logger
-from swift.llm import DeployArguments, InferArguments, StopWords, Template, get_model_tokenizer, get_template
+from swift.llm import (DeployArguments, HfConfigFactory, InferArguments, StopWords, Template, get_model_tokenizer,
+                       get_template, to_device)
 from swift.llm.dataset.utils import safe_tokenizer_decode
-from swift.llm import to_device, HfConfigFactory
 from swift.llm.template.base import StopWordsCriteria
 from swift.llm.utils import Messages, set_generation_config
 from swift.plugin.tuner import Tuner, extra_tuners

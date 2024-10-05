@@ -134,12 +134,12 @@ def _safe_split(s: str,
     return part
 
 
-def deep_getattr(obj, attr: str):
+def deep_getattr(obj, attr: str, default=None):
     attrs = attr.split('.')
     for a in attrs:
         if obj is None:
             break
-        obj = getattr(obj, a)
+        obj = getattr(obj, a, default)
     return obj
 
 
