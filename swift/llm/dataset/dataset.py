@@ -177,9 +177,11 @@ class DatasetName:
     def get_dataset_name_list(cls) -> List[str]:
         res = []
         for k in cls.__dict__.keys():
-            if k.startswith('__') or k == 'get_dataset_name_list':
+            if k.startswith('__'):
                 continue
-            res.append(cls.__dict__[k])
+            value = cls.__dict__[k]
+            if isinstance(value, str):
+                res.append(value)
         return res
 
 
