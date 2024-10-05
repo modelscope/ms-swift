@@ -6,6 +6,7 @@ from .utils import HfConfigFactory, safe_snapshot_download
 def _register_files():
     from . import qwen
     from . import llama
-    from . import model
+    # TODO
+    # from . import model
 
 _register_files()
