@@ -8,12 +8,13 @@ import torch
 import transformers
 from packaging import version
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer, GenerationConfig,
-                          PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
-from transformers.utils import is_torch_bf16_gpu_available
+                          PreTrainedModel, PreTrainedTokenizerBase)
+from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
+from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils.versions import require_version
 
 from swift.llm import TemplateType
-from swift.utils import get_logger, use_torchacc
+from swift.utils import get_logger, is_unsloth_available, use_torchacc, is_dist, is_ddp_plus_mp, get_dist_setting
 from .utils import HfConfigFactory, safe_snapshot_download
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
@@ -87,6 +88,20 @@ def register_model(model_type: str,
     return
 
 
+def load_by_unsloth(model_dir, torch_dtype, max_seq_length: int = None, load_in_4bit: bool = True):
+    """Load model by unsloth"""
+    # TODO:check
+    assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
+    from unsloth import FastLanguageModel
+    return FastLanguageModel.from_pretrained(
+        model_name=model_dir,
+        dtype=torch_dtype,
+        max_seq_length=max_seq_length,
+        load_in_4bit=load_in_4bit,
+        trust_remote_code=True,
+    )
+
+
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[torch.dtype],
                                   model_kwargs: Dict[str, Any],
@@ -99,37 +114,34 @@ def get_model_tokenizer_from_repo(model_dir: str,
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     HfConfigFactory.compat_zero3(model_config)
-    quant_info = HfConfigFactory.get_quant_info(model_config)
-
-    quant_method = quant_info.get('quant_info')
-    if quantization_config is not None:
-        quant_method = quantization_config.quant_method
-        # quant_bits = quantization_config.bits
-
-    is_training = kwargs.pop('is_training', False)
-
-    # if quant_method == 'awq' and is_training:
-    #     check_awq_ext()
-    # if quant_method == 'gptq' and is_training:
-    #     patch_gptq_model(quant_bits, model_config, model_kwargs)
 
     if torch_dtype is not None:
         model_config.torch_dtype = torch_dtype
+    rope_scaling = kwargs.get('rope_scaling', None)
+    if rope_scaling is not None:
+        HfConfigFactory.set_rope_scaling(model_config, rope_scaling)
 
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
-    patch_rope_scaling(model_config, kwargs.pop('rope_scaling', None), kwargs.pop('max_length', None))
     if load_model:
         if kwargs.get('use_unsloth', False):
-            model, tokenizer = load_by_unsloth(model_dir, torch_dtype, **kwargs)
+            unsloth_kwargs = kwargs.get('unsloth_kwargs') or {}
+            logger.info(f'unsloth_kwargs: {unsloth_kwargs}')
+            model, tokenizer = load_by_unsloth(model_dir, torch_dtype, **unsloth_kwargs)
         else:
             logger.info(f'model_kwargs: {model_kwargs}')
-            model = load_by_transformers(automodel_class, model_dir, model_config, torch_dtype, quant_method == 'aqlm',
-                                         is_training, model_kwargs, **kwargs)
+            model = automodel_class.from_pretrained(
+                model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
     else:
         model = None
     tokenizer.config = model_config
+    model.quant_method = kwargs.get('quant_method')
+    model.quant_bits = kwargs.get('bits')
+    model.is_training = kwargs.get('is_training', False)
+    max_model_len = HfConfigFactory.get_max_model_len(model_config)
+    model.max_model_len = max_model_len
+    logger.info(f'model.max_model_len: {max_model_len}')
     return model, tokenizer
 
 
@@ -199,32 +211,56 @@ def fix_do_sample_warning(generation_config) -> None:
         generation_config.top_k = 50
 
 
+def get_default_device_map():
+    if is_deepspeed_zero3_enabled() or os.environ.get('ACCELERATE_USE_FSDP', 'False') == 'true':
+        return None
+    local_rank = get_dist_setting()[1]
+    if is_torch_npu_available():
+        if local_rank >= 0:
+            return f'npu:{local_rank}'
+        else:
+            return 'npu:0'
+    if torch.cuda.device_count() == 0:
+        return 'cpu'
+    elif torch.cuda.device_count() == 1:
+        return 'cuda:0'
+    elif is_dist() and not is_ddp_plus_mp():
+        return f'cuda:{local_rank}'
+    else:
+        return 'auto'
+
 def get_model_tokenizer(model_id_or_path: Optional[str] = None,
                         torch_dtype: Optional[torch.dtype] = None,
-                        device_map: Union[str, Dict[str, Any], None] = 'auto',
                         model_kwargs: Optional[Dict[str, Any]] = None,
                         load_model: bool = True,
                         *,
                         use_hf: Optional[bool] = None,
                         model_type: Optional[str] = None,
-                        revision: Optional[str] = None,
-                        is_training: bool = False,
                         download_model: Optional[bool] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
-    torch_dtype: If you use None, it will retrieve the torch_dtype from the config.json file.
-        However, if torch.float32 is retrieved, torch.float16 will be used.
+    model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by use_hf).
+    torch_dtype: If you pass None, it will retrieve the torch_dtype from the config.json file.
+    model_kwargs: Passed to automodel_class.from_pretrained.
+    load_model: Whether to load the model. If set to False, the model will return None.
+    use_hf: Indicates whether the model download hub is modelscope or huggingface.
+    model_type: If it is not possible to uniquely determine the model_type from the architecture in config.json,
+        it needs to be provided.
+    download_model: Whether to download the model weights. If None, it will be selected based on load_model.
     """
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
         download_model = load_model
+    revision = kwargs.pop('revision', None)
     model_dir = safe_snapshot_download(
         model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
     if load_model:
         if use_torchacc():
             device_map = None
+        else:
+            device_map = 'auto'
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         kwargs['model_config'] = model_config
         if model_type is None:
@@ -249,7 +285,6 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
             kwargs.update(quant_info)
 
         model_kwargs['device_map'] = device_map
-        kwargs['is_training'] = is_training
 
     kwargs['model_type'] = model_type
     model_info = MODEL_MAPPING[model_type]
@@ -271,8 +306,6 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
 
     if model is not None:
         fix_gradient_checkpointing_warning(is_moe)
-        model.max_model_len = HfConfigFactory.get_max_model_len(model.config)
-        logger.info(f'model.max_model_len: {model.max_model_len}')
         fix_transformers_upgrade(model)
 
         # generation_config
