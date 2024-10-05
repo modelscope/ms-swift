@@ -5,6 +5,7 @@ class LLMModelType:
     qwen = 'qwen'
     modelscope_agent = 'modelscope_agent'
     qwen2 = 'qwen2'
+    qwen2_5 = 'qwen2_5'
     qwen2_moe = 'qwen2_moe'
 
     chatglm2 = 'chatglm2'
