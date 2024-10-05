@@ -6,6 +6,7 @@ from transformers import AutoConfig, BitsAndBytesConfig
 from swift.llm import TemplateType
 from swift.utils import get_logger
 from .constant import ModelType
+from .utils import AttnImpl
 from .model import Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_repo, register_model
 
 logger = get_logger()
@@ -33,9 +34,7 @@ def get_model_tokenizer_qwen(model_dir: str,
                                                                          BitsAndBytesConfig):
         # not (quantization + bnb)
         torch_dtype = None
-    use_flash_attn = kwargs.pop('use_flash_attn', None)
-    if use_flash_attn is None:
-        use_flash_attn = 'auto'
+    use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
@@ -86,6 +85,25 @@ register_model(
     support_flash_attn=True,
     support_vllm=False)
 
+def get_model_tokenizer_qwen_audio(model_dir: str,
+                                   torch_dtype: torch.dtype,
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   **kwargs):
+    get_qwen_function = kwargs.pop('get_qwen_function')
+    tokenizer_config = get_tokenizer_config(model_dir)
+    class_ref = tokenizer_config['auto_map']['AutoTokenizer'][0]
+    tokenizer_cls: Type[PreTrainedTokenizerBase] = get_class_from_dynamic_module(class_ref, model_dir)
+    tokenizer_cls._auto_class = 'AutoTokenizer'
+    tokenizer_cls.AUDIO_ST = ()  # fix no attr `self.AUDIO_ST` bug
+    tokenizer_cls._old_decode = tokenizer_cls._decode
+    tokenizer_cls._decode = _qwen_vl_audio_decode
+    kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_qwen_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    if model is not None:
+        fix_qwen_inplace_bug(model)
+
+    return model, tokenizer
 
 register_model(
     ModelType.qwen_audio,
