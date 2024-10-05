@@ -122,7 +122,7 @@ class HfConfigFactory:
         if model_dir is not None:
             model_name = model_dir.rsplit('/', 1)[-1].lower()
         arch = config.architectures
-        model_type_dict: Dict[str, Set[str]] = arch_mapping[arch]
+        model_type_dict: Dict[str, List[str]] = arch_mapping[arch]
         model_type_list = list(model_type_dict.keys())
         if len(model_type_list) == 1 or model_dir is None:
             return model_type_list

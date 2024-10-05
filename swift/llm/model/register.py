@@ -2,7 +2,7 @@ import inspect
 import os
 from functools import partial, update_wrapper
 from types import MethodType
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import transformers
@@ -18,7 +18,7 @@ from .utils import HfConfigFactory, safe_snapshot_download
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
-ARCH_MAPPING: Optional[Dict[str, Dict[str, Set[str]]]] = None
+ARCH_MAPPING: Optional[Dict[str, Dict[str, List[str]]]] = None
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
 logger = get_logger()
@@ -281,7 +281,7 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
     return model, tokenizer
 
 
-def _get_model_names(model_groups: List[ModelGroup]) -> Set[str]:
+def _get_model_names(model_groups: List[ModelGroup]) -> List[str]:
     res = set()
     for model_group in model_groups:
         for model in model_group.models:
@@ -291,13 +291,13 @@ def _get_model_names(model_groups: List[ModelGroup]) -> Set[str]:
                 if isinstance(value, str):
                     model_name = value.rsplit('/', 1)[-1]
                     res.add(model_name)
-    return res
+    return list(res)
 
 
-def get_arch_mapping() -> Dict[str, Dict[str, Set[str]]]:
+def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
     global ARCH_MAPPING
     if ARCH_MAPPING is None:
-        # arch(str) -> Dict[model_type(str), Set[model_name(str)]]
+        # arch(str) -> Dict[model_type(str), List[model_name(str)]]
         ARCH_MAPPING = {}
         for model_type, model_info in MODEL_MAPPING.items():
             arch = model_info['architectures']
