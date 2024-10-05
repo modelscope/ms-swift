@@ -371,5 +371,8 @@ def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
     return ARCH_MAPPING
 
 
-def get_default_template_type(model_type: str) -> Optional[str]:
-    return MODEL_MAPPING[model_type].get('template')
+class ModelInfoReader:
+    # info
+    @staticmethod
+    def get_default_template_type(model_type: str) -> Optional[str]:
+        return MODEL_MAPPING[model_type].get('template')
