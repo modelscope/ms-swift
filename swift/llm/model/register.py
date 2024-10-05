@@ -9,12 +9,12 @@ import transformers
 from packaging import version
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer, GenerationConfig,
                           PreTrainedModel, PreTrainedTokenizerBase)
-from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
 from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.llm import TemplateType
-from swift.utils import get_logger, is_unsloth_available, use_torchacc, is_dist, is_ddp_plus_mp, get_dist_setting
+from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
 from .utils import HfConfigFactory, safe_snapshot_download
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
@@ -228,6 +228,7 @@ def get_default_device_map():
         return f'cuda:{local_rank}'
     else:
         return 'auto'
+
 
 def get_model_tokenizer(model_id_or_path: Optional[str] = None,
                         torch_dtype: Optional[torch.dtype] = None,
