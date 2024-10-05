@@ -7,8 +7,8 @@ from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tup
 import torch
 import transformers
 from packaging import version
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig,
-                          PreTrainedModel, PreTrainedTokenizerBase)
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
 from transformers.utils.versions import require_version
@@ -61,20 +61,23 @@ def register_model(model_type: str,
                    exist_ok: bool = False,
                    **kwargs) -> None:
     """
-    model_type:
-    architectures:
-    model_groups:
-    template:
-    get_function:
+    model_type: The unique ID for the model type. Models with the same model_type share
+        the same architectures, template, get_function, etc.
+    architectures: Used to automatically infer the model_type from config.json.
+    model_groups: Used to list the model_ids from huggingface/modelscope,
+        which participate in the automatic inference of the model_type.
+    template: chat_template & generation_template. This will be determined based on
+        whether the `swift pt` command is used to start.
+    get_function: A function to obtain the model and tokenizer based on model_dir.
 
-    requires:
-    ignore_file_pattern:
-    additional_saved_files:
-    is_multimodal:
-    is_moe:
-    support_flash_attn:
-    support_vllm:
-    support_lmdeploy:
+    requires: Usually specifies the version limits of transformers.
+    ignore_file_pattern: File patterns to ignore when downloading the model.
+    additional_saved_files: Additional files that need to be saved for full parameter training/merge-lora.
+    is_multimodal: Whether it is a multimodal model.
+    is_moe: Whether it is a moe model.
+    support_flash_attn: Whether it supports flash attention.
+    support_vllm: Whether it supports vllm inference acceleration.
+    support_lmdeploy: Whether it supports lmdeploy inference acceleration.
     """
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
@@ -130,7 +133,7 @@ def get_model_tokenizer_from_local(model_dir: str,
                                    tokenizer=None,
                                    automodel_class=AutoModelForCausalLM,
                                    **kwargs):
-    """load from an independent repository"""
+    """Load the model and tokenizer from the local model_dir."""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     HfConfigFactory.compat_zero3(model_config)

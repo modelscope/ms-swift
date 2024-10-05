@@ -126,7 +126,6 @@ class ModelArguments:
                 if isinstance(v, int):
                     self.device_map_config[k] += local_rank
 
-
     def get_model_group(self):
         """Find the model group. This is used to find the model structure"""
         model_type = (self.model_type or self.model_id_or_path).replace('-', '_')

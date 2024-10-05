@@ -490,28 +490,30 @@ register_model(
     MLLMModelType.qwen2_vl,
     'Qwen2VLForConditionalGeneration',
     [
-        ModelGroup([
-            # base
-            Model('qwen/Qwen2-VL-2B', 'Qwen/Qwen2-VL-2B'),
-            Model('qwen/Qwen2-VL-7B', 'Qwen/Qwen2-VL-7B'),
-            Model('qwen/Qwen2-VL-72B', 'Qwen/Qwen2-VL-72B'),
-            # chat
-            Model('qwen/Qwen2-VL-2B-Instruct', 'Qwen/Qwen2-VL-2B-Instruct'),
-            Model('qwen/Qwen2-VL-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct'),
-            Model('qwen/Qwen2-VL-72B-Instruct', 'Qwen/Qwen2-VL-72B-Instruct'),
-            # gptq-int4
-            Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4'),
-            # gptq-int8
-            Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8'),
-            # awq-int4
-            Model('qwen/Qwen2-VL-2B-Instruct-AWQ', 'Qwen/Qwen2-VL-2B-Instruct-AWQ'),
-            Model('qwen/Qwen2-VL-7B-Instruct-AWQ', 'Qwen/Qwen2-VL-7B-Instruct-AWQ'),
-            Model('qwen/Qwen2-VL-72B-Instruct-AWQ', 'Qwen/Qwen2-VL-72B-Instruct-AWQ'),
-        ], tags=['vision', 'video']),
+        ModelGroup(
+            [
+                # base
+                Model('qwen/Qwen2-VL-2B', 'Qwen/Qwen2-VL-2B'),
+                Model('qwen/Qwen2-VL-7B', 'Qwen/Qwen2-VL-7B'),
+                Model('qwen/Qwen2-VL-72B', 'Qwen/Qwen2-VL-72B'),
+                # chat
+                Model('qwen/Qwen2-VL-2B-Instruct', 'Qwen/Qwen2-VL-2B-Instruct'),
+                Model('qwen/Qwen2-VL-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct'),
+                Model('qwen/Qwen2-VL-72B-Instruct', 'Qwen/Qwen2-VL-72B-Instruct'),
+                # gptq-int4
+                Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4'),
+                # gptq-int8
+                Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8'),
+                # awq-int4
+                Model('qwen/Qwen2-VL-2B-Instruct-AWQ', 'Qwen/Qwen2-VL-2B-Instruct-AWQ'),
+                Model('qwen/Qwen2-VL-7B-Instruct-AWQ', 'Qwen/Qwen2-VL-7B-Instruct-AWQ'),
+                Model('qwen/Qwen2-VL-72B-Instruct-AWQ', 'Qwen/Qwen2-VL-72B-Instruct-AWQ'),
+            ],
+            tags=['vision', 'video']),
     ],
     TemplateGroup(TemplateType.qwen2_vl, TemplateType.qwen2_vl_generation),
     get_model_tokenizer_qwen2_vl,
@@ -526,16 +528,16 @@ def get_model_tokenizer_qwen2_audio(*args, **kwargs):
     kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
     return get_model_tokenizer_multimodal(*args, **kwargs)
 
+
 register_model(
     MLLMModelType.qwen2_audio,
-    'Qwen2AudioForConditionalGeneration',
-    [
+    'Qwen2AudioForConditionalGeneration', [
         ModelGroup([
             Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
             Model('qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
             Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-
-        ], tags=['audio']),
+        ],
+                   tags=['audio']),
     ],
     TemplateGroup(TemplateType.qwen2_audio, TemplateType.qwen2_audio_generation),
     get_model_tokenizer_qwen2_audio,

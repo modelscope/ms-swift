@@ -17,11 +17,6 @@ from swift.utils import is_dist, use_torchacc
 class SwiftArgumentsMixin:
     # ckpt only save model
     save_only_model: bool = False
-    acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
-    # torchacc
-    train_sampler_random: bool = True
-    metric_warmup_step: Optional[float] = 0
-    train_dataset_sample: Optional[int] = -1
 
     def __post_init__(self):
         if is_dist() and self.ddp_backend == 'nccl' and torch.cuda.is_available() and is_accelerate_available():
@@ -37,12 +32,17 @@ class SwiftArgumentsMixin:
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
-    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    pass
 
 
 @dataclass
 class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
+    acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
+    # torchacc
+    train_sampler_random: bool = True
+    metric_warmup_step: Optional[float] = 0
+    train_dataset_sample: Optional[int] = -1
 
     @property
     def place_model_on_device(self):
