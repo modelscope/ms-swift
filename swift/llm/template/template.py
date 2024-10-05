@@ -194,6 +194,7 @@ class DefaultGenerationTemplate(Template):
 
 register_template(TemplateType.default_generation, DefaultGenerationTemplate(), is_generation=True)
 
+
 class ChatmlTemplateMixin:
     system = None
 

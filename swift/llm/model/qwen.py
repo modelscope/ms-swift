@@ -325,24 +325,26 @@ register_model(
             Model('qwen/Qwen2-72B-Instruct-AWQ', 'Qwen/Qwen2-72B-Instruct-AWQ'),
         ]),
         # qwen2-math
-        ModelGroup([
-            # base
-            Model('qwen/Qwen2-Math-1.5B', 'Qwen/Qwen2-Math-1.5B'),
-            Model('qwen/Qwen2-Math-7B', 'Qwen/Qwen2-Math-7B'),
-            Model('qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
-            # instruct
-            Model('qwen/Qwen2-Math-1.5B-Instruct', 'Qwen/Qwen2-Math-1.5B-Instruct'),
-            Model('qwen/Qwen2-Math-7B-Instruct', 'Qwen/Qwen2-Math-7B-Instruct'),
-            Model('qwen/Qwen2-Math-72B-Instruct', 'Qwen/Qwen2-Math-72B-Instruct'),
-        ], tags=['math']),
+        ModelGroup(
+            [
+                # base
+                Model('qwen/Qwen2-Math-1.5B', 'Qwen/Qwen2-Math-1.5B'),
+                Model('qwen/Qwen2-Math-7B', 'Qwen/Qwen2-Math-7B'),
+                Model('qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
+                # instruct
+                Model('qwen/Qwen2-Math-1.5B-Instruct', 'Qwen/Qwen2-Math-1.5B-Instruct'),
+                Model('qwen/Qwen2-Math-7B-Instruct', 'Qwen/Qwen2-Math-7B-Instruct'),
+                Model('qwen/Qwen2-Math-72B-Instruct', 'Qwen/Qwen2-Math-72B-Instruct'),
+            ],
+            tags=['math']),
     ],
     TemplateGroup(TemplateType.qwen),
     get_model_tokenizer_with_flash_attn,
     requires=['transformers>=4.37'],
     support_flash_attn=True,
     support_vllm=True,
-    support_megatron=True,
-    support_lmdeploy=True)
+    support_lmdeploy=True,
+    support_megatron=True)
 
 register_model(
     LLMModelType.qwen2_5,
@@ -392,29 +394,33 @@ register_model(
             Model('qwen/Qwen2.5-72B-Instruct-AWQ', 'Qwen/Qwen2.5-72B-Instruct-AWQ'),
         ]),
         # qwen2.5-math
-        ModelGroup([
-            # base
-            Model('qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
-            Model('qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
-            Model('qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
-            # instruct
-            Model('qwen/Qwen2.5-Math-1.5B-Instruct', 'Qwen/Qwen2.5-Math-1.5B-Instruct'),
-            Model('qwen/Qwen2.5-Math-7B-Instruct', 'Qwen/Qwen2.5-Math-7B-Instruct'),
-            Model('qwen/Qwen2.5-Math-72B-Instruct', 'Qwen/Qwen2.5-Math-72B-Instruct'),
-        ], tags=['math']),
+        ModelGroup(
+            [
+                # base
+                Model('qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
+                Model('qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
+                Model('qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
+                # instruct
+                Model('qwen/Qwen2.5-Math-1.5B-Instruct', 'Qwen/Qwen2.5-Math-1.5B-Instruct'),
+                Model('qwen/Qwen2.5-Math-7B-Instruct', 'Qwen/Qwen2.5-Math-7B-Instruct'),
+                Model('qwen/Qwen2.5-Math-72B-Instruct', 'Qwen/Qwen2.5-Math-72B-Instruct'),
+            ],
+            tags=['math']),
         # qwen2.5-coder
-        ModelGroup([
-            # base
-            Model('qwen/Qwen2.5-Coder-1.5B', 'Qwen/Qwen2.5-Coder-1.5B'),
-            Model('qwen/Qwen2.5-Coder-7B', 'Qwen/Qwen2.5-Coder-7B'),
-            # instruct
-            Model('qwen/Qwen2.5-Coder-1.5B-Instruct', 'Qwen/Qwen2.5-Coder-1.5B-Instruct'),
-            Model('qwen/Qwen2.5-Coder-7B-Instruct', 'Qwen/Qwen2.5-Coder-7B-Instruct'),
-        ], tags=['coding'])
+        ModelGroup(
+            [
+                # base
+                Model('qwen/Qwen2.5-Coder-1.5B', 'Qwen/Qwen2.5-Coder-1.5B'),
+                Model('qwen/Qwen2.5-Coder-7B', 'Qwen/Qwen2.5-Coder-7B'),
+                # instruct
+                Model('qwen/Qwen2.5-Coder-1.5B-Instruct', 'Qwen/Qwen2.5-Coder-1.5B-Instruct'),
+                Model('qwen/Qwen2.5-Coder-7B-Instruct', 'Qwen/Qwen2.5-Coder-7B-Instruct'),
+            ],
+            tags=['coding'])
     ],
     TemplateGroup(TemplateType.qwen2_5),
     get_model_tokenizer_with_flash_attn,
     requires=['transformers>=4.37'],
     support_flash_attn=True,
     support_vllm=True,
-    support_megatron=True)
+    support_lmdeploy=True)

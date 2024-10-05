@@ -233,15 +233,18 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
                         download_model: Optional[bool] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
-    model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by use_hf).
-    torch_dtype: If you pass None, it will retrieve the torch_dtype from the config.json file.
-    model_kwargs: Passed to automodel_class.from_pretrained.
-    load_model: Whether to load the model. If set to False, the model will return None.
+    model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
+    torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
+    model_kwargs: Passed to `automodel_class.from_pretrained`.
+    load_model: Whether to load the model. If set to False, the model will return `None`.
     use_hf: Indicates whether the model download hub is modelscope or huggingface.
     model_type: If it is not possible to uniquely determine the model_type from the architecture in config.json,
         it needs to be provided.
-    download_model: Whether to download the model weights. If None, it will be selected based on load_model.
+    attn_impl: If set to 'flash_attn': It will automatically convert names based on the model.
+        If set to 'auto': It will be automatically selected between sdpa and eager.
+    download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
+
     if model_kwargs is None:
         model_kwargs = {}
     if download_model is None:
