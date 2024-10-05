@@ -5,8 +5,10 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import torch
 import torch.distributed as dist
+import transformers
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
+from packaging import version
 from transformers import PretrainedConfig
 
 from swift import get_logger
@@ -20,18 +22,33 @@ class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
 
     @staticmethod
-    def _get_config_attr(config: PretrainedConfig, attr_name: str) -> Optional[Tuple[PretrainedConfig, Any]]:
+    def _get_config_attrs(config: PretrainedConfig, attr_name: str) -> List[Tuple[PretrainedConfig, Any]]:
+        res = []
         for key in [None, 'language_config', 'llm_config', 'text_config']:
             if key is not None:
                 config = getattr(config, key, None)
             value = deep_getattr(config, attr_name, None)
             if value is not None:
-                return config, value
+                res.append((config, value))
+        return res
 
     @staticmethod
     def get_config_attr(config, attr_name: str) -> Optional[Any]:
-        value = HfConfigFactory._get_config_attr(config, attr_name) or (None, None)
-        return value[1]
+        """Get the value of the attribute named attr_name."""
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name)
+        if len(attrs) == 0:
+            return None
+        else:
+            return attrs[0][1]
+
+    @staticmethod
+    def set_config_attr(config, attr_name: str, value: Any) -> None:
+        """Set all the attr_name attributes to value."""
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name)
+        if len(attrs) == 0:
+            attrs.append((config, None))
+        for config, _ in attrs:
+            setattr(config, attr_name, value)
 
     @staticmethod
     def get_torch_dtype(config) -> Optional[torch.dtype]:
@@ -40,23 +57,6 @@ class HfConfigFactory:
             if torch_dtype is None:
                 continue
             return HfConfigFactory._to_torch_dtype(torch_dtype)
-
-    @staticmethod
-    def set_config_attr(config, attr_name: str, value: Any) -> None:
-        config, _ = HfConfigFactory._get_config_attr(config, attr_name) or (config, None)
-        setattr(config, attr_name, value)
-
-    @staticmethod
-    def set_rope_scaling(config: PretrainedConfig, rope_scaling: Dict[str, Any]):
-        """Set rope scaling to the config"""
-        # [TODO:check]
-        HfConfigFactory.set_config_attr(config, 'rope_scaling', rope_scaling)
-
-    @staticmethod
-    def get_rope_scaling(config: PretrainedConfig) -> Dict[str, Any]:
-        """Get rope scaling from the config"""
-        # [TODO:check]
-        return HfConfigFactory.get_config_attr(config, 'rope_scaling')
 
     @staticmethod
     def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
@@ -198,3 +198,16 @@ class AttnImpl:
         if attn_impl in {'auto', None}:
             return default
         return attn_impl == AttnImpl.flash_attn
+
+    @staticmethod
+    def update_attn_impl(config: PretrainedConfig, attn_impl: Optional[str]) -> None:
+        if attn_impl == 'auto':  # sdpa or eager
+            return
+        use_flash_attn = attn_impl == AttnImpl.flash_attn
+        from swift.llm import HfConfigFactory
+        if version.parse(transformers.__version__) >= version.parse('4.36'):
+            if use_flash_attn:
+                attn_impl = 'flash_attention_2'
+            HfConfigFactory.set_config_attr(config, '_attn_implementation', attn_impl)
+        else:
+            HfConfigFactory.set_config_attr(config, '_flash_attn_2_enabled', use_flash_attn)

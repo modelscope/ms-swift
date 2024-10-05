@@ -2,7 +2,7 @@ import inspect
 import os
 from functools import partial, update_wrapper
 from types import MethodType
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import torch
 import transformers
@@ -15,7 +15,7 @@ from transformers.utils.versions import require_version
 
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
-from .utils import HfConfigFactory, safe_snapshot_download
+from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -119,7 +119,7 @@ def get_model_tokenizer_from_repo(model_dir: str,
         model_config.torch_dtype = torch_dtype
     rope_scaling = kwargs.get('rope_scaling', None)
     if rope_scaling is not None:
-        HfConfigFactory.set_rope_scaling(model_config, rope_scaling)
+        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
 
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
@@ -153,15 +153,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
                                         **kwargs):
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    config_list = [model_config]
-    for k in ['language_config', 'llm_config', 'text_config']:
-        llm_config = getattr(model_config, k, None)
-        if llm_config:
-            config_list.append(llm_config)
-            break
-    attn_type = AttentionType(kwargs.pop('use_flash_attn', None), kwargs.pop('attn_type', None))
-    for config in config_list:
-        attn_type.update_config(config)
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl', 'auto'))
     return get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 
@@ -237,6 +229,7 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
                         *,
                         use_hf: Optional[bool] = None,
                         model_type: Optional[str] = None,
+                        attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto',
                         download_model: Optional[bool] = None,
                         **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
@@ -259,9 +252,9 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
 
     if load_model:
         if use_torchacc():
-            device_map = None
-        else:
-            device_map = 'auto'
+            model_kwargs['device_map'] = None
+        elif 'device_map' not in model_kwargs:
+            model_kwargs['device_map'] = get_default_device_map()
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         kwargs['model_config'] = model_config
         if model_type is None:
@@ -285,9 +278,7 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
             quant_info.pop('torch_dtype', None)
             kwargs.update(quant_info)
 
-        model_kwargs['device_map'] = device_map
-
-    kwargs['model_type'] = model_type
+    kwargs.update({'model_type': model_type, 'attn_impl': attn_impl})
     model_info = MODEL_MAPPING[model_type]
     requires = model_info['requires']
     for require in requires:
