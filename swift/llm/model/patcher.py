@@ -60,7 +60,7 @@ def patch_rope_scaling(model_config: PretrainedConfig, rope_scaling: Dict[str, A
         rope_scaling: The rope scaling config
         max_length: The model max length
     """
-    max_position_embeddings = ConfigReader.get_max_model_len(model_config, ignore_rope_scaling=True)
+    max_position_embeddings = ConfigReader.get_max_model_len(model_config)
     if rope_scaling and max_position_embeddings:
         max_length = max_length or max_position_embeddings
         rope_scaling_factor = max(float(math.ceil(max_length / max_position_embeddings)), 1.0)
