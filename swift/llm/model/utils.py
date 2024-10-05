@@ -96,9 +96,12 @@ class HfConfigFactory:
         return torch_dtype
 
     @staticmethod
-    def get_quant_info(config: PretrainedConfig) -> Dict[str, Any]:
+    def get_quant_info(config: PretrainedConfig) -> Optional[Dict[str, Any]]:
         """Get quant_method, quant_bits, dtype. not support hqq/eetq now, support awq/gptq/bnb/aqlm"""
-        quantization_config = dict(getattr(config, 'quantization_config'))
+        quantization_config = getattr(config, 'quantization_config', None)
+        if quantization_config is None:
+            return
+        quantization_config = dict(quantization_config)
         quant_method = quantization_config.get('quant_method')
         res = {}
         if quant_method in {'gptq', 'awq', 'aqlm'}:
@@ -117,7 +120,7 @@ class HfConfigFactory:
             elif load_in_8bit:
                 res['bits'] = 8
             res['torch_dtype'] = HfConfigFactory._to_torch_dtype(bnb_4bit_compute_dtype)
-        return res
+        return res or None
 
     @staticmethod
     def get_matched_model_types(config: PretrainedConfig, model_dir: Optional[str] = None) -> List[str]:
@@ -191,19 +194,21 @@ class AttnImpl:
     flash_attn = 'flash_attn'
     sdpa = 'sdpa'
     eager = 'eager'
-    auto = 'auto'
+    auto = 'auto'  # sdpa or eager
 
     @staticmethod
-    def to_use_flash_attn(attn_impl: Optional[str], default: _T = None) -> Union[bool, _T]:
+    def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
         if attn_impl in {'auto', None}:
-            return default
+            return auto_value
         return attn_impl == AttnImpl.flash_attn
 
     @staticmethod
     def update_attn_impl(config: PretrainedConfig, attn_impl: Optional[str]) -> None:
-        if attn_impl == 'auto':  # sdpa or eager
+
+        use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl)
+        if use_flash_attn is None:
+            # attn_impl in {'auto', None}
             return
-        use_flash_attn = attn_impl == AttnImpl.flash_attn
         from swift.llm import HfConfigFactory
         if version.parse(transformers.__version__) >= version.parse('4.36'):
             if use_flash_attn:

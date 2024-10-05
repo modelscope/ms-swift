@@ -28,14 +28,11 @@ def get_model_tokenizer_qwen(model_dir: str,
     if torch_dtype is not None:
         k_true = dtype_mapping[torch_dtype]
         for k in dtype_mapping.values():
-            v = False
-            if k == k_true:
-                v = True
-            setattr(model_config, k, v)
+            setattr(model_config, k, k == k_true)
 
-    if model_kwargs.get('quantization_config') is None or not isinstance(model_kwargs['quantization_config'],
-                                                                         BitsAndBytesConfig):
-        # not (quantization + bnb)
+    quantization_config = model_kwargs.get('quantization_config')
+    if not isinstance(quantization_config, BitsAndBytesConfig):
+        # not bnb quant
         torch_dtype = None
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
