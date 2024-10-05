@@ -18,8 +18,6 @@ class SwiftArgumentsMixin:
     # ckpt only save model
     save_only_model: bool = False
     acc_strategy: str = field(default='token', metadata={'choices': ['token', 'sentence']})
-    loss_name: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    additional_saved_files: Optional[List[str]] = None
     # torchacc
     train_sampler_random: bool = True
     metric_warmup_step: Optional[float] = 0
@@ -34,18 +32,17 @@ class SwiftArgumentsMixin:
                     os.environ['NCCL_IB_DISABLE'] = '1'
             except ImportError:
                 pass
-        if self.additional_saved_files is None:
-            self.additional_saved_files = []
         super().__post_init__()
 
 
 @dataclass
 class TrainingArguments(SwiftArgumentsMixin, HfTrainingArguments):
-    pass
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
 
 @dataclass
 class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
+    loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
 
     @property
     def place_model_on_device(self):

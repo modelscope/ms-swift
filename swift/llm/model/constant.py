@@ -2,11 +2,11 @@ from typing import List
 
 
 class LLMModelType:
+    # dense
     qwen = 'qwen'
     modelscope_agent = 'modelscope_agent'
     qwen2 = 'qwen2'
     qwen2_5 = 'qwen2_5'
-    qwen2_moe = 'qwen2_moe'
 
     chatglm2 = 'chatglm2'
     chatglm3 = 'chatglm3'
@@ -27,6 +27,9 @@ class LLMModelType:
     atom = 'atom'
 
     codefuse_qwen = 'codefuse_qwen'
+
+    # moe
+    qwen2_moe = 'qwen2_moe'
 
 
 class MLLMModelType:

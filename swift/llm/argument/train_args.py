@@ -80,7 +80,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
     def init_transformers(self: 'SftArguments') -> None:
         """Init transformer if you are using transformers models"""
         training_args_cls, kwargs = TrainerFactory.get_training_args(self.train_stage, self)
-        additional_saved_files = self.get_additional_saved_files() if self.train_type == 'full' else []
 
         parameters = inspect.signature(training_args_cls.__init__).parameters
         for k in [
@@ -141,7 +140,6 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             train_sampler_random=not self.test_oom_error,
             report_to=self.report_to,
             deepspeed=self.deepspeed,
-            additional_saved_files=additional_saved_files,
             disable_tqdm=self.disable_tqdm,
             save_on_each_node=self.save_on_each_node,
             acc_strategy=self.acc_strategy,

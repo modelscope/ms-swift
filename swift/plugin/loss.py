@@ -12,17 +12,17 @@ class LossType:
 LOSS_MAPPING = {}
 
 
-def register_loss_func(loss_name: str, loss_func: Optional[Callable] = None):
+def register_loss_func(loss_type: str, loss_func: Optional[Callable] = None):
     loss_info = {}
 
     if loss_func is not None:
         loss_info['loss_func'] = loss_func
-        LOSS_MAPPING[loss_name] = loss_info
+        LOSS_MAPPING[loss_type] = loss_info
         return
 
     def _register_loss_func(loss_func: Callable) -> Callable:
         loss_info['loss_func'] = loss_func
-        LOSS_MAPPING[loss_name] = loss_info
+        LOSS_MAPPING[loss_type] = loss_info
         return loss_func
 
     return _register_loss_func
@@ -76,7 +76,7 @@ def loss_scale_func(outputs, labels, loss_scale=None) -> torch.Tensor:
     return loss
 
 
-def get_loss_func(loss_name: Optional[str]) -> Optional[Callable]:
-    if loss_name is None:
+def get_loss_func(loss_type: Optional[str]) -> Optional[Callable]:
+    if loss_type is None:
         return None
-    return LOSS_MAPPING[loss_name]['loss_func']
+    return LOSS_MAPPING[loss_type]['loss_func']

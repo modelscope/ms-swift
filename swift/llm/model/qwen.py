@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 import torch
 from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase
@@ -8,8 +8,8 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
 from .constant import LLMModelType, MLLMModelType
-from .patcher import patch_fixed_device, patch_output_clone
-from .register import (Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_repo,
+from .patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
+from .register import (Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
                        get_model_tokenizer_with_flash_attn, register_model)
 from .utils import AttnImpl
 
@@ -36,7 +36,7 @@ def get_model_tokenizer_qwen(model_dir: str,
         torch_dtype = None
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
-    model, tokenizer = get_model_tokenizer_from_repo(
+    model, tokenizer = get_model_tokenizer_from_local(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
     try:
         # fix mp+ddp bug
@@ -161,8 +161,9 @@ register_model(
     ],
     TemplateGroup(TemplateType.qwen_audio, TemplateType.qwen_audio_generation),
     get_model_tokenizer_qwen_audio,
+    is_multimodal=True,
     support_flash_attn=True,
-    is_multimodal=True)
+    additional_saved_files=['mel_filters.npz'])
 
 
 def _qwen_vl_visual_block_forward(
@@ -238,10 +239,11 @@ register_model(
     ],
     TemplateGroup(TemplateType.qwen_vl, TemplateType.qwen_vl_generation),
     get_model_tokenizer_qwen_vl,
+    is_multimodal=True,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
-    is_multimodal=True)
+    additional_saved_files=['SimSun.ttf'])
 
 register_model(
     LLMModelType.qwen2,
@@ -293,6 +295,13 @@ register_model(
             Model('qwen/Qwen1.5-72B-Chat-AWQ', 'Qwen/Qwen1.5-72B-Chat-AWQ'),
             Model('qwen/Qwen1.5-110B-Chat-AWQ', 'Qwen/Qwen1.5-110B-Chat-AWQ'),
         ]),
+        # code-qwen1.5
+        ModelGroup([
+            Model('qwen/CodeQwen1.5-7B', 'Qwen/CodeQwen1.5-7B'),
+            Model('qwen/CodeQwen1.5-7B-Chat', 'Qwen/CodeQwen1.5-7B-Chat'),
+            Model('qwen/CodeQwen1.5-7B-Chat-AWQ', 'Qwen/CodeQwen1.5-7B-Chat-AWQ'),
+        ],
+                   tags=['coding']),
         # qwen2
         ModelGroup([
             # base
@@ -342,6 +351,29 @@ register_model(
     support_vllm=True,
     support_lmdeploy=True,
     support_megatron=True)
+
+register_model(
+    LLMModelType.qwen2_moe,
+    'Qwen2MoeForCausalLM',
+    [
+        # qwen1.5-moe
+        ModelGroup([
+            Model('qwen/Qwen1.5-MoE-A2.7B', 'Qwen/Qwen1.5-MoE-A2.7B'),
+            Model('qwen/Qwen1.5-MoE-A2.7B-Chat', 'Qwen/Qwen1.5-MoE-A2.7B-Chat'),
+            Model('qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4'),
+        ]),
+        ModelGroup([
+            Model('qwen/Qwen2-57B-A14B', 'Qwen/Qwen2-57B-A14B'),
+            Model('Qwen/Qwen2-57B-A14B-Instruct', 'Qwen/Qwen2-57B-A14B-Instruct'),
+            Model('qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4'),
+        ])
+    ],
+    TemplateGroup(TemplateType.qwen),
+    get_model_tokenizer_with_flash_attn,
+    requires=['transformers>=4.40'],
+    is_moe=True,
+    support_flash_attn=True,
+    support_vllm=True)
 
 register_model(
     LLMModelType.qwen2_5,
@@ -421,3 +453,92 @@ register_model(
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True)
+
+
+def get_model_tokenizer_qwen2_vl(model_dir: str,
+                                 torch_dtype: torch.dtype,
+                                 model_kwargs: Dict[str, Any],
+                                 load_model: bool = True,
+                                 **kwargs):
+    try:
+        from torchvision.io import video
+        if not hasattr(video, '_patching'):
+            # not read audio
+            video._patching = True
+            _old_read_from_stream = video._read_from_stream
+
+            def _read_from_stream(container: 'av.container.Container', start_offset: float, end_offset: float,
+                                  pts_unit: str, stream: 'av.stream.Stream', *args, **kwargs) -> List['av.frame.Frame']:
+                if stream.type == 'video':
+                    return _old_read_from_stream(container, start_offset, end_offset, pts_unit, stream, *args, **kwargs)
+                return []
+
+            video._read_from_stream = _read_from_stream
+    except Exception:
+        pass
+
+    from transformers import Qwen2VLForConditionalGeneration
+    kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
+    model, tokenizer = get_model_tokenizer_multimodal(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    if model is not None:
+        patch_output_clone(model.model.embed_tokens)
+        patch_output_to_input_device(model.model.embed_tokens)
+    return model, tokenizer
+
+
+register_model(
+    MLLMModelType.qwen2_vl,
+    'Qwen2VLForConditionalGeneration',
+    [
+        ModelGroup([
+            # base
+            Model('qwen/Qwen2-VL-2B', 'Qwen/Qwen2-VL-2B'),
+            Model('qwen/Qwen2-VL-7B', 'Qwen/Qwen2-VL-7B'),
+            Model('qwen/Qwen2-VL-72B', 'Qwen/Qwen2-VL-72B'),
+            # chat
+            Model('qwen/Qwen2-VL-2B-Instruct', 'Qwen/Qwen2-VL-2B-Instruct'),
+            Model('qwen/Qwen2-VL-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct'),
+            Model('qwen/Qwen2-VL-72B-Instruct', 'Qwen/Qwen2-VL-72B-Instruct'),
+            # gptq-int4
+            Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4'),
+            Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4'),
+            Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4'),
+            # gptq-int8
+            Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8'),
+            Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8'),
+            Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8'),
+            # awq-int4
+            Model('qwen/Qwen2-VL-2B-Instruct-AWQ', 'Qwen/Qwen2-VL-2B-Instruct-AWQ'),
+            Model('qwen/Qwen2-VL-7B-Instruct-AWQ', 'Qwen/Qwen2-VL-7B-Instruct-AWQ'),
+            Model('qwen/Qwen2-VL-72B-Instruct-AWQ', 'Qwen/Qwen2-VL-72B-Instruct-AWQ'),
+        ], tags=['vision', 'video']),
+    ],
+    TemplateGroup(TemplateType.qwen2_vl, TemplateType.qwen2_vl_generation),
+    get_model_tokenizer_qwen2_vl,
+    requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
+    is_multimodal=True,
+    support_flash_attn=True,
+    support_vllm=True)
+
+
+def get_model_tokenizer_qwen2_audio(*args, **kwargs):
+    from transformers import Qwen2AudioForConditionalGeneration
+    kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
+    return get_model_tokenizer_multimodal(*args, **kwargs)
+
+register_model(
+    MLLMModelType.qwen2_audio,
+    'Qwen2AudioForConditionalGeneration',
+    [
+        ModelGroup([
+            Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
+            Model('qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
+            Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
+
+        ], tags=['audio']),
+    ],
+    TemplateGroup(TemplateType.qwen2_audio, TemplateType.qwen2_audio_generation),
+    get_model_tokenizer_qwen2_audio,
+    requires=['transformers>=4.45.dev.0'],
+    is_multimodal=True,
+    support_flash_attn=True)
