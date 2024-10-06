@@ -15,28 +15,13 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.utils import upper_bound
-from .base import TEMPLATE_MAPPING, Template
-from .utils import (fetch_one, load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                    load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2, transform_image)
+from .constant import TemplateType
+from .register import TEMPLATE_MAPPING, Template, get_template, register_template
+from .utils import fetch_one
+from .vision_utils import (load_audio_qwen, load_batch, load_image, load_video_cogvlm2, load_video_internvl,
+                           load_video_llava, load_video_minicpmv_mplug_owl3, load_video_qwen2, transform_image)
 
 logger = get_logger()
-
-DEFAULT_SYSTEM = 'You are a helpful assistant.'
-History = List[Union[Tuple[str, str], List[str]]]
-Prompt = List[Union[str, List[int], List[str]]]
-StopWords = Prompt
-Context = Union[str, List[int]]
-
-
-
-
-def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
-    if not exist_ok and template_type in TEMPLATE_MAPPING:
-        raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
-    template.template_type = template_type
-    template_info = {'template': template, **kwargs}
-    TEMPLATE_MAPPING[template_type] = template_info
-
 
 register_template(
     TemplateType.default,
@@ -1199,8 +1184,6 @@ register_template(
     use_model=False,
     infer_media_type='round',
     lazy_tokenize=True)
-
-
 
 
 class Idefics3Template(Template):

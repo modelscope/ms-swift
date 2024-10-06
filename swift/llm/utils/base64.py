@@ -6,8 +6,7 @@ from copy import deepcopy
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-History = List[Union[Tuple[str, str], List[str]]]
-Messages = List[Dict[str, Union[str, List[Dict]]]]
+from .utils import Messages
 
 
 def _decode_prompt(prompt: str, tmp_dir: str = 'tmp') -> str:

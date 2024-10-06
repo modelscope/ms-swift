@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 from transformers import GenerationConfig
 
-from swift.utils import deep_getattr, get_logger, upper_bound
 from swift.llm import MODEL_KEYS_MAPPING, MultiModelKeys
+from swift.utils import deep_getattr, get_logger, upper_bound
 
 logger = get_logger()
 

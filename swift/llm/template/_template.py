@@ -12,38 +12,52 @@ from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm.utils import to_device, decode_base64
-from swift.llm.agent import loss_scale_map, get_tools_prompt, split_str_parts_by
-from .utils import Context, Prompt, fetch_one, replace_img_tag
+from swift.llm.agent import get_tools_prompt, loss_scale_map, split_str_parts_by
+from swift.llm.utils import decode_base64, to_device
+from .utils import Context, Prompt, StopWords, fetch_one, replace_img_tag
 from .vision_utils import load_batch, load_image, rescale_image
 
 logger = get_logger()
 
-DEFAULT_SYSTEM = 'You are a helpful assistant.'
-
-TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 class Template:
     """A template class for all supported models.
 
     Args:
-        prefix: Prefix tokens before the first turn's prompt
-        prompt: A list of elements whose types are str and list of integers. The input query part of every turn.
-        chat_sep: The chat separators between every turn.
-        suffix: The end tokens after the chat finished.
-        default_system: A default system instruction.
-        system_prefix: The prefix if the `system` is not empty.
+        prefix: Prefix before the first round
+        prompt: Template format for each round
+        chat_sep: Separator symbol between rounds. If set to None, it is a single-round template and
+            does not support multi-round conversations.
+        suffix: Ending for the last round, used to stop generation.
+        default_system: Default system
+        system_prefix: If it includes a prefix for the system, used in cases where the prefix parameter
+            cannot accommodate a template with the system.
+        tool_prompt: The prompt when the role of messages is set to 'tool'.
+
+        stop_words: A list of stop words, where each stop word can consist of multiple tokens.
+        placeholder_tokens: A list of placeholder tokens, where each placeholder token can only be a single token.
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
             whether to add it based on `tokenizer.encode('')`.
-        tools_prompt: The tools prompt name
-        tool_prompt: The tool prompt, usually useful when there is a tool role
-        padding_side: The padding side
-        infer_media_type: The media type supported by the multi-modals
-        Examples:
-            <start_of_output>system\nYou are a helpful assistant!<end_of_output>\n<bos><start_of_output>Who are you?<end_of_output>\n<start_of_output>assistant:I am a robot<end_of_output>\n<start_of_output>Who are you?<end_of_output>\n<start_of_output>assistant:I am a robot<end_of_output> # noqa
-                                     ----------system------------                                       ---query----                                            --response- -----chatsep-----                 ---query---                                             --response- ----suffix-----
-            ----------------------------system_prefix---------------------------- ---------------------------- prompt -------------------------------------                                  ---------------------------- prompt -------------------------------------
+        tools_prompt_type: The type of tools_prompt added in the system.
 
+    Examples:
+        chatml (with bos):
+            prefix: <s>
+            prompt: <|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n
+            chat_sep: <|im_end|>\n
+            suffix: <|im_end|>
+            system_prefix: <s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n
+
+        <s><|im_start|>system  # prefix or system_prefix
+        {{SYSTEM}}<|im_end|>
+        <|im_start|>user  # prompt
+        {{QUERY}}<|im_end|>
+        <|im_start|>assistant
+        {{RESPONSE}}<|im_end|>  # chat_sep
+        <|im_start|>user  # prompt
+        {{QUERY}}<|im_end|>
+        <|im_start|>assistant
+        {{RESPONSE}}<|im_end|>  # suffix
     """
 
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
@@ -51,8 +65,10 @@ class Template:
     grounding_type = 'norm_1000'
     image_placeholder = ['<image>']
     load_medias = True
+
     compute_per_round_loss = True  # for rlhf
     output_prompt_answer = False  # for encoder-decoder & kto
+    padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
     def __init__(self,
                  prefix: Prompt,
@@ -61,11 +77,12 @@ class Template:
                  suffix: Prompt,
                  default_system: Optional[str] = None,
                  system_prefix: Optional[Prompt] = None,
-                 auto_add_bos: bool = False,
-                 tools_prompt: str = 'react_en',
                  tool_prompt: Optional[Prompt] = None,
-                 padding_side: Literal['left', 'right'] = 'right',
-                 infer_media_type: Literal['interleave', 'dialogue', 'round'] = 'interleave') -> None:
+                 *,
+                 stop_words: Optional[StopWords] = None,
+                 placeholder_tokens: Optional[int, str],
+                 auto_add_bos: bool = False,
+                 tools_prompt_type: str = 'react_en') -> None:
         # check
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
@@ -970,20 +987,3 @@ class Template:
 
     def post_process_generate_response(self, response: str, example: dict) -> str:
         return response
-
-
-
-
-def get_template(
-    template_type: str,
-    tokenizer: PreTrainedTokenizerBase,
-    default_system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-    **kwargs,
-) -> 'Template':
-    template_info = TEMPLATE_MAPPING[template_type]
-    template = deepcopy(template_info['template'])
-    template.init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
-    return template
-

@@ -187,6 +187,7 @@ def upper_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
             hi = mid - 1
     return lo
 
+
 def test_time(func: Callable[[], _T],
               number: int = 1,
               warmup: int = 0,

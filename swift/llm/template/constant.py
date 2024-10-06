@@ -2,6 +2,7 @@
 
 from typing import List
 
+
 class LLMTemplateType:
     # base
     default_generation = 'default-generation'

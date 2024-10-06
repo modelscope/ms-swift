@@ -1,14 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, List, Tuple, Union, Any, Set, Type, Optional
-import torch
-
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
-from swift.llm.utils import History
 import re
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
-Prompt = List[Union[str, List[int], List[str]]]
-StopWords = Prompt
+import torch
+from transformers import PreTrainedTokenizerBase, StoppingCriteria
+
+from swift.llm.utils import History
+
+_Tokens = Union[str, List[int], List[str]]
 Context = Union[str, List[int]]
+Prompt = List[_Tokens]
+StopWords = List[_Tokens]
 
 
 class StopWordsCriteria(StoppingCriteria):
@@ -38,6 +40,7 @@ class StopWordsCriteria(StoppingCriteria):
                 if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
                     return True
         return False
+
 
 def fetch_one(element: Union[Tuple, List, Set, Dict, Any], item_type: Optional[Type] = None) -> Any:
     if isinstance(element, (tuple, set, list)):
@@ -86,3 +89,40 @@ def replace_img_tag(query: str,
                 new_h.append(re.sub(pattern, replace_token, content))
         new_history.append(new_h)
     return (*new_history[-1], new_history[:-1], images_path)
+
+
+def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
+                       image_token: int) -> Tuple[List[int], List[int]]:
+    if isinstance(new_input_ids, torch.Tensor):
+        new_input_ids = new_input_ids.tolist()
+
+    # Find the tokens after the image_token in input_ids, and then align them.
+    i, j = 0, 0
+    while i < len(input_ids):
+        x = input_ids[i]
+        if x == image_token:
+            assert i + 1 < len(input_ids), f'input_ids[-10:]: {input_ids[-10:]}'
+            assert i - 1 >= 0, f'input_ids[:10]: {input_ids[:10]}'
+            # [1, 2, 3(i-1), image_token(i), 4(i+1) ,5, 6]
+            # [1, 2, 3(j_begin), a(j'), a, a, a, 4(j) ,5, 6]
+            j_begin = j - 1
+            for k in range(5):  # Increase robustness.
+                if j_begin + k < len(new_input_ids) and new_input_ids[j_begin + k] == input_ids[i - 1]:
+                    j_begin += k
+                    break
+                if j_begin - k >= 0 and new_input_ids[j_begin - k] == input_ids[i - 1]:
+                    j_begin -= k
+                    break
+            else:
+                raise ValueError(f'new_input_ids: {new_input_ids}, input_ids: {input_ids}')
+            j_begin += 1
+            while j < len(new_input_ids) and new_input_ids[j] != input_ids[i + 1]:
+                j += 1
+            input_ids = input_ids[:i] + new_input_ids[j_begin:j] + input_ids[i + 1:]
+            if labels:
+                labels = labels[:i] + [-100] * (j - j_begin) + labels[i + 1:]
+            i += j - j_begin
+        else:
+            j += 1
+        i += 1
+    return input_ids, labels
