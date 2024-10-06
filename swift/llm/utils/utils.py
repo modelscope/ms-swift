@@ -6,7 +6,7 @@ import torch.nn as nn
 from transformers import GenerationConfig
 
 from swift.utils import deep_getattr, get_logger, upper_bound
-from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
+from swift.llm import MODEL_KEYS_MAPPING, MultiModelKeys
 
 logger = get_logger()
 
@@ -92,8 +92,8 @@ def _add_gradient_checkpointing(module_list):
         module.__old_forward = __old_forward
 
 
-def get_mllm_arch(model_type: str) -> MultiModelKeys:
-    from .model import MODEL_MAPPING
+def get_mllm_arch(model_type: str) -> Optional[MultiModelKeys]:
+    from swift.llm import MODEL_MAPPING
     model_info = MODEL_MAPPING[model_type]
     lora_target_modules = model_info.get('lora_target_modules')  # model_group
     if not isinstance(lora_target_modules, str):

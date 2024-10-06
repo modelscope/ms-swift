@@ -9,12 +9,13 @@ import torch.nn.functional as F
 from modelscope import get_logger
 from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from transformers import PreTrainedTokenizerBase
 
 from swift.llm import to_device
-from .loss_scale import loss_scale_map
-from .tools_prompt import get_tools_prompt
-from .utils import Context, History, Messages, Prompt, decode_base64, fetch_one, load_batch, load_image, rescale_image
+from swift.llm.agent import loss_scale_map, get_tools_prompt, split_str_parts_by
+from .utils import Context, History, Messages, Prompt, decode_base64, fetch_one
+from .vision_utils import  load_batch, load_image, rescale_image
+
 
 logger = get_logger()
 
@@ -495,7 +496,6 @@ class Template:
     def split_special_tokens(context_list: List[Context],
                              loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
         """Split special tokens, for example `<image>`, `<video>`, this will help the replace_tag operation"""
-        from .utils import split_str_parts_by
         res: List[Context] = []
         loss_scale_res: List[float] = []
         for context, loss_scale in zip(context_list, loss_scale_list):

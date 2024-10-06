@@ -3,7 +3,7 @@ import base64
 import math
 import os
 from io import BytesIO
-from typing import Any, Callable, Dict, List, Set, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Set, Tuple, Type, TypeVar, Union, Optional
 
 import numpy as np
 import requests
@@ -13,18 +13,6 @@ from packaging import version
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
-
-
-def fetch_one(element: Union[Tuple, List, Set, Dict, Any], type: Type = None) -> Any:
-    if isinstance(element, (tuple, set, list)):
-        for ele in element:
-            out = fetch_one(ele)
-            if out and (type is None or isinstance(out, type)):
-                return out
-    elif isinstance(element, dict):
-        return fetch_one(list(element.values()))
-    else:
-        return element
 
 
 def _build_transform(input_size):

@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Any, Set, Type, Optional
+import torch
 
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
@@ -35,3 +36,14 @@ class StopWordsCriteria(StoppingCriteria):
                 if len(stop_word) > 0 and input_ids[0].tolist()[-len(stop_word):] == stop_word:
                     return True
         return False
+
+def fetch_one(element: Union[Tuple, List, Set, Dict, Any], item_type: Optional[Type] = None) -> Any:
+    if isinstance(element, (tuple, set, list)):
+        for ele in element:
+            out = fetch_one(ele)
+            if out and (item_type is None or isinstance(out, item_type)):
+                return out
+    elif isinstance(element, dict):
+        return fetch_one(list(element.values()))
+    else:
+        return element
