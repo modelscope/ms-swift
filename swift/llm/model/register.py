@@ -322,6 +322,7 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
 
     is_multimodal = model_info['is_multimodal']
     is_moe = model_info['is_moe']
+    chat_template, generation_template = model_info['template_group']
     for obj in [model, tokenizer]:
         if obj is None:
             continue
@@ -329,6 +330,8 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
         obj.model_dir = model_dir
         obj.is_multimodal = is_multimodal
         obj.is_moe = is_moe
+        obj.chat_template = chat_template
+        obj.generation_template = generation_template
 
     if model is not None:
         fix_gradient_checkpointing_warning(is_moe)
