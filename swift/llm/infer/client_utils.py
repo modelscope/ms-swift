@@ -1,9 +1,5 @@
-import base64
-import hashlib
 import os
 import re
-from copy import deepcopy
-from io import BytesIO
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple, Union
 
 import aiohttp
@@ -60,63 +56,6 @@ def _parse_stream_data(data: bytes) -> Optional[str]:
         return
     assert data.startswith('data:'), f'data: {data}'
     return data[5:].strip()
-
-
-def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
-    if isinstance(img_path, str) and not os.path.isfile(img_path):
-        # base64
-        return img_path
-    if isinstance(img_path, str):
-        # local_path
-        with open(img_path, 'rb') as f:
-            _bytes = f.read()
-    elif not isinstance(img_path, bytes):  # PIL.Image.Image
-        bytes_io = BytesIO()
-        img_path.save(bytes_io, format='png')
-        _bytes = bytes_io.getvalue()
-    else:
-        _bytes = img_path
-    img_base64: str = base64.b64encode(_bytes).decode('utf-8')
-    return img_base64
-
-
-def _encode_prompt(prompt: str) -> str:
-    pattern = r'<(?:img|audio|video)>(.+?)</(?:img|audio|video)>'
-    match_iter = re.finditer(pattern, prompt)
-    new_prompt = ''
-    idx = 0
-    for m in match_iter:
-        span = m.span(1)
-        path = m.group(1)
-        img_base64 = _to_base64(path)
-        new_prompt += prompt[idx:span[0]] + img_base64
-        idx = span[1]
-    new_prompt += prompt[idx:]
-    return new_prompt
-
-
-def convert_to_base64(*,
-                      messages: Optional[Messages] = None,
-                      prompt: Optional[str] = None,
-                      images: Optional[List[str]] = None) -> Dict[str, Any]:
-    """local_path -> base64"""
-    res = {}
-    if messages is not None:
-        res_messages = []
-        for m in messages:
-            m_new = deepcopy(m)
-            m_new['content'] = _encode_prompt(m_new['content'])
-            res_messages.append(m_new)
-        res['messages'] = res_messages
-    if prompt is not None:
-        prompt = _encode_prompt(prompt)
-        res['prompt'] = prompt
-    if images is not None:
-        res_images = []
-        for image in images:
-            res_images.append(_to_base64(image))
-        res['images'] = res_images
-    return res
 
 
 def compat_openai(messages: Messages, request) -> None:

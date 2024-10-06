@@ -126,19 +126,6 @@ class ModelArguments:
                 if isinstance(v, int):
                     self.device_map_config[k] += local_rank
 
-    def get_additional_saved_files(self) -> List[str]:
-        """Some models have extra files need to be saved, list them here"""
-        files_mapping = {
-            'qwen-vl': ['SimSun.ttf'],
-            'qwen-audio': ['mel_filters.npz'],
-            'yi-vl': ['vit'],
-            'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py']
-        }
-        for key, files_list in files_mapping.items():
-            if key in self.model_type:
-                return files_list
-        return []
-
     def get_model_group(self):
         """Find the model group. This is used to find the model structure"""
         model_type = (self.model_type or self.model_id_or_path).replace('-', '_')

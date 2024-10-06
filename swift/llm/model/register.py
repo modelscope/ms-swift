@@ -7,8 +7,8 @@ from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tup
 import torch
 import transformers
 from packaging import version
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer, GenerationConfig,
-                          PreTrainedModel, PreTrainedTokenizerBase)
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
 from transformers.utils.versions import require_version
@@ -51,18 +51,40 @@ def register_model(model_type: str,
                    *,
                    requires: Optional[List[str]] = None,
                    ignore_file_pattern: Optional[List[str]] = None,
+                   additional_saved_files: Optional[List[str]] = None,
+                   is_multimodal: bool = False,
+                   is_moe: bool = False,
                    support_flash_attn: bool = False,
                    support_vllm: bool = False,
                    support_lmdeploy: bool = False,
-                   is_multimodal: bool = False,
-                   is_moe: bool = False,
                    function_kwargs: Optional[Dict[str, Any]] = None,
                    exist_ok: bool = False,
                    **kwargs) -> None:
+    """
+    model_type: The unique ID for the model type. Models with the same model_type share
+        the same architectures, template, get_function, etc.
+    architectures: Used to automatically infer the model_type from config.json.
+    model_groups: Used to list the model_ids from huggingface/modelscope,
+        which participate in the automatic inference of the model_type.
+    template: chat_template & generation_template. This will be determined based on
+        whether the `swift pt` command is used to start.
+    get_function: A function to obtain the model and tokenizer based on model_dir.
+
+    requires: Usually specifies the version limits of transformers.
+    ignore_file_pattern: File patterns to ignore when downloading the model.
+    additional_saved_files: Additional files that need to be saved for full parameter training/merge-lora.
+    is_multimodal: Whether it is a multimodal model.
+    is_moe: Whether it is a moe model.
+    support_flash_attn: Whether it supports flash attention.
+    support_vllm: Whether it supports vllm inference acceleration.
+    support_lmdeploy: Whether it supports lmdeploy inference acceleration.
+    """
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
     if requires is None:
         requires = []
+    if additional_saved_files is None:
+        additional_saved_files = []
     if not isinstance(model_groups, (list, tuple)):
         model_groups = [model_groups]
     if function_kwargs is None:
@@ -73,6 +95,7 @@ def register_model(model_type: str,
         'template': template,
         'requires': requires,
         'ignore_file_pattern': ignore_file_pattern,
+        'additional_saved_files': additional_saved_files,
         'support_flash_attn': support_flash_attn,
         'support_vllm': support_vllm,
         'support_lmdeploy': support_lmdeploy,
@@ -102,15 +125,15 @@ def load_by_unsloth(model_dir, torch_dtype, max_seq_length: int = None, load_in_
     )
 
 
-def get_model_tokenizer_from_repo(model_dir: str,
-                                  torch_dtype: Optional[torch.dtype],
-                                  model_kwargs: Dict[str, Any],
-                                  load_model: bool = True,
-                                  model_config=None,
-                                  tokenizer=None,
-                                  automodel_class=AutoModelForCausalLM,
-                                  **kwargs):
-    """load from an independent repository"""
+def get_model_tokenizer_from_local(model_dir: str,
+                                   torch_dtype: Optional[torch.dtype],
+                                   model_kwargs: Dict[str, Any],
+                                   load_model: bool = True,
+                                   model_config=None,
+                                   tokenizer=None,
+                                   automodel_class=AutoModelForCausalLM,
+                                   **kwargs):
+    """Load the model and tokenizer from the local model_dir."""
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     HfConfigFactory.compat_zero3(model_config)
@@ -154,8 +177,16 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     if model_config is None:
         model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl', 'auto'))
-    return get_model_tokenizer_from_repo(
+    return get_model_tokenizer_from_local(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+
+
+def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
+    tokenizer.processor = processor
+    return model, tokenizer
 
 
 def fix_transformers_upgrade(module: PreTrainedModel) -> None:
@@ -286,11 +317,12 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
     requires = model_info['requires']
     for require in requires:
         require_version(require)
-    get_function = model_info.get('get_function', get_model_tokenizer_from_repo)
+    get_function = model_info.get('get_function', get_model_tokenizer_from_local)
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
 
     is_multimodal = model_info['is_multimodal']
     is_moe = model_info['is_moe']
+    chat_template, generation_template = model_info['template_group']
     for obj in [model, tokenizer]:
         if obj is None:
             continue
@@ -298,6 +330,8 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
         obj.model_dir = model_dir
         obj.is_multimodal = is_multimodal
         obj.is_moe = is_moe
+        obj.chat_template = chat_template
+        obj.generation_template = generation_template
 
     if model is not None:
         fix_gradient_checkpointing_warning(is_moe)
@@ -340,5 +374,8 @@ def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
     return ARCH_MAPPING
 
 
-def get_default_template_type(model_type: str) -> Optional[str]:
-    return MODEL_MAPPING[model_type].get('template')
+class ModelInfoReader:
+    # info
+    @staticmethod
+    def get_default_template_type(model_type: str) -> Optional[str]:
+        return MODEL_MAPPING[model_type].get('template')

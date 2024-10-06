@@ -20,26 +20,6 @@ from .torch_utils import broadcast_string, is_dist, is_dist_ta, is_local_master
 logger = get_logger()
 
 
-def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[str]]:
-    agent_keyword = [
-        'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:', 'Thought:',
-        'Final Answer:', 'Observation:'
-    ]
-    agent_parts = split_str_parts_by(response, agent_keyword)
-    action = None
-    action_input = None
-    for c in agent_parts:
-        if c['key'].lower() == 'action:':
-            action = c['content']
-        elif c['key'].lower() == 'action input:':
-            action_input = c['content']
-    if action:
-        action = action.strip().replace('\n', '')
-    if action_input:
-        action_input.strip().replace('\n', '')
-    return action, action_input
-
-
 def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[int]) -> Optional[Dict[str, Any]]:
     time_info = None
     try:
@@ -260,49 +240,3 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()
     return resp
-
-
-def split_str_parts_by(text: str, delimiters: List[str]):
-    """Split the text field into parts.
-
-    Args:
-        text: A text to be split.
-        delimiters: The delimiters.
-
-    Returns:
-        The split text in list of dicts.
-    """
-    assert isinstance(text, str), f'text: {text}'
-    all_start_chars = [d[0] for d in delimiters]
-    all_length = [len(d) for d in delimiters]
-
-    text_list = []
-    last_words = ''
-
-    while len(text) > 0:
-        for char_idx, char in enumerate(text):
-            match_index = [idx for idx, start_char in enumerate(all_start_chars) if start_char == char]
-            is_delimiter = False
-            for index in match_index:
-                if text[char_idx:char_idx + all_length[index]] == delimiters[index]:
-                    if text_list:
-                        text_list[-1]['content'] = last_words
-                    elif last_words:
-                        text_list.append({'key': '', 'content': last_words})
-                    last_words = ''
-                    text_list.append({'key': delimiters[index]})
-                    text = text[char_idx + all_length[index]:]
-                    is_delimiter = True
-                    break
-            if not is_delimiter:
-                last_words += char
-            else:
-                break
-        if last_words == text:
-            text = ''
-
-    if len(text_list):
-        text_list[-1]['content'] = last_words
-    else:
-        text_list.append({'key': '', 'content': last_words})
-    return text_list

@@ -22,8 +22,8 @@ if TYPE_CHECKING:
                           register_local_dataset, register_dataset_info_file, register_single_dataset, dataset_map,
                           stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset,
                           print_example, sort_by_max_length, standard_keys, multimodal_keys, multimodal_tags)
-    from .utils import deep_getattr, to_device
-    from .module_mapping import MODEL_KEYS_MAPPING
+    from .utils import deep_getattr, to_device, Messages, History
+    from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -51,8 +51,8 @@ else:
             'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset',
             'print_example', 'sort_by_max_length', 'standard_keys', 'multimodal_keys', 'multimodal_tags'
         ],
-        'utils': ['deep_getattr', 'to_device'],
-        'module_mapping': ['MODEL_KEYS_MAPPING']
+        'utils': ['deep_getattr', 'to_device', 'History', 'Messages'],
+        'module_mapping': ['MODEL_KEYS_MAPPING', 'MultiModelKeys']
     }
 
     import sys
