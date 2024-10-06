@@ -16,7 +16,7 @@ from swift.plugin.tuner import Tuner, extra_tuners
 from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, LLaMAProConfig, LongLoRAModelType,
                           LoraConfig, LoRAConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING
+from .module_mapping import MODEL_KEYS_MAPPING
 from swift.utils.torch_utils import find_all_linears, find_embedding
 
 logger = get_logger()
