@@ -3,6 +3,8 @@ from typing import Dict, List, Tuple, Union, Any, Set, Type, Optional
 import torch
 
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from swift.llm.utils import History
+import re
 
 Prompt = List[Union[str, List[int], List[str]]]
 StopWords = Prompt
@@ -47,3 +49,40 @@ def fetch_one(element: Union[Tuple, List, Set, Dict, Any], item_type: Optional[T
         return fetch_one(list(element.values()))
     else:
         return element
+
+
+def findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
+    """Find the index of a token in the token_list."""
+    if isinstance(sub_token_list, int):
+        sub_token_list = [sub_token_list]
+    res = []
+    idx = -1
+    try:
+        while True:
+            idx = token_list.index(sub_token_list[0], idx + 1)
+            if len(sub_token_list) == 1 or sub_token_list == token_list[idx:idx + len(sub_token_list)]:
+                res.append(idx)
+    except ValueError:
+        pass
+    return res
+
+
+def replace_img_tag(query: str,
+                    response: Optional[str],
+                    history: History,
+                    replace_token: str,
+                    pattern=r'<img>(.+?)</img>') -> Tuple[str, Optional[str], History, List[str]]:
+    images_path = []
+    new_history = []
+    history = history.copy()
+    history.append([query, response])
+    for i, h in enumerate(history):
+        new_h = []
+        for content in h:
+            if content is None:
+                new_h.append(content)
+            else:
+                images_path += re.findall(pattern, content)
+                new_h.append(re.sub(pattern, replace_token, content))
+        new_history.append(new_h)
+    return (*new_history[-1], new_history[:-1], images_path)

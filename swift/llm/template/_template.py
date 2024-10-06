@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+"""The document will be migrated to the modelscope repository."""
 import re
 from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -11,64 +12,16 @@ from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import to_device
+from swift.llm.utils import to_device, decode_base64
 from swift.llm.agent import loss_scale_map, get_tools_prompt, split_str_parts_by
-from .utils import Context, History, Messages, Prompt, decode_base64, fetch_one
-from .vision_utils import  load_batch, load_image, rescale_image
-
+from .utils import Context, Prompt, fetch_one, replace_img_tag
+from .vision_utils import load_batch, load_image, rescale_image
 
 logger = get_logger()
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
-
-
-def get_template(
-    template_type: str,
-    tokenizer: PreTrainedTokenizerBase,
-    default_system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-    **kwargs,
-) -> 'Template':
-    template_info = TEMPLATE_MAPPING[template_type]
-    template = deepcopy(template_info['template'])
-    template.init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
-    return template
-
-
-def _findall(token_list: List[int], sub_token_list: Union[int, List[int]]) -> List[int]:
-    """Find the index of a token in the token_list."""
-    if isinstance(sub_token_list, int):
-        sub_token_list = [sub_token_list]
-    res = []
-    idx = -1
-    try:
-        while True:
-            idx = token_list.index(sub_token_list[0], idx + 1)
-            if len(sub_token_list) == 1 or sub_token_list == token_list[idx:idx + len(sub_token_list)]:
-                res.append(idx)
-    except ValueError:
-        pass
-    return res
-
-
-def replace_img_tag(messages: Messages,
-                    replace_token: str,
-                    pattern=r'<img>(.+?)</img>') -> Tuple[str, History, List[str]]:
-    images_path = []
-    new_messages = []
-    for i, m in enumerate(messages):
-        m = m.copy()
-        if m['content'] is None or m['role'] in ('tool', 'system', 'assistant'):
-            new_messages.append(m)
-        else:
-            images_path += re.findall(pattern, m['content'])
-            m['content'] = re.sub(pattern, replace_token, m['content'])
-            new_messages.append(m)
-    return new_messages, images_path
-
 
 class Template:
     """A template class for all supported models.
@@ -1017,3 +970,20 @@ class Template:
 
     def post_process_generate_response(self, response: str, example: dict) -> str:
         return response
+
+
+
+
+def get_template(
+    template_type: str,
+    tokenizer: PreTrainedTokenizerBase,
+    default_system: Optional[str] = None,
+    max_length: Optional[int] = None,
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+    **kwargs,
+) -> 'Template':
+    template_info = TEMPLATE_MAPPING[template_type]
+    template = deepcopy(template_info['template'])
+    template.init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
+    return template
+
