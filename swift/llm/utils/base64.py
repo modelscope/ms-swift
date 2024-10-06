@@ -84,24 +84,6 @@ def decode_base64(*,
     return res
 
 
-def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
-    if isinstance(img_path, str) and not os.path.isfile(img_path):
-        # base64
-        return img_path
-    if isinstance(img_path, str):
-        # local_path
-        with open(img_path, 'rb') as f:
-            _bytes = f.read()
-    elif not isinstance(img_path, bytes):  # PIL.Image.Image
-        bytes_io = BytesIO()
-        img_path.save(bytes_io, format='png')
-        _bytes = bytes_io.getvalue()
-    else:
-        _bytes = img_path
-    img_base64: str = base64.b64encode(_bytes).decode('utf-8')
-    return img_base64
-
-
 def _encode_prompt(prompt: str) -> str:
     pattern = r'<(?:img|audio|video)>(.+?)</(?:img|audio|video)>'
     match_iter = re.finditer(pattern, prompt)

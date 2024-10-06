@@ -41,11 +41,11 @@ Final Answer: 对输入问题的最终答案
 
 
 def format_glm4(tool_names, tool_descs):
-    GLM4_PROMPT = '''你是一个名为 ChatGLM 的人工智能助手。你是基于智谱AI训练的语言模型 GLM-4 模型开发的，你的任务是针对用户的问题和要求提供适当的答复和支持。
+    GLM4_PROMPT = """你是一个名为 ChatGLM 的人工智能助手。你是基于智谱AI训练的语言模型 GLM-4 模型开发的，你的任务是针对用户的问题和要求提供适当的答复和支持。
 
 # 可用工具
 
-{tool_list}'''
+{tool_list}"""
     tool_list = ''
     for name, tool in zip(tool_names, tool_descs):
         tool_list += f'## {name}\n\n{tool}\n\n'
@@ -53,7 +53,7 @@ def format_glm4(tool_names, tool_descs):
 
 
 def format_toolbench(tool_names, tool_descs):
-    TOOLBENCH_PROMPT = '''You can use many tools(functions) to do the following task.
+    TOOLBENCH_PROMPT = """You can use many tools(functions) to do the following task.
 First I will give you the task description, and your task start.
 At each step, you need to give your thought to analyze the status now and what to do next, \
 with a function call to actually excute your step. Your output should follow this format:
@@ -77,7 +77,7 @@ to show to the user,If you can't handle the task, \
 or you find that function calls always fail(the function is not valid now), \
 use function Finish->give_up_and_restart.
 2.Do not use origin tool names, use only subfunctions' names.
-Specifically, you have access to the following APIs: {tool_list}'''
+Specifically, you have access to the following APIs: {tool_list}"""
     return TOOLBENCH_PROMPT.format(tool_list='\n\n'.join(tool_descs))
 
 
