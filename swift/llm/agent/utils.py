@@ -124,3 +124,23 @@ def calculate_loss_scale(query: str,
                 weights += [1.0]
                 agent_content.append(c['content'])
     return agent_content, weights
+
+
+def split_action_action_input(response: str) -> Tuple[Optional[str], Optional[str]]:
+    agent_keyword = [
+        'action:', 'Action:', 'ACTION:', 'action input:', 'Action Input:', 'Action input:', 'ACTION INPUT:', 'Thought:',
+        'Final Answer:', 'Observation:'
+    ]
+    agent_parts = split_str_parts_by(response, agent_keyword)
+    action = None
+    action_input = None
+    for c in agent_parts:
+        if c['key'].lower() == 'action:':
+            action = c['content']
+        elif c['key'].lower() == 'action input:':
+            action_input = c['content']
+    if action:
+        action = action.strip().replace('\n', '')
+    if action_input:
+        action_input.strip().replace('\n', '')
+    return action, action_input
