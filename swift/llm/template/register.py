@@ -1,12 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 from copy import deepcopy
-from typing import Any, Dict, Literal, Optional, List, Tuple
-from types import MethodType
-from .utils import Context, findall
+from typing import Any, Dict, List, Literal, Optional, Tuple
+
 from transformers import PreTrainedTokenizerBase
 
 from ._template import Template as _Template
+from .utils import Context, findall
 
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
@@ -111,7 +111,6 @@ class Template(_Template):
         inputs['input_embeddings'] = images
         inputs['input_embedding_ranges'] = ranges
         inputs['input_ids'] = new_input_ids
-
 
 
 def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:

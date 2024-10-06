@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, List
-
+import requests
+from tqdm import tqdm
 import json
 
 from .logger import get_logger

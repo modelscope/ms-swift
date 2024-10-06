@@ -227,14 +227,6 @@ def read_multi_line(addi_prompt: str = '') -> str:
     return ''.join(res)
 
 
-def is_pai_training_job() -> bool:
-    return 'PAI_TRAINING_JOB_ID' in os.environ
-
-
-def get_pai_tensorboard_dir() -> Optional[str]:
-    return os.environ.get('PAI_OUTPUT_TENSORBOARD')
-
-
 def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, stdout=None, stderr=None):
     # stdoutm stderr: e.g. subprocess.PIPE.
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)

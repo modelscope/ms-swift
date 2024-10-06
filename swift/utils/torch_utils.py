@@ -13,8 +13,9 @@ import torch
 import torch.distributed as dist
 from torch.nn import Linear, Module
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import is_torch_npu_available, strtobool
+from transformers.utils import is_torch_npu_available
 
+from .env import get_dist_setting, is_dist, is_dist_ta, is_local_master
 from .logger import get_logger
 
 logger = get_logger()
@@ -83,74 +84,6 @@ def find_sub_module(module: torch.nn.Module, module_name: str) -> List[torch.nn.
         if name.endswith(module_name):
             _modules.append(sub_module)
     return _modules
-
-
-def get_dist_setting() -> Tuple[int, int, int, int]:
-    """return rank, local_rank, world_size, local_world_size"""
-    rank = int(os.getenv('RANK', -1))
-    local_rank = int(os.getenv('LOCAL_RANK', -1))
-    world_size = int(os.getenv('WORLD_SIZE', 1))
-    local_world_size = int(os.getenv('LOCAL_WORLD_SIZE', 1))
-    return rank, local_rank, world_size, local_world_size
-
-
-def is_local_master():
-    local_rank = get_dist_setting()[1]
-    return local_rank in {-1, 0}
-
-
-def is_master():
-    rank = get_dist_setting()[0]
-    return rank in {-1, 0}
-
-
-def use_torchacc() -> bool:
-    return strtobool(os.getenv('USE_TORCHACC', '0'))
-
-
-def torchacc_trim_graph():
-    return strtobool(os.getenv('TORCHACC_TRIM_GRAPH', '0'))
-
-
-def is_dist():
-    """Determine if the training is distributed"""
-    if use_torchacc():
-        return False
-    rank, local_rank, _, _ = get_dist_setting()
-    return rank >= 0 and local_rank >= 0
-
-
-def is_mp() -> bool:
-    if use_torchacc():
-        return False
-    n_gpu = torch.cuda.device_count()
-    local_world_size = get_dist_setting()[3]
-    assert n_gpu % local_world_size == 0, f'n_gpu: {n_gpu}, local_world_size: {local_world_size}'
-    if n_gpu // local_world_size >= 2:
-        return True
-    return False
-
-
-def is_ddp_plus_mp() -> bool:
-    if not is_dist():
-        return False
-    if not is_mp():
-        return False
-    logger.info('Using DDP + MP(device_map)')
-    return True
-
-
-def is_dist_ta() -> bool:
-    """Determine if the TorchAcc training is distributed"""
-    _, _, world_size, _ = get_dist_setting()
-    if use_torchacc() and world_size > 1:
-        if not dist.is_initialized():
-            import torchacc as ta
-            # Initialize in advance
-            dist.init_process_group(backend=ta.dist.BACKEND_NAME)
-        return True
-    else:
-        return False
 
 
 def show_layers(model: Module, max_lines: Optional[int] = 20) -> None:
