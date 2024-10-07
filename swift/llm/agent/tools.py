@@ -89,12 +89,12 @@ tools_prompt = {
 }
 
 
-def get_tools_prompt(TOOLS: List[Dict[str, Union[str, dict]]], prompt_format: str = 'react_en') -> Optional[str]:
-    tool_descs = []
-    tool_names = []
+def get_tools_prompt(TOOLS: List[Dict[str, Union[str, Dict]]], prompt_format: str = 'react_en') -> Optional[str]:
+    tool_names: List[str] = []
+    tool_descs: List[str] = []
     for info in TOOLS:  # info: Dict[str, Union[str, dict]]
         try:
-            if 'function' in info:
+            if isinstance(info, dict) and 'function' in info:
                 info = info['function']
             tool_names.append(info['name'])
             tool_descs.append(str(info))  # info: dict

@@ -1,8 +1,9 @@
 import inspect
 import os
+from dataclasses import dataclass, field
 from functools import partial, update_wrapper
 from types import MethodType
-from typing import Any, Callable, Dict, List, Literal, NamedTuple, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 import transformers
@@ -25,21 +26,24 @@ GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTr
 logger = get_logger()
 
 
-class Model(NamedTuple):
+@dataclass
+class Model:
     ms_model_id: Optional[str] = None
     hf_model_id: Optional[str] = None
     model_path: Optional[str] = None
     ms_revision: Optional[str] = None
 
 
-class TemplateGroup(NamedTuple):
+@dataclass
+class TemplateGroup:
     chat_template: str
-    generation_template: Optional[str] = TemplateType.default_generation
+    generation_template: str = TemplateType.default_generation
 
 
-class ModelGroup(NamedTuple):
+@dataclass
+class ModelGroup:
     models: List[Model]
-    tags: Optional[List[str]] = None
+    tags: List[str] = field(default_factory=list)
 
 
 # [TODO:eos_token -> template]

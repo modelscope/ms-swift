@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebuiArguments, AppUIArguments)
-    from .template import TEMPLATE_MAPPING, Template, StopWords, get_template, TemplateType
+    from .template import TEMPLATE_MAPPING, Template, StopWords, get_template, TemplateType, get_template
     from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, get_default_template_type, HfConfigFactory
     from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
                           register_local_dataset, register_dataset_info_file, register_single_dataset, dataset_map,
                           stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset,
                           print_example, sort_by_max_length, standard_keys, multimodal_keys, multimodal_tags)
-    from .utils import deep_getattr, to_device, Messages, History
+    from .utils import deep_getattr, to_device, Messages, History, decode_base64
     from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -51,7 +51,7 @@ else:
             'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset',
             'print_example', 'sort_by_max_length', 'standard_keys', 'multimodal_keys', 'multimodal_tags'
         ],
-        'utils': ['deep_getattr', 'to_device', 'History', 'Messages'],
+        'utils': ['deep_getattr', 'to_device', 'History', 'Messages', 'decode_base64'],
         'module_mapping': ['MODEL_KEYS_MAPPING', 'MultiModelKeys']
     }
 

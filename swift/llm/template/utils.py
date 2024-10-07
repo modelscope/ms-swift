@@ -1,11 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import inspect
 import re
+from contextlib import contextmanager
+from functools import partial, wraps
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
+import torch.nn as nn
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from transformers.integrations import is_deepspeed_zero3_enabled
 
-from swift.llm.utils import History
+from swift.llm import History, to_device
 
 _Tokens = Union[str, List[int], List[str]]
 Context = Union[str, List[int]]
