@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from transformers import PreTrainedTokenizerBase
 
 from .base import Template
+
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 

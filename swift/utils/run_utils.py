@@ -10,11 +10,13 @@ logger = get_logger()
 _TArgsClass = TypeVar('_TArgsClass')
 _T = TypeVar('_T')
 
+
 def _compat_dsw_gradio(args) -> None:
     from swift.llm import AppUIArguments, WebuiArguments
     if (isinstance(args, (AppUIArguments, WebuiArguments)) and 'JUPYTER_NAME' in os.environ
             and 'dsw-' in os.environ['JUPYTER_NAME'] and 'GRADIO_ROOT_PATH' not in os.environ):
         os.environ['GRADIO_ROOT_PATH'] = f"/{os.environ['JUPYTER_NAME']}/proxy/{args.port}"
+
 
 def _x_main(argv: Union[List[str], _TArgsClass, None] = None,
             *,
@@ -39,7 +41,6 @@ def _x_main(argv: Union[List[str], _TArgsClass, None] = None,
 
 def get_main(args_class: Type[_TArgsClass],
              llm_x: Callable[[_TArgsClass], _T]) -> Callable[[Union[List[str], _TArgsClass, NoneType]], _T]:
-
     """
     Examples:
         infer_main = get_main(InferArguments, llm_infer)

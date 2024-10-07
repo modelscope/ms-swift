@@ -1,12 +1,16 @@
-from ._base import Template as _Template
-
-from .utils import Context, findall
-from swift.llm import to_device
 import inspect
 from contextlib import contextmanager
-from typing import List, Any, Dict
 from functools import partial
+from typing import Any, Dict, List, Optional
+
+import torch
 import torch.nn as nn
+
+from swift.llm import to_device
+from swift.utils import get_dist_setting, use_torchacc
+from ._base import Template as _Template
+from .utils import Context, findall
+
 
 class Template(_Template):
 
@@ -37,8 +41,8 @@ class Template(_Template):
         for model, x in zip(models, templates):
             parameters = inspect.signature(model.register_forward_pre_hook).parameters
             if 'with_kwargs' in parameters:
-                handle = model.register_forward_pre_hook(partial(_pre_forward_hook, template=template),
-                                                         with_kwargs=True)
+                handle = model.register_forward_pre_hook(
+                    partial(_pre_forward_hook, template=template), with_kwargs=True)
                 handles.append(handle)
 
         _deepspeed_initialize = None
@@ -158,3 +162,65 @@ class Template(_Template):
         inputs['input_embeddings'] = images
         inputs['input_embedding_ranges'] = ranges
         inputs['input_ids'] = new_input_ids
+
+    def __init__(self, template: Template, **kwargs):
+        self.template = template
+        self.sequence_parallel_size = 1
+
+    def init_template(self,
+                      tokenizer: PreTrainedTokenizerBase,
+                      default_system: Optional[str] = None,
+                      max_length: Optional[int] = None,
+                      truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                      loss_scale: str = 'default',
+                      rescale_image: int = -1,
+                      **kwargs) -> None:
+        self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
+        return self.template.init_template(tokenizer, default_system, max_length, truncation_strategy, loss_scale,
+                                           rescale_image, **kwargs)
+
+    def __getattr__(self, name: str):
+        """Forward missing attributes to the wrapped module."""
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.template, name)
+
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        padding_right = self.template.padding_side == 'right'
+        res = self.template.data_collator(batch, padding_to)
+        input_ids = res.get('input_ids')
+        attention_mask = res.get('attention_mask')
+        labels = res.get('labels')
+        loss_scale = res.get('loss_scale')
+        if use_torchacc():
+            rank, _, world_size, _ = get_dist_setting()
+            from swift.torchacc_utils import pad_and_split_batch
+            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
+                padding_to,
+                input_ids,
+                attention_mask,
+                labels,
+                loss_scale,
+                self.max_length,
+                self.tokenizer,
+                rank,
+                world_size,
+                padding_right=padding_right)
+        if self.sequence_parallel_size > 1 and input_ids is not None:
+            bs, seq_len = input_ids.shape
+            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+            assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
+            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
+            if get_xtuner_sequence_parallel_world_size() > 1:
+                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
+                input_ids, labels, position_ids, attention_mask, loss_scale = \
+                    pad_and_split_for_sequence_parallel(
+                        self.template.tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+            res['position_ids'] = position_ids
+        _local_var = locals()
+        for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
+            value = _local_var[key]
+            if value is not None:
+                res[key] = value
+        return res
