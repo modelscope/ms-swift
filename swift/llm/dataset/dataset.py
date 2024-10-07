@@ -2239,8 +2239,6 @@ register_dataset(
     tags=['text-generation', 'classification', '🔥'],
     hf_dataset_id='Hello-SimpleAI/HC3')
 
-NoneType = type(None)
-
 
 class RLAIFVPreprocessor(RowPreprocessor):
 

@@ -1,16 +1,19 @@
 import inspect
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
 import torch.nn as nn
 from peft import PeftModel
+from transformers import PreTrainedTokenizerBase
 
 from swift.llm import to_device
 from swift.utils import get_dist_setting, use_torchacc
 from ._base import Template as _Template
 from .utils import Context, findall
+
+# TODO
 
 
 class Template(_Template):
@@ -109,13 +112,6 @@ class Template(_Template):
                 return ['(<image>./</image>)\n']
         return self.template.replace_tag(media_type, index, example)
 
-    def __getattr__(self, name: str):
-        """Forward missing attributes to the wrapped module."""
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.template, name)
-
     async def _minicpm_v_prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
         images = inputs.pop('images', None) or []
         if len(images) == 0:
@@ -169,7 +165,7 @@ class Template(_Template):
         inputs['input_embedding_ranges'] = ranges
         inputs['input_ids'] = new_input_ids
 
-    def __init__(self, template: Template, **kwargs):
+    def __init__(self, template: 'Template', **kwargs):
         self.template = template
         self.sequence_parallel_size = 1
 
@@ -184,13 +180,6 @@ class Template(_Template):
         self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
         return self.template.init_template(tokenizer, default_system, max_length, truncation_strategy, loss_scale,
                                            rescale_image, **kwargs)
-
-    def __getattr__(self, name: str):
-        """Forward missing attributes to the wrapped module."""
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.template, name)
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         padding_right = self.template.padding_side == 'right'

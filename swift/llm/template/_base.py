@@ -28,7 +28,7 @@ class TemplateInputs:
     messages: List[Dict[str, str]]
     system: str = ''  # The final system, will not check the default_system.
 
-    images: List[str, Image.Image] = field(default_factory=list)
+    images: List[Image.Image] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: List[Dict[str, Any]] = field(default_factory=list)
@@ -105,7 +105,7 @@ class Template:
                  tool_prompt: Optional[Prompt] = None,
                  *,
                  stop_words: Optional[StopWords] = None,
-                 placeholder_tokens: Optional[int, str],
+                 placeholder_tokens: Union[int, str, None] = None,
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'react_en') -> None:
         # check
@@ -198,7 +198,7 @@ class Template:
     def encode(
             self,
             messages: Union[Messages, TemplateInputs],
-            images: Optional[List[Image.Image, str]] = None,
+            images: Optional[List[Union[Image.Image, str]]] = None,
             audios: Optional[List[str]] = None,
             videos: Optional[List[str]] = None,
             objects: Union[str, None, List[Dict[str, Any]]] = None,  # TODO:check
@@ -272,7 +272,7 @@ class Template:
 
     def _preprocess_media(self,
                           inputs: TemplateInputs,
-                          images: Optional[List[Image.Image, str]] = None,
+                          images: Optional[List[Union[Image.Image, str]]] = None,
                           audios: Optional[List[str]] = None,
                           videos: Optional[List[str]] = None,
                           *,
@@ -304,7 +304,7 @@ class Template:
 
     def _messages_to_inputs(self,
                             messages: Messages,
-                            images: Optional[List[Image.Image, str]] = None,
+                            images: Optional[List[Union[Image.Image, str]]] = None,
                             audios: Optional[List[str]] = None,
                             videos: Optional[List[str]] = None,
                             objects: Union[str, None, List[Dict[str, Any]]] = None,
@@ -487,8 +487,8 @@ class Template:
             return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
 
     @staticmethod
-    def normalize_bbox(objects: List[Dict[str, Any]], images: List[Any], to_type: Literal['real', 'norm_1000',
-                                                                                          'norm_1']) -> None:
+    def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
+                                                                                                  'norm_1']) -> None:
         """Normalize bbox to needed.
         to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
             or normalized by 1.
