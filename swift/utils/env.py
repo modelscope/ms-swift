@@ -2,12 +2,14 @@
 import os
 from typing import Optional, Tuple
 
-from transformers.utils import strtobool
-import torch.distributed as dist
 import torch
+import torch.distributed as dist
+from transformers.utils import strtobool
+
 from .logger import get_logger
 
 logger = get_logger()
+
 
 def use_hf_hub():
     return strtobool(os.environ.get('USE_HF', 'False'))

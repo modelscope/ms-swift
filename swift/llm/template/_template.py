@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """The document will be migrated to the modelscope repository."""
 import re
-from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
@@ -93,31 +92,36 @@ class Template:
             assert system_prefix is None, 'The prefix already contains {{SYSTEM}}.'
             system_prefix = prefix
             prefix = self._replace_system(prefix)
+        if system_prefix is None and not self._has_system(prompt):  # mistral_nemo
+            self.support_system = False
+            assert default_system is None, 'The template does not support `system`.'
+        else:
+            self.support_system = True
+        self.support_multi_round = chat_sep is not None
+
         self.prefix = prefix
         self.system_prefix = system_prefix
-        if self.system_prefix is None and not any(['{{SYSTEM}}' in context for context in prompt]):
-            assert default_system is None, 'The template does not support `system`.'
         self.prompt = prompt
         self.chat_sep = chat_sep
-        self.support_multi_round = self.chat_sep is not None
         self.suffix = suffix
         self.default_system = default_system
+        self.tool_prompt = tool_prompt if tool_prompt is not None else prompt  # default as user
         self.use_default_system = True
+
+        self.stop_words = stop_words
+        self.placeholder_tokens = placeholder_tokens
         self.auto_add_bos = auto_add_bos
+        self.tools_prompt_type = tools_prompt_type
         self._is_init = False
-        self.tools_prompt = tools_prompt
-        self.tool_prompt = tool_prompt if tool_prompt is not None else self.prompt  # default as user
-        self.padding_side = padding_side
-        self.infer_media_type = infer_media_type
 
     @staticmethod
     def _replace_system(prefix: Prompt) -> Prompt:
         """Replace system with the """
-        return [p.replace('{{SYSTEM}}', '') for p in prefix if '{{SYSTEM}}' in p]
+        return [p.replace('{{SYSTEM}}', '') for p in prefix]
 
     @staticmethod
-    def _has_system(prefix: Prompt) -> bool:
-        return any(['{{SYSTEM}}' in p for p in prefix])
+    def _has_system(prefix_or_prompt: Prompt) -> bool:
+        return any(['{{SYSTEM}}' in p for p in prefix_or_prompt])
 
     @staticmethod
     def token_attr_to_id(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
@@ -130,58 +134,31 @@ class Template:
         res_value = []
         for v in value:
             if isinstance(v, list):
-                res_v = []
-                for sub_v in v:
-                    if isinstance(sub_v, str):
-                        sub_v = getattr(tokenizer, sub_v)
-                    res_v.append(sub_v)
-                v = res_v
+                v = [getattr(tokenizer, sub_v) if isinstance(sub_v, str) else sub_v for sub_v in v]
             res_value.append(v)
         return res_value
 
-    def init_template(self,
-                      tokenizer: PreTrainedTokenizerBase,
-                      default_system: Optional[str] = None,
-                      max_length: Optional[int] = None,
-                      truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                      loss_scale: str = 'default',
-                      rescale_image: int = -1,
-                      **kwargs) -> None:
-        """Init template by a tokenizer
-        Args:
-            tokenizer: The tokenizer to tokenize the sentence
-            default_system: The default system to use if the dataset does not provide one
-            max_length: Max length of the sequence
-            truncation_strategy: The truncation strategy
-            loss_scale: The loss scale function to use
-            rescale_image: Rescale image to reduce memory usage, default `-1` means no limitation
+    def init_template(self, tokenizer: PreTrainedTokenizerBase, default_system: Optional[str] = None, **kwargs) -> None:
+        """
+        default_system: Override the default_system in the template.
         """
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
-        self.tokenizer = tokenizer
-        self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
+
         # if default_system is None. not change self.default_system
         if default_system == '':
             self.default_system = None
         elif default_system is not None:
-            assert self.system_prefix is not None, (
-                f'The template does not support `system`, template_type: {getattr(self, "template_type", None)}')
+            assert self.support_system, (f'The template does not support `system`, template_type: {self.template_type}')
             self.default_system = default_system
-        self.max_length = max_length
-        self.truncation_strategy = truncation_strategy
-        if isinstance(loss_scale, str):
-            self.loss_scale_name = loss_scale
-            self.loss_scale = loss_scale_map.get(loss_scale, None)
-        else:
-            self.loss_scale_name = ''
-            self.loss_scale = loss_scale
-
-        self.rescale_image = rescale_image
 
         for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
             value = getattr(self, key)
             value = self.token_attr_to_id(tokenizer, value)
             setattr(self, key, value)
+
+        self.tokenizer = tokenizer
+        self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
 
     def post_encode(self, model: Module, data: Any) -> Dict[str, Any]:
         """This method will be called after data_collator and before the forward
@@ -353,8 +330,13 @@ class Template:
 
     def encode(self,
                example: Dict[str, Any],
+               *,
                streaming: bool = False,
                is_training: bool = False,
+               max_length: Optional[int] = None,
+               truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+               loss_scale: str = 'default',
+               rescale_image: int = -1,
                **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """The entrance method of Template!
 
@@ -362,6 +344,10 @@ class Template:
             example: The input example
             streaming: If is streaming mode
             is_training: Use template in training
+            max_length: Max length of the sequence
+            truncation_strategy: The truncation strategy
+            loss_scale: The loss scale function to use
+            rescale_image: Rescale image to reduce memory usage, default `-1` means no limitation
             **kwargs:
                 model: The model instance, use only in `is_training=False`
         Returns:

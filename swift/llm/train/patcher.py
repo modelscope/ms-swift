@@ -20,57 +20,6 @@ from swift.utils.torch_utils import _get_max_memory, _sync_max_memory
 logger = get_logger()
 
 
-def _pre_forward_hook(model, args, kwargs, template):
-    if '_data' in kwargs:
-        res_extra = []
-        data = kwargs.pop('_data')
-        for d in data:
-            res_extra.append(template.post_encode(model, d))
-        kwargs.update(to_device(template.data_collator(res_extra), model.device))
-        if 'inputs_embeds' in kwargs:
-            kwargs.pop('input_ids', None)
-
-    parameters = inspect.signature(model.forward).parameters
-    if 'position_ids' not in parameters:
-        kwargs.pop('position_ids', None)
-    return args, kwargs
-
-
-@contextmanager
-def training_context(models: List[Module], templates: List['Template']):
-    """This function is important for multi-modal training
-        Some models need to convert or generate input_embeds before forward, and this part need gradients also.
-        So this must happens after the template.encode and data_collator, and befores the forward operation.
-    Args:
-        models: List of Modules
-    """
-    handles = []
-    for model, template in zip(models, templates):
-        parameters = inspect.signature(model.register_forward_pre_hook).parameters
-        if 'with_kwargs' in parameters:
-            handle = model.register_forward_pre_hook(partial(_pre_forward_hook, template=template), with_kwargs=True)
-            handles.append(handle)
-
-    _deepspeed_initialize = None
-    if is_deepspeed_zero3_enabled():
-        import deepspeed
-        _deepspeed_initialize = deepspeed.initialize
-
-        @wraps(_deepspeed_initialize)
-        def _initialize(*args, **kwargs):
-            res = _deepspeed_initialize(*args, **kwargs)
-            for model, handle in zip(models, handles):
-                model._forward_pre_hooks.move_to_end(handle.id)
-            return res
-
-        deepspeed.initialize = _initialize
-    yield
-    for handle in handles:
-        handle.remove()
-    if _deepspeed_initialize:
-        deepspeed.initialize = _deepspeed_initialize
-
-
 def patch_ddp_mp():
     """Patch ddp with device_map.
     After patching, the ddp can run with the device_map.
