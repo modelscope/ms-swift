@@ -647,6 +647,7 @@ class Template:
         prefix = self.system_prefix if inputs.system else self.prefix
         self._concat_context_list(prefix, res_context_list, loss_scale_list, system=inputs.system)
         self._get_std_messages(inputs.messages)
+
         n_round = len(inputs.messages) // 2
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
             query_role, query = query_message['role'], query_message['content']
@@ -666,8 +667,7 @@ class Template:
             is_suffix = False
             if i < n_round - 1:
                 context_list.append('{{RESPONSE}}')
-                if history[i + 1][0]:
-                    extra_context_list = self.chat_sep
+                extra_context_list = self.chat_sep  # TODO:agent check
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
@@ -678,8 +678,8 @@ class Template:
                     context_list,
                     res_context_list,
                     loss_scale_list,
-                    query=q,
-                    response=r,
+                    query=query,
+                    response=response,
                     system=inputs.system,
                     round0=i,
                     compute_loss=self.compute_per_round_loss or is_suffix)
