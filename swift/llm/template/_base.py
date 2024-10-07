@@ -111,7 +111,13 @@ class Template:
             assert system_prefix is None, 'The prefix already contains {{SYSTEM}}.'
             system_prefix = prefix
             prefix = self._replace_system(prefix)
-        if system_prefix is None and not self._has_system(prompt):  # mistral_nemo
+        self.is_post_system = self._has_system(prompt)  # mistral_nemo
+        if self.is_post_system:
+            self.prompt = [context for context in prompt if '{{SYSTEM}}' not in context]
+            self.system_prompt = prompt
+        else:
+            self.prompt = prompt
+        if system_prefix is None and not self.is_post_system:
             self.support_system = False
             assert default_system is None, 'The template does not support `system`.'
         else:
@@ -120,7 +126,6 @@ class Template:
 
         self.prefix = prefix
         self.system_prefix = system_prefix
-        self.prompt = prompt
         self.chat_sep = chat_sep
         self.suffix = suffix
         self.default_system = default_system
@@ -186,6 +191,9 @@ class Template:
     def encode(
             self,
             messages: Union[Messages, TemplateInputs],
+            images: Optional[List[Image.Image, str]] = None,
+            audios: Optional[List[str]] = None,
+            videos: Optional[List[str]] = None,
             objects: Union[str, None, List[Dict[str, Any]]] = None,  # TODO:check
             tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,  # TODO:check
             *,
@@ -196,7 +204,8 @@ class Template:
         """The entrance method of Template!
 
         Args:
-            messages: Input in messages format
+            messages: Input in messages format. If the input type is TemplateInputs, then the parameters for
+                    images/audios/videos/objects/tools/max_image_size become invalid.
                 Examples: [{
                     "role": "user",  # or assistant/system/role
                     "content": [  # str or List[Dict[str, Any]]
@@ -208,10 +217,8 @@ class Template:
                     ],
                 }]
             objects: Used for grounding tasks in a general format.
-                This parameter is only effective when messages are in Messages format.
             tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
                 Specifying this parameter will override system.
-                This parameter is only effective when messages are in Messages format.
             max_length: Max length of the sequence
             truncation_strategy: The truncation strategy
             loss_scale: The loss scale function to use
@@ -228,10 +235,11 @@ class Template:
         if isinstance(messages, Messages):
             messages = deepcopy(messages)
             objects = deepcopy(objects)
-            inputs = self._messages_to_inputs(messages, objects, tools, max_image_size=max_image_size)
+            inputs = self._messages_to_inputs(messages, images, audios, videos, objects, tools, max_image_size=max_image_size)
         else:
             inputs = messages
         assert isinstance(inputs, TemplateInputs)
+        self._check_example(inputs)
         inputs = self._encode(
             inputs, max_length=max_length, truncation_strategy=truncation_strategy, loss_scale=loss_scale)
         if inputs.get('labels') is None:
@@ -254,33 +262,43 @@ class Template:
         inputs.images = images
         inputs.objects = objects
 
-    def _preprocess_media(self, inputs: TemplateInputs, messages: Messages, *, max_image_size: int = -1) -> None:
+    def _preprocess_media(self, inputs: TemplateInputs,
+                          images: Optional[List[Image.Image, str]] = None,
+                          audios: Optional[List[str]] = None,
+                          videos: Optional[List[str]] = None,
+                          *, max_image_size: int = -1) -> None:
         """Preprocess multi-modal media resources in one example
             4. Parse the string field in the `objects` field to jsons
         """
-        for message in messages:
-            content = message['content']
-            if isinstance(content, str):
-                continue
-            # List[Dict[str, Any]]
-            new_content = ''
-            for item in content:
-                key = item['type']
-                value = item[key]
-                if key == 'text':
-                    new_content += value
+        if not (images or audios or videos):
+            for message in inputs.messages:
+                content = message['content']
+                if isinstance(content, str):
                     continue
-                new_content += f'<{key}>'
-                if key == 'image' and self.load_medias:
-                    value = load_image(value)
-                    if max_image_size != -1:
-                        assert self.grounding_type != 'real', 'not support'  # TODO:check
-                        value = rescale_image(value, max_image_size)
-                getattr(inputs, f'{key}s').append(value)
-            message['content'] = new_content
+                # List[Dict[str, Any]]
+                new_content = ''
+                for item in content:
+                    key = item['type']
+                    value = item[key]
+                    if key == 'text':
+                        new_content += value
+                        continue
+                    new_content += f'<{key}>'
+                    getattr(inputs, f'{key}s').append(value)
+                message['content'] = new_content
+        images = inputs.images
+        if images and self.load_medias:
+            images = load_batch(images, load_image)
+            if max_image_size != -1:
+                assert self.grounding_type != 'real', 'not support'  # TODO:check
+                images = [rescale_image(img, max_image_size) for img in images]
+            inputs.images = images
 
     def _messages_to_inputs(self,
                             messages: Messages,
+                            images: Optional[List[Image.Image, str]] = None,
+                            audios: Optional[List[str]] = None,
+                            videos: Optional[List[str]] = None,
                             objects: Union[str, None, List[Dict[str, Any]]] = None,
                             tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,
                             *,
@@ -297,11 +315,11 @@ class Template:
                 tools = json.loads(tools)
             system = get_tools_prompt(tools, self.tools_prompt)
         system = self._check_system(system)
-        inputs = TemplateInputs(messages=messages, system=system)
+        inputs = TemplateInputs(messages, system)
         if len(messages) > 1 and not self.support_multi_round:
             raise ValueError(f'The template does not support multi-round chat, template_type: {self.template_type}')
 
-        self._preprocess_media(inputs, messages, max_image_size=max_image_size)
+        self._preprocess_media(inputs, images, audios, videos, max_image_size=max_image_size)
         if objects is not None:
             self._preprocess_objects(inputs, objects)
         return inputs
@@ -401,7 +419,7 @@ class Template:
     def _post_encode(self, model: Module, inputs: Any) -> Dict[str, Any]:
         return {}
 
-    def _check_example(self, example: Dict[str, Any]) -> None:
+    def _check_example(self, inputs: TemplateInputs) -> None:
         """Check example valid"""
         pass
 
@@ -606,33 +624,17 @@ class Template:
                 if length >= suffix_len:
                     labels[start:start + suffix_len] = suffix_tokens_id
 
+    def _get_std_messages(self, messages):
+        if messages[0]['role'] == 'response':
+            messages.insert(0, {'role': 'query', 'content': ''})  # pretrain
+        if len(messages) % 2 == 1:
+            messages.append({'role': 'assistant', 'content': None})  # inference
+
     def _encode(self,
                 inputs: TemplateInputs,
                 truncation_strategy: str,
                 auto_add_bos: bool = False,
                 **kwargs) -> Dict[str, Any]:
-        """
-        return: inputs, tokenizer_kwargs
-        """
-        system = [message for message in messages if message['role'] == 'system']
-        messages = [message for message in messages if message['role'] != 'system']
-        if len(system) > 0:
-            system = system[0]['content']
-        else:
-            system = None
-
-        assert len(messages) >= 1
-        if len(messages) == 1:
-            if messages[0]['role'] == 'assistant':
-                history = [['', messages[0]['content']]]
-                history_roles = [['', messages[0]['role']]]
-            else:
-                history = [[messages[0]['content'], '']]
-                history_roles = [[messages[0]['role'], '']]
-        else:
-            assert len(messages) % 2 == 0
-            history = [[messages[i]['content'], messages[i + 1]['content']] for i in range(0, len(messages), 2)]
-            history_roles = [[messages[i]['role'], messages[i + 1]['role']] for i in range(0, len(messages), 2)]
 
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
@@ -641,37 +643,44 @@ class Template:
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
                 loss_scale_list.append(0.)
-        prompt = self.prompt.copy()
-        if system is None:
-            prompt = [context for context in prompt if '{{SYSTEM}}' not in context]
-        if system is None or any(['{{SYSTEM}}' in context for context in prompt]):
-            prefix = self.prefix
-        else:
-            prefix = self.system_prefix
-        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=system)
 
-        for i, ((q, r), (qr, rr)) in enumerate(zip(history, history_roles)):
-            context_list = self.tool_prompt.copy() if qr == 'tool' else prompt.copy()
+        prefix = self.system_prefix if inputs.system else self.prefix
+        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=inputs.system)
+        self._get_std_messages(inputs.messages)
+        n_round = len(inputs.messages) // 2
+        for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
+            query_role, query = query_message['role'], query_message['content']
+            response_role, response = response_message['role'], response_message['content']
+            # TODO: Optimize the Template mechanism.
+            assert query_role in {'user', 'tool'}
+            assert response_role in {'assistant'}
+            if query_role == 'tool':
+                prompt = self.tool_prompt
+            elif self.is_post_system and i == n_round - 1:
+                prompt = self.system_prompt
+            else:
+                prompt = self.prompt
+
+            context_list = prompt.copy()
             extra_context_list = []
             is_suffix = False
-            if i < len(history) - 1:
-                context_list = [context for context in context_list if '{{SYSTEM}}' not in context]
+            if i < n_round - 1:
                 context_list.append('{{RESPONSE}}')
                 if history[i + 1][0]:
                     extra_context_list = self.chat_sep
-            elif r is not None:
-                # last response
+            elif response is not None:
+                # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = self.suffix
                 is_suffix = True
-            if q or r:
+            if query or response:
                 self._concat_context_list(
                     context_list,
                     res_context_list,
                     loss_scale_list,
                     query=q,
                     response=r,
-                    system=system,
+                    system=inputs.system,
                     round0=i,
                     compute_loss=self.compute_per_round_loss or is_suffix)
                 res_context_list += extra_context_list
