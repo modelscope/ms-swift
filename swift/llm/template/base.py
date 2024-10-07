@@ -10,6 +10,7 @@ from swift.llm import to_device
 from swift.utils import get_dist_setting, use_torchacc
 from ._base import Template as _Template
 from .utils import Context, findall
+from peft import PeftModel
 
 
 class Template(_Template):
@@ -19,12 +20,16 @@ class Template(_Template):
             res_extra = []
             data = kwargs.pop('_data')
             for d in data:
-                res_extra.append(self.post_encode(model, d))
+                res_extra.append(self._post_encode(model, d))
             kwargs.update(to_device(self.data_collator(res_extra), model.device))
             if 'inputs_embeds' in kwargs:
                 kwargs.pop('input_ids', None)
 
-        parameters = inspect.signature(model.forward).parameters
+        if isinstance(model, PeftModel):
+            parameters = inspect.signature(model.base_model.model.forward).parameters
+        else:
+            parameters = inspect.signature(model.forward).parameters
+
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
         return args, kwargs
