@@ -4,7 +4,8 @@ import os
 import re
 from copy import deepcopy
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple, Union
+from PIL import Image
+from typing import Any, Dict, List, Optional, Union
 
 from .utils import Messages
 
@@ -24,7 +25,7 @@ def _decode_prompt(prompt: str, tmp_dir: str = 'tmp') -> str:
     return new_content
 
 
-def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
+def _to_base64(img_path: Union[str, Image.Image, bytes]) -> str:
     if isinstance(img_path, str) and not os.path.isfile(img_path):
         # base64
         return img_path
@@ -32,7 +33,7 @@ def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
         # local_path
         with open(img_path, 'rb') as f:
             _bytes = f.read()
-    elif not isinstance(img_path, bytes):  # PIL.Image.Image
+    elif isinstance(img_path, Image.Image):
         bytes_io = BytesIO()
         img_path.save(bytes_io, format='png')
         _bytes = bytes_io.getvalue()
@@ -42,9 +43,8 @@ def _to_base64(img_path: Union[str, 'PIL.Image.Image', bytes]) -> str:
     return img_base64
 
 
-def _from_base64(img_base64: Union[str, 'PIL.Image.Image'], tmp_dir: str = 'tmp') -> str:
-    from PIL import Image
-    if not isinstance(img_base64, str):  # PIL.Image.Image
+def _from_base64(img_base64: Union[str, Image.Image], tmp_dir: str = 'tmp') -> str:
+    if isinstance(img_base64, Image.Image):
         img_base64 = _to_base64(img_base64)
     if os.path.isfile(img_base64) or img_base64.startswith('http'):
         return img_base64

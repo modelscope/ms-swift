@@ -4,7 +4,7 @@ import math
 import os
 from io import BytesIO
 from typing import Any, Callable, List, TypeVar, Union
-
+from PIL import Image, ImageDraw
 import numpy as np
 import requests
 import torch
@@ -81,17 +81,17 @@ def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbn
 # <<< internvl
 
 
-def rescale_image(img: 'PIL.Image.Image', rescale_image: int = -1) -> 'PIL.Image.Image':
+def rescale_image(img: Image.Image, max_size: int) -> Image.Image:
     import torchvision.transforms as T
     width = img.width
     height = img.height
-    if rescale_image <= 0 or width * height <= rescale_image:
+    if max_size <= 0 or width * height <= max_size:
         return img
 
     ratio = width / height
-    height_scaled = math.pow(rescale_image / ratio, 0.5)
-    width_scaled = height_scaled * ratio
-    return T.Resize((int(width_scaled), int(height_scaled)))(img)
+    height_scaled = int(math.sqrt(max_size / ratio))
+    width_scaled = int(height_scaled * ratio)
+    return T.Resize((width_scaled, height_scaled))(img)
 
 
 _T = TypeVar('_T')
@@ -135,8 +135,7 @@ def load_file_decorator(func):
 
 
 @load_file_decorator
-def load_image(image: Union['PIL.Image.Image', BytesIO]) -> 'PIL.Image.Image':
-    from PIL import Image
+def load_image(image: Union[Image.Image, BytesIO]) -> Image.Image:
     if isinstance(image, BytesIO):
         try:
             image = Image.open(image)
@@ -182,7 +181,6 @@ def transform_image(image, input_size=448, max_num=12):
 @load_file_decorator
 def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
     from decord import VideoReader, cpu
-    from PIL import Image
     vr = VideoReader(video_io, ctx=cpu(0), num_threads=1)
     max_frame = len(vr) - 1
     fps = float(vr.get_avg_fps())
@@ -195,7 +193,6 @@ def load_video_internvl(video_io: BytesIO, bound=None, num_segments=32):
 
 
 def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
-    from PIL import Image, ImageDraw
     from swift.llm.template.template import Template
     image = Image.open(img_dir)
 
@@ -245,7 +242,6 @@ def load_video_llava(video_io: BytesIO) -> np.ndarray:
 
 @load_file_decorator
 def load_video_minicpmv_mplug_owl3(video_io: BytesIO, max_num_frames):
-    from PIL import Image
     from decord import VideoReader, cpu  # pip install decord
 
     def uniform_sample(_l, _n):
