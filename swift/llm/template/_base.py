@@ -33,6 +33,13 @@ class TemplateInputs:
     videos: List[str] = field(default_factory=list)
     objects: List[Dict[str, Any]] = field(default_factory=list)
 
+    def __post_init__(self):
+        self.image_idx = 0
+        self.audio_idx = 0
+        self.video_idx = 0
+        self.object_idx = 0
+        self.box_idx = 0
+
     @property
     def is_multimodal(self):
         return bool(self.images or self.audios or self.videos or self.objects)
@@ -169,7 +176,7 @@ class Template:
         assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
         return system
 
-    def init_template(self, tokenizer: PreTrainedTokenizerBase, default_system: Optional[str] = None, **kwargs) -> None:
+    def init_template(self, tokenizer: PreTrainedTokenizerBase, default_system: Optional[str] = None) -> None:
         """
         default_system: Override the default_system in the template.
         """
@@ -225,7 +232,7 @@ class Template:
             max_image_size: Rescale image to reduce memory usage, default `-1` means no limitation.
                 e.g. 512 * 512 (H*W)
         Returns:
-            if not streaming mode, returns tuple of (example, tokenizer_kwargs), else return example only
+            return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
         # Template needs to be initialized
         if not self._is_init:
@@ -235,13 +242,14 @@ class Template:
         if isinstance(messages, Messages):
             messages = deepcopy(messages)
             objects = deepcopy(objects)
-            inputs = self._messages_to_inputs(messages, images, audios, videos, objects, tools, max_image_size=max_image_size)
+            inputs = self._messages_to_inputs(
+                messages, images, audios, videos, objects, tools, max_image_size=max_image_size)
         else:
             inputs = messages
         assert isinstance(inputs, TemplateInputs)
-        self._check_example(inputs)
+        self._check_inputs(inputs)
         inputs = self._encode(
-            inputs, max_length=max_length, truncation_strategy=truncation_strategy, loss_scale=loss_scale)
+            inputs, max_length=max_length, truncation_strategy=truncation_strategy, loss_scale_type=loss_scale)
         if inputs.get('labels') is None:
             inputs.pop('loss_scale', None)
         return inputs
@@ -262,14 +270,13 @@ class Template:
         inputs.images = images
         inputs.objects = objects
 
-    def _preprocess_media(self, inputs: TemplateInputs,
+    def _preprocess_media(self,
+                          inputs: TemplateInputs,
                           images: Optional[List[Image.Image, str]] = None,
                           audios: Optional[List[str]] = None,
                           videos: Optional[List[str]] = None,
-                          *, max_image_size: int = -1) -> None:
-        """Preprocess multi-modal media resources in one example
-            4. Parse the string field in the `objects` field to jsons
-        """
+                          *,
+                          max_image_size: int = -1) -> None:
         if not (images or audios or videos):
             for message in inputs.messages:
                 content = message['content']
@@ -286,6 +293,7 @@ class Template:
                     new_content += f'<{key}>'
                     getattr(inputs, f'{key}s').append(value)
                 message['content'] = new_content
+
         images = inputs.images
         if images and self.load_medias:
             images = load_batch(images, load_image)
@@ -333,7 +341,8 @@ class Template:
             query: Optional[str] = None,
             response: Optional[str] = None,
             round0: Optional[int] = None,
-            compute_loss: bool = True) -> None:
+            compute_loss: bool = True,
+            loss_scale: str = 'default') -> None:
         """Concat context list and replace placeholder"""
         round1 = None
         if round0 is not None:
@@ -344,7 +353,7 @@ class Template:
                 if '{{RESPONSE}}' == context:
                     assert response is not None
                     if compute_loss:
-                        content_part, weight_part = self.loss_scale(query, response)
+                        content_part, weight_part = loss_scale_map[loss_scale](query, response)
                     else:
                         content_part, weight_part = [response], [0.]
                     res_context_list.extend(content_part)
@@ -361,13 +370,11 @@ class Template:
             loss_scale_list.append(0.)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
-                               **kwargs) -> Tuple[List[Context], List[float]]:
+                               inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
-        is_multi_modal: bool = kwargs.pop('is_multi_modal', False)
-
-        if is_multi_modal:
+        if inputs.is_multimodal:
             context_list, loss_scale_list = self.split_special_tokens(context_list, loss_scale_list)
-        context_list, loss_scale_list = self.pre_tokenize(context_list, loss_scale_list, **kwargs)
+        context_list, loss_scale_list = self.pre_tokenize(context_list, loss_scale_list, inputs)
 
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
@@ -419,20 +426,20 @@ class Template:
     def _post_encode(self, model: Module, inputs: Any) -> Dict[str, Any]:
         return {}
 
-    def _check_example(self, inputs: TemplateInputs) -> None:
-        """Check example valid"""
+    def _check_inputs(self, inputs: TemplateInputs) -> None:
+        """Check inputs valid"""
         pass
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    example: Dict[str, Any]) -> List[Context]:
+                    inputs: TemplateInputs) -> List[Context]:
         """Override this function to do your own replace operation.
 
         This method is used to replace standard tags like `<image>` to some tokens that the model needs.
 
         Args:
             media_type: The modal.
-            index: The index of the medias, for example 0 represents the first elements in `images`
-            example: The input example
+            index: The index of the medias, for index 0 represents the first elements in `images`
+            inputs: The inputs
 
         Returns:
             The content or input_ids after replacement.
@@ -444,52 +451,44 @@ class Template:
         elif media_type == 'audio':
             return ['<audio>']
 
-    def replace_object(self, index: int, example: Dict[str, Any]) -> List[Context]:
+    def replace_object(self, object_: Dict[str, Any], index: int, inputs: TemplateInputs) -> List[Context]:
         """Replace objects referenced by the bbox to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
 
         Args:
+            object_: inputs.objects[inputs.object_idx]
             index: The index in the `objects` key
-            example: The input example
+            inputs: The inputs
 
         Returns:
             The contents or input_ids replaced
         """
-        objects = example.get('objects')
-        if objects:
-            object_ = objects[index]
-            return [object_['caption']]
-        else:
-            return ['<ref-object>']
+        return [object_['caption']]
 
-    def replace_box(self, index: int, example: Dict[str, Any]) -> List[Context]:
+    def replace_box(self, object_: Dict[str, Any], index: int, inputs: TemplateInputs) -> List[Context]:
         """Replace bbox pointing to the objects to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
 
         Args:
+            object_: inputs.objects[inputs.object_idx]
             index: The index in the `objects` key
-            example: The input example
+            inputs: The inputs
 
         Returns:
             The contents or input_ids replaced
         """
-        objects = example.get('objects')
-        if objects:
-            object_ = objects[index]
-            if isinstance(object_['bbox'][0], list):
-                all_objects = ''
-                for sub_object in object_['bbox']:
-                    all_objects += f'[({sub_object[0]},{sub_object[1]}),' f'({sub_object[2]},{sub_object[3]})],'
-                all_objects = all_objects[:-1]
-                return [all_objects]
-            else:
-                return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
+        if isinstance(object_['bbox'][0], list):
+            all_objects = ''
+            for sub_object in object_['bbox']:
+                all_objects += f'[({sub_object[0]},{sub_object[1]}),' f'({sub_object[2]},{sub_object[3]})],'
+            all_objects = all_objects[:-1]
+            return [all_objects]
         else:
-            return ['<bbox>']
+            return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
 
-    @classmethod
-    def normalize_bbox(cls, objects: List[Dict[str, Any]], images: List[Any], to_type: Literal['real', 'norm_1000',
-                                                                                               'norm_1']) -> None:
+    @staticmethod
+    def normalize_bbox(objects: List[Dict[str, Any]], images: List[Any], to_type: Literal['real', 'norm_1000',
+                                                                                          'norm_1']) -> None:
         """Normalize bbox to needed.
         to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
             or normalized by 1.
@@ -547,7 +546,7 @@ class Template:
                 object['bbox_type'] = to_type
 
     def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
-                     **kwargs) -> Tuple[List[Context], List[float]]:
+                     inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
         """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
         the model.
 
@@ -557,26 +556,29 @@ class Template:
         Returns:
             The context_list and loss_scale_list after replacement.
         """
-        example = kwargs.get('example')  # get x_index
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
-        for k in ['image', 'video', 'audio']:
-            example[f'{k}_index'] = 0
+        # reset
+        for k in ['image', 'video', 'audio', 'object', 'box']:
+            setattr(inputs, f'{k}_idx', 0)
 
         for context, loss_scale in zip(context_list, loss_scale_list):
             for k in ['image', 'video', 'audio']:
                 if context == f'<{k}>':
-                    c_list = self.replace_tag(k, example[f'{k}_index'], example)
-                    example[f'{k}_index'] += 1
+                    idx = getattr(inputs, f'{k}_idx')
+                    c_list = self.replace_tag(k, idx, inputs)
+                    setattr(inputs, f'{k}_idx', idx + 1)
                     break
             else:
                 if context == '<ref-object>':
-                    c_list = self.replace_object(example.get('object_index', 0), example)
-                    example['object_index'] = example.get('object_index', 0) + 1
+                    idx = inputs.object_idx
+                    c_list = self.replace_object(inputs.objects[idx], idx, inputs)
+                    inputs.object_idx = idx + 1
                 elif context == '<bbox>':
-                    c_list = self.replace_box(example.get('box_index', 0), example)
-                    example['box_index'] = example.get('box_index', 0) + 1
+                    idx = inputs.object_idx
+                    c_list = self.replace_box(inputs.objects[idx], idx, inputs)
+                    inputs.box_idx = idx + 1
                 else:
                     c_list = [context]
             res += c_list
@@ -632,13 +634,14 @@ class Template:
 
     def _encode(self,
                 inputs: TemplateInputs,
-                truncation_strategy: str,
-                auto_add_bos: bool = False,
-                **kwargs) -> Dict[str, Any]:
+                *,
+                max_length: Optional[int] = None,
+                truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                loss_scale_type: str = 'default') -> Dict[str, Any]:
 
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
-        if auto_add_bos:
+        if self.auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
@@ -673,39 +676,40 @@ class Template:
                 context_list.append('{{RESPONSE}}')
                 extra_context_list = self.suffix
                 is_suffix = True
-            if query or response:
-                self._concat_context_list(
-                    context_list,
-                    res_context_list,
-                    loss_scale_list,
-                    query=query,
-                    response=response,
-                    system=inputs.system,
-                    round0=i,
-                    compute_loss=self.compute_per_round_loss or is_suffix)
-                res_context_list += extra_context_list
-                loss_scale_list += ([1.] if is_suffix else [0.]) * len(extra_context_list)
+            assert query or response  # TODO:check
+            self._concat_context_list(
+                context_list,
+                res_context_list,
+                loss_scale_list,
+                query=query,
+                response=response,
+                system=inputs.system,
+                round0=i,
+                compute_loss=self.compute_per_round_loss or is_suffix,
+                loss_scale=loss_scale_type)
+            res_context_list += extra_context_list
+            loss_scale_list += ([1.] if is_suffix else [0.]) * len(extra_context_list)
+
         inputs = {}
         if self.output_prompt_answer:
-            # tokenizer_kwargs: use prompt
-            answer_len = len(extra_context_list) + bool(history[-1][-1] is not None)
+            # tokenizer_kwargs: use prompt (qwen-audio)
+            answer_len = len(extra_context_list) + bool(response is not None)
             total_len = len(res_context_list)
             for key, _slice in zip(['answer', 'prompt'],
                                    [slice(total_len - answer_len, total_len),
                                     slice(0, total_len - answer_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
-                                                                                  loss_scale_list[_slice], **kwargs)
+                                                                                  loss_scale_list[_slice])
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
                 inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
-                if self.loss_scale_name != 'default':
+                if loss_scale_type != 'default':
                     inputs[f'{key}_loss_scale'] = loss_scale
             input_ids = inputs['prompt_input_ids'] + inputs['answer_input_ids']
             labels = inputs['prompt_labels'] + inputs['answer_labels']
-            if history[-1][-1] is None:
+            if response is None:
                 assert len(inputs['answer_labels']) == 0
                 inputs['answer_labels'] = None
-
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
@@ -713,25 +717,28 @@ class Template:
             if labels is not None:
                 self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
-        if history[-1][-1] is None:
+        if tokenizer_kwargs:
+            inputs['tokenizer_kwargs'] = tokenizer_kwargs
+
+        if response is None:
             labels = None
 
-        if self.max_length is not None:
-            if truncation_strategy == 'delete' and len(input_ids) > self.max_length:
+        if max_length is not None:
+            if truncation_strategy == 'delete' and len(input_ids) > max_length:
                 logger.warn(f'Current length of row({len(input_ids)}) is larger'
-                            f' than the max_length({self.max_length}), deleted.')
+                            f' than the max_length({max_length}), deleted.')
                 return {}, {}
-            input_ids = input_ids[-self.max_length:]
+            input_ids = input_ids[-max_length:]
             if labels is not None:
-                labels = labels[-self.max_length:]
+                labels = labels[-max_length:]
             if loss_scale is not None:
-                loss_scale = loss_scale[-self.max_length:]
+                loss_scale = loss_scale[-max_length:]
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
 
-        if self.loss_scale_name != 'default':
+        if self.use_loss_scale:
             inputs['loss_scale'] = loss_scale
-        return inputs, tokenizer_kwargs
+        return inputs
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""
@@ -826,13 +833,13 @@ class Template:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
         return res
 
-    @classmethod
-    def get_generate_ids(cls, generate_ids: torch.Tensor, input_token_len: int) -> List[int]:
+    @staticmethod
+    def get_generate_ids(generate_ids: torch.Tensor, input_token_len: int) -> List[int]:
         if isinstance(generate_ids, torch.Tensor):
             generate_ids = generate_ids.tolist()
         if len(generate_ids) >= 1 and isinstance(generate_ids[0], (list, tuple)):
             generate_ids = generate_ids[0]
-        return cls._get_generate_ids(generate_ids, input_token_len)
+        return Template._get_generate_ids(generate_ids, input_token_len)
 
     @staticmethod
     def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
@@ -849,11 +856,11 @@ class Template:
 
         return False
 
-    @classmethod
-    def _get_safe_print_idx(cls, response: str, print_idx: int, is_finished: bool = False) -> int:
+    @staticmethod
+    def _get_safe_print_idx(response: str, print_idx: int, is_finished: bool = False) -> int:
         if is_finished:
             return len(response)
-        if response.endswith('\n') or len(response) > 0 and cls._is_chinese_char(ord(response[-1])):
+        if response.endswith('\n') or len(response) > 0 and Template._is_chinese_char(ord(response[-1])):
             print_idx = len(response)
         else:
             print_idx = max(response.rfind(' ') + 1, print_idx)
@@ -914,5 +921,5 @@ class Template:
             assert is_finished and not return_delta
         return response
 
-    def post_process_generate_response(self, response: str, example: dict) -> str:
+    def post_process_generate_response(self, response: str, inputs: TemplateInputs) -> str:
         return response

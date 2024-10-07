@@ -14,6 +14,7 @@ from .utils import Context, findall
 
 
 class Template(_Template):
+    # train/vllm infer/lmdeploy infer
 
     def _pre_forward_hook(self, model, args, kwargs):
         if '_data' in kwargs:
