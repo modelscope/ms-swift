@@ -15,6 +15,7 @@ numpy<2.0
 oss2
 pandas
 peft>=0.11.0,<0.13.0
+pillow
 requests
 rouge
 safetensors
@@ -23,5 +24,3 @@ tqdm
 transformers>=4.33,<4.46
 transformers_stream_generator
 trl>=0.10.1
-pillow
-

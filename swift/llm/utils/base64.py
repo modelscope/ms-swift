@@ -4,8 +4,9 @@ import os
 import re
 from copy import deepcopy
 from io import BytesIO
-from PIL import Image
 from typing import Any, Dict, List, Optional, Union
+
+from PIL import Image
 
 from .utils import Messages
 

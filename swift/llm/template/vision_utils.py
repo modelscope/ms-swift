@@ -4,11 +4,12 @@ import math
 import os
 from io import BytesIO
 from typing import Any, Callable, List, TypeVar, Union
-from PIL import Image, ImageDraw
+
 import numpy as np
 import requests
 import torch
 from packaging import version
+from PIL import Image, ImageDraw
 
 # >>> internvl
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -340,5 +341,6 @@ def load_video_qwen2(video_path: str):
 
 
 if __name__ == '__main__':
+    # TODO:remove
     # A test main to draw bbox
     draw_plot('man.jpg', [354, 462, 580, 738], 'norm_1000', 'man_bbox.jpg')

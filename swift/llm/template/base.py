@@ -5,12 +5,12 @@ from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn as nn
+from peft import PeftModel
 
 from swift.llm import to_device
 from swift.utils import get_dist_setting, use_torchacc
 from ._base import Template as _Template
 from .utils import Context, findall
-from peft import PeftModel
 
 
 class Template(_Template):

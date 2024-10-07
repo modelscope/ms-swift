@@ -1,5 +1,6 @@
 import inspect
 import os
+from dataclasses import dataclass, field
 from functools import partial, update_wrapper
 from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -16,7 +17,6 @@ from transformers.utils.versions import require_version
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
 from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
-from dataclasses import dataclass, field
 
 MODEL_MAPPING: Dict[str, Dict[str, Any]] = {}
 

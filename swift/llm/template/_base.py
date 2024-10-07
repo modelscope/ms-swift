@@ -1,24 +1,25 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """The document will be migrated to the modelscope repository."""
 import re
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, NamedTuple
+from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 import torch
 import torch.nn.functional as F
 from modelscope import get_logger
+from PIL import Image
 from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
-from copy import deepcopy
+
 from swift.llm import Messages, decode_base64, to_device
 from swift.llm.agent import get_tools_prompt, loss_scale_map, split_str_parts_by
 from .utils import Context, Prompt, StopWords, fetch_one, replace_img_tag
 from .vision_utils import load_batch, load_image, rescale_image
-from dataclasses import dataclass, field
-from PIL import Image
-logger = get_logger()
 
+logger = get_logger()
 
 
 @dataclass
@@ -31,6 +32,10 @@ class TemplateInputs:
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: List[Dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def is_multimodal(self):
+        return bool(self.images or self.audios or self.videos or self.objects)
 
 
 class Template:
@@ -128,53 +133,6 @@ class Template:
         self.tools_prompt = tools_prompt
         self._is_init = False
 
-
-    def encode(self,
-               messages: Union[Messages, TemplateInputs],
-               objects: Union[str, None, List[Dict[str, Any]]] = None,  # TODO:check
-               *,
-               max_length: Optional[int] = None,
-               truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-               loss_scale: str = 'default',
-               rescale_image: int = -1) -> Dict[str, Any]:
-        """The entrance method of Template!
-
-        Args:
-            messages: Input in messages format
-                Examples: [{
-                    "role": "user",  # or assistant/system/role
-                    "content": [  # str or List[Dict[str, Any]]
-                        {
-                            "type": "image",  # or audio/video
-                            "image": "<url/path/base64/PIL.Image>",
-                        },
-                        {"type": "text", "text": "<text>"},
-                    ],
-                }]
-            objects: This parameter is only effective when messages are in Messages format and is used
-                for grounding tasks in general format.
-            max_length: Max length of the sequence
-            truncation_strategy: The truncation strategy
-            loss_scale: The loss scale function to use
-            rescale_image: Rescale image to reduce memory usage, default `-1` means no limitation
-            **kwargs:
-                model: The model instance, use only in `is_training=False`
-        Returns:
-            if not streaming mode, returns tuple of (example, tokenizer_kwargs), else return example only
-        """
-        if isinstance(messages, Messages):
-            messages = deepcopy(messages)
-            objects = deepcopy(objects)
-            inputs = self._messages_to_inputs(messages, objects, rescale_image=rescale_image)
-        else:
-            inputs = messages
-        assert isinstance(inputs, TemplateInputs)
-        inputs = self._encode(inputs,
-                              max_length=max_length,
-                              truncation_strategy=truncation_strategy,
-                              loss_scale=loss_scale)
-        return inputs
-
     @staticmethod
     def _replace_system(prefix: Prompt) -> Prompt:
         """Replace system with the """
@@ -225,12 +183,60 @@ class Template:
         self.tokenizer = tokenizer
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
 
-    def _post_encode(self, model: Module, inputs: Any) -> Dict[str, Any]:
-        return {}
+    def encode(
+            self,
+            messages: Union[Messages, TemplateInputs],
+            objects: Union[str, None, List[Dict[str, Any]]] = None,  # TODO:check
+            tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,  # TODO:check
+            *,
+            max_length: Optional[int] = None,
+            truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+            loss_scale: str = 'default',
+            max_image_size: int = -1) -> Dict[str, Any]:
+        """The entrance method of Template!
 
-    def _check_example(self, example: Dict[str, Any]) -> None:
-        """Check example valid"""
-        pass
+        Args:
+            messages: Input in messages format
+                Examples: [{
+                    "role": "user",  # or assistant/system/role
+                    "content": [  # str or List[Dict[str, Any]]
+                        {
+                            "type": "image",  # or audio/video
+                            "image": "<url/path/base64/PIL.Image>",
+                        },
+                        {"type": "text", "text": "<text>"},
+                    ],
+                }]
+            objects: Used for grounding tasks in a general format.
+                This parameter is only effective when messages are in Messages format.
+            tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
+                Specifying this parameter will override system.
+                This parameter is only effective when messages are in Messages format.
+            max_length: Max length of the sequence
+            truncation_strategy: The truncation strategy
+            loss_scale: The loss scale function to use
+            max_image_size: Rescale image to reduce memory usage, default `-1` means no limitation.
+                e.g. 512 * 512 (H*W)
+        Returns:
+            if not streaming mode, returns tuple of (example, tokenizer_kwargs), else return example only
+        """
+        # Template needs to be initialized
+        if not self._is_init:
+            raise ValueError(
+                'Template is not initialized, please use the `get_template` function to obtain the template.')
+
+        if isinstance(messages, Messages):
+            messages = deepcopy(messages)
+            objects = deepcopy(objects)
+            inputs = self._messages_to_inputs(messages, objects, tools, max_image_size=max_image_size)
+        else:
+            inputs = messages
+        assert isinstance(inputs, TemplateInputs)
+        inputs = self._encode(
+            inputs, max_length=max_length, truncation_strategy=truncation_strategy, loss_scale=loss_scale)
+        if inputs.get('labels') is None:
+            inputs.pop('loss_scale', None)
+        return inputs
 
     def _preprocess_objects(self, inputs: TemplateInputs, objects: Union[str, List[Dict[str, Any]]]):
         # Format objects(groundings/refs) to json
@@ -240,19 +246,15 @@ class Template:
 
         # Load image into PIL format
         images = inputs.images
-        if images:
-            if objects:
-                images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
-                # Normalize grounding bboxes
-                self.normalize_bbox(example['objects'], images, to_type=self.grounding_type)
-            if not self.load_medias:  # fix pt & qwen-vl
-                images = decode_base64(images=images)['images']  # PIL.Image/base64 -> local_path
-            example['images'] = images
+        images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
+        # Normalize grounding bboxes
+        self.normalize_bbox(objects, images, to_type=self.grounding_type)
+        if not self.load_medias:  # fix pt & qwen-vl
+            images = decode_base64(images=images)['images']  # PIL.Image/base64 -> local_path
+        inputs.images = images
         inputs.objects = objects
 
-
-    def _preprocess_media(self, inputs: TemplateInputs, messages: Messages, *,
-                          rescale_image: int = -1) -> None:
+    def _preprocess_media(self, inputs: TemplateInputs, messages: Messages, *, max_image_size: int = -1) -> None:
         """Preprocess multi-modal media resources in one example
             4. Parse the string field in the `objects` field to jsons
         """
@@ -271,15 +273,18 @@ class Template:
                 new_content += f'<{key}>'
                 if key == 'image' and self.load_medias:
                     value = load_image(value)
-                    if self.grounding_type != 'real' and self.rescale_image != -1:
-                        value = rescale_image(value, self.rescale_image)
+                    if max_image_size != -1:
+                        assert self.grounding_type != 'real', 'not support'  # TODO:check
+                        value = rescale_image(value, max_image_size)
                 getattr(inputs, f'{key}s').append(value)
             message['content'] = new_content
 
-
-    def _messages_to_inputs(self, messages: Messages,
-                            objects: Union[str, None, List[Dict[str, Any]]] = None, *,
-                            rescale_image: int = -1) -> TemplateInputs:
+    def _messages_to_inputs(self,
+                            messages: Messages,
+                            objects: Union[str, None, List[Dict[str, Any]]] = None,
+                            tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,
+                            *,
+                            max_image_size: int = -1) -> TemplateInputs:
         assert len(messages) >= 1
         system = None
         if messages[0]['role'] == 'system':
@@ -287,54 +292,19 @@ class Template:
             system = message['content']
         if system is None and self.use_default_system:
             system = self.default_system
+        if tools is not None:
+            if isinstance(tools, str):
+                tools = json.loads(tools)
+            system = get_tools_prompt(tools, self.tools_prompt)
         system = self._check_system(system)
+        inputs = TemplateInputs(messages=messages, system=system)
         if len(messages) > 1 and not self.support_multi_round:
-            raise ValueError(
-                f'The template does not support multi-round chat, template_type: {self.template_type}')
-        inputs = TemplateInputs(system=system)
-        self._preprocess_media(inputs, messages, rescale_image=rescale_image)
+            raise ValueError(f'The template does not support multi-round chat, template_type: {self.template_type}')
+
+        self._preprocess_media(inputs, messages, max_image_size=max_image_size)
         if objects is not None:
             self._preprocess_objects(inputs, objects)
         return inputs
-
-    def preprocess(self, messages: Messages) -> None:
-        # Template needs to be initialized
-        if not self._is_init:
-            raise ValueError(
-                'Template is not initialized, please use the `get_template` function to obtain the template.')
-
-        tools: Union[List[Any], str] = example.get('tools') or []
-        if tools:
-            if isinstance(tools, str):
-                tools = json.loads(tools)
-            if system is None:
-                system = ''
-            system += get_tools_prompt(tools, self.tools_prompt)
-
-        if system:
-            if not system_round:
-                system_round = [{'role': 'system', 'content': None}]
-            system_round[0]['content'] = system
-
-        example['messages'] = system_round + messages
-        self._preprocess_media(example)
-        # Check the example that whether matching the very template's rules
-        return example
-
-    def _encode(self, inputs: TemplateInputs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        """return: inputs, tokenizer_kwargs"""
-        messages = example['messages']
-        is_multi_modal: bool = any([example.get(key) for key in Template.special_keys])
-
-        inputs, tokenizer_kwargs = self._concat_and_tokenize(
-            messages,
-            self.truncation_strategy,
-            auto_add_bos=self.auto_add_bos,
-            is_multi_modal=is_multi_modal,
-            example=example)
-        if inputs.get('labels') is None:
-            inputs.pop('loss_scale', None)
-        return inputs, tokenizer_kwargs
 
     def _concat_context_list(
             self,
@@ -427,6 +397,13 @@ class Template:
     def _tokenize(self, context, **tokenizer_kwargs):
         return self.tokenizer(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
+
+    def _post_encode(self, model: Module, inputs: Any) -> Dict[str, Any]:
+        return {}
+
+    def _check_example(self, example: Dict[str, Any]) -> None:
+        """Check example valid"""
+        pass
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -629,11 +606,11 @@ class Template:
                 if length >= suffix_len:
                     labels[start:start + suffix_len] = suffix_tokens_id
 
-    def _concat_and_tokenize(self,
-                             messages: List[Dict[str, str]],
-                             truncation_strategy: str,
-                             auto_add_bos: bool = False,
-                             **kwargs) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _encode(self,
+                inputs: TemplateInputs,
+                truncation_strategy: str,
+                auto_add_bos: bool = False,
+                **kwargs) -> Dict[str, Any]:
         """
         return: inputs, tokenizer_kwargs
         """
