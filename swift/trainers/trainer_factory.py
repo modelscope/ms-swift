@@ -17,6 +17,7 @@ class TrainerFactory:
         'kto': 'swift.trainers.KTOTrainer',
         'cpo': 'swift.trainers.CPOTrainer',
         'rm': 'swift.trainers.RewardTrainer',
+        'ppo': 'swift.trainers.PPOTrainer',
     }
 
     TRAINING_ARGS_MAPPING = {
@@ -25,7 +26,8 @@ class TrainerFactory:
         'orpo': 'swift.trainers.ORPOConfig',
         'kto': 'swift.trainers.KTOConfig',
         'cpo': 'swift.trainers.CPOConfig',
-        'rm': 'swift.trainers.RewardConfig'
+        'rm': 'swift.trainers.RewardConfig',
+        'ppo': 'swift.trainers.PPOConfig',
     }
 
     @staticmethod

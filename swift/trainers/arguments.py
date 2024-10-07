@@ -54,7 +54,7 @@ class Seq2SeqTrainingArguments(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments):
 
 try:
     from trl import (DPOConfig as HfDPOConfig, CPOConfig as HfCPOConfig, ORPOConfig as HfORPOConfig, KTOConfig as
-                     HfKTOConfig, RewardConfig as HfRewardConfig)
+                     HfKTOConfig, RewardConfig as HfRewardConfig, PPOv2Config as HfPPOConfig)
 
     @dataclass
     class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
@@ -76,8 +76,14 @@ try:
     class RewardConfig(SwiftArgumentsMixin, HfRewardConfig):
         pass
 
+    @dataclass
+    class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
+        pass
+
 except ImportError:
     DPOConfig = None
     CPOConfig = None
     ORPOConfig = None
     KTOConfig = None
+    RewardConfig = None
+    PPOConfig = None

@@ -1747,7 +1747,7 @@ class PtArguments(SftArguments):
 
 @dataclass
 class RLHFArguments(SftArguments):
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     ref_model_id_or_path: Optional[str] = None
@@ -1770,6 +1770,11 @@ class RLHFArguments(SftArguments):
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
+    # PPO
+    reward_model_id_or_path: Optional[str] = None
+    reward_model_type: Optional[str] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    reward_model_revision: Optional[str] = None
 
     def __post_init__(self):
         self._check_simpo()

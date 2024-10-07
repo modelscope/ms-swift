@@ -12,7 +12,7 @@ from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, L
                           LoraConfig, LoRAConfig, NEFTuneConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
+from .utils import SftArguments, find_all_linears, find_embedding, find_ln, get_model_with_value_head, is_adapter
 from .utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback
 
 logger = get_logger()
@@ -98,7 +98,8 @@ def prepare_model(model, args: SftArguments):
         if args.resume_from_checkpoint is None:
             handle_target_modules(model, args)
             handle_modules_to_save(model, args)
-            if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
+            if args.init_lora_weights and isinstance(args.init_lora_weights,
+                                                     str) and args.init_lora_weights.lower() in ('true', 'false'):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
             if args.target_regex:
                 logger.info(f'Value of target_modules: `{args.target_modules}` will have no effect '
@@ -330,46 +331,7 @@ def prepare_model(model, args: SftArguments):
 
     # add value head for reward model
     if hasattr(args, 'rlhf_type') and args.rlhf_type == 'rm':
-        from trl import AutoModelForCausalLMWithValueHead
-        from transformers import PreTrainedModel
-        from types import MethodType
-        lm_head_namings = ['lm_head', 'embed_out']
-        if not any(hasattr(model, attribute) for attribute in lm_head_namings):
-            setattr(model, 'lm_head', None)  # avoid ValueError
-        model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
-
-        def patch_valuehead_model(model):
-
-            attr_list = [
-                'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
-                'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
-                'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform',
-                'get_vllm_embedding', 'forward_image', 'dtype'
-            ]
-
-            for attr in attr_list:
-                if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
-                    setattr(model, attr, getattr(model.pretrained_model, attr))
-
-        patch_valuehead_model(model)
-
-        # try to load local vhead weights
-        vhead_params = None
-        try:
-            from safetensors import safe_open
-            vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.safetensors')
-            with safe_open(vhead_file, framework='pt', device='cpu') as f:
-                vhead_params = {key: f.get_tensor(key) for key in f.keys()}
-        except Exception:
-            pass
-        try:
-            vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.bin')
-            vhead_params = torch.load(vhead_file, map_location='cpu')
-        except Exception:
-            pass
-        if vhead_params is not None:
-            model.load_state_dict(vhead_params, strict=False)
-            logger.info('Loading value head weights')
+        model = get_model_with_value_head(model)
 
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))
