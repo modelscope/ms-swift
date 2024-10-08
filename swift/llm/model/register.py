@@ -326,7 +326,8 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
 
     is_multimodal = model_info['is_multimodal']
     is_moe = model_info['is_moe']
-    chat_template, generation_template = model_info['template_group']
+    template = model_info['template']
+    chat_template, generation_template = template.chat_template, template.generation_template
     for obj in [model, tokenizer]:
         if obj is None:
             continue
