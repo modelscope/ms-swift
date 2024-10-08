@@ -109,7 +109,7 @@ def merge_lora(args: InferArguments,
         if device_map is None:
             device_map = args.merge_device_map
         logger.info(f'merge_device_map: {device_map}')
-        model, template = prepare_model_template(args, device_map=device_map, export_mode=True)
+        model, template = prepare_model_template(args, device_map=device_map, task='export')
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
@@ -134,7 +134,7 @@ def prepare_model_template(
         args: InferArguments,
         *,
         device_map: Optional[str] = None,
-        export_mode: bool = False,  # for inference or export
+        task: Literal['infer', 'export'] = 'infer',  # for inference or export
         automodel_class=None) -> Tuple[PreTrainedModel, Template]:
     from .sft import get_default_device_map
     if is_torch_npu_available():
@@ -198,7 +198,7 @@ def prepare_model_template(
         else:
             raise ValueError('args.max_model_len exceeds the maximum max_model_len supported by the model.'
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
-    if not export_mode:
+    if task == 'infer':
         logger.info(f'model_config: {model.config}')
         generation_config = GenerationConfig(
             max_new_tokens=args.max_new_tokens,
@@ -230,7 +230,7 @@ def prepare_model_template(
         model = model.to(model.dtype)
     model.requires_grad_(False)
 
-    if not export_mode:
+    if task == 'infer':
         show_layers(model)
         logger.info(model)
     logger.info(get_model_info(model))
