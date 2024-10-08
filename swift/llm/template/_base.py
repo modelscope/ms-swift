@@ -15,7 +15,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
 
 from swift.llm import Messages, decode_base64, to_device
-from swift.llm.agent import get_tools_prompt, loss_scale_map, split_str_parts_by
+from .agent import get_tools_prompt, loss_scale_map, split_str_parts_by
 from .utils import Context, Prompt, StopWords, fetch_one, replace_img_tag
 from .vision_utils import load_batch, load_image, rescale_image
 
