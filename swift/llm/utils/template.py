@@ -554,6 +554,7 @@ class Template:
             data = inputs.pop('_data')
             data = to_device(data, self.model.device)
             inputs.update(self._post_encode(self.model, data))
+        res[0].pop('labels')  # TO debug
         return res if not streaming else inputs
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:

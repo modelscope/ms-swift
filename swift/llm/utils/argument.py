@@ -1198,6 +1198,10 @@ class SftArguments(ArgumentsBase):
         if 'accelerator_config' in parameters:
             kwargs['accelerator_config'] = {'dispatch_batches': False}
 
+        metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
+        if hasattr(self, 'rlhf_type') and self.rlhf_type == 'ppo':
+            metric_for_best_model = None
+
         training_args = training_args_cls(
             output_dir=self.output_dir,
             logging_dir=self.logging_dir,
@@ -1222,7 +1226,7 @@ class SftArguments(ArgumentsBase):
             eval_steps=self.eval_steps,
             dataloader_num_workers=self.dataloader_num_workers,
             dataloader_pin_memory=self.dataloader_pin_memory,
-            metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
+            metric_for_best_model=metric_for_best_model,
             greater_is_better=self.predict_with_generate,
             full_determinism=self.full_determinism,
             optim=self.optim,
@@ -1775,6 +1779,16 @@ class RLHFArguments(SftArguments):
     reward_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     reward_model_revision: Optional[str] = None
+    response_length: int = 53  # max_new_tokens in generation
+    local_rollout_forward_batch_size: int = 64
+    num_ppo_epochs: int = 4
+    whiten_rewards: bool = False
+    kl_coef: float = 0.05
+    cliprange: float = 0.2
+    vf_coef: float = 0.1
+    cliprange_value: float = 0.2
+    gamma: float = 1.0
+    lam: float = 0.95
 
     def __post_init__(self):
         self._check_simpo()

@@ -39,9 +39,9 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         kwargs['value_model'] = value_model
     if args.rlhf_type == 'ppo':
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
-        train_dataset.map(remove_columns='labels')
-        if val_dataset is not None:
-            val_dataset.map(remove_columns='labels')
+        # train_dataset.map(remove_columns='labels')
+        # if val_dataset is not None:
+        #     val_dataset.map(remove_columns='labels')
         return trainer_train(
             args,
             model,

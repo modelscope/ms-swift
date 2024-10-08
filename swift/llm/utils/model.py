@@ -6701,11 +6701,15 @@ def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
             'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
             'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
             'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform', 'get_vllm_embedding',
-            'forward_image', 'dtype'
+            'forward_image', 'dtype', 'base_model_prefix'
         ]
         for attr in attr_list:
             if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
                 setattr(model, attr, getattr(model.pretrained_model, attr))
+
+        # PPO compatible
+        if not hasattr(model, 'score'):
+            setattr(model, 'score', model.v_head)
 
     patch_valuehead_model(model)
 
