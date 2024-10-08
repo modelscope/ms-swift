@@ -727,7 +727,7 @@ class Template:
             if truncation_strategy == 'delete' and len(input_ids) > max_length:
                 logger.warn(f'Current length of row({len(input_ids)}) is larger'
                             f' than the max_length({max_length}), deleted.')
-                return {}, {}
+                return {}
             input_ids = input_ids[-max_length:]
             if labels is not None:
                 labels = labels[-max_length:]
