@@ -2028,6 +2028,10 @@ class Llama3_1OmniTemplate(Llama3Template):
             res['labels'] = labels[0]
         return res
 
+    @staticmethod
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
+
 
 register_template(TemplateType.llama3_1_omni, Llama3_1OmniTemplate(), lazy_tokenize=True)
 
