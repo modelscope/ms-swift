@@ -588,9 +588,8 @@ class Template:
 
     def add_default_tags(self, inputs: TemplateInputs):
         messages = inputs.messages
-        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
+        # for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
         for media_type in ['image', 'audio', 'video']:
-
             if example.get(media_key):
                 infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
                 num_media_tags = len(re.findall(media_tag, '\n'.join([f'{h[0]}\n{h[1]}' for h in history])))
