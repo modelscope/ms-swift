@@ -232,3 +232,21 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
     resp = subprocess.run(command, env=env, stdout=stdout, stderr=stderr)
     resp.check_returncode()
     return resp
+
+_log_set = set()  # log once
+
+
+def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: Optional[_T]) -> Optional[_T]:
+    args_name_upper = args_name.upper()
+    value = os.getenv(args_name_upper)
+    if value is None:
+        value = default_value
+        log_info = (f'Setting {args_name}: {default_value}. '
+                    f'You can adjust this hyperparameter through the environment variable: `{args_name_upper}`.')
+    else:
+        value = type_func(value)
+        log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
+    if log_info not in _log_set:
+        _log_set.add(log_info)
+        logger.info(log_info)
+    return value

@@ -20,7 +20,7 @@ def register_template(template_type: str, template: Template, *, exist_ok: bool 
 
 def get_template(
     template_type: str,
-    tokenizer: PreTrainedTokenizerBase, 
+    tokenizer: PreTrainedTokenizerBase,
     default_system: Optional[str] = None,
 ) -> 'Template':
     template_info = TEMPLATE_MAPPING[template_type]
