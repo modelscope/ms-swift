@@ -112,3 +112,48 @@ def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
             continue
         _add_gradient_checkpointing(module_list)
         logger.info(f'Automatically add gradient_checkpointing to {vision_tower.__class__}.')
+
+
+def history_to_messages(history: Optional[History],
+                        query: Optional[str] = None,
+                        system: Optional[str] = None,
+                        roles: Optional[List[List[str]]] = None) -> Messages:
+    if history is None:
+        history = []
+    messages = []
+    if not roles:
+        roles = [['user', 'assistant']] * (len(history) + 1)
+    assert len(roles) == len(history) + 1
+    if system is not None:
+        messages.append({'role': 'system', 'content': system})
+    for role, h in zip(roles, history):
+        assert isinstance(h, (list, tuple))
+        messages.append({'role': role[0], 'content': h[0]})
+        messages.append({'role': role[1], 'content': h[1]})
+    if query is not None:
+        messages.append({'role': roles[-1][0], 'content': query})
+    return messages
+
+
+def messages_to_history(messages: Messages) -> Dict[str, Any]:
+    system = None
+    if messages[0]['role'] == 'system':
+        system = messages[0]['content']
+        messages = messages[1::]
+    history = []
+    history_roles = []
+    for q, r in zip(messages[::2], messages[1::2]):
+        history.append([q['content'], r['content']])
+        history_roles.append([q['role'], r['role']])
+    query = None
+    query_role = None
+    if len(messages) % 2 == 1:
+        query = messages[-1]['content']
+        query_role = messages[-1]['role']
+    return {
+        'history': history,
+        'history_roles': history_roles,
+        'query': query,
+        'query_role': query_role,
+        'system': system,
+    }

@@ -22,12 +22,10 @@ def get_template(
     template_type: str,
     tokenizer: PreTrainedTokenizerBase,
     default_system: Optional[str] = None,
-    max_length: Optional[int] = None,
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-    **kwargs,
 ) -> 'Template':
     template_info = TEMPLATE_MAPPING[template_type]
     # To ensure that obtaining the same template_type multiple times does not interfere with each other.
     template = deepcopy(template_info['template'])
-    template.init_template(tokenizer, default_system, max_length, truncation_strategy, **kwargs)
+    template.init_template(tokenizer, default_system)
     return template
+
