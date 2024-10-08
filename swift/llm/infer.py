@@ -130,12 +130,11 @@ def merge_lora(args: InferArguments,
     return merged_lora_path
 
 
-def prepare_model_template(
-        args: InferArguments,
-        *,
-        device_map: Optional[str] = None,
-        task: Literal['infer', 'export'] = 'infer',  # for inference or export
-        automodel_class=None) -> Tuple[PreTrainedModel, Template]:
+def prepare_model_template(args: InferArguments,
+                           *,
+                           device_map: Optional[str] = None,
+                           task: Literal['infer', 'export'] = 'infer',
+                           automodel_class=None) -> Tuple[PreTrainedModel, Template]:
     from .sft import get_default_device_map
     if is_torch_npu_available():
         print(f'device_count: {torch.npu.device_count()}')
