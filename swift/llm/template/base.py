@@ -218,7 +218,7 @@ class Template:
                     "content": [  # str or List[Dict[str, Any]]
                         {
                             "type": "image",  # or audio/video
-                            "image": "<url/path/base64/PIL.Image>",
+                            "image": "<url/path/base64/PIL.Image>",  # This content can also be written in the `images` field
                         },
                         {"type": "text", "text": "<text>"},
                     ],
