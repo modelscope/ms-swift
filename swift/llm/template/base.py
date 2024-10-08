@@ -330,6 +330,7 @@ class Template:
         self._preprocess_media(inputs, images, audios, videos, max_image_size=max_image_size)
         if objects is not None:
             self._preprocess_objects(inputs, objects)
+        self.add_default_tags(inputs)
         return inputs
 
     def _concat_context_list(
@@ -584,6 +585,24 @@ class Template:
             res += c_list
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
+
+    def add_default_tags(self, inputs: TemplateInputs):
+        messages = inputs.messages
+        for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
+        for media_type in ['image', 'audio', 'video']:
+
+            if example.get(media_key):
+                infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
+                num_media_tags = len(re.findall(media_tag, '\n'.join([f'{h[0]}\n{h[1]}' for h in history])))
+                example[media_key] = [m for m in example[media_key] if m]
+                num_media = len(example[media_key])
+                num_new_tags = num_media - num_media_tags
+                assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
+                history[0][0] = media_tag * num_new_tags + history[0][0]
+        example['query'] = history[-1][0]
+        if example.get('response') is not None:
+            example['response'] = history[-1][1]
+        example['history'] = history[:-1]
 
     def _encode_context_list(
             self,
