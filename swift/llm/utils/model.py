@@ -6701,7 +6701,7 @@ def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
             'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
             'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
             'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform', 'get_vllm_embedding',
-            'forward_image', 'dtype', 'base_model_prefix'
+            'forward_image', 'dtype', 'base_model_prefix', 'device'
         ]
         for attr in attr_list:
             if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
@@ -6710,6 +6710,8 @@ def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
         # PPO compatible
         if not hasattr(model, 'score'):
             setattr(model, 'score', model.v_head)
+        if model.base_model_prefix == '' and hasattr(model.pretrained_model, 'language_model'):
+            model.base_model_prefix = model.pretrained_model.language_model.base_model_prefix
 
     patch_valuehead_model(model)
 
@@ -6734,6 +6736,5 @@ def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
         logger.info(f'Loading value head weights from {vhead_file}')
     else:
         logger.info('The local value head weight file was not detected.'
-                    'If this is during the reward modeling phase,'
-                    'please ignore the above information.')
+                    'Ignore it if this is during the reward modeling phase,')
     return model

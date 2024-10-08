@@ -554,7 +554,6 @@ class Template:
             data = inputs.pop('_data')
             data = to_device(data, self.model.device)
             inputs.update(self._post_encode(self.model, data))
-        res[0].pop('labels')  # TO debug
         return res if not streaming else inputs
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
@@ -3392,6 +3391,20 @@ class KTOTemplateMixin:
                 res[f'{prefix}completion_{k}'] = v
         res['label'] = [b['label'] for b in batch]
         return res
+
+
+class PPOTemplateMixin:
+
+    def encode(self: Template,
+               example: Dict[str, Any],
+               streaming: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, tokenizer_kwargs = self._old_encode(example, streaming)
+        if len(inputs) > 0:
+            inputs.pop('labels')
+        return inputs, tokenizer_kwargs
+
+    def data_collator(self: Template, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+        return self._old_data_collator(batch, padding_to)
 
 
 def get_template(

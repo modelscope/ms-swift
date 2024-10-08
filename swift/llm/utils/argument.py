@@ -1779,7 +1779,6 @@ class RLHFArguments(SftArguments):
     reward_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     reward_model_revision: Optional[str] = None
-    response_length: int = 53  # max_new_tokens in generation
     local_rollout_forward_batch_size: int = 64
     num_ppo_epochs: int = 4
     whiten_rewards: bool = False
@@ -1792,6 +1791,7 @@ class RLHFArguments(SftArguments):
 
     def __post_init__(self):
         self._check_simpo()
+        self._check_ppo()
         self._set_default()
         self.ref_model_free = self.rlhf_type in ['cpo', 'orpo', 'rm']
         super().__post_init__()
@@ -1812,6 +1812,14 @@ class RLHFArguments(SftArguments):
         if self.loss_type is None:
             if self.rlhf_type in ['dpo', 'cpo']:
                 self.loss_type = 'sigmoid'  # else None
+
+    def _check_ppo(self):
+        if self.rlhf_type != 'ppo':
+            return
+        self.response_length = self.max_new_tokens
+        logger.info(
+            f'set max_new_tokens {self.max_new_tokens} in generation config during ppo, you can set by --max_new_tokens'
+        )
 
 
 @dataclass

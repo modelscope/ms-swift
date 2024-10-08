@@ -60,7 +60,7 @@ class TrainerFactory:
     @staticmethod
     @contextmanager
     def patch_template(args, template):
-        from swift.llm import RLHFTemplateMixin, KTOTemplateMixin
+        from swift.llm import RLHFTemplateMixin, KTOTemplateMixin, PPOTemplateMixin
         if args.train_type == 'sft':
             yield
             return
@@ -69,6 +69,8 @@ class TrainerFactory:
         if args.train_type == 'kto':
             template_mixin = KTOTemplateMixin
             template.output_prompt_answer = True
+        elif args.train_type == 'ppo':
+            template_mixin = PPOTemplateMixin
         else:
             template_mixin = RLHFTemplateMixin
         if args.train_type != 'orpo' or args.is_multimodal:

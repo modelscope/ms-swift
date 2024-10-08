@@ -37,21 +37,6 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         value_model = get_model_with_value_head(value_model)
         kwargs['reward_model'] = reward_model
         kwargs['value_model'] = value_model
-    if args.rlhf_type == 'ppo':
-        train_dataset, val_dataset = prepare_dataset(args, template, msg)
-        # train_dataset.map(remove_columns='labels')
-        # if val_dataset is not None:
-        #     val_dataset.map(remove_columns='labels')
-        return trainer_train(
-            args,
-            model,
-            template,
-            train_dataset,
-            val_dataset,
-            callbacks=callbacks,
-            msg=msg,
-            ref_model=ref_model,
-            **kwargs)
 
     with TrainerFactory.patch_template(args, template):
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
