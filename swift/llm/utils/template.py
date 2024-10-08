@@ -2028,6 +2028,10 @@ class Llama3_1OmniTemplate(Llama3Template):
             res['labels'] = labels[0]
         return res
 
+    @staticmethod
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
+
 
 register_template(TemplateType.llama3_1_omni, Llama3_1OmniTemplate(), lazy_tokenize=True)
 
@@ -2642,7 +2646,7 @@ class LlavaVideoTemplate(Template):
         videos_path = example.get('videos') or []
         if len(videos_path) > 0:
             video_processor = self.tokenizer.processor.video_processor
-            video_inputs = video_processor(videos, return_tensors='pt').to(self.model.dtype)
+            video_inputs = video_processor(videos_path, return_tensors='pt').to(self.model.dtype)
             inputs['pixel_values_videos'] = video_inputs['pixel_values_videos']
         if len(images) > 0:
             image_processor = self.tokenizer.processor.image_processor
