@@ -1788,10 +1788,10 @@ class RLHFArguments(SftArguments):
 
     def __post_init__(self):
         self._check_simpo()
-        self._check_ppo()
         self._set_default()
         self.ref_model_free = self.rlhf_type in ['cpo', 'orpo', 'rm']
         super().__post_init__()
+        self._check_ppo()
 
     def _check_simpo(self):
         if self.rlhf_type != 'simpo':
