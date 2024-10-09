@@ -2764,6 +2764,7 @@ def get_model_tokenizer_ovis(*args, **kwargs):
         _use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
         embedding.register_forward_hook(_clone_hook)
+        model.config.keys_to_ignore_at_inference = ['past_key_values']  # fix prediction_step
     try:
         # fix device_map
         from transformers.cache_utils import HybridCache
