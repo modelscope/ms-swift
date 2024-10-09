@@ -36,7 +36,7 @@
 - [Citation](#-citation)
 
 ## 📝 Introduction
-SWIFT supports training(PreTraining/Fine-tuning/RLHF), inference, evaluation and deployment of **350+ LLMs and 90+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
+SWIFT supports training(PreTraining/Fine-tuning/RLHF), inference, evaluation and deployment of **350+ LLMs and 100+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
 
 To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners. SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.10.09: Support for training and deploying ovis1.6-gemma2 series models. Experience it using `swift infer --model_type ovis1_6-gemma2-9b`.
 - 2024.09.26: Support for training and deploying llama3.2-vision series models. Experience it using `swift infer --model_type llama3_2-11b-vision-instruct`.
 - 2024.09.26: Support for training and deploying llama3.2 series models. Experience it using `swift infer --model_type llama3_2-1b-instruct`.
 - 2024.09.25: Support for training to deployment with got-ocr2. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/2122).
@@ -642,6 +643,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Idefics3                                                   | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | English       | 8B      | chat model       |
 | Pixtral                                | [mistralai](https://huggingface.co/mistralai)                     | English       | 12B      | chat model       |
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
+| Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | English       | 9B      | chat model       |
 
 
 #### Diffusion Models

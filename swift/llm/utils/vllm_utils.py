@@ -204,7 +204,6 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             top_k: int = 50,  # -1: all
             top_p: float = 1.,
             repetition_penalty: float = 1.,
-            num_beams: int = 1,
             *,
             n: int = 1,
             logprobs: Optional[int] = None,
@@ -218,12 +217,6 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             max_new_tokens = kwargs.pop('max_new_tokens', None)
             if max_new_tokens is not None:
                 max_tokens = max_new_tokens
-            if num_beams > 1:
-                top_k = -1
-                top_p = 1
-                temperature = 0
-                logger.warning('The output of num_beams in vllm may not be consistent with '
-                               'the output of num_beams in transformers.')
             if top_k == 0:
                 top_k = -1
             if stop is None:
@@ -233,11 +226,6 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             kwargs['top_k'] = top_k
             kwargs['top_p'] = top_p
             kwargs['repetition_penalty'] = repetition_penalty
-            if num_beams > 1:
-                best_of = kwargs.get('best_of')
-                assert 'use_beam_search' not in kwargs and best_of is None
-                kwargs['use_beam_search'] = True
-                kwargs['best_of'] = num_beams
             kwargs['n'] = n
             kwargs['logprobs'] = logprobs
             kwargs['seed'] = seed
@@ -260,7 +248,6 @@ else:
         top_k: int = 50  # -1: all
         top_p: float = 1.
         repetition_penalty: float = 1.
-        num_beams: int = 1
         n: int = 1
         logprobs: Optional[int] = None
         seed: Optional[int] = None
@@ -269,15 +256,6 @@ else:
         skip_special_tokens: bool = False
 
         def __post_init__(self):
-            if self.num_beams > 1:
-                self.top_k = -1
-                self.top_p = 1
-                self.temperature = 0
-                logger.warning('The output of num_beams in vllm may not be consistent with '
-                               'the output of num_beams in transformers.')
-                assert self.best_of is None
-                self.use_beam_search = True
-                self.best_of = self.num_beams
             if self.top_k == 0:
                 self.top_k = -1
             if self.stop is None:
@@ -434,10 +412,6 @@ def inference_stream_vllm(
         lora_request=lora_request,
         use_tqdm=use_tqdm,
         **kwargs)
-
-    if generation_config.use_beam_search:
-        error_msg = 'Streaming generation does not support beam search.'
-        raise ValueError(error_msg)
 
     n_finished = 0
     n_steps = 0

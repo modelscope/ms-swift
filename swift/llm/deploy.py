@@ -275,7 +275,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     request_id = request_info['request_id']
 
     kwargs = {'max_tokens': request.max_tokens}
-    for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
+    for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty']:
         kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
         new_value = getattr(request, key)
@@ -292,9 +292,6 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             kwargs['logprobs'] = max(1, request.top_logprobs)
 
     generation_config = VllmGenerationConfig(**kwargs)
-    if generation_config.use_beam_search and request.stream:
-        error_msg = 'Streaming generation does not support beam search.'
-        raise ValueError(error_msg)
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)

@@ -37,7 +37,7 @@
 - [引用](#-引用)
 
 ## 📝 简介
-SWIFT支持**350+ LLM和90+ MLLM**（多模态大模型）的训练(预训练、微调、对齐)、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了[PEFT](https://github.com/huggingface/peft)提供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
+SWIFT支持**350+ LLM和100+ MLLM**（多模态大模型）的训练(预训练、微调、对齐)、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了[PEFT](https://github.com/huggingface/peft)提供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
 
 为方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入门。 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.10.09: 支持ovis1.6-gemma2的训练到部署. 使用`swift infer --model_type ovis1_6-gemma2-9b`进行体验.
 - 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
 - 2024.09.26: 支持llama3.2系列模型的训练到部署. 使用`swift infer --model_type llama3_2-1b-instruct`进行体验.
 - 2024.09.25: 支持got-ocr2的训练到部署. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2122).
@@ -635,6 +636,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Idefics3                                | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | 英文       | 8B      | chat模型       |
 | Pixtral                                | [mistralai](https://huggingface.co/mistralai)                               | 英文       | 12B      | chat模型       |
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | 英文       | 8B      | chat模型       |
+| Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | 英文       | 9B      | chat模型       |
 
 
 #### 扩散模型
