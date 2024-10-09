@@ -2751,8 +2751,25 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 def get_model_tokenizer_ovis(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     if model is not None:
-        func_list = ['generate', 'forward']
+        func_list = ['generate', 'forward', 'get_input_embeddings']
         _use_submodel_func(model, 'llm', func_list)
+        embedding = model.get_input_embeddings()
+        embedding.register_forward_hook(_clone_hook)
+    try:
+        # fix device_map
+        from transformers.cache_utils import HybridCache
+
+        def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
+                   **kwargs) -> Tuple[torch.Tensor]:
+            self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
+            self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
+            return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
+
+        if not hasattr(HybridCache, '_update_origin'):
+            HybridCache._update_origin = HybridCache.update
+            HybridCache.update = update
+    except ImportError:
+        pass
     return model, tokenizer
 
 
