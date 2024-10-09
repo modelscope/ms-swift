@@ -1780,7 +1780,6 @@ class RLHFArguments(SftArguments):
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     reward_model_revision: Optional[str] = None
     local_rollout_forward_batch_size: int = 64
-    num_ppo_epochs: int = 4
     whiten_rewards: bool = False
     kl_coef: float = 0.05
     cliprange: float = 0.2
@@ -1816,10 +1815,18 @@ class RLHFArguments(SftArguments):
     def _check_ppo(self):
         if self.rlhf_type != 'ppo':
             return
+        if self.streaming:
+            raise ValueError('Streaming is currently not supported by PPO')
+        if self.is_multimodal:
+            raise ValueError('MLLM is currently not supported by PPO')
+
         self.response_length = self.max_new_tokens
         logger.info(
             f'set max_new_tokens {self.max_new_tokens} in generation config during ppo, you can set by --max_new_tokens'
         )
+        self.num_ppo_epochs = self.num_train_epochs
+        logger.info(
+            f'set num_ppo_epochs {self.num_train_epochs} in ppo training config, you can set by --num_train_epochs')
 
 
 @dataclass
