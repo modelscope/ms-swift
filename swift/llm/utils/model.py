@@ -458,6 +458,8 @@ class ModelType:
     gemma2_2b_instruct = 'gemma2-2b-instruct'
     gemma2_9b_instruct = 'gemma2-9b-instruct'
     gemma2_27b_instruct = 'gemma2-27b-instruct'
+
+    ovis1_6_gemma2_9b = 'ovis1_6-gemma2-9b'
     # paligemma
     paligemma_3b_pt_224 = 'paligemma-3b-pt-224'
     paligemma_3b_pt_448 = 'paligemma-3b-pt-448'
@@ -652,6 +654,7 @@ class LoRATM(NamedTuple):
     llama3_1_omni = 'llama3_1_omni'
     got_ocr2 = 'got_ocr2'
     llama3_2_vision = 'llama3_2_vision'
+    ovis1_6 = 'ovis1_6'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -2746,6 +2749,41 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 
 
 @register_model(
+    ModelType.ovis1_6_gemma2_9b,
+    'AIDC-AI/Ovis1.6-Gemma2-9B',
+    LoRATM.ovis1_6,
+    TemplateType.ovis1_6,
+    requires=['transformers>=4.42'],
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
+    hf_model_id='AIDC-AI/Ovis1.6-Gemma2-9B')
+def get_model_tokenizer_ovis(*args, **kwargs):
+    model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
+    if model is not None:
+        func_list = ['generate', 'forward', 'get_input_embeddings']
+        _use_submodel_func(model, 'llm', func_list)
+        embedding = model.get_input_embeddings()
+        embedding.register_forward_hook(_clone_hook)
+        model.config.keys_to_ignore_at_inference = ['past_key_values']  # fix prediction_step
+    try:
+        # fix device_map
+        from transformers.cache_utils import HybridCache
+
+        def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
+                   **kwargs) -> Tuple[torch.Tensor]:
+            self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
+            self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
+            return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
+
+        if not hasattr(HybridCache, '_update_origin'):
+            HybridCache._update_origin = HybridCache.update
+            HybridCache.update = update
+    except ImportError:
+        pass
+    return model, tokenizer
+
+
+@register_model(
     ModelType.mplug_owl3_7b_chat,
     'iic/mPLUG-Owl3-7B-240728',
     LoRATM.mplug_owl3,
@@ -2762,8 +2800,9 @@ def get_model_tokenizer_mplug_owl3(model_dir: str,
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     processor = model.init_processor(tokenizer)
     tokenizer.processor = processor
-    func_list = ['generate', 'forward']
-    _use_submodel_func(model, 'language_model', func_list)
+    if model is not None:
+        func_list = ['generate', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
     return model, tokenizer
 
 
@@ -2958,8 +2997,9 @@ def get_model_tokenizer_florence(model_dir: str,
             model_dir, torch_dtype, model_kwargs, load_model, tokenizer=processor.tokenizer, **kwargs)
 
     tokenizer.processor = processor
-    # model.vision_tower.enable_checkpoint = True
-    _use_submodel_func(model, 'language_model', ['generate', 'forward'])
+    if model is not None:
+        model.vision_tower.enable_checkpoint = True
+        _use_submodel_func(model, 'language_model', ['generate', 'forward'])
     return model, tokenizer
 
 
