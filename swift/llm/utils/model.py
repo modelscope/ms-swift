@@ -599,6 +599,7 @@ class ModelType:
     telechat_12b = 'telechat-12b'
     telechat_12b_v2 = 'telechat-12b-v2'
     telechat_12b_v2_gptq_int4 = 'telechat-12b-v2-gptq-int4'
+    telechat2_115b = 'telechat2-115b'
     # grok-1
     grok_1 = 'grok-1'
     # dbrx
@@ -930,6 +931,14 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     support_vllm=True,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
+@register_model(
+    ModelType.telechat2_115b,
+    'TeleAI/TeleChat2-115B',
+    LoRATM.telechat,
+    TemplateType.telechat2,
+    torch_dtype=torch.float16,
+    support_flash_attn=True,
+    hf_model_id='Tele-AI/TeleChat2-115B')
 def get_model_tokenizer_from_repo(model_dir: str,
                                   torch_dtype: Optional[torch.dtype],
                                   model_kwargs: Dict[str, Any],
@@ -5829,7 +5838,7 @@ def get_model_tokenizer_codellama(model_dir: str,
     ModelType.telechat_12b_v2,
     'TeleAI/TeleChat-12B-v2',
     LoRATM.telechat,
-    TemplateType.telechat_v2,
+    TemplateType.telechat,
     eos_token=2,
     support_flash_attn=True,
     hf_model_id='Tele-AI/TeleChat-12B-v2')
@@ -5837,9 +5846,10 @@ def get_model_tokenizer_codellama(model_dir: str,
     ModelType.telechat_12b_v2_gptq_int4,
     'swift/TeleChat-12B-V2-GPTQ-Int4',
     LoRATM.telechat,
-    TemplateType.telechat_v2,
+    TemplateType.telechat,
     eos_token=2,
     requires=['auto_gptq>=0.5'],
+    torch_dtype=torch.float16,
     support_flash_attn=True,
     function_kwargs={'gptq_bits': 4})
 def get_model_tokenizer_phi(model_dir: str,

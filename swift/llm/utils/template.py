@@ -138,7 +138,7 @@ class TemplateType:
     phi3 = 'phi3'
     phi3_vl = 'phi3-vl'
     telechat = 'telechat'
-    telechat_v2 = 'telechat-v2'
+    telechat2 = 'telechat2'
     dbrx = 'dbrx'
     mengzi = 'mengzi'
     c4ai = 'c4ai'
@@ -3448,7 +3448,7 @@ register_template(TemplateType.gemma, gemma_template)
 
 register_template(TemplateType.telechat, Template([], ['<_user>{{QUERY}}<_bot>'], ['<_end>'], ['<_end>']))
 
-register_template(TemplateType.telechat_v2, Template([], ['<_user> {{QUERY}}<_bot>'], [], ['<_end>']))
+register_template(TemplateType.telechat2, Template(['<_start>'], [[4], '{{QUERY}}', [5]], ['<_end>'], ['<_end>']))
 
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '
