@@ -25,6 +25,7 @@ register_template(
     Template(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'], LLAMA_DEFAULT_SYSTEM,
              ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
+
 class Llama3TemplateMixin:
     system = None
 

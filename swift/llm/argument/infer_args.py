@@ -8,7 +8,7 @@ from transformers.utils.versions import require_version
 
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, multimodal_keys
 from swift.tuners import swift_to_peft_format
-from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available, is_merge_kit_available
+from swift.utils import get_logger, is_lmdeploy_available, is_merge_kit_available, is_vllm_available
 from .base_args import BaseArguments
 from .tuner_args import adapters_can_be_merged
 
@@ -57,21 +57,21 @@ class MergeArguments:
                         'and pass its instruct model by --instruct_model xxx when merging')
             assert self.instruct_model_id_or_path, 'Please pass in the instruct model'
 
-            self.merge_yaml = ("models:"
-                               "  - model: {merged_model}"
-                               "    parameters:"
-                               "      weight: 1"
-                               "  }"
-                               "  - model: {instruct_model}"
-                               "    parameters:"
-                               "      weight: 1"
-                               "  }"
-                               "merge_method: ties"
-                               "base_model: {base_model}"
-                               "parameters:"
-                               "  normalize: true"
-                               "  int8_mask: true"
-                               "dtype: bfloat16")
+            self.merge_yaml = ('models:'
+                               '  - model: {merged_model}'
+                               '    parameters:'
+                               '      weight: 1'
+                               '  }'
+                               '  - model: {instruct_model}'
+                               '    parameters:'
+                               '      weight: 1'
+                               '  }'
+                               'merge_method: ties'
+                               'base_model: {base_model}'
+                               'parameters:'
+                               '  normalize: true'
+                               '  int8_mask: true'
+                               'dtype: bfloat16')
 
 
 @dataclass

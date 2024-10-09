@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import json
 import os
-from typing import Tuple, List, Union
+from typing import List, Tuple, Union
+
+import json
 
 from .utils import calculate_loss_scale
 
@@ -16,7 +17,8 @@ class LossScale:
     ROUND = 'round'
     BOS = 'bos'
 
-    def __call__(self, round: int, content: List[Union[str, int]], types: List[str], **kwargs) -> Tuple[List[Union[str, int]], List[int]]:
+    def __call__(self, round: int, content: List[Union[str, int]], types: List[str],
+                 **kwargs) -> Tuple[List[Union[str, int]], List[int]]:
         if types == [LossScale.RESPONSE]:
             return content, [1.0] * len(content)
         elif types == [LossScale.SUFFIX]:

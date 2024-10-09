@@ -1,22 +1,21 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 """The document will be migrated to the modelscope repository."""
-import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import json
 import torch
 import torch.nn.functional as F
-from PIL import Image
 from modelscope import get_logger
+from PIL import Image
 from torch.nn import Module
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import Messages, decode_base64
-from .agent import get_tools_prompt, loss_scale_map, split_str_parts_by
-from .agent.loss_scale import LossScale
-from .utils import Context, Prompt, StopWords, fetch_one
+from swift.llm import Messages, decode_base64, to_device
+from .agent import LossScale, get_tools_prompt, loss_scale_map, split_str_parts_by
+from .utils import Context, Prompt, StopWords, fetch_one, replace_img_tag
 from .vision_utils import load_batch, load_image, rescale_image
 
 logger = get_logger()
@@ -218,6 +217,7 @@ class Template:
                     "content": [  # str or List[Dict[str, Any]]
                         {
                             "type": "image",  # or audio/video
+                            # This content can also be written in the `images` field
                             "image": "<url/path/base64/PIL.Image>",
                         },
                         {"type": "text", "text": "<text>"},
@@ -330,6 +330,7 @@ class Template:
         self._preprocess_media(inputs, images, audios, videos, max_image_size=max_image_size)
         if objects is not None:
             self._preprocess_objects(inputs, objects)
+        self.add_default_tags(inputs)
         return inputs
 
     def _concat_context_list(
@@ -349,18 +350,19 @@ class Template:
             round1 = str(round0 + 1)
             round0 = str(round0)
         for context in context_list:
+            # TODO:test_list
             if len(context) == 0:
                 continue
             types = []
             old_str_list = ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}', '{{RESPONSE}}']
             old_str_types = [LossScale.SYSTEM, LossScale.QUERY, LossScale.ROUND, LossScale.ROUND, LossScale.RESPONSE]
             new_str_list = [system, query, round0, round1, response]
-            for (old_str, type, new_str) in zip(old_str_list, old_str_types, new_str_list):
+            for (old_str, type_, new_str) in zip(old_str_list, old_str_types, new_str_list):
                 if new_str is not None and old_str in context:
-                    types.append(type)
+                    types.append(type_)
                     context = context.replace(old_str, new_str)
-            content, loss_scale = loss_scale_map[loss_scale](round0, [context], types, query=query, response=response,
-                                                             system=system)
+            content, loss_scale = loss_scale_map[loss_scale](
+                round0, [context], types, query=query, response=response, system=system)
             res_context_list.extend(content)
             loss_scale_list.extend(loss_scale)
 
@@ -579,6 +581,23 @@ class Template:
             res += c_list
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
+
+    def add_default_tags(self, inputs: TemplateInputs):
+        messages = inputs.messages
+        # for media_key, media_tag in [('videos', '<video>'), ('images', '<image>'), ('audios', '<audio>')]:
+        for media_type in ['image', 'audio', 'video']:
+            if example.get(media_key):
+                infer_media_type = TEMPLATE_MAPPING[self.template_type].get('infer_media_type')
+                num_media_tags = len(re.findall(media_tag, '\n'.join([f'{h[0]}\n{h[1]}' for h in history])))
+                example[media_key] = [m for m in example[media_key] if m]
+                num_media = len(example[media_key])
+                num_new_tags = num_media - num_media_tags
+                assert num_new_tags >= 0, f'Number of media: {num_media}, number of media_tags: {num_media_tags}'
+                history[0][0] = media_tag * num_new_tags + history[0][0]
+        example['query'] = history[-1][0]
+        if example.get('response') is not None:
+            example['response'] = history[-1][1]
+        example['history'] = history[:-1]
 
     def _encode_context_list(
             self,

@@ -28,4 +28,3 @@ def get_template(
     template = deepcopy(template_info['template'])
     template.init_template(tokenizer, default_system)
     return template
-

@@ -2,8 +2,8 @@
 
 from .env import (get_dist_setting, get_pai_tensorboard_dir, is_ddp_plus_mp, is_deepspeed_enabled, is_dist, is_dist_ta,
                   is_local_master, is_master, is_mp, is_pai_training_job, torchacc_trim_graph, use_hf_hub, use_torchacc)
-from .import_utils import (is_liger_available, is_lmdeploy_available, is_megatron_available, is_unsloth_available,
-                           is_vllm_available, is_xtuner_available, is_merge_kit_available)
+from .import_utils import (is_liger_available, is_lmdeploy_available, is_megatron_available, is_merge_kit_available,
+                           is_unsloth_available, is_vllm_available, is_xtuner_available)
 from .io_utils import append_to_jsonl, read_from_jsonl, write_to_jsonl
 from .logger import get_logger
 from .metric import compute_acc_metrics, compute_nlg_metrics, preprocess_logits_for_metrics

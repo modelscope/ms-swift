@@ -10,7 +10,7 @@ import json
 import numpy as np
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
-from swift.hub import hub, default_hub
+from swift.hub import default_hub, hub
 from swift.llm import DatasetLoader, InferArguments, standard_keys, standard_tags
 from swift.llm.infer.base import InferFramework
 from swift.llm.infer.transformers import TransformersFramework
@@ -109,7 +109,8 @@ def merge_lora(args: InferArguments,
         if args.use_merge_kit:
             base_model_id_or_path = args.model_id_or_path
             if not os.path.exists(args.instruct_model_id_or_path):
-                args.instruct_model_id_or_path = default_hub.download_model(args.instruct_model_id_or_path, revision=args.instruct_model_revision)
+                args.instruct_model_id_or_path = default_hub.download_model(
+                    args.instruct_model_id_or_path, revision=args.instruct_model_revision)
             args.model_id_or_path = args.instruct_model_id_or_path
         model, template = TransformersFramework.prepare_model_template_hf(args)
         logger.info('Merge LoRA...')
@@ -129,7 +130,8 @@ def merge_lora(args: InferArguments,
         if args.use_merge_kit:
             tempdir = tempfile.gettempdir()
             mergekit_path = merged_lora_path + '-mergekit'
-            merge_yaml = args.merge_yaml.replace('{merged_model}', merged_lora_path).replace('{instruct_model}', args.instruct_model_id_or_path).replace('{base_model}', base_model_id_or_path)
+            merge_yaml = args.merge_yaml.replace('{merged_model}', merged_lora_path).replace(
+                '{instruct_model}', args.instruct_model_id_or_path).replace('{base_model}', base_model_id_or_path)
             try:
                 yamlfile = os.path.join(tempdir, 'mergekit.yaml')
                 with open(yamlfile, 'w') as f:
