@@ -7,7 +7,7 @@ import torch
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING, RLHFArguments
+from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING, RLHFArguments, ModelType
 from swift.llm.model import fix_do_sample_warning
 from swift.utils import get_dist_setting, get_logger, use_hf_hub
 
@@ -125,6 +125,7 @@ class ModelArguments:
             for k, v in self.device_map_config.items():
                 if isinstance(v, int):
                     self.device_map_config[k] += local_rank
+
 
     def get_model_group(self):
         """Find the model group. This is used to find the model structure"""
