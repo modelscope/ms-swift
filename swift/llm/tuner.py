@@ -330,7 +330,7 @@ def prepare_model(model, args: SftArguments):
         callbacks.append(lisa_callback)
 
     # add value head for reward model
-    if hasattr(args, 'rlhf_type') and args.rlhf_type == 'rm':
+    if args.train_type == 'rm':
         model = get_model_with_value_head(model)
 
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':

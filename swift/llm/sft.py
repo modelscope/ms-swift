@@ -54,8 +54,8 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
             streaming_buffer_size=args.streaming_buffer_size)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
-    if isinstance(args, RLHFArguments) and args.rlhf_type == 'ppo':
-        existing_columns = list(next(iter(train_dataset)).keys())  # set(train_dataset._data.column_names)
+    if args.train_type == 'ppo':  # Remove response columns from dataset
+        existing_columns = list(next(iter(train_dataset)).keys())
         columns_to_remove = [col for col in ['response', 'rejected_response'] if col in existing_columns]
         train_dataset = train_dataset.map(remove_columns=columns_to_remove)
         logger.info(f'remove columns: {columns_to_remove} in PPO')
