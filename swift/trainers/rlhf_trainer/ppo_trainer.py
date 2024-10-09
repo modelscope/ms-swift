@@ -1,7 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
-from trl.trainer import PPOv2Trainer as HFPPOTrainer
+from trl import PPOv2Trainer as HFPPOTrainer
 
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
