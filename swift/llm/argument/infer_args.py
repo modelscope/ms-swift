@@ -8,15 +8,15 @@ from transformers.utils.versions import require_version
 
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, multimodal_keys
 from swift.tuners import swift_to_peft_format
-from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
+from swift.utils import get_logger, is_lmdeploy_available, is_merge_kit_available, is_vllm_available
 from .base_args import BaseArguments
 from .tuner_args import adapters_can_be_merged
 
 logger = get_logger()
 
 
+@dataclass
 class VllmArguments:
-
     # vllm
     gpu_memory_utilization: float = 0.9
     tensor_parallel_size: int = 1
@@ -31,6 +31,7 @@ class VllmArguments:
     max_logprobs: int = 20
 
 
+@dataclass
 class LmdeployArguments:
     # lmdeploy
     tp: int = 1
@@ -39,9 +40,38 @@ class LmdeployArguments:
     vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
 
+@dataclass
 class MergeArguments:
     merge_lora: bool = False
     merge_device_map: Optional[str] = None
+    use_merge_kit: bool = False
+    instruct_model_id_or_path: Optional[str] = None
+    instruct_model_revision: Optional[str] = None
+
+    def __post_init__(self):
+        if self.use_merge_kit:
+            assert is_merge_kit_available(), ('please install mergekit by pip install '
+                                              'git+https://github.com/arcee-ai/mergekit.git')
+            logger.info('Important: You are using mergekit, please remember '
+                        'the LoRA should be trained against the base model,'
+                        'and pass its instruct model by --instruct_model xxx when merging')
+            assert self.instruct_model_id_or_path, 'Please pass in the instruct model'
+
+            self.merge_yaml = ('models:'
+                               '  - model: {merged_model}'
+                               '    parameters:'
+                               '      weight: 1'
+                               '  }'
+                               '  - model: {instruct_model}'
+                               '    parameters:'
+                               '      weight: 1'
+                               '  }'
+                               'merge_method: ties'
+                               'base_model: {base_model}'
+                               'parameters:'
+                               '  normalize: true'
+                               '  int8_mask: true'
+                               'dtype: bfloat16')
 
 
 @dataclass
@@ -63,6 +93,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
+        MergeArguments.__post_init__(self)
 
         self.handle_ckpt_dir()
         self.prepare_eval_human()
