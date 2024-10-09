@@ -37,7 +37,7 @@
 - [引用](#-引用)
 
 ## 📝 简介
-SWIFT支持**350+ LLM和90+ MLLM**（多模态大模型）的训练(预训练、微调、对齐)、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了[PEFT](https://github.com/huggingface/peft)提供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
+SWIFT支持**350+ LLM和100+ MLLM**（多模态大模型）的训练(预训练、微调、对齐)、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了[PEFT](https://github.com/huggingface/peft)提供的轻量训练方案外，也提供了一个完整的**Adapters库**以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。
 
 为方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入门。 可以在[Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) 和 [ModelScope创空间](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary) 中体验SWIFT web-ui功能了。
 
@@ -56,7 +56,13 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
-- 🔥2024.09.19: 支持qwen2.5、qwen2.5-math、qwen2.5-coder系列模型. 支持qwen2-vl-72b系列模型.
+- 2024.10.09: 支持ovis1.6-gemma2的训练到部署. 使用`swift infer --model_type ovis1_6-gemma2-9b`进行体验.
+- 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
+- 2024.09.26: 支持llama3.2系列模型的训练到部署. 使用`swift infer --model_type llama3_2-1b-instruct`进行体验.
+- 2024.09.25: 支持got-ocr2的训练到部署. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2122).
+- 2024.09.24: 支持llama3_1-8b-omni的训练与部署. 使用`swift infer --model_type llama3_1-8b-omni`进行体验.
+- 2024.09.23: 支持pixtral-12b的训练与部署. 使用`swift infer --model_type pixtral-12b --dtype fp16`进行体验.
+- 🔥2024.09.19: 支持qwen2.5、qwen2.5-math、qwen2.5-coder系列模型. 支持qwen2-vl-72b系列模型. 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2064).
 - 2024.09.07: 支持`Reflection-llama3-70b`模型， 使用`swift sft/infer --model_type reflection-llama_3_1-70b`命令即可训练和推理.
 - 2024.09.06: 支持mplug-owl3的微调和推理, 最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/1969).
 - 2024.09.05: 支持minicpm3-4b模型. 使用`swift infer --model_type minicpm3-4b`进行体验.
@@ -574,7 +580,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Yuan2                                                                                           | [浪潮源系列模型](https://github.com/IEIT-Yuan)                                   | 中文<br>英文 | 2B-102B             | instruct模型                                |
 | XVerse                                                                                          | [元象系列模型](https://github.com/xverse-ai)                                    | 中文<br>英文 | 7B-65B              | base模型<br>chat模型<br>长文本模型<br>MoE模型        |                |
 | LLaMA2                                                                                          | [LLaMA2系列模型](https://github.com/facebookresearch/llama)                   | 英文       | 7B-70B<br>包含量化版本    | base模型<br>chat模型                          |
-| | LLaMA3<br>LLaMA3.1                                                  | [LLaMA3系列模型](https://github.com/meta-llama/llama3)                        | 英文       | 8B-70B<br>包含量化版本    | base模型<br>chat模型                          |
+| LLaMA3<br>LLaMA3.1<br>Llama3.2                                  | [LLaMA3系列模型](https://github.com/meta-llama/llama3)                        | 英文       | 1B-70B<br>包含量化版本    | base模型<br>chat模型                          |
 | Mistral<br>Mixtral                                                                              | [Mistral系列模型](https://github.com/mistralai/mistral-src)                   | 英文       | 7B-8x22B            | base模型<br>instruct模型<br>MoE模型             |
 | Yi<br>Yi1.5<br>Yi-Coder                                  | [01AI的YI系列模型](https://github.com/01-ai)                                   | 中文<br>英文 | 1.5B-34B<br>包含量化版本    | base模型<br>chat模型<br>长文本模型                 |
 | InternLM<br>InternLM2<br>InternLM2-Math<br>InternLM2.5                                          | [浦江实验室书生浦语系列模型](https://github.com/InternLM/InternLM)                     | 中文<br>英文 | 1.8B-20B            | base模型<br>chat模型<br>数学模型                  |
@@ -612,6 +618,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 |---------------------------------------------------------|----------------------------------------------------------------------------|----------|------------------|------------------|
 | Qwen-VL<br>Qwen2-VL                        | [通义千问视觉模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 2B-72B<br>包含量化版本     | base模型<br>chat模型 |
 | Qwen-Audio<br>Qwen2-Audio                       | [通义千问语音模型](https://github.com/QwenLM)                                      | 中文<br>英文 | 7B               | base模型<br>chat模型 |
+| Llama3.2-Vision              | [Llama3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf)                | 英文       | 11B-90B      | base模型<br>chat模型 |
 | YI-VL                                                   | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B           | chat模型           |
 | XComposer2<br>XComposer2.5                              | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)            | 中文<br>英文 | 7B               | chat模型           |
 | DeepSeek-VL                                             | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
@@ -627,7 +634,9 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | PaliGemma                                               | Google                                                                     | 英文       | 3B               | chat模型       |
 | Florence                                                | 微软                                                                         | 英文       | 0.23B-0.77B      | chat模型       |
 | Idefics3                                | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | 英文       | 8B      | chat模型       |
-
+| Pixtral                                | [mistralai](https://huggingface.co/mistralai)                               | 英文       | 12B      | chat模型       |
+| Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | 英文       | 8B      | chat模型       |
+| Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | 英文       | 9B      | chat模型       |
 
 
 #### 扩散模型

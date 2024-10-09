@@ -2,15 +2,16 @@ import concurrent.futures
 import inspect
 import os
 import time
+from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from functools import wraps
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 import vllm
-from modelscope import GenerationConfig
 from packaging import version
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerBase
+from transformers import AutoTokenizer, GenerationConfig, PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
@@ -24,6 +25,19 @@ except ImportError:
     pass
 
 logger = get_logger()
+
+
+@contextmanager
+def _patch_auto_tokenizer(tokenizer):
+    _old_from_pretrained = AutoTokenizer.from_pretrained
+
+    @wraps(_old_from_pretrained)
+    def _from_pretrained(self, *args, **kwargs):
+        return tokenizer
+
+    AutoTokenizer.from_pretrained = _from_pretrained
+    yield
+    AutoTokenizer.from_pretrained = _old_from_pretrained
 
 
 def get_vllm_engine(
@@ -105,8 +119,8 @@ def get_vllm_engine(
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     if version.parse(vllm.__version__) >= version.parse('0.5.1'):
         os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
-
-    llm_engine = llm_engine_cls.from_engine_args(engine_args)
+    with _patch_auto_tokenizer(tokenizer):
+        llm_engine = llm_engine_cls.from_engine_args(engine_args)
     llm_engine.engine_args = engine_args
     llm_engine.model_dir = model_dir
     llm_engine.model_type = model_type
@@ -190,7 +204,6 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             top_k: int = 50,  # -1: all
             top_p: float = 1.,
             repetition_penalty: float = 1.,
-            num_beams: int = 1,
             *,
             n: int = 1,
             logprobs: Optional[int] = None,
@@ -204,12 +217,6 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             max_new_tokens = kwargs.pop('max_new_tokens', None)
             if max_new_tokens is not None:
                 max_tokens = max_new_tokens
-            if num_beams > 1:
-                top_k = -1
-                top_p = 1
-                temperature = 0
-                logger.warning('The output of num_beams in vllm may not be consistent with '
-                               'the output of num_beams in transformers.')
             if top_k == 0:
                 top_k = -1
             if stop is None:
@@ -219,11 +226,6 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
             kwargs['top_k'] = top_k
             kwargs['top_p'] = top_p
             kwargs['repetition_penalty'] = repetition_penalty
-            if num_beams > 1:
-                best_of = kwargs.get('best_of')
-                assert 'use_beam_search' not in kwargs and best_of is None
-                kwargs['use_beam_search'] = True
-                kwargs['best_of'] = num_beams
             kwargs['n'] = n
             kwargs['logprobs'] = logprobs
             kwargs['seed'] = seed
@@ -246,7 +248,6 @@ else:
         top_k: int = 50  # -1: all
         top_p: float = 1.
         repetition_penalty: float = 1.
-        num_beams: int = 1
         n: int = 1
         logprobs: Optional[int] = None
         seed: Optional[int] = None
@@ -255,15 +256,6 @@ else:
         skip_special_tokens: bool = False
 
         def __post_init__(self):
-            if self.num_beams > 1:
-                self.top_k = -1
-                self.top_p = 1
-                self.temperature = 0
-                logger.warning('The output of num_beams in vllm may not be consistent with '
-                               'the output of num_beams in transformers.')
-                assert self.best_of is None
-                self.use_beam_search = True
-                self.best_of = self.num_beams
             if self.top_k == 0:
                 self.top_k = -1
             if self.stop is None:
@@ -272,22 +264,33 @@ else:
             super().__post_init__()
 
 
-def _add_vllm_request(llm_engine: LLMEngine, inputs: Dict[str, Any], *, request_id: str,
-                      generation_config: VllmGenerationConfig, **kwargs) -> None:
+def add_vllm_request(llm_engine: Union[LLMEngine, AsyncLLMEngine], inputs: Dict[str, Any], *, request_id: str,
+                     generation_config: VllmGenerationConfig, **kwargs):
     input_ids = inputs['input_ids']
     if version.parse(vllm.__version__) >= version.parse('0.4.3'):
         llm_inputs = {'prompt_token_ids': input_ids}
-        images = inputs.get('images') or []
-        if images:
-            if version.parse(vllm.__version__) < version.parse('0.6'):
-                assert len(images) == 1, (
-                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.0')
-                llm_inputs['multi_modal_data'] = {'image': images[0]}
-            else:
-                llm_inputs['multi_modal_data'] = {'image': images}
-        llm_engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
+        mm_data = {}
+        for key in ['images', 'audios', 'videos']:
+            meida_data = inputs.get(key) or []
+            if meida_data:
+                if version.parse(vllm.__version__) < version.parse('0.6'):
+                    assert len(meida_data) == 1, (
+                        f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
+                    mm_data = {key.rstrip('s'): meida_data[0]}
+                else:
+                    mm_data = {key.rstrip('s'): meida_data[0] if len(meida_data) == 1 else meida_data}
+        if mm_data:
+            llm_inputs['multi_modal_data'] = mm_data
+        if llm_engine.__class__.__name__ == 'LLMEngine':
+            result_generator = llm_engine.add_request(request_id, llm_inputs, generation_config, **kwargs)
+        else:
+            result_generator = llm_engine.generate(llm_inputs, generation_config, request_id, **kwargs)
     else:
-        llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
+        if llm_engine.__class__.__name__ == 'LLMEngine':
+            result_generator = llm_engine.add_request(request_id, None, generation_config, input_ids, **kwargs)
+        else:
+            result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **kwargs)
+    return result_generator
 
 
 def _prepare_vllm_request(llm_engine: LLMEngine,
@@ -363,7 +366,7 @@ def _prepare_vllm_request(llm_engine: LLMEngine,
             continue
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generation_info['num_samples'] += 1
-        _add_vllm_request(
+        add_vllm_request(
             llm_engine, inputs, request_id=str(i), generation_config=generation_config, **add_request_kwargs)
     return resp_list, agent_state
 
@@ -409,10 +412,6 @@ def inference_stream_vllm(
         lora_request=lora_request,
         use_tqdm=use_tqdm,
         **kwargs)
-
-    if generation_config.use_beam_search:
-        error_msg = 'Streaming generation does not support beam search.'
-        raise ValueError(error_msg)
 
     n_finished = 0
     n_steps = 0

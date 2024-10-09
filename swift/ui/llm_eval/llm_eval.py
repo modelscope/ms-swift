@@ -150,11 +150,13 @@ class LLMEval(BaseUI):
                 for key, value in kwargs.items()
             })
         params = ''
+        sep = f'{cls.quote} {cls.quote}'
         for e in kwargs:
             if isinstance(kwargs[e], list):
-                params += f'--{e} {" ".join(kwargs[e])} '
+                params += f'--{e} {cls.quote}{sep.join(kwargs[e])}{cls.quote} '
             elif e in kwargs_is_list and kwargs_is_list[e]:
-                params += f'--{e} {kwargs[e]} '
+                all_args = [arg for arg in kwargs[e].split(' ') if arg.strip()]
+                params += f'--{e} {cls.quote}{sep.join(all_args)}{cls.quote} '
             else:
                 params += f'--{e} {cls.quote}{kwargs[e]}{cls.quote} '
         params += more_params_cmd + ' '

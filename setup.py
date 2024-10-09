@@ -3,6 +3,9 @@
 import os
 import shutil
 from setuptools import find_packages, setup
+from typing import List
+
+from packaging import version
 
 
 def readme():
@@ -115,8 +118,25 @@ def parse_requirements(fname='requirements.txt', with_version=True):
     return gen_packages_items()
 
 
+def add_modelscope_requirement(install_requires: List[str]) -> None:
+    # The future version will remove.
+    try:
+        import modelscope
+        modelscope_version = modelscope.__version__
+    except ImportError:
+        modelscope_version = '1.18'
+
+    if version.parse(modelscope_version) >= version.parse('1.19'):
+        install_requires.append('datasets>=3.0')
+        install_requires.append('modelscope[datasets]>=1.19')
+    else:
+        install_requires.append('datasets<3.0')
+        install_requires.append('modelscope[datasets]>=1.17,<1.19')
+
+
 if __name__ == '__main__':
     install_requires, deps_link = parse_requirements('requirements.txt')
+    add_modelscope_requirement(install_requires)
     extra_requires = {}
     all_requires = []
     extra_requires['llm'], _ = parse_requirements('requirements/llm.txt')

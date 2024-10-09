@@ -361,7 +361,7 @@ from swift.llm import (
     get_model_tokenizer, get_template, inference, ModelType, get_default_template_type,
 )
 from swift.utils import seed_everything
-from modelscope import BitsAndBytesConfig
+from transformers import BitsAndBytesConfig
 import torch
 
 model_type = ModelType.chatglm3_6b

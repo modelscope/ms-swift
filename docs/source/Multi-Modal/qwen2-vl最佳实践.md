@@ -1,5 +1,6 @@
 
 # Qwen2-VL 最佳实践
+qwen2-vl-72b-instruct的最佳实践可以查看[这里](https://github.com/modelscope/ms-swift/issues/2064).
 
 ## 目录
 - [环境准备](#环境准备)

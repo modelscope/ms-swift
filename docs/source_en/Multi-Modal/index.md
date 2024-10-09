@@ -19,6 +19,7 @@ A single round of dialogue can contain multiple images (or no images):
 7. [Internlm2-Xcomposers Best Practice](internlm-xcomposer2-best-practice.md)
 8. [Phi3-Vision Best Practice](phi3-vision-best-practice.md), [Phi3.5-Vision Best Practice](https://github.com/modelscope/ms-swift/issues/1809).
 9. [mPLUG-Owl3 Best Practice](https://github.com/modelscope/ms-swift/issues/1969)
+10. [GOT-OCR2 Best Practice](https://github.com/modelscope/ms-swift/issues/2122)
 
 A single round of dialogue can only contain one image:
 1. [Yi-VL Best Practice.md](yi-vl-best-practice.md)

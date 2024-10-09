@@ -14,9 +14,8 @@ import json
 import torch
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from modelscope import GenerationConfig
-from packaging import version
 from peft import PeftModel
+from transformers import GenerationConfig
 
 from swift.utils import get_logger, get_main, get_seed, seed_everything
 from .agent import split_action_action_input
@@ -189,8 +188,7 @@ async def _prepare_request(request: Union[ChatCompletionRequest, CompletionReque
                 f'the model `{model_or_engine.model_type}` is in text generation format. '
                 'Please use the `completions` API.')
         messages = request.messages
-        if _args.is_multimodal:
-            compat_openai(messages, request)
+        compat_openai(messages, request)
         # For agent, check if response is endwith observations and join tool observation
         messages_join_observation(messages)
         example = messages_to_history(messages)
@@ -266,7 +264,7 @@ def _get_logprobs_vllm(logprobs_list: Optional[List[Dict[int, float]]],
 @torch.inference_mode()
 async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionRequest], raw_request: Request):
     global llm_engine, template, _args
-    from .utils import VllmGenerationConfig
+    from .utils import VllmGenerationConfig, add_vllm_request
     created_time = int(time.time())
 
     result = await _prepare_request(request, raw_request)
@@ -277,7 +275,7 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
     request_id = request_info['request_id']
 
     kwargs = {'max_tokens': request.max_tokens}
-    for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'num_beams']:
+    for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty']:
         kwargs[key] = getattr(request, key)
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
         new_value = getattr(request, key)
@@ -294,9 +292,6 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
             kwargs['logprobs'] = max(1, request.top_logprobs)
 
     generation_config = VllmGenerationConfig(**kwargs)
-    if generation_config.use_beam_search and request.stream:
-        error_msg = 'Streaming generation does not support beam search.'
-        raise ValueError(error_msg)
     tokenizer = template.tokenizer
     if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
@@ -321,21 +316,8 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
         assert lora_request is not None
         generate_kwargs['lora_request'] = lora_request
 
-    import vllm
-    input_ids = inputs['input_ids']
-    if version.parse(vllm.__version__) >= version.parse('0.4.3'):
-        llm_inputs = {'prompt_token_ids': input_ids}
-        images = inputs.get('images') or []
-        if images:
-            if version.parse(vllm.__version__) < version.parse('0.6'):
-                assert len(images) == 1, (
-                    'The current version of vllm only supports single images. Please upgrade to vllm >= 0.6.0')
-                llm_inputs['multi_modal_data'] = {'image': images[0]}
-            else:
-                llm_inputs['multi_modal_data'] = {'image': images}
-        result_generator = llm_engine.generate(llm_inputs, generation_config, request_id, **generate_kwargs)
-    else:
-        result_generator = llm_engine.generate(None, generation_config, request_id, input_ids, **generate_kwargs)
+    result_generator = add_vllm_request(
+        llm_engine, inputs, request_id=request_id, generation_config=generation_config, **generate_kwargs)
 
     async def _generate_full():
         result = None

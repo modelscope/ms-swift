@@ -1,22 +1,32 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import os
+from contextlib import contextmanager
+from types import MethodType
 from typing import Dict, List, Optional
 
 import json
 import torch
-import transformers
-from packaging import version
+import torch.nn as nn
 
 from swift.llm import get_model_tokenizer, get_template
 from swift.utils import (check_json_format, get_logger, get_main, get_model_info, push_to_ms_hub, seed_everything,
                          show_layers)
 from .infer import merge_lora, prepare_model_template, save_checkpoint
-from .utils import ExportArguments, Template, get_dataset, swift_to_peft_format
+from .utils import ExportArguments, Template, deep_getattr, get_dataset, get_mllm_arch, swift_to_peft_format
 
 logger = get_logger()
 
 _args: Optional[ExportArguments] = None
 template: Optional[Template] = None
+
+
+def _prepare_dataset(examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
+    global _args, template
+    assert template is not None
+    examples = [
+        template.data_collator(examples[start:start + batch_size]) for start in range(0, len(examples), batch_size)
+    ]
+    return examples
 
 
 def _get_dataset(*args, **kwargs):
@@ -41,92 +51,37 @@ def _get_dataset(*args, **kwargs):
     samples = []
     n_run = 0
     for data in dataset:
-        input_ids = template.encode(data)[0].get('input_ids')
+        inputs = template.encode(data)[0]
+        input_ids = inputs['input_ids']
         if input_ids is None or len(input_ids) == 0:
             continue
-        sample = torch.tensor(input_ids)
-        samples.append(sample)
+        if _args.is_multimodal and _args.quant_method == 'gptq':
+            inputs.pop('labels', None)
+            samples.append(inputs)
+        else:
+            samples += input_ids
         n_run += 1
         if n_run == n_samples:
             break
+    if _args.is_multimodal and _args.quant_method == 'gptq':
+        return samples
     # now concatenate all samples and split according to block size
-    cat_samples = torch.cat(samples, dim=0)  # shape: [X]
-    n_split = cat_samples.shape[0] // block_size
+    n_split = len(samples) // block_size
     logger.info(f'Split into {n_split} blocks')
-    if _args.quant_method == 'awq':
-        return [cat_samples[None, i * block_size:(i + 1) * block_size] for i in range(n_split)]
-    else:  # gptq
-        res = []
-        for i in range(n_split):
-            input_ids = cat_samples[None, i * block_size:(i + 1) * block_size]
-            attention_mask = torch.ones_like(input_ids)
-            res.append({'input_ids': input_ids, 'attention_mask': attention_mask})
-        return res
+    res = []
+    for i in range(n_split):
+        input_ids = samples[i * block_size:(i + 1) * block_size]
+        if _args.quant_method == 'awq':
+            res.append(torch.tensor(input_ids)[None])
+        else:
+            res.append({'input_ids': input_ids})
+    return res
 
 
 def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
 
-    def _llama_rotary_emb_forward(self, x, position_ids):
-        with torch.no_grad():
-            if 'dynamic' in self.rope_type:
-                self._dynamic_frequency_update(position_ids, device=x.device)
-
-            # Core RoPE block
-            inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
-            position_ids_expanded = position_ids[:, None, :].float()
-            # Force float32 (see https://github.com/huggingface/transformers/pull/29285)
-            device_type = x.device.type
-            device_type = device_type if isinstance(device_type, str) and device_type != 'mps' else 'cpu'
-            with torch.autocast(device_type=device_type, enabled=False):
-                inv_freq_expanded = inv_freq_expanded.to(position_ids_expanded.device)
-                freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
-                emb = torch.cat((freqs, freqs), dim=-1)
-                cos = emb.cos()
-                sin = emb.sin()
-
-            # Advanced RoPE types (e.g. yarn) apply a post-processing scaling factor, equivalent to scaling attention
-            cos = cos * self.attention_scaling
-            sin = sin * self.attention_scaling
-
-            return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
-
-    @torch.no_grad()
-    def _module_forward(self, x: torch.Tensor, module: torch.nn.Module, module_kwargs: Dict) -> torch.Tensor:
-        # The original code of awq.AwqQuantizer._module_forward has a bug with n_parallel_calib_samples
-        if self.n_parallel_calib_samples is None:
-            # runs through all samples at once
-            module_output = module(x, **module_kwargs)
-            if isinstance(module_output, tuple):
-                module_output = module_output[0]
-        else:
-            # memory efficiently runs through all calibration samples
-            # but only n_parallel_calib_samples at a time
-            module_output = []
-            partitioned_inputs = torch.split(x, self.n_parallel_calib_samples)
-            for idx, x_partial in enumerate(partitioned_inputs):
-                tmp_module_kwargs = {**module_kwargs}
-                if tmp_module_kwargs.get('attention_mask'):
-                    tmp_module_kwargs['attention_mask'] = tmp_module_kwargs['attention_mask'][idx:idx + self.
-                                                                                              n_parallel_calib_samples]
-                partial_output = module(x_partial, **tmp_module_kwargs)
-
-                if isinstance(partial_output, tuple):
-                    partial_output = partial_output[0]
-
-                module_output.append(partial_output.cpu())
-
-            module_output = torch.cat(module_output, dim=0)
-
-        return module_output
-
-    import awq
     from awq.quantize import quantizer
     from transformers import AwqConfig
-    if version.parse(awq.__version__) >= version.parse('0.2.6'):
-        quantizer.AwqQuantizer._module_forward = _module_forward
-
-    if version.parse(transformers.__version__) >= version.parse('4.43.0'):
-        transformers.models.llama.modeling_llama.LlamaRotaryEmbedding.forward = _llama_rotary_emb_forward
 
     assert _args is not None
     logger.info(f'Quantization dataset: {_args.dataset}')
@@ -141,22 +96,74 @@ def awq_model_quantize(awq_model, tokenizer, batch_size) -> None:
         bits=_args.quant_bits, group_size=group_size, zero_point=True, version='GEMM')
 
 
+@contextmanager
+def _patch_gptq():
+    from optimum.gptq import quantizer
+    _get_dataset_origin = quantizer.get_dataset
+    _prepare_dataset_origin = quantizer.prepare_dataset
+    quantizer.get_dataset = _get_dataset
+    quantizer.prepare_dataset = _prepare_dataset
+    yield
+    quantizer.get_dataset = _get_dataset_origin
+    quantizer.prepare_dataset = _prepare_dataset_origin
+
+
+def _patch_model_forward(module_list):
+
+    def _new_forward(self, *args, **kwargs):
+        if 'use_cache' in kwargs:
+            kwargs['use_cache'] = False
+        layer_ret = self.__old_forward(*args, **kwargs)
+        return layer_ret + args[len(layer_ret):]
+
+    for module in module_list:
+        if hasattr(module, '_old_forward'):  # device_map
+            __old_forward = module._old_forward
+            module._old_forward = MethodType(_new_forward, module)
+        else:
+            __old_forward = module.forward
+            module.forward = MethodType(_new_forward, module)
+        module.__old_forward = __old_forward
+
+
+def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[str]:
+    mllm_arch = get_mllm_arch(model_type)
+    prefix = ''
+    if mllm_arch is not None:
+        assert len(mllm_arch.language_model) == 1, f'mllm_arch.language_model: {mllm_arch.language_model}'
+        prefix = mllm_arch.language_model[0]
+        model = deep_getattr(model, prefix)
+
+    module_lists = []
+    for n, m in model.named_modules():
+        if isinstance(m, nn.ModuleList) and len(m) >= 10:
+            module_lists.append((n, m))
+    if module_lists:
+        module_list = max(module_lists, key=lambda x: len(x[1]))
+        _patch_model_forward(module_list[1])
+        return f'{prefix}.{module_list[0]}'
+
+
 def gptq_model_quantize(model, tokenizer, batch_size):
-    from optimum.gptq import GPTQQuantizer, quantizer
+    from optimum.gptq import GPTQQuantizer
     global _args
     logger.info(f'Quantization dataset: {_args.dataset}')
-    gptq_quantizer = GPTQQuantizer(bits=_args.quant_bits, dataset=','.join(_args.dataset), batch_size=batch_size)
-    _origin_get_dataset = quantizer.get_dataset
-    quantizer.get_dataset = _get_dataset
-    logger.info('Start quantizing the model...')
-    logger.warning('The process of packing the model takes a long time and there is no progress bar. '
-                   'Please be patient and wait...')
-    gptq_quantizer.quantize_model(model, tokenizer)
-    quantizer.get_dataset = _origin_get_dataset  # recover
+    with _patch_gptq():
+        gptq_quantizer = GPTQQuantizer(
+            bits=_args.quant_bits,
+            dataset=','.join(_args.dataset),
+            batch_size=batch_size,
+            block_name_to_quantize=get_block_name_to_quantize(model, _args.model_type))
+        logger.info('Start quantizing the model...')
+        logger.warning('The process of packing the model takes a long time and there is no progress bar. '
+                       'Please be patient and wait...')
+        if not hasattr(model.config, 'use_cache'):
+            model.config.use_cache = None
+        gptq_quantizer.quantize_model(model, tokenizer)
     return gptq_quantizer
 
 
-def replace_and_concat(template: 'Template', template_list: List, placeholder: str, keyword: str):
+def replace_and_concat(template: Template, template_list: List, placeholder: str, keyword: str):
     final_str = ''
     for t in template_list:
         if isinstance(t, str):
@@ -248,19 +255,18 @@ def llm_export(args: ExportArguments) -> None:
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(
-                args, device_map=args.quant_device_map, verbose=False, automodel_class=AutoAWQForCausalLM)
+                args, device_map=args.quant_device_map, task='export', automodel_class=AutoAWQForCausalLM)
             awq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.save_quantized(args.quant_output_dir)
         elif args.quant_method == 'gptq':
-            model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
+            model, template = prepare_model_template(args, device_map=args.quant_device_map, task='export')
             gptq_quantizer = gptq_model_quantize(model, template.tokenizer, args.quant_batch_size)
             model.config.quantization_config.pop('dataset', None)
             gptq_quantizer.save(model, args.quant_output_dir)
         elif args.quant_method == 'bnb':
-            args.quant_device_map = 'auto'  # cannot use cpu on bnb
             args.quantization_bit = args.quant_bits
             args.bnb_4bit_compute_dtype, args.load_in_4bit, args.load_in_8bit = args.select_bnb()
-            model, template = prepare_model_template(args, device_map=args.quant_device_map, verbose=False)
+            model, template = prepare_model_template(args, device_map=args.quant_device_map, task='export')
             model.save_pretrained(args.quant_output_dir)
         else:
             raise ValueError(f'args.quant_method: {args.quant_method}')

@@ -101,6 +101,54 @@ Use lazy_tokenize, see [Command Line Arguments](https://swift.readthedocs.io/en/
 ### Q22: During training, if two datasets are directly appended together in the training set, does the model have an internal shuffling process during training? Or does it take data in order for training?
 Randomization occurs in the trainer.
 
+### Q23: If the model uses two GPUs but data parallelism is not enabled, DeepSpeed will throw an error. How can this be addressed?
+`deepspeed` and `device_map` are incompatible; you can only choose one of them.
+
+### Q24: Why do we need to download the dataset again for offline retraining when it has already been downloaded during online training?
+The data file contains URLs, which doesn't support offline training.
+
+### Q25: How can memory usage be reduced when training VLM (Vision-Language) models?
+Configure `--freeze_vit true`.
+
+### Q26: Why are there fewer models supported on the WEB-UI interface compared to those in the documentation?
+Please upgrade ms-swift.
+
+### Q27: For models without an adapted model_type, can we customize special_tokens and chat_template during SFT?
+Yes. Refer to the PR for integrating models and the custom model dataset documentation.
+
+### Q28: Is it possible to train Qwen2-VL using DPO (Direct Preference Optimization) in Python script?
+Yes. Import `rlhf_main` and `RLHFArguments` from `swift.llm`.
+
+### Q29: When training an MLLM, is it possible to first conduct pre-training with pure text, and then fine-tune using a VQA dataset?
+Yes, it's possible. You can also train them together.
+
+### Q30: When performing DPO training on an SFT model based on Qwen2 using a V100 machine, why are all the results NaN?
+V100 machines should use fp32 for training Qwen2.
+
+### Q31: I'd like to ask, does Swift support distillation?
+It's not supported. Quantization is recommended, which has better results.
+
+### Q32: Has anyone encountered this issue, cannot import name 'ftp_head' from 'datasets.utils.file_utils?
+`pip install datasets==2.*`
+
+### Q33: Currently, a maximum of two checkpoints are saved by default after training. How can I modify it to save more?
+`--save_total_limit`, See [Command Line Arguments](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html) for details.
+
+### Q34: In Grounding tasks, does the general data format support multiple instances for one category?
+Currently, multiple bboxes for one object are supported. Refer to the documentation [InternVL Best Practice](https://swift.readthedocs.io/en/latest/Multi-Modal/internvl-best-practice.html).
+
+### Q35: Why does this error appear here? Where can't numpy.object be found?
+Try `numpy==1.26.3`.
+
+### Q36: Does the Swift framework support sequence parallelism now?
+Yes, it does. It's now implemented by introducing `xtuner`.
+
+### Q37: When fine-tuning Qwen2-1.5B on a V100, I get 'loss': 0.0, 'acc': 0.0, 'grad_norm': nan. What's the problem?
+Try using fp32.
+
+### Q38: Can GPTQ quantized models be fully fine-tuned?
+No, they can't. The int-type parameters in GPTQ models cannot participate in gradient computation. Only additional structures like LoRA can be attached for updates.
+
 ## Inference
 
 ### Q1:Is there documentation for Swift inference?
@@ -125,6 +173,18 @@ Set `model.generation_config.max_new_tokens`.
 ### Q6: Qwen2-VL inference causes out of memory error
 Set environment variables, `SIZE_FACTOR=8 MAX_PIXELS=602112`, see documentation [Qwen2-VL Best Practice](https://swift.readthedocs.io/en/latest/Multi-Modal/qwen2-vl-best-practice.html).
 
+### Q7: With V100 GPU, in Python virtual environment, following https://github.com/modelscope/ms-swift/blob/main/docs/source/Multi-Modal/qwen2-vl%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5.md to complete environment preparation, when testing inference command: CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer --model_type qwen2-vl-7b-instruct, it reports error: RuntimeError: probability tensor contains either inf, nan or element < 0.
+Try using an A10 or 3090 machine for inference.
+
+### Q8:  After running the following command, where are the prediction results? CUDA_VISIBLE_DEVICES=0 swift infer --ckpt_dir output/glm4v-9b-chat/vx-xxx/checkpoint-xxx-merged --load_dataset_config true
+The path will be printed in the logs.
+
+### Q9: During inference, when calling inference, how can I get the output logits?
+Refer to https://github.com/modelscope/ms-swift/blob/main/tests/custom/test_logprobs.py.
+
+### Q10: In the latest version of Swift, when I'm loading the qwen2-32b-instruct-awq quantized model and its LoRA using vllm, it prompts me to add "merge lora true". When I add it, I get an error. If I remove vllm acceleration, I can inference normally, but the speed is very slow.
+Models trained with QLoRA do not support merge-lora. It is recommended to perform LoRA fine-tuning first, then merge-lora, and finally quantize.
+
 ## Deployment
 
 ### Q1: How to deploy the trained model?
@@ -141,6 +201,15 @@ Base models can use client.chat.completions.create, but this is a compatibility 
 
 ### Q5: After starting the server with Swift deploy using two GPUs, when exiting with Ctrl+C, there's always a Python process that keeps occupying the memory of one GPU. Is this normal?
 Need to kill it, this is a vllm issue.
+
+### Q6: Where can I check if the model supports lmdeploy or vllm acceleration?
+Please check the documentation, [Supported models and datasets](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-datasets.html).
+
+### Q7: Qwen2.5-Math-7B-Instruct occasionally keeps returning garbled text. What's the problem? Using vllm deployment, fp16.
+Try bf16.
+
+### Q8: After LoRA fine-tuning and deployment, using Swift's inference method, it reports an error: requests.exceptions.HTTPError: Multimodal model only support default-lora
+Set `model_type` to `default-lora` here.
 
 ## Evaluation
 
@@ -178,3 +247,9 @@ See documentation [LLM Evaluation Documentation](https://swift.readthedocs.io/en
 
 ### Q2: How to use custom evaluation datasets?
 Custom evaluation datasets for NLP and multimodal must follow the data format (pattern) of an official evaluation dataset, see documentation [LLM Evaluation Documentation](https://swift.readthedocs.io/en/latest/Instruction/LLM-eval.html).
+
+### Q3: Python 3.11 environment, mmengine reports an error during evaluation
+Try using a Python 3.10 environment. Or first install all dependencies: `pip3 install evalscope[all]`, then apply the patch: `pip3 install https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/package/evalscope-0.5.3.post1-py3-none-any.whl`.
+
+### Q4: Can swift eval be configured to evaluate using local paths after manually downloading the officially supported evaluation datasets?
+First download the evaluation dataset [eval.zip](https://modelscope.cn/datasets/swift/evalscope_resource/files), unzip it and place its contents in the `~/.cache/modelscope/media_resources/evalscope/data` folder; then execute the swift eval command to use the local data.

@@ -206,10 +206,11 @@ def draw_plot(img_dir: str, bbox: List[int], bbox_type: str, output_file: str):
 @load_file_decorator
 def load_video_cogvlm2(video_io: BytesIO) -> np.ndarray:
     from decord import cpu, VideoReader, bridge
+    from .template import get_env_args
     bridge.set_bridge('torch')
     clip_end_sec = 60
     clip_start_sec = 0
-    num_frames = 24
+    num_frames = get_env_args('num_frames', int, 24)
     decord_vr = VideoReader(video_io, ctx=cpu(0))
     duration = len(decord_vr)  # duration in terms of frames
     start_frame = int(clip_start_sec * decord_vr.get_avg_fps())
@@ -224,9 +225,11 @@ def load_video_cogvlm2(video_io: BytesIO) -> np.ndarray:
 @load_file_decorator
 def load_video_llava(video_io: BytesIO) -> np.ndarray:
     import av
+    from .template import get_env_args
     container = av.open(video_io)
     total_frames = container.streams.video[0].frames
-    indices = np.arange(0, total_frames, total_frames / 8).astype(int)
+    num_frames = get_env_args('num_frames', int, 16)
+    indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
     frames = []
     container.seek(0)
     start_index = indices[0]
@@ -289,7 +292,8 @@ def load_video_qwen2(video_path: str):
     if nframes is not None:
         nframes = round_by_factor(nframes, size_factor)
     else:
-        fps = FPS
+        if fps is None:
+            fps = FPS
         nframes = video.size(0) / info['video_fps'] * fps
         nframes = round_by_factor(nframes, size_factor)
         min_frames = get_env_args('min_frames', int, FPS_MIN_FRAMES)

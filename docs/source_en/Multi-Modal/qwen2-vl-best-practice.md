@@ -1,5 +1,6 @@
 
 # Qwen2-VL Best Practice
+The best practices for qwen2-vl-72b-instruct can be found [here](https://github.com/modelscope/ms-swift/issues/2064).
 
 ## Table of Contents
 - [Environment Setup](#environment-setup)
