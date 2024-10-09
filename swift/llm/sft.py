@@ -442,7 +442,7 @@ def trainer_train(
             compute_acc_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=is_encoder_decoder)
         trainer_kwargs['compute_metrics'] = compute_metrics
         trainer_kwargs['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
-    if isinstance(args, RLHFArguments) and args.rlhf_type == 'ppo':
+    if args.train_type == 'ppo':
         trainer_kwargs['reward_model'] = reward_model
         trainer_kwargs['value_model'] = value_model
     trainer = trainer_cls(

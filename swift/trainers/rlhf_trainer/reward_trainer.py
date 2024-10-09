@@ -1,10 +1,9 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import pandas as pd
 import torch
-import torch.amp as amp
 import torch.nn as nn
 from accelerate.utils import gather_object
 from transformers import PreTrainedModel
@@ -21,7 +20,7 @@ class RewardTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFRewardTrai
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         ref_model = kwargs.pop('ref_model')
         assert ref_model is None, 'RM does not require a ref_model.'
-        self.args = kwargs['args']  # use in `compute_loss` and `visuualize_samples`
+        self.args = kwargs['args']
         self.use_reward_data_collator = True  # disable warning
         super().__init__(model, *_args, **kwargs)
 

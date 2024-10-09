@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from torch.utils.data import DataLoader
-from trl import AutoModelForCausalLMWithValueHead
+from transformers import PreTrainedModel
 from trl.trainer import PPOv2Trainer as HFPPOTrainer
 
 from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
@@ -8,8 +8,7 @@ from swift.trainers import PushToMsHubMixin, RLHFTrainerMixin, SwiftMixin
 
 class PPOTrainer(RLHFTrainerMixin, PushToMsHubMixin, SwiftMixin, HFPPOTrainer):
 
-    def __init__(self, model: AutoModelForCausalLMWithValueHead, ref_model: AutoModelForCausalLMWithValueHead, *_args,
-                 **kwargs):
+    def __init__(self, model: PreTrainedModel, ref_model: PreTrainedModel, *_args, **kwargs):
         kwargs['policy'] = model
         kwargs['ref_policy'] = ref_model
         super().__init__(model, ref_model, *_args, **kwargs)
