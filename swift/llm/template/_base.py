@@ -2,7 +2,6 @@
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
-from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
@@ -176,9 +175,21 @@ class Template:
         assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
         return system
 
-    def _init_template(self, tokenizer: PreTrainedTokenizerBase, default_system: Optional[str] = None) -> None:
+    def _init_template(self,
+                       tokenizer: PreTrainedTokenizerBase,
+                       default_system: Optional[str] = None,
+                       max_length: Optional[int] = None,
+                       *,
+                       truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                       loss_scale: str = 'default',
+                       max_image_size: int = -1) -> None:
         """
         default_system: Override the default_system in the template.
+        max_length: Max length of the sequence
+        truncation_strategy: The truncation strategy
+        loss_scale: The loss scale function to use
+        max_image_size: Rescale image to reduce memory usage, default `-1` means no limitation.
+            e.g. 512 * 512 (H*W)
         """
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
@@ -193,6 +204,10 @@ class Template:
             setattr(self, key, value)
 
         self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.truncation_strategy = truncation_strategy
+        self.loss_scale = loss_scale
+        self.max_image_size = max_image_size
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self.task: Literal['train', 'infer_pt', 'infer_vllm', 'infer_lmdeploy'] = 'infer_pt'
 
@@ -206,11 +221,7 @@ class Template:
             videos: Optional[List[str]] = None,
             objects: Union[str, None, List[Dict[str, Any]]] = None,  # TODO:check
             tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,  # TODO:check
-            *,
-            max_length: Optional[int] = None,
-            truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-            loss_scale: str = 'default',
-            max_image_size: int = -1) -> Dict[str, Any]:
+    ) -> Dict[str, Any]:
         """The entrance method of Template!
 
         Args:
@@ -229,11 +240,6 @@ class Template:
             objects: Used for grounding tasks in a general format.
             tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
                 Specifying this parameter will override system.
-            max_length: Max length of the sequence
-            truncation_strategy: The truncation strategy
-            loss_scale: The loss scale function to use
-            max_image_size: Rescale image to reduce memory usage, default `-1` means no limitation.
-                e.g. 512 * 512 (H*W)
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
@@ -248,19 +254,16 @@ class Template:
             messages = deepcopy(messages)
             objects = deepcopy(objects)
             inputs = self._messages_to_inputs(
-                messages, images, audios, videos, objects, tools, max_image_size=max_image_size)
+                messages, images, audios, videos, objects, tools, max_image_size=self.max_image_size)
         assert isinstance(inputs, TemplateInputs)
 
-        res = {}
         if self.task in {'train', 'infer_pt'}:
             self._check_inputs(inputs)
-            _encode = self._encode
+            res = self._encode(inputs)
         else:
-            _encode = MethodType(Template._encode, self)
+            res = Template._encode(self, inputs)
             if inputs.images:
                 res['images'] = inputs.images
-        res.update(
-            _encode(inputs, max_length=max_length, truncation_strategy=truncation_strategy, loss_scale_type=loss_scale))
         if self.task != 'train':
             res.pop('loss_scale', None)
         return res
@@ -348,8 +351,8 @@ class Template:
             self._add_default_tags(inputs)
         return inputs
 
+    @staticmethod
     def _concat_context_list(
-            self,
             context_list: List[Context],
             res_context_list: List[Context],  # inplace
             loss_scale_list: List[float],  # inplace
@@ -357,7 +360,6 @@ class Template:
             query: Optional[str] = None,
             response: Optional[str] = None,
             round0: Optional[int] = None,
-            compute_loss: bool = True,
             loss_scale: str = 'default') -> None:
         """Concat context list and replace placeholder"""
         round1 = None
@@ -595,7 +597,8 @@ class Template:
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
 
-    def _add_default_tags(self, inputs: TemplateInputs):
+    @staticmethod
+    def _add_default_tags(inputs: TemplateInputs):
         total_content = '\n'.join([message['content'] for message in inputs.messages])
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
@@ -655,19 +658,14 @@ class Template:
         if len(messages) % 2 == 1:
             messages.append({'role': 'assistant', 'content': None})  # inference
 
-    def _encode(self,
-                inputs: TemplateInputs,
-                *,
-                max_length: Optional[int] = None,
-                truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                loss_scale_type: str = 'default') -> Dict[str, Any]:
+    def _encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
 
         res_context_list: List[Context] = []
         loss_scale_list: List[float] = []
         if self.auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
-                content, loss_scale = loss_scale_map[loss_scale_type](None, [bos_token_id], [LossScale.BOS])
+                content, loss_scale = loss_scale_map[self.loss_scale](None, [bos_token_id], [LossScale.BOS])
                 res_context_list.append(content)
                 loss_scale_list.extend(loss_scale)
 
@@ -712,9 +710,9 @@ class Template:
                 system=inputs.system,
                 round0=i,
                 compute_loss=self.compute_per_round_loss or (extra_type == LossScale.SUFFIX),
-                loss_scale=loss_scale_type)
+                loss_scale=self.loss_scale)
 
-            content, loss_scale = loss_scale_map[loss_scale_type](i, extra_context_list, [extra_type])
+            content, loss_scale = loss_scale_map[self.loss_scale](i, extra_context_list, [extra_type])
             res_context_list.extend(content)
             loss_scale_list.extend(loss_scale)
 
@@ -731,7 +729,7 @@ class Template:
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
                 res[f'{key}_input_ids'], res[f'{key}_labels'] = input_ids, labels
-                if loss_scale_type != 'default':
+                if self.loss_scale != 'default':
                     res[f'{key}_loss_scale'] = loss_scale
             input_ids = res['prompt_input_ids'] + res['answer_input_ids']
             labels = res['prompt_labels'] + res['answer_labels']
@@ -751,16 +749,16 @@ class Template:
         if response is None:
             labels = None
 
-        if max_length is not None:
-            if truncation_strategy == 'delete' and len(input_ids) > max_length:
+        if self.max_length is not None:
+            if self.truncation_strategy == 'delete' and len(input_ids) > self.max_length:
                 logger.warn(f'Current length of row({len(input_ids)}) is larger'
-                            f' than the max_length({max_length}), deleted.')
+                            f' than the max_length({self.max_length}), deleted.')
                 return {}
-            input_ids = input_ids[-max_length:]
+            input_ids = input_ids[-self.max_length:]
             if labels is not None:
-                labels = labels[-max_length:]
+                labels = labels[-self.max_length:]
             if loss_scale is not None:
-                loss_scale = loss_scale[-max_length:]
+                loss_scale = loss_scale[-self.max_length:]
         res['input_ids'] = input_ids
         res['labels'] = labels
         res['loss_scale'] = loss_scale

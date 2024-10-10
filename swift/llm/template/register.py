@@ -18,13 +18,25 @@ def register_template(template_type: str, template: Template, *, exist_ok: bool 
     TEMPLATE_MAPPING[template_type] = template_info
 
 
-def get_template(template_type: str,
-                 tokenizer: PreTrainedTokenizerBase,
-                 *,
-                 default_system: Optional[str] = None,
-                 sequence_parallel_size: int = 1) -> 'Template':
+def get_template(
+        template_type: str,
+        tokenizer: PreTrainedTokenizerBase,
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        *,
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+        loss_scale: str = 'default',
+        max_image_size: int = -1,  # h * w
+        sequence_parallel_size: int = 1) -> 'Template':
     template_info = TEMPLATE_MAPPING[template_type]
     # To ensure that obtaining the same template_type multiple times does not interfere with each other.
     template = deepcopy(template_info['template'])
-    template._init_template(tokenizer, default_system=default_system, sequence_parallel_size=sequence_parallel_size)
+    template._init_template(
+        tokenizer,
+        default_system,
+        max_length,
+        truncation_strategy=truncation_strategy,
+        loss_scale=loss_scale,
+        max_image_size=max_image_size,
+        sequence_parallel_size=sequence_parallel_size)
     return template

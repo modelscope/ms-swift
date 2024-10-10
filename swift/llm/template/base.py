@@ -1,7 +1,7 @@
 import inspect
 from contextlib import contextmanager
 from functools import partial, wraps
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
 import torch.nn as nn
@@ -25,7 +25,7 @@ class Template(_Template):
         res_extra = []
         data = kwargs.pop('_data')
         for d in data:
-            res_extra.append(self._post_encode(model, d))
+            res_extra.append(self.post_encode(model, d))
         kwargs.update(to_device(self.data_collator(res_extra), model.device))
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
@@ -95,11 +95,21 @@ class Template(_Template):
 
     def _init_template(self,
                        tokenizer: PreTrainedTokenizerBase,
-                       *,
                        default_system: Optional[str] = None,
+                       max_length: Optional[int] = None,
+                       *,
+                       truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                       loss_scale: str = 'default',
+                       max_image_size: int = -1,
                        sequence_parallel_size: int = 1) -> None:
         self.sequence_parallel_size = sequence_parallel_size
-        return super()._init_template(tokenizer, default_system)
+        return super()._init_template(
+            tokenizer,
+            default_system,
+            max_length,
+            truncation_strategy=truncation_strategy,
+            loss_scale=loss_scale,
+            max_image_size=max_image_size)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: TemplateInputs) -> List[Context]:
@@ -112,7 +122,7 @@ class Template(_Template):
         """for multimodal LLM"""
         assert self.is_multimodal
         new_batch = [{'labels': b['labels']} for b in batch]
-        res = self.data_collator(new_batch)  # only labels
+        res = self.data_collator(new_batch, *args, **kwargs)  # only labels
         res['_data'] = batch
         return res
 

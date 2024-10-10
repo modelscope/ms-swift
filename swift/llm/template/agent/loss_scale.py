@@ -18,7 +18,7 @@ class LossScale:
     BOS = 'bos'
 
     def __call__(self, round: int, content: List[Union[str, int]], types: List[str],
-                 **kwargs) -> Tuple[List[Union[str, int]], List[int]]:
+                 **kwargs) -> Tuple[List[Union[str, int]], List[float]]:
         if types == [LossScale.RESPONSE]:
             return content, [1.0] * len(content)
         elif types == [LossScale.SUFFIX]:
