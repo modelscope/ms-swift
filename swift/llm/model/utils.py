@@ -203,9 +203,9 @@ class AttnImpl:
         return attn_impl == AttnImpl.flash_attn
 
     @staticmethod
-    def update_attn_impl(config: PretrainedConfig, attn_impl: Optional[str]) -> None:
+    def update_attn_impl(config: PretrainedConfig, attn_impl: Optional[str], auto_value: _T = None) -> None:
 
-        use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl)
+        use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl, auto_value)
         if use_flash_attn is None:
             # attn_impl in {'auto', None}
             return

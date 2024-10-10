@@ -90,9 +90,9 @@ class MLLMTemplateType:
     llava_yi = 'llava_yi'
     llama3_llava_next_hf = 'llama3_llava_next_hf'
     llava_qwen_hf = 'llama-qwen-hf'
-    llava_onevision_qwen = 'llava-onevision-qwen'
-    llava_next_video = 'llava-next-video'
-    llava_next_video_yi = 'llava-next-video-yi'
+    llava_onevision_qwen = 'llava_onevision_qwen'
+    llava_next_video = 'llava_next_video'
+    llava_next_video_yi = 'llava_next_video_yi'
 
     llava_next_llama3 = 'llava-next-llama3'  # DaozeZhang
     llava_llama_instruct = 'llava_llama_instruct'  # xtuner
@@ -101,25 +101,25 @@ class MLLMTemplateType:
     yi_vl = 'yi-vl'
 
     internvl = 'internvl'
+    internvl_phi3 = 'internvl_phi3'
     internvl2 = 'internvl2'
-    internvl_phi3 = 'internvl-phi3'
-    internvl2_phi3 = 'internvl2-phi3'
+    internvl2_phi3 = 'internvl2_phi3'
 
-    internlm_xcomposer2 = 'internlm-xcomposer2'
-    internlm_xcomposer2_4khd = 'internlm-xcomposer2-4khd'
-    internlm_xcomposer2_5 = 'internlm-xcomposer2_5'
+    xcomposer2 = 'ixcomposer2'
+    xcomposer2_4khd = 'xcomposer2_4khd'
+    xcomposer2_5 = 'xcomposer2_5'
 
-    cogagent_chat = 'cogagent-chat'
-    cogagent_instruct = 'cogagent-instruct'
+    cogagent_chat = 'cogagent_chat'
+    cogagent_vqa = 'cogagent_vqa'
     cogvlm = 'cogvlm'
-    cogvlm2_video = 'cogvlm2-video'
+    cogvlm2_video = 'cogvlm2_video'
     glm4v = 'glm4v'
 
-    minicpm_v = 'minicpm-v'
-    minicpm_v_v2_5 = 'minicpm-v-v2_5'
-    minicpm_v_v2_6 = 'minicpm-v-v2_6'
+    minicpmv = 'minicpmv'
+    minicpmv2_5 = 'minicpmv2_5'
+    minicpmv2_6 = 'minicpmv2_6'
 
-    deepseek_vl = 'deepseek-vl'
+    deepseek_vl = 'deepseek_vl'
     mplug_owl2 = 'mplug-owl2'
     mplug_owl3 = 'mplug_owl3'
     got_ocr2 = 'got_ocr2'
@@ -128,7 +128,7 @@ class MLLMTemplateType:
     idefics3 = 'idefics3'
     pixtral = 'pixtral'
     paligemma = 'paligemma'
-    phi3_vl = 'phi3-vl'
+    phi3_vl = 'phi3_vl'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType):

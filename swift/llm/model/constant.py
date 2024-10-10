@@ -17,8 +17,14 @@ class LLMModelType:
     reflection_llama3_1 = 'reflection_llama3_1'
 
     chatglm2 = 'chatglm2'
+    codegeex2 = 'codegeex2'
+    codefuse_codegeex2 = 'codefuse_codegeex2'
     chatglm3 = 'chatglm3'
     glm4 = 'glm4'
+    codegeex4 = 'codegeex4'
+
+    internlm = 'internlm'
+    internlm2 = 'internlm2'
 
     longwriter_llama3_1 = 'longwriter_llama3_1'
     longwriter_glm4 = 'longwriter_glm4'
@@ -38,6 +44,16 @@ class MLLMModelType:
     llama3_2_vision = 'llama3_2_vision'
 
     glm4v = 'glm4v'
+    cogvlm = 'cogvlm'
+    cogagent_vqa = 'cogagent_vqa'
+    cogagent_chat = 'cogagent_chat'
+    cogvlm2 = 'cogvlm2'
+    cogvlm2_video = 'cogvlm2_video'
+
+    xcomposer2 = 'xcomposer2'
+    xcomposer2_4khd = 'xcomposer2_4khd'
+    xcomposer2_5 = 'xcomposer2_5'
+
     llama3_1_omni = 'llama3_1_omni'
     idefics3_llama3 = 'idefics3_llama3'
 

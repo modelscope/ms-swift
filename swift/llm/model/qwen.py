@@ -161,7 +161,6 @@ register_model(
     ],
     TemplateGroup(TemplateType.qwen_audio, TemplateType.qwen_audio_generation),
     get_model_tokenizer_qwen_audio,
-    is_multimodal=True,
     support_flash_attn=True,
     additional_saved_files=['mel_filters.npz'])
 
@@ -239,7 +238,6 @@ register_model(
     ],
     TemplateGroup(TemplateType.qwen_vl, TemplateType.qwen_vl_generation),
     get_model_tokenizer_qwen_vl,
-    is_multimodal=True,
     support_flash_attn=True,
     support_vllm=True,
     support_lmdeploy=True,
@@ -518,7 +516,6 @@ register_model(
     TemplateGroup(TemplateType.qwen2_vl, TemplateType.qwen2_vl_generation),
     get_model_tokenizer_qwen2_vl,
     requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
-    is_multimodal=True,
     support_flash_attn=True,
     support_vllm=True)
 
@@ -542,5 +539,4 @@ register_model(
     TemplateGroup(TemplateType.qwen2_audio, TemplateType.qwen2_audio_generation),
     get_model_tokenizer_qwen2_audio,
     requires=['transformers>=4.45.dev.0'],
-    is_multimodal=True,
     support_flash_attn=True)

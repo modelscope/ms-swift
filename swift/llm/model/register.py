@@ -37,7 +37,8 @@ class Model:
 @dataclass
 class TemplateGroup:
     chat_template: str
-    generation_template: str = TemplateType.default_generation
+    # llm: TemplateType.default_generation, mllm: None
+    generation_template: Optional[str] = None
 
 
 @dataclass
@@ -56,11 +57,11 @@ def register_model(model_type: str,
                    requires: Optional[List[str]] = None,
                    ignore_file_pattern: Optional[List[str]] = None,
                    additional_saved_files: Optional[List[str]] = None,
-                   is_multimodal: bool = False,
                    is_moe: bool = False,
                    support_flash_attn: bool = False,
                    support_vllm: bool = False,
                    support_lmdeploy: bool = False,
+                   support_gradient_checkpointing: bool = True,
                    function_kwargs: Optional[Dict[str, Any]] = None,
                    exist_ok: bool = False,
                    **kwargs) -> None:
@@ -85,6 +86,10 @@ def register_model(model_type: str,
     """
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
+    from .constant import MLLMModelType
+    is_multimodal = True if model_type in MLLMModelType.__dict__ else False
+    if is_multimodal and template.generation_template is None:
+        template.generation_template = TemplateType.default_generation
     if requires is None:
         requires = []
     if additional_saved_files is None:
