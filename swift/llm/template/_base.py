@@ -4,9 +4,10 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-import torch.nn as nn
+
 import json
 import torch
+import torch.nn as nn
 from modelscope import get_logger
 from PIL import Image
 from transformers import PreTrainedTokenizerBase
@@ -169,7 +170,7 @@ class Template:
         return res_value
 
     def _check_system(self, system: str) -> Optional[str]:
-        assert system is None
+        assert system is not None
         if system == '':
             return None
         assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
@@ -241,13 +242,13 @@ class Template:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
 
-        if isinstance(messages, Messages):
+        if isinstance(messages, TemplateInputs):
+            inputs = messages
+        else:
             messages = deepcopy(messages)
             objects = deepcopy(objects)
             inputs = self._messages_to_inputs(
                 messages, images, audios, videos, objects, tools, max_image_size=max_image_size)
-        else:
-            inputs = messages
         assert isinstance(inputs, TemplateInputs)
 
         res = {}
@@ -717,7 +718,7 @@ class Template:
             res_context_list.extend(content)
             loss_scale_list.extend(loss_scale)
 
-        inputs = {}
+        res = {}
         if self.output_prompt_answer:
             # tokenizer_kwargs: use prompt (qwen-audio)
             answer_len = len(extra_context_list) + bool(response is not None)
@@ -726,26 +727,26 @@ class Template:
                                    [slice(total_len - answer_len, total_len),
                                     slice(0, total_len - answer_len)]):
                 _res_context_list, _loss_scale_list = self._simplify_context_list(res_context_list[_slice],
-                                                                                  loss_scale_list[_slice])
+                                                                                  loss_scale_list[_slice], inputs)
                 input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                     _res_context_list, _loss_scale_list)
-                inputs[f'{key}_input_ids'], inputs[f'{key}_labels'] = input_ids, labels
+                res[f'{key}_input_ids'], res[f'{key}_labels'] = input_ids, labels
                 if loss_scale_type != 'default':
-                    inputs[f'{key}_loss_scale'] = loss_scale
-            input_ids = inputs['prompt_input_ids'] + inputs['answer_input_ids']
-            labels = inputs['prompt_labels'] + inputs['answer_labels']
+                    res[f'{key}_loss_scale'] = loss_scale
+            input_ids = res['prompt_input_ids'] + res['answer_input_ids']
+            labels = res['prompt_labels'] + res['answer_labels']
             if response is None:
-                assert len(inputs['answer_labels']) == 0
-                inputs['answer_labels'] = None
+                assert len(res['answer_labels']) == 0
+                res['answer_labels'] = None
         else:
-            res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, **kwargs)
+            res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
             if labels is not None:
                 self._use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
         if tokenizer_kwargs:
-            inputs['tokenizer_kwargs'] = tokenizer_kwargs
+            res['tokenizer_kwargs'] = tokenizer_kwargs
 
         if response is None:
             labels = None
@@ -760,10 +761,10 @@ class Template:
                 labels = labels[-max_length:]
             if loss_scale is not None:
                 loss_scale = loss_scale[-max_length:]
-        inputs['input_ids'] = input_ids
-        inputs['labels'] = labels
-        inputs['loss_scale'] = loss_scale
-        return inputs
+        res['input_ids'] = input_ids
+        res['labels'] = labels
+        res['loss_scale'] = loss_scale
+        return res
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:
         """return: curr_tokenizer_kwargs"""

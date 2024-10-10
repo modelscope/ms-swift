@@ -13,8 +13,9 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.llm import to_device
 from swift.utils import get_dist_setting, use_torchacc
-from ._base import Template as _Template, TemplateInputs
-from .utils import findall, Context
+from ._base import Template as _Template
+from ._base import TemplateInputs
+from .utils import Context, findall
 
 
 class Template(_Template):
