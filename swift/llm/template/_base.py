@@ -88,7 +88,7 @@ class Template:
     image_placeholder = ['<image>']
     load_medias = True
 
-    compute_per_round_loss = True  # for rlhf
+    loss_scale = 'default'
     output_prompt_answer = False  # for encoder-decoder & kto
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
@@ -181,7 +181,7 @@ class Template:
                        max_length: Optional[int] = None,
                        *,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                       loss_scale: str = 'default',
+                       loss_scale: Optional[str] = None,
                        max_image_size: int = -1) -> None:
         """
         default_system: Override the default_system in the template.
@@ -206,7 +206,8 @@ class Template:
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale = loss_scale
+        if loss_scale:
+            self.loss_scale = loss_scale
         self.max_image_size = max_image_size
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self.task: Literal['train', 'infer_pt', 'infer_vllm', 'infer_lmdeploy'] = 'infer_pt'
@@ -359,6 +360,7 @@ class Template:
             system: Optional[str] = None,
             query: Optional[str] = None,
             response: Optional[str] = None,
+            n_round: Optional[int] = None,
             round0: Optional[int] = None,
             loss_scale: str = 'default') -> None:
         """Concat context list and replace placeholder"""
@@ -379,7 +381,7 @@ class Template:
                     types.append(type_)
                     context = context.replace(old_str, new_str)
             content, loss_scale = loss_scale_map[loss_scale](
-                round0, [context], types, query=query, response=response, system=system)
+                round0, [context], types, query=query, response=response, system=system, n_round=n_round)
             res_context_list.extend(content)
             loss_scale_list.extend(loss_scale)
 
@@ -709,8 +711,8 @@ class Template:
                 response=response,
                 system=inputs.system,
                 round0=i,
-                compute_loss=self.compute_per_round_loss or (extra_type == LossScale.SUFFIX),
-                loss_scale=self.loss_scale)
+                loss_scale=self.loss_scale,
+                n_round=n_round)
 
             content, loss_scale = loss_scale_map[self.loss_scale](i, extra_context_list, [extra_type])
             res_context_list.extend(content)

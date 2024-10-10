@@ -55,6 +55,8 @@ class AgentFlanLossScale(LossScale):
             query_loss_scale_map = loss_scale_map['query']
             response_loss_scale_map = loss_scale_map['response']
             return calculate_loss_scale(query, response, response_loss_scale_map, query_loss_scale_map)
+        elif types == [LossScale.SUFFIX]:
+            return content, [1.0] * len(content)
         else:
             return content, [0.0] * len(content)
 
@@ -72,6 +74,8 @@ class REACTLossScale(LossScale):
             with open(config_path, 'r') as json_file:
                 loss_scale_map = json.load(json_file)
             return calculate_loss_scale(query, response, loss_scale_map)
+        elif types == [LossScale.SUFFIX]:
+            return content, [1.0] * len(content)
         else:
             return content, [0.0] * len(content)
 
@@ -89,6 +93,19 @@ class AlphaUmiLossScale(LossScale):
             with open(config_path, 'r') as json_file:
                 loss_scale_map = json.load(json_file)
             return calculate_loss_scale(query, response, loss_scale_map)
+        elif types == [LossScale.SUFFIX]:
+            return content, [1.0] * len(content)
+        else:
+            return content, [0.0] * len(content)
+
+
+class LastRoundLossScale(LossScale):
+
+    def __call__(self, round: int, content: List[Union[str, int]], types: List[str], **kwargs):
+        if types == [LossScale.RESPONSE] and round + 1 == kwargs.get('n_round', round + 1):
+            return content, [1.0] * len(content)
+        elif types == [LossScale.SUFFIX]:
+            return content, [1.0] * len(content)
         else:
             return content, [0.0] * len(content)
 
@@ -99,4 +116,5 @@ loss_scale_map = {
     'alpha_umi': AlphaUmiLossScale(),
     'default': LossScale(),
     'all': TrainAllLossScale(),
+    'last_round': LastRoundLossScale(),
 }
