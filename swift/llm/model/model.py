@@ -1300,7 +1300,7 @@ def get_model_tokenizer_internvl(model_dir: str,
     if isinstance(quantization_config, BitsAndBytesConfig):
         use_bnb = True
 
-    model, tokenizer = get_model_tokenizer_from_repo(
+    model, tokenizer = get_model_tokenizer_from_local(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, model_config=model_config, **kwargs)
 
     if use_bnb and kwargs.get('is_training'):
