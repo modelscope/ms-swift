@@ -97,7 +97,7 @@ class Template:
                  prompt: Prompt,
                  chat_sep: Optional[Prompt],
                  suffix: Prompt,
-                 default_system: Optional[str] = None,
+                 default_system: str = '',
                  system_prefix: Optional[Prompt] = None,
                  tool_prompt: Optional[Prompt] = None,
                  *,
@@ -107,11 +107,11 @@ class Template:
                  tools_prompt: str = 'react_en',
                  skip_input_len: bool = True) -> None:
         # check
+        if default_system is None:
+            default_system = ''
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
 
-        if default_system == '':
-            default_system = None
         if self._has_system(prefix):
             assert system_prefix is None, 'The prefix already contains {{SYSTEM}}.'
             system_prefix = prefix
@@ -124,7 +124,7 @@ class Template:
             self.prompt = prompt
         if system_prefix is None and not self.is_post_system:
             self.support_system = False
-            assert default_system is None, 'The template does not support `system`.'
+            assert not default_system, 'The template does not support `system`.'
         else:
             self.support_system = True
         self.support_multi_round = chat_sep is not None
@@ -135,7 +135,6 @@ class Template:
         self.suffix = suffix
         self.default_system = default_system
         self.tool_prompt = tool_prompt if tool_prompt is not None else prompt  # default as user
-        self.use_default_system = True
 
         self.stop_words = stop_words
         self.placeholder_tokens = placeholder_tokens
@@ -168,11 +167,13 @@ class Template:
             res_value.append(v)
         return res_value
 
-    def _check_system(self, system: str) -> Optional[str]:
-        assert system is not None
-        if system == '':
-            return None
-        assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
+    def _check_system(self, system: str) -> str:
+        if system is None:
+            system = ''
+        if system:
+            assert self.support_system, (
+                f'The template does not support `system`, template_type: {self.template_type}'
+            )
         return system
 
     def _init_template(self,
@@ -330,11 +331,10 @@ class Template:
                             *,
                             max_image_size: int = -1) -> TemplateInputs:
         assert len(messages) >= 1
-        system = None
         if messages[0]['role'] == 'system':
             message = messages.pop(0)
             system = message['content']
-        if system is None and self.use_default_system:
+        else:
             system = self.default_system
         if tools is not None:
             if isinstance(tools, str):
