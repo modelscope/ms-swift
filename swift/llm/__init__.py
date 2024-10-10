@@ -23,7 +23,7 @@ if TYPE_CHECKING:
                           stat_dataset, LLMDataset, LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset,
                           print_example, sort_by_max_length, standard_keys, multimodal_keys, multimodal_tags)
     from .utils import (deep_getattr, to_device, Messages, History, decode_base64, history_to_messages,
-                        messages_to_history)
+                        messages_to_history, safe_tokenizer_decode)
     from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -54,7 +54,7 @@ else:
         ],
         'utils': [
             'deep_getattr', 'to_device', 'History', 'Messages', 'decode_base64', 'history_to_messages',
-            'messages_to_history'
+            'messages_to_history', 'safe_tokenizer_decode'
         ],
         'module_mapping': ['MODEL_KEYS_MAPPING', 'MultiModelKeys']
     }

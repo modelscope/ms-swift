@@ -74,7 +74,7 @@ def split_parts_by_regex(text_list: list, regex_delimiters: Dict[str, List[float
 
 def calculate_loss_scale(query: str,
                          response: str,
-                         response_loss_scale_map: Optional[Dict[str, list]] = None,
+                         response_loss_scale_map: Dict[str, list],
                          query_loss_scale_map: Optional[Dict[str, list]] = None) -> Tuple[List[str], List[float]]:
     """Calculate the loss scale by splitting the agent response.
 

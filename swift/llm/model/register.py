@@ -165,15 +165,15 @@ def get_model_tokenizer_from_local(model_dir: str,
             logger.info(f'model_kwargs: {model_kwargs}')
             model = automodel_class.from_pretrained(
                 model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+        model.quant_method = kwargs.get('quant_method')
+        model.quant_bits = kwargs.get('bits')
+        model.is_training = kwargs.get('is_training', False)
+        max_model_len = HfConfigFactory.get_max_model_len(model_config)
+        model.max_model_len = max_model_len
+        logger.info(f'model.max_model_len: {max_model_len}')
     else:
         model = None
     tokenizer.config = model_config
-    model.quant_method = kwargs.get('quant_method')
-    model.quant_bits = kwargs.get('bits')
-    model.is_training = kwargs.get('is_training', False)
-    max_model_len = HfConfigFactory.get_max_model_len(model_config)
-    model.max_model_len = max_model_len
-    logger.info(f'model.max_model_len: {max_model_len}')
     return model, tokenizer
 
 
@@ -293,33 +293,32 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
     model_dir = safe_snapshot_download(
         model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
-    if load_model:
-        if use_torchacc():
-            model_kwargs['device_map'] = None
-        elif 'device_map' not in model_kwargs:
-            model_kwargs['device_map'] = get_default_device_map()
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-        kwargs['model_config'] = model_config
-        if model_type is None:
-            model_types = HfConfigFactory.get_matched_model_types(model_config, model_dir)
-            if len(model_types) > 1:
-                raise ValueError('Unable to obtain the accurate model_type based on the model architecture. '
-                                 f'Please explicitly provide the model_type. Available model_types: {model_types}')
-            model_type = model_types[0]
-            logger.info(f'Setting model_type: {model_type}')
-        quant_info = HfConfigFactory.get_quant_info(model_config)
+    if use_torchacc():
+        model_kwargs['device_map'] = None
+    elif 'device_map' not in model_kwargs:
+        model_kwargs['device_map'] = get_default_device_map()
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    kwargs['model_config'] = model_config
+    if model_type is None:
+        model_types = HfConfigFactory.get_matched_model_types(model_config, model_dir)
+        if len(model_types) > 1:
+            raise ValueError('Unable to obtain the accurate model_type based on the model architecture. '
+                             f'Please explicitly provide the model_type. Available model_types: {model_types}')
+        model_type = model_types[0]
+        logger.info(f'Setting model_type: {model_type}')
+    quant_info = HfConfigFactory.get_quant_info(model_config)
+    if torch_dtype is None:
+        torch_dtype = HfConfigFactory.get_torch_dtype(model_config)
         if torch_dtype is None:
-            torch_dtype = HfConfigFactory.get_torch_dtype(model_config)
-            if torch_dtype is None:
-                torch_dtype = quant_info.get('torch_dtype')
-            if torch_dtype in {torch.float32, None}:
-                torch_dtype = torch.bfloat16 if is_torch_bf16_gpu_available() else torch.float16
+            torch_dtype = quant_info.get('torch_dtype')
+        if torch_dtype in {torch.float32, None}:
+            torch_dtype = torch.bfloat16 if is_torch_bf16_gpu_available() else torch.float16
 
-            logger.info(f'Setting torch_dtype: {torch_dtype}')
+        logger.info(f'Setting torch_dtype: {torch_dtype}')
 
-        if quant_info is not None:
-            quant_info.pop('torch_dtype', None)
-            kwargs.update(quant_info)
+    if quant_info is not None:
+        quant_info.pop('torch_dtype', None)
+        kwargs.update(quant_info)
 
     kwargs.update({'model_type': model_type, 'attn_impl': attn_impl})
     model_info = MODEL_MAPPING[model_type]

@@ -15,6 +15,7 @@ from torch.utils.data import Dataset, IterableDataset
 from tqdm.auto import tqdm
 from transformers import PreTrainedTokenizerBase
 
+from swift.llm import safe_tokenizer_decode
 from swift.utils import get_logger, stat_array
 
 DATASET_TYPE = Union[HfDataset, HFIterableDataset]
@@ -321,40 +322,6 @@ def _get_token_len(llm_dataset):
                     _len += len(v)
             token_len.append(_len)
     return token_len
-
-
-def safe_tokenizer_decode(tokenizer: PreTrainedTokenizerBase, input_ids: List[int], **tokenizer_kwargs) -> str:
-
-    def _is_special(token: int) -> bool:
-        if token < 0:
-            return True
-        if hasattr(tokenizer, 'placeholder_tokens'):
-            return token in tokenizer.placeholder_tokens_id
-        return False
-
-    if isinstance(input_ids, torch.Tensor):
-        input_ids = input_ids.tolist()
-    if len(input_ids) == 0:
-        return ''
-    result_str = ''
-    for i in range(len(input_ids)):
-        if i == 0:
-            if _is_special(input_ids[i]):
-                s = 0
-            else:
-                e = 0
-            continue
-        if _is_special(input_ids[i]) and not _is_special(input_ids[i - 1]):
-            s = i
-            result_str += tokenizer.decode(input_ids[e:s], **tokenizer_kwargs)
-        if not _is_special(input_ids[i]) and _is_special(input_ids[i - 1]):
-            e = i
-            result_str += f'[{input_ids[i - 1]} * {e - s}]'
-    if _is_special(input_ids[i]):
-        result_str += f'[{input_ids[i]} * {len(input_ids) - s}]'
-    else:
-        result_str += tokenizer.decode(input_ids[e:], **tokenizer_kwargs)
-    return result_str
 
 
 def print_example(example: Dict[str, Any],

@@ -12,8 +12,8 @@ from PIL import Image
 from transformers import PreTrainedTokenizerBase
 
 from swift.llm import Messages, decode_base64
-from .agent import LossScale, get_tools_prompt, loss_scale_map, split_str_parts_by
-from .utils import Context, Prompt, StopWords, fetch_one
+from .agent import get_tools_prompt, loss_scale_map, split_str_parts_by
+from .utils import Context, ContextType, Prompt, StopWords, fetch_one
 from .vision_utils import load_batch, load_image, rescale_image
 
 logger = get_logger()
@@ -97,7 +97,7 @@ class Template:
                  prompt: Prompt,
                  chat_sep: Optional[Prompt],
                  suffix: Prompt,
-                 default_system: str = '',
+                 default_system: Optional[str] = None,
                  system_prefix: Optional[Prompt] = None,
                  tool_prompt: Optional[Prompt] = None,
                  *,
@@ -171,9 +171,7 @@ class Template:
         if system is None:
             system = ''
         if system:
-            assert self.support_system, (
-                f'The template does not support `system`, template_type: {self.template_type}'
-            )
+            assert self.support_system, (f'The template does not support `system`, template_type: {self.template_type}')
         return system
 
     def _init_template(self,
@@ -356,34 +354,34 @@ class Template:
     def _concat_context_list(
             context_list: List[Context],
             res_context_list: List[Context],  # inplace
-            loss_scale_list: List[float],  # inplace
+            res_context_type: List[ContextType],  # inplace
             system: Optional[str] = None,
             query: Optional[str] = None,
             response: Optional[str] = None,
-            n_round: Optional[int] = None,
-            round0: Optional[int] = None,
-            loss_scale: str = 'default') -> None:
+            round0: Optional[int] = None) -> None:
         """Concat context list and replace placeholder"""
         round1 = None
         if round0 is not None:
             round1 = str(round0 + 1)
             round0 = str(round0)
         for context in context_list:
-            # TODO:test_list
+            if isinstance(context, str):
+                if '{{RESPONSE}}' == context:
+                    assert response is not None
+                    context = response
+                    res_context_list.append(response)
+                    res_context_type.append(ContextType.RESPONSE)
+                    continue
+                old_str_list = ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}']
+                new_str_list = [system, query, round0, round1]
+                for (old_str, new_str) in zip(old_str_list, new_str_list):
+                    if new_str is not None and old_str in context:
+                        assert isinstance(new_str, str), f'new_str: {new_str}'
+                        context = context.replace(old_str, new_str)
             if len(context) == 0:
                 continue
-            types = []
-            old_str_list = ['{{SYSTEM}}', '{{QUERY}}', '{{ROUND0}}', '{{ROUND1}}', '{{RESPONSE}}']
-            old_str_types = [LossScale.SYSTEM, LossScale.QUERY, LossScale.ROUND, LossScale.ROUND, LossScale.RESPONSE]
-            new_str_list = [system, query, round0, round1, response]
-            for (old_str, type_, new_str) in zip(old_str_list, old_str_types, new_str_list):
-                if new_str is not None and old_str in context:
-                    types.append(type_)
-                    context = context.replace(old_str, new_str)
-            content, loss_scale = loss_scale_map[loss_scale](
-                round0, [context], types, query=query, response=response, system=system, n_round=n_round)
-            res_context_list.extend(content)
-            loss_scale_list.extend(loss_scale)
+            res_context_list.append(context)
+            res_context_type.append(ContextType.OTHER)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
                                inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
@@ -663,16 +661,15 @@ class Template:
     def _encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
 
         res_context_list: List[Context] = []
-        loss_scale_list: List[float] = []
+        res_context_types: List[ContextType] = []
         if self.auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
-                content, loss_scale = loss_scale_map[self.loss_scale](None, [bos_token_id], [LossScale.BOS])
-                res_context_list.append(content)
-                loss_scale_list.extend(loss_scale)
+                res_context_list.append([bos_token_id])
+                res_context_types.append(ContextType.OTHER)
 
         prefix = self.system_prefix if inputs.system else self.prefix
-        self._concat_context_list(prefix, res_context_list, loss_scale_list, system=inputs.system)
+        self._concat_context_list(prefix, res_context_list, res_context_types, system=inputs.system)
         self._get_std_messages(inputs.messages)
 
         n_round = len(inputs.messages) // 2
@@ -691,32 +688,28 @@ class Template:
 
             context_list = prompt.copy()
             extra_context_list = []
-
-            extra_type = None
+            extra_context_type = None
             if i < n_round - 1:
                 context_list.append('{{RESPONSE}}')
-                extra_type = LossScale.CHAT_SEP
                 extra_context_list = self.chat_sep  # TODO:agent check
+                extra_context_type = ContextType.OTHER
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                extra_type = LossScale.SUFFIX
                 extra_context_list = self.suffix
+                extra_context_type = ContextType.SUFFIX
             assert query or response  # TODO:check
             self._concat_context_list(
                 context_list,
                 res_context_list,
-                loss_scale_list,
+                res_context_types,
                 query=query,
                 response=response,
                 system=inputs.system,
-                round0=i,
-                loss_scale=self.loss_scale,
-                n_round=n_round)
-
-            content, loss_scale = loss_scale_map[self.loss_scale](i, extra_context_list, [extra_type])
-            res_context_list.extend(content)
-            loss_scale_list.extend(loss_scale)
+                round0=i)
+            res_context_list += extra_context_list
+            res_context_types += [extra_context_type] * len(extra_context_list)
+        loss_scale_list = loss_scale_map[self.loss_scale](res_context_types, inputs.messages)
 
         res = {}
         if self.output_prompt_answer:
@@ -742,8 +735,7 @@ class Template:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
-            if labels is not None:
-                self._use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
+            self._use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
         if tokenizer_kwargs:
             res['tokenizer_kwargs'] = tokenizer_kwargs
