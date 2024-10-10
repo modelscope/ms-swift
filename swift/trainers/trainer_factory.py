@@ -63,7 +63,7 @@ class TrainerFactory:
         if train_stage == 'sft':
             yield
             return
-        _old_compute_per_round_loss = template.compute_per_round_loss
+        _old_loss_scale = template.loss_scale
         _old_output_prompt_answer = template.output_prompt_answer
         if train_stage == 'kto':
             from swift.llm.template.template import KTOTemplateMixin
@@ -73,15 +73,15 @@ class TrainerFactory:
             from swift.llm.template.template import RLHFTemplateMixin
             template_mixin = RLHFTemplateMixin
         if args.train_type != 'orpo' or args.is_multimodal:
-            template.compute_per_round_loss = False
-        logger.info(f'template.compute_per_round_loss: {template.compute_per_round_loss}')
+            template.loss_scale = 'last_round'
+        logger.info(f'template.loss_scale: {template.loss_scale}')
         logger.info(f'template.output_prompt_answer: {template.output_prompt_answer}')
         template._old_encode = template.encode
         template._old_data_collator = template.data_collator
         template.encode = MethodType(template_mixin.encode, template)
         template.data_collator = MethodType(template_mixin.data_collator, template)
         yield
-        template.compute_per_round_loss = _old_compute_per_round_loss
+        template.loss_scale = _old_loss_scale
         template.output_prompt_answer = _old_output_prompt_answer
         template.encode = template._old_encode
         template.data_collator = template._old_data_collator

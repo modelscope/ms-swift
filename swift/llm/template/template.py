@@ -667,7 +667,7 @@ register_template(TemplateType.internvl2_phi3, Internvl2Phi3Template(), use_mode
 
 
 class FlorenceTemplate(Template):
-    compute_per_round_loss = False
+    loss_scale = 'last_round'
     output_prompt_answer = True
 
     def __init__(self):
