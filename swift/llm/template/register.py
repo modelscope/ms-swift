@@ -21,10 +21,12 @@ def register_template(template_type: str, template: Template, *, exist_ok: bool 
 def get_template(
     template_type: str,
     tokenizer: PreTrainedTokenizerBase,
+    *,
     default_system: Optional[str] = None,
+    sequence_parallel_size: int = 1**kwargs,
 ) -> 'Template':
     template_info = TEMPLATE_MAPPING[template_type]
     # To ensure that obtaining the same template_type multiple times does not interfere with each other.
     template = deepcopy(template_info['template'])
-    template.init_template(tokenizer, default_system)
+    template._init_template(tokenizer, default_system, sequence_parallel_size)
     return template

@@ -13,7 +13,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 
 from swift.llm import to_device
 from swift.utils import get_dist_setting, use_torchacc
-from ._base import Template as _Template
+from ._base import Template as _Template, TemplateInputs
 from .utils import findall
 
 
@@ -29,7 +29,6 @@ class Template(_Template):
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
 
-        # TODO:annotation
         if isinstance(model, PeftModel):
             parameters = inspect.signature(model.base_model.model.forward).parameters
         else:
@@ -38,6 +37,20 @@ class Template(_Template):
         if 'position_ids' not in parameters:
             kwargs.pop('position_ids', None)
         return args, kwargs
+
+    @contextmanager
+    def vllm_context(self):
+        task = self.task
+        self.task = 'infer_vllm'
+        yield
+        self.task = task
+
+    @contextmanager
+    def lmdeploy_context(self):
+        task = self.task
+        self.task = 'infer_lmdeploy'
+        yield
+        self.task = task
 
     @contextmanager
     def training_context(self, trainer, models: List[nn.Module]):
@@ -52,7 +65,7 @@ class Template(_Template):
             self.task = task  # recover
             return
 
-        trainer.data_collator = self.pre_data_collator
+        trainer.data_collator = self._pre_data_collator
         handles = []
         for model in models:
             handle = model.register_forward_pre_hook(partial(self._pre_forward_hook, model=model), with_kwargs=True)
@@ -79,61 +92,22 @@ class Template(_Template):
         if _deepspeed_initialize:
             deepspeed.initialize = _deepspeed_initialize
 
-    def _post_encode(self, model: nn.Module, inputs: Any) -> Dict[str, Any]:
-        return {}
+    def _init_template(self,
+                       tokenizer: PreTrainedTokenizerBase,
+                       *,
+                       default_system: Optional[str] = None,
+                       sequence_parallel_size: int = 1) -> None:
+        self.sequence_parallel_size = sequence_parallel_size
+        return super()._init_template(tokenizer, default_system)
 
-    def init_template(self,
-                      tokenizer: PreTrainedTokenizerBase,
-                      default_system: Optional[str] = None,
-                      max_length: Optional[int] = None,
-                      truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                      loss_scale: str = 'default',
-                      rescale_image: int = -1,
-                      **kwargs) -> None:
-        self.sequence_parallel_size = kwargs.pop('sequence_parallel_size', 1)
-        return self.template.init_template(tokenizer, default_system, max_length, truncation_strategy, loss_scale,
-                                           rescale_image, **kwargs)
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: TemplateInputs) -> List[Context]:
+        if media_type == 'image' and self.task == 'infer_lmdeploy':
+            return [[-100]]
+        else:
+            return super().replace_tag(media_type, index, inputs)
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        padding_right = self.template.padding_side == 'right'
-        res = self.template.data_collator(batch, padding_to)
-        input_ids = res.get('input_ids')
-        attention_mask = res.get('attention_mask')
-        labels = res.get('labels')
-        loss_scale = res.get('loss_scale')
-        if use_torchacc():
-            rank, _, world_size, _ = get_dist_setting()
-            from swift.torchacc_utils import pad_and_split_batch
-            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
-                padding_to,
-                input_ids,
-                attention_mask,
-                labels,
-                loss_scale,
-                self.max_length,
-                self.tokenizer,
-                rank,
-                world_size,
-                padding_right=padding_right)
-        if self.sequence_parallel_size > 1 and input_ids is not None:
-            bs, seq_len = input_ids.shape
-            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-            assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
-            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
-            if get_xtuner_sequence_parallel_world_size() > 1:
-                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
-                input_ids, labels, position_ids, attention_mask, loss_scale = \
-                    pad_and_split_for_sequence_parallel(
-                        self.template.tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
-            res['position_ids'] = position_ids
-        _local_var = locals()
-        for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
-            value = _local_var[key]
-            if value is not None:
-                res[key] = value
-        return res
-
-    def pre_data_collator(self, batch: List[Dict[str, Any]], *args, **kwargs) -> Dict[str, Any]:
+    def _pre_data_collator(self, batch: List[Dict[str, Any]], *args, **kwargs) -> Dict[str, Any]:
         """for multimodal LLM"""
         assert self.is_multimodal
         new_batch = [{'labels': b['labels']} for b in batch]
@@ -141,7 +115,7 @@ class Template(_Template):
         res['_data'] = batch
         return res
 
-    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
@@ -180,7 +154,7 @@ class Template(_Template):
         for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
                               [tokenizer.pad_token_id, 0., 0, -100, 0., -1]):
             if key in res:
-                res[key] = self.pad_sequence(res[key], value, self.padding_side)
+                res[key] = self._pad_sequence(res[key], value, self.padding_side)
 
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
@@ -194,6 +168,41 @@ class Template(_Template):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos)
+
+        # torchacc & xtuner
+        input_ids = res.get('input_ids')
+        attention_mask = res.get('attention_mask')
+        labels = res.get('labels')
+        loss_scale = res.get('loss_scale')
+        if use_torchacc():
+            rank, _, world_size, _ = get_dist_setting()
+            input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
+                padding_to,
+                input_ids,
+                attention_mask,
+                labels,
+                loss_scale,
+                self.max_length,
+                self.tokenizer,
+                rank,
+                world_size,
+                padding_right=padding_right)
+        if self.sequence_parallel_size > 1 and input_ids is not None:
+            bs, seq_len = input_ids.shape
+            position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
+            assert padding_right or bs == 1, 'Sequence parallel only support padding_side=right'
+            from swift.trainers.xtuner import get_xtuner_sequence_parallel_world_size
+            if get_xtuner_sequence_parallel_world_size() > 1:
+                from swift.trainers.xtuner import pad_and_split_for_sequence_parallel
+                input_ids, labels, position_ids, attention_mask, loss_scale = \
+                    pad_and_split_for_sequence_parallel(
+                        tokenizer, input_ids, labels, position_ids, attention_mask, loss_scale)
+            res['position_ids'] = position_ids
+        _local_var = locals()
+        for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
+            value = _local_var[key]
+            if value is not None:
+                res[key] = value
         return res
 
     async def prepare_lmdeploy_inputs(self, inputs: Dict[str, Any]) -> None:
@@ -220,9 +229,9 @@ class Template(_Template):
         inputs['input_ids'] = new_input_ids
 
     @staticmethod
-    def pad_sequence(sequences: List[torch.Tensor],
-                     padding_value: float = 0.,
-                     padding_side: Literal['right', 'left'] = 'right') -> torch.Tensor:
+    def _pad_sequence(sequences: List[torch.Tensor],
+                      padding_value: float = 0.,
+                      padding_side: Literal['right', 'left'] = 'right') -> torch.Tensor:
         """Pad sequence by some side
 
         Args:

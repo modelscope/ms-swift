@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MethodType
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
+import torch.nn as nn
 import json
 import torch
 from modelscope import get_logger
@@ -104,7 +104,8 @@ class Template:
                  stop_words: Optional[StopWords] = None,
                  placeholder_tokens: Union[int, str, None] = None,
                  auto_add_bos: bool = False,
-                 tools_prompt: str = 'react_en') -> None:
+                 tools_prompt: str = 'react_en',
+                 skip_input_len: bool = True) -> None:
         # check
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
@@ -140,6 +141,7 @@ class Template:
         self.placeholder_tokens = placeholder_tokens
         self.auto_add_bos = auto_add_bos
         self.tools_prompt = tools_prompt
+        self.skip_input_len = skip_input_len
         self._is_init = False
 
     @staticmethod
@@ -173,7 +175,7 @@ class Template:
         assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
         return system
 
-    def init_template(self, tokenizer: PreTrainedTokenizerBase, default_system: Optional[str] = None) -> None:
+    def _init_template(self, tokenizer: PreTrainedTokenizerBase, default_system: Optional[str] = None) -> None:
         """
         default_system: Override the default_system in the template.
         """
@@ -196,6 +198,8 @@ class Template:
     def encode(
             self,
             messages: Union[Messages, TemplateInputs],
+            # If the input type is TemplateInputs, then the parameters for
+            # images/audios/videos/objects/tools/max_image_size become invalid.
             images: Optional[List[Union[Image.Image, str]]] = None,
             audios: Optional[List[str]] = None,
             videos: Optional[List[str]] = None,
@@ -209,8 +213,7 @@ class Template:
         """The entrance method of Template!
 
         Args:
-            messages: Input in messages format. If the input type is TemplateInputs, then the parameters for
-                    images/audios/videos/objects/tools/max_image_size become invalid.
+            messages: Input in messages format.
                 Examples: [{
                     "role": "user",  # or assistant/system/role
                     "content": [  # str or List[Dict[str, Any]]
@@ -248,7 +251,7 @@ class Template:
         assert isinstance(inputs, TemplateInputs)
 
         res = {}
-        if self.is_multimodal and self.task in {'train', 'infer_pt'}:
+        if self.task in {'train', 'infer_pt'}:
             self._check_inputs(inputs)
             _encode = self._encode
         else:
@@ -261,6 +264,9 @@ class Template:
             res.pop('loss_scale', None)
         return res
 
+    def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {}
+
     def _preprocess_objects(self, inputs: TemplateInputs, objects: Union[str, List[Dict[str, Any]]]):
         # Format objects(groundings/refs) to json
         if isinstance(objects, str):
@@ -271,7 +277,7 @@ class Template:
         images = inputs.images
         images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
         # Normalize grounding bboxes
-        self.normalize_bbox(objects, images, to_type=self.grounding_type)
+        self._normalize_bbox(objects, images, to_type=self.grounding_type)
         if not self.load_medias:  # fix pt & qwen-vl
             images = decode_base64(images=images)['images']  # PIL.Image/base64 -> local_path
         inputs.images = images
@@ -338,7 +344,7 @@ class Template:
         if objects is not None:
             self._preprocess_objects(inputs, objects)
         if inputs.is_multimodal:
-            self.add_default_tags(inputs)
+            self._add_default_tags(inputs)
         return inputs
 
     def _concat_context_list(
@@ -378,8 +384,8 @@ class Template:
                                inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
         if inputs.is_multimodal:
-            context_list, loss_scale_list = self.split_special_tokens(context_list, loss_scale_list)
-        context_list, loss_scale_list = self.pre_tokenize(context_list, loss_scale_list, inputs)
+            context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
+        context_list, loss_scale_list = self._pre_tokenize(context_list, loss_scale_list, inputs)
 
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
@@ -406,8 +412,8 @@ class Template:
         return res, res_loss_scale
 
     @staticmethod
-    def split_special_tokens(context_list: List[Context],
-                             loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
+    def _split_special_tokens(context_list: List[Context],
+                              loss_scale_list: List[float]) -> Tuple[List[Context], List[float]]:
         """Split special tokens, for example `<image>`, `<video>`, this will help the replace_tag operation"""
         res: List[Context] = []
         loss_scale_res: List[float] = []
@@ -489,8 +495,8 @@ class Template:
             return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
 
     @staticmethod
-    def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
-                                                                                                  'norm_1']) -> None:
+    def _normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
+                                                                                                   'norm_1']) -> None:
         """Normalize bbox to needed.
         to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
             or normalized by 1.
@@ -503,10 +509,10 @@ class Template:
         if not objects or not images:
             return
 
-        for object in objects:
-            bbox = object['bbox']
-            bbox_type = object['bbox_type']
-            idx = object['image']
+        for object_ in objects:
+            bbox = object_['bbox']
+            bbox_type = object_['bbox_type']
+            idx = object_['image']
             image = images[idx]
             if bbox_type == 'real':
                 if to_type == 'real':
@@ -519,36 +525,36 @@ class Template:
                             int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
                             for coord, dim in zip(_box, [width, height, width, height])
                         ])
-                    object['bbox'] = bboxes
+                    object_['bbox'] = bboxes
                 else:
-                    object['bbox'] = [
+                    object_['bbox'] = [
                         int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
                         for coord, dim in zip(bbox, [width, height, width, height])
                     ]
-                object['bbox_type'] = to_type
+                object_['bbox_type'] = to_type
             elif bbox_type == 'norm_1000':
                 if to_type == 'norm_1000':
                     continue
                 if to_type == 'norm_1':
-                    object['bbox'] = [coord / 999. for coord in bbox]
+                    object_['bbox'] = [coord / 999. for coord in bbox]
                 elif to_type == 'real':
                     width, height = image.width, image.height
-                    object['bbox'] = [
+                    object_['bbox'] = [
                         int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])
                     ]
-                object['bbox_type'] = to_type
+                object_['bbox_type'] = to_type
             elif bbox_type == 'norm_1':
                 if to_type == 'norm_1':
                     continue
                 if to_type == 'norm_1000':
-                    object['bbox'] = [int(coord * 999) for coord in bbox]
+                    object_['bbox'] = [int(coord * 999) for coord in bbox]
                 elif to_type == 'real':
                     width, height = image.width, image.height
-                    object['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
-                object['bbox_type'] = to_type
+                    object_['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
+                object_['bbox_type'] = to_type
 
-    def pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
-                     inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
+    def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
+                      inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
         """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
         the model.
 
@@ -558,6 +564,7 @@ class Template:
         Returns:
             The context_list and loss_scale_list after replacement.
         """
+        # replace tag/object/box
         res: List[Context] = []  # result of context_list
         res_loss_scale: List[float] = []  # result of loss_scale_list
 
@@ -587,7 +594,7 @@ class Template:
             res_loss_scale += [loss_scale] * len(c_list)
         return res, res_loss_scale
 
-    def add_default_tags(self, inputs: TemplateInputs):
+    def _add_default_tags(self, inputs: TemplateInputs):
         total_content = '\n'.join([message['content'] for message in inputs.messages])
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
@@ -628,7 +635,7 @@ class Template:
         return input_ids, labels, loss_scale, tokenizer_kwargs
 
     @staticmethod
-    def use_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
+    def _use_dynamic_eos(labels: List[int], suffix_tokens_id: List[int]) -> None:
         suffix_len = len(suffix_tokens_id)
         start = 0
         for i in range(1, len(labels)):
@@ -735,7 +742,7 @@ class Template:
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
             if labels is not None:
-                self.use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
+                self._use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
 
         if tokenizer_kwargs:
             inputs['tokenizer_kwargs'] = tokenizer_kwargs
@@ -765,17 +772,15 @@ class Template:
     def _concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any], curr_tokenizer_kwargs: Dict[str, Any]) -> None:
         assert len(tokenizer_kwargs) == 0
 
-    @staticmethod
-    def get_generate_ids(generate_ids: torch.Tensor, input_token_len: int) -> List[int]:
+    def get_generate_ids(self, generate_ids: torch.Tensor, input_token_len: int) -> List[int]:
         if isinstance(generate_ids, torch.Tensor):
             generate_ids = generate_ids.tolist()
-        if len(generate_ids) >= 1 and isinstance(generate_ids[0], (list, tuple)):
-            generate_ids = generate_ids[0]
-        return Template._get_generate_ids(generate_ids, input_token_len)
-
-    @staticmethod
-    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
-        return generate_ids[input_token_len:]
+        if len(generate_ids) > 0 and not isinstance(generate_ids[0], (list, tuple)):
+            generate_ids = generate_ids[0]  # to 1d list
+        if self.skip_input_len:
+            return generate_ids[input_token_len:]
+        else:
+            return generate_ids
 
     @staticmethod
     def _is_chinese_char(cp: int) -> bool:

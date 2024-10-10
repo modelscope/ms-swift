@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-import datetime
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
