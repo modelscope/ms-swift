@@ -303,7 +303,7 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         # llm rlhf
-        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo']
+        rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo']
         for rlhf_type in rlhf_types:
             dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
             output = rlhf_main(
@@ -318,7 +318,7 @@ class TestRun(unittest.TestCase):
             infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
         # mllm rlhf
-        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo']
+        visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo', 'rm']
         test_model = ['llava1_6-mistral-7b-instruct', 'internvl2-2b',
                       'florence-2-large']  # decoder only and encoder-decoder
         for rlhf_type in visual_rlhf_types:

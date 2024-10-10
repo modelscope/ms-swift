@@ -22,6 +22,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import is_torch_bf16_gpu_available, strtobool
 from transformers.utils.versions import require_version
+from trl import AutoModelForCausalLMWithValueHead
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
@@ -6941,3 +6942,54 @@ def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, No
     if isinstance(res, str):
         res = get_regex_for_mm_default_lora(res)
     return res
+
+
+def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
+    lm_head_namings = ['lm_head', 'embed_out']
+    if not any(hasattr(model, attribute) for attribute in lm_head_namings):
+        setattr(model, 'lm_head', None)  # avoid ValueError
+
+    model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+
+    def patch_valuehead_model(model):
+        attr_list = [
+            'get_input_embeddings', 'vis_processor', 'extract_feature', 'get_rope_index', 'model', 'vision_tower',
+            'img2emb', '_encode_image', '_merge_input_ids_with_image_features', 'prepare_inputs_embeds',
+            'build_conversation_input_ids', 'config', 'get_slice_image_placeholder', 'transform', 'get_vllm_embedding',
+            'forward_image', 'dtype', 'base_model_prefix', 'device'
+        ]
+        for attr in attr_list:
+            if hasattr(model.pretrained_model, attr) and not hasattr(model, attr):
+                setattr(model, attr, getattr(model.pretrained_model, attr))
+
+        # PPO compatible
+        if not hasattr(model, 'score'):
+            setattr(model, 'score', model.v_head)
+        if model.base_model_prefix == '' and hasattr(model.pretrained_model, 'language_model'):
+            model.base_model_prefix = model.pretrained_model.language_model.base_model_prefix
+
+    patch_valuehead_model(model)
+
+    # try to load local vhead weights
+    vhead_params = None
+    try:
+        from safetensors import safe_open
+        vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.safetensors')
+        with safe_open(vhead_file, framework='pt', device='cpu') as f:
+            vhead_params = {key: f.get_tensor(key) for key in f.keys()}
+    except Exception:
+        pass
+
+    try:
+        vhead_file = os.path.join(model.pretrained_model.model_dir, 'value_head.bin')
+        vhead_params = torch.load(vhead_file, map_location='cpu')
+    except Exception:
+        pass
+
+    if vhead_params is not None:
+        model.load_state_dict(vhead_params, strict=False)
+        logger.info(f'Loading value head weights from {vhead_file}')
+    else:
+        logger.info('The local value head weight file was not detected.'
+                    'Ignore it if this is during the reward modeling phase,')
+    return model

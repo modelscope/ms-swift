@@ -15,7 +15,9 @@ class TrainerFactory:
         'dpo': 'swift.trainers.DPOTrainer',
         'orpo': 'swift.trainers.ORPOTrainer',
         'kto': 'swift.trainers.KTOTrainer',
-        'cpo': 'swift.trainers.CPOTrainer'
+        'cpo': 'swift.trainers.CPOTrainer',
+        'rm': 'swift.trainers.RewardTrainer',
+        'ppo': 'swift.trainers.PPOTrainer',
     }
 
     TRAINING_ARGS_MAPPING = {
@@ -23,7 +25,9 @@ class TrainerFactory:
         'dpo': 'swift.trainers.DPOConfig',
         'orpo': 'swift.trainers.ORPOConfig',
         'kto': 'swift.trainers.KTOConfig',
-        'cpo': 'swift.trainers.CPOConfig'
+        'cpo': 'swift.trainers.CPOConfig',
+        'rm': 'swift.trainers.RewardConfig',
+        'ppo': 'swift.trainers.PPOConfig',
     }
 
     @staticmethod
@@ -59,7 +63,7 @@ class TrainerFactory:
     @staticmethod
     @contextmanager
     def patch_template(args, template):
-        from swift.llm import RLHFTemplateMixin, KTOTemplateMixin
+        from swift.llm import RLHFTemplateMixin, KTOTemplateMixin, PPOTemplateMixin
         if args.train_type == 'sft':
             yield
             return
@@ -68,6 +72,8 @@ class TrainerFactory:
         if args.train_type == 'kto':
             template_mixin = KTOTemplateMixin
             template.output_prompt_answer = True
+        elif args.train_type == 'ppo':
+            template_mixin = PPOTemplateMixin
         else:
             template_mixin = RLHFTemplateMixin
         if args.train_type != 'orpo' or args.is_multimodal:

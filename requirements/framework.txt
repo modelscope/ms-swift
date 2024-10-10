@@ -20,4 +20,4 @@ tensorboard
 tqdm
 transformers>=4.33,<4.47
 transformers_stream_generator
-trl>=0.10.1
+trl>=0.11.0

@@ -282,14 +282,34 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--🔥rlhf_type`: Choose the alignment algorithm, with options such as 'dpo', 'orpo', 'simpo', 'kto', 'cpo', default is 'dpo'. For training scripts with  different algorithms, please refer to [document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--ref_model_type`: Select reference model, same as the model_type parameter, default is None, consistent with the training model. For `cpo`, `simpo`, and `orpo` algorithms, this selection is not required. Typically, no setup is needed.
 - `--ref_model_id_or_path`: Local cache path for the reference model, default is `None`.
+- `--ref_model_revision`: Model revision for the reference model, default is `None`.
 - `--beta`: KL regularization term coefficient, default is `None`, meaning that for the simpo algorithm, the default is `2`., and for other algorithms, it is `0.1`. For detail please check[document](../LLM/Human-Preference-Alignment-Training-Documentation.md)
 - `--label_smoothing`: Whether to use DPO smoothing, the default value is `0`, normally set between 0 and 0.5.
 - `--loss_type`: Type of loss, default is `None`. If it's dpo or cpo, it is `'sigmoid'`, and if it's simpo, it is `'simpo'`.
+
+### DPO Parameters
 - `--🔥rpo_alpha`: Controls the weight of sft_loss added in DPO, default is `1.` The final loss is `KL_loss + rpo_alpha * sft_loss`.
+
+### CPO/SimPO Parameters
 - `cpo_alpha`: Coefficient for nll loss in CPO/SimPO loss, default is `1.`.
 - `--simpo_gamma`: The reward margin term in the SimPO algorithm, the paper recommends setting it to 0.5-1.5, the default is `1.`.
+
+### KTO Parameters
 - `--desirable_weight`: The loss weight for desirable responses $\lambda_D$ in the KTO algorithm, default is `1.`.
 - `--undesirable_weight`: The loss weight for undesirable responses $\lambda_U$ in the KTO paper, default is `1.`. Let $n_d$ and $n_u$ represent the number of desirable and undesirable examples in the dataset, respectively. The paper recommends controlling $\frac{\lambda_D n_D}{\lambda_Un_U} \in [1,\frac{4}{3}]$.
+
+### PPO Parameters
+- `--reward_model_id_or_path` : The local cache path for the reward model, which must include the weights of value_head (`value_head.safetensors` or `value_head.bin`).
+- `--reward_model_type`: Select reward model, same as the model_type parameter, default is None, consistent with the training model.
+- `--reward_model_revision`: Model revision for the reference model, default is `None`.
+- `--local_rollout_forward_batch_size`: Per rank no grad forward pass in the rollout phase, default is 64
+- `--whiten_rewards`: Whether to whiten the rewards, default is False
+- `--kl_coef`: KL coefficient, default is 0.05
+- `--cliprange`: Clip range in the PPO policy loss funtion, default is 0.2
+- `--vf_coef`: Coefficient for the value loss function, default is 0.1
+- `--cliprange_value`: Clip range in the PPO value loss function, default is 0.2
+- `--gamma`: Discount factor for cumulative rewards, default is 1.0
+- `--lam`: Lambda value for [GAE](https://arxiv.org/abs/1506.02438), default is 0.95
 
 ## infer merge-lora Parameters
 

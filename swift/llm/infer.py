@@ -84,6 +84,13 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     res[k] = v
             with open(new_sft_args_path, 'w', encoding='utf-8') as f:
                 json.dump(res, f, ensure_ascii=False, indent=2)
+        # value head weights
+        value_head_weights_fname_list = ['value_head.safetensors', 'value_head.bin']
+        for fname in value_head_weights_fname_list:
+            old_value_head_weights_path = os.path.join(ckpt_dir, fname)
+            new_value_head_weights_path = os.path.join(target_dir, fname)
+            if os.path.exists(old_value_head_weights_path):
+                shutil.copy(old_value_head_weights_path, new_value_head_weights_path)
 
 
 def merge_lora(args: InferArguments,

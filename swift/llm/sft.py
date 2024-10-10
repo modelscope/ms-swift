@@ -53,6 +53,13 @@ def _get_train_val_dataset(args: SftArguments) -> Tuple[HfDataset, Optional[HfDa
             streaming_buffer_size=args.streaming_buffer_size)
 
     train_dataset, val_dataset = args._handle_dataset_compat(train_dataset, val_dataset)
+    if args.train_type == 'ppo':  # Remove response columns from dataset
+        existing_columns = list(next(iter(train_dataset)).keys())
+        columns_to_remove = [col for col in ['response', 'rejected_response'] if col in existing_columns]
+        train_dataset = train_dataset.map(remove_columns=columns_to_remove)
+        logger.info(f'remove columns: {columns_to_remove} in PPO')
+        if val_dataset is not None:
+            val_dataset = val_dataset.map(remove_columns=columns_to_remove)
     # The random shuffling of the training set occurs in the dataloader of the trainer.
     logger.info(f'train_dataset: {train_dataset}')
     logger.info(f'val_dataset: {val_dataset}')
@@ -322,7 +329,7 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
 
     # ref_model
     ref_model = None
-    if not args.ref_model_free and (args.ref_model_type or args.sft_type == 'full'):
+    if not args.ref_model_free and (args.ref_model_type or args.sft_type == 'full' or args.rlhf_type == 'ppo'):
         if args.ref_model_type:
             kwargs['model_id_or_path'] = args.ref_model_id_or_path
             kwargs['revision'] = args.ref_model_revision
@@ -410,14 +417,18 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
     return train_dataset, val_dataset
 
 
-def trainer_train(args,
-                  model,
-                  template,
-                  train_dataset,
-                  val_dataset,
-                  callbacks=None,
-                  msg=None,
-                  ref_model=None) -> Dict[str, Any]:
+def trainer_train(
+    args,
+    model,
+    template,
+    train_dataset,
+    val_dataset,
+    callbacks=None,
+    msg=None,
+    ref_model=None,
+    reward_model=None,
+    value_model=None,
+) -> Dict[str, Any]:
     if msg is None:
         msg = {}
     training_args = args.training_args
@@ -452,7 +463,9 @@ def trainer_train(args,
             compute_acc_metrics, acc_strategy=args.acc_strategy, is_encoder_decoder=is_encoder_decoder)
         trainer_kwargs['compute_metrics'] = compute_metrics
         trainer_kwargs['preprocess_logits_for_metrics'] = preprocess_logits_for_metrics
-
+    if args.train_type == 'ppo':
+        trainer_kwargs['reward_model'] = reward_model
+        trainer_kwargs['value_model'] = value_model
     trainer = trainer_cls(
         model=model,
         args=training_args,
