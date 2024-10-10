@@ -14,7 +14,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from swift.llm import to_device
 from swift.utils import get_dist_setting, use_torchacc
 from ._base import Template as _Template, TemplateInputs
-from .utils import findall
+from .utils import findall, Context
 
 
 class Template(_Template):
@@ -175,6 +175,7 @@ class Template(_Template):
         labels = res.get('labels')
         loss_scale = res.get('loss_scale')
         if use_torchacc():
+            from swift.utils.torchacc_utils import pad_and_split_batch
             rank, _, world_size, _ = get_dist_setting()
             input_ids, attention_mask, labels, loss_scale = pad_and_split_batch(
                 padding_to,

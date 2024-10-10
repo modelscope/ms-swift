@@ -2,7 +2,6 @@
 import os
 import sys
 import types
-from collections import OrderedDict
 from typing import List, Optional, Tuple
 
 import safetensors
