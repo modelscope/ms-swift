@@ -17,7 +17,7 @@ from swift.utils import get_logger
 from ..template import Template, get_template
 from .base import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .protocol import InferRequest
+from .protocol import InferRequest, ChatCompletionResponse, ChatCompletionResponseChoice, UsageInfo
 
 try:
     from vllm.lora.request import LoRARequest
@@ -193,12 +193,14 @@ class VllmEngine(InferEngine):
     async def infer_async(
         self,
         template: Template,
-        request_list: List[InferRequest],
+        infer_request: InferRequest,
         *,
         generation_config: Optional[SamplingParams] = None,
         lora_request: Optional['LoRARequest'] = None,
-    ):
-        pass
+    ) -> ChatCompletionResponse:
+        generation_config = generation_config or self.generation_config
+        usage_info = UsageInfo()
+        return ChatCompletionResponse()
 
     @torch.inference_mode()
     def infer(self,
@@ -208,7 +210,7 @@ class VllmEngine(InferEngine):
               generation_config: Optional[Any] = None,
               generation_info: Optional[Dict[str, Any]] = None,
               max_batch_size: Optional[int] = None,
-              lora_request: Optional[Any] = None,
+              lora_request: Optional['LoRARequest'] = None,
               use_tqdm: bool = False,
               verbose: bool = False,
               prompt_prefix: str = '[PROMPT]',

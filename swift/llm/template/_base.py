@@ -1,10 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from copy import deepcopy
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import json
 import torch
 import torch.nn as nn
 from modelscope import get_logger
@@ -232,7 +229,7 @@ class Template:
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
 
         if isinstance(inputs, InferRequest):
-            inputs = TemplateInputs.from_infer_request(inputs, tools_prompt=self.tools_prompt)
+            inputs = InferRequest.to_template_inputs(inputs, tools_prompt=self.tools_prompt)
         else:
             inputs = inputs.copy()
         assert isinstance(inputs, TemplateInputs)

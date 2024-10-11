@@ -11,7 +11,8 @@ from swift.utils import deep_getattr, get_logger, upper_bound
 logger = get_logger()
 
 History = List[Union[Tuple[str, str], List[str]]]
-Messages = List[Dict[str, Union[str, List[Dict[str, Any]]]]]
+Message = Dict[str, Union[str, List[Dict[str, Any]]]]
+Messages = List[Message]
 
 
 def to_device(inputs: Any, device: torch.device) -> Any:

@@ -278,11 +278,15 @@ class InferRequest:
             # List[Dict[str, Any]]
             new_content = ''
             for item in content:
-                key = item['type']
+                key: str = item['type']
                 value = item[key]
                 if key == 'text':
                     new_content += value
                     continue
+                # image/audio/video
+                # image_url/audio_url/video_url
+                if key.endswith('_url'):
+                    key = key[:-len('_url')]
                 new_content += f'<{key}>'
                 res[f'{key}s'].append(value)
             message['content'] = new_content
@@ -309,5 +313,52 @@ class InferRequest:
             system = get_tools_prompt(tools, tools_prompt)
 
         media_kwargs = InferRequest.remove_messages_media(messages)
+        for k in list(media_kwargs.keys()):
+            mm_data = media_kwargs[k]
+            self_mm_data = getattr(self, k)
+            if mm_data:
+                assert not self_mm_data, f'self.{k}: {self_mm_data}'
+            else:
+                media_kwargs[k] = self_mm_data
+
+        InferRequest.messages_join_observation(messages)
         inputs = TemplateInputs(messages, system, **media_kwargs, objects=request.objects)
         return inputs
+
+
+    @staticmethod
+    def messages_join_observation(messages: Messages) -> None:
+        """
+            Joins observations from 'tool' message into the 'assistant' response.
+
+            Example:
+            ---------
+            Original messages:
+            messages = [
+                {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
+                {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
+                      [{"location": "Hangzhou"}]\nObservations:'},
+                {'role': 'tool', 'content': 'It is 26 degrees Celsius and sunny in Hangzhou today.'}
+            ]
+
+            Transformed messages:
+            messages = [
+                {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
+                {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
+                      [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.'}
+            ]
+        """
+        if len(messages) < 2:
+            return
+        i = 1
+        while i < len(messages):
+            pre_message, message = messages[i-1], messages[i]
+            pre_role, pre_content = pre_message['role'], pre_message['content']
+            role, content = message['role'], message['content']
+            if pre_role == 'assistant' and role == 'tool' and isinstance(
+                    content, str) and content.endswith('Observation:'):
+                assert isinstance(pre_content, str)
+                pre_message['content'] = pre_content + content  # assistant
+                messages.pop(i)  # remove tool
+            else:
+                i += 1
