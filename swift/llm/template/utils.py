@@ -1,10 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import re
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import torch
-import torch.nn as nn
+from PIL import Image
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm import History, to_device
@@ -134,3 +136,31 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
             j += 1
         i += 1
     return input_ids, labels
+
+
+@dataclass
+class TemplateInputs:
+    # only user/tool/assistant
+    messages: List[Dict[str, str]]
+    system: Optional[str] = None  # If it is None, set it to template.default_system.
+
+    images: List[Union[str, Image.Image]] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
+    videos: List[str] = field(default_factory=list)
+    objects: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.image_idx = 0
+        self.audio_idx = 0
+        self.video_idx = 0
+        self.object_idx = 0
+        self.box_idx = 0
+
+    def copy(self):
+        return TemplateInputs(
+            deepcopy(self.messages), self.system, self.images.copy(), self.audios.copy(), self.videos.copy(),
+            self.objects.copy())
+
+    @property
+    def is_multimodal(self):
+        return bool(self.images or self.audios or self.videos or self.objects)

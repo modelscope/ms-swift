@@ -2,18 +2,20 @@
 
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple
 
-from ..model import get_default_torch_dtype, get_model_tokenizer
 import torch
+
+from ..model import get_default_torch_dtype, get_model_tokenizer
+
 
 class InferEngine:
 
     def _prepare_model_tokenizer(self,
-                           model_id_or_path: str,
-                           torch_dtype: Optional[torch.dtype],
-                           load_model: bool,
-                           *,
-                           model_type: Optional[str] = None,
-                           **kwargs) -> None:
+                                 model_id_or_path: str,
+                                 torch_dtype: Optional[torch.dtype],
+                                 load_model: bool,
+                                 *,
+                                 model_type: Optional[str] = None,
+                                 **kwargs) -> None:
         use_hf = kwargs.pop('use_hf', None)
         revision = kwargs.pop('revision', None)
         model, tokenizer = get_model_tokenizer(
@@ -37,7 +39,6 @@ class InferEngine:
         self.is_moe = tokenizer.is_moe
         self.chat_template = tokenizer.chat_template
         self.generation_template = tokenizer.generation_template
-
 
     def infer(self,
               request_list: List[Dict[str, Any]],

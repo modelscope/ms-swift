@@ -10,15 +10,14 @@ import vllm
 from modelscope import GenerationConfig
 from packaging import version
 from tqdm import tqdm
-from .base import InferEngine
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
-
 from swift.utils import get_logger
-from .utils import InferRequest
-from ..template import get_template, Template
+from ..template import Template, get_template
+from .base import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
+from .protocol import InferRequest
 
 try:
     from vllm.lora.request import LoRARequest
@@ -191,13 +190,13 @@ class VllmEngine(InferEngine):
             self.generation_config = SamplingParams()
 
     @torch.inference_mode()
-    async def infer_async(self,
+    async def infer_async(
+        self,
         template: Template,
         request_list: List[InferRequest],
         *,
         generation_config: Optional[SamplingParams] = None,
-
-      lora_request: Optional['LoRARequest'] = None,
+        lora_request: Optional['LoRARequest'] = None,
     ):
         pass
 

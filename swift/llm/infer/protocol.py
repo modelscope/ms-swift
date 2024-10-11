@@ -1,13 +1,17 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import time
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
-from PIL import Image
-from copy import deepcopy
+
 import json
+from PIL import Image
+
 from ..utils import Messages
+
 Tool = Dict[str, Union[str, Dict]]
+
 
 def random_uuid() -> str:
     return str(uuid.uuid4().hex)
@@ -21,7 +25,7 @@ class Model:
 
     object: str = 'model'
     created: int = field(default_factory=lambda: int(time.time()))
-    owned_by: str = 'swift'
+    owned_by: str = 'ms-swift'
 
 
 @dataclass
@@ -100,22 +104,22 @@ class ChatCompletionRequest(MultiModalRequestMixin, XRequestConfig, ChatCompleti
 
 @dataclass
 class UsageInfo:
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
 
 
 @dataclass
 class Function:
-    arguments: Optional[str] = None
-    name: str = ''
+    name: str
+    arguments: str
 
 
 @dataclass
 class ChatCompletionMessageToolCall:
-    id: str
     function: Function
     type: str = 'function'
+    id: str = field(default_factory=lambda: f'toolcall-{random_uuid()}')
 
 
 @dataclass
@@ -131,6 +135,10 @@ class ChatCompletionResponseChoice:
     message: ChatMessage
     finish_reason: Literal['stop', 'length', None]  # None: for infer_backend='pt'
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
+
+    def to_cmpl_choice(self) -> 'CompletionResponseChoice':
+        assert not self.message.tool_calls
+        return CompletionResponseChoice(self.index, self.message.content, self.finish_reason, deepcopy(self.logprobs))
 
 
 @dataclass
@@ -150,6 +158,11 @@ class ChatCompletionResponse:
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
 
+    def to_cmpl_response(self) -> 'CompletionResponse':
+        choices = [choice.to_cmpl_choice() for choice in self.choices]
+        id_ = f'cmpl{self.id[len("chatcmpl"):]}'
+        return CompletionResponse(self.model, choices, deepcopy(self.usage), id_, created=self.created)
+
 
 @dataclass
 class CompletionResponse:
@@ -163,8 +176,8 @@ class CompletionResponse:
 
 @dataclass
 class DeltaMessage:
-    role: Literal['system', 'user', 'assistant', None] = None
-    content: Optional[str] = None
+    role: Literal['system', 'user', 'assistant']
+    content: str
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
@@ -175,15 +188,10 @@ class ChatCompletionResponseStreamChoice:
     finish_reason: Literal['stop', 'length', None]
     logprobs: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
-
-@dataclass
-class ChatCompletionStreamResponse:
-    model: str
-    choices: List[ChatCompletionResponseStreamChoice]
-    usage: Optional[UsageInfo] = None
-    id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
-    object: str = 'chat.completion.chunk'
-    created: int = field(default_factory=lambda: int(time.time()))
+    def to_cmpl_choice(self) -> 'CompletionResponseStreamChoice':
+        assert not self.delta.tool_calls
+        return CompletionResponseStreamChoice(self.index, self.delta.content, self.finish_reason,
+                                              deepcopy(self.logprobs))
 
 
 @dataclass
@@ -195,14 +203,28 @@ class CompletionResponseStreamChoice:
 
 
 @dataclass
+class ChatCompletionStreamResponse:
+    model: str
+    choices: List[ChatCompletionResponseStreamChoice]
+    usage: UsageInfo
+    id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
+    object: str = 'chat.completion.chunk'
+    created: int = field(default_factory=lambda: int(time.time()))
+
+    def to_cmpl_response(self) -> 'CompletionStreamResponse':
+        choices = [choice.to_cmpl_choice() for choice in self.choices]
+        id_ = f'cmpl{self.id[len("chatcmpl"):]}'
+        return CompletionStreamResponse(self.model, choices, deepcopy(self.usage), id_, created=self.created)
+
+
+@dataclass
 class CompletionStreamResponse:
     model: str
     choices: List[CompletionResponseStreamChoice]
-    usage: Optional[UsageInfo] = None
+    usage: UsageInfo
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
-
 
 
 @dataclass
@@ -242,9 +264,9 @@ class InferRequest:
             self.objects = []
 
     def copy(self):
-        return InferRequest(deepcopy(self.messages), self.images.copy(),
-                            self.audios.copy(), self.videos.copy(),
-                            deepcopy(self.objects), deepcopy(self.tools))
+        return InferRequest(
+            deepcopy(self.messages), self.images.copy(), self.audios.copy(), self.videos.copy(), deepcopy(self.objects),
+            deepcopy(self.tools))
 
     @staticmethod
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
@@ -265,3 +287,27 @@ class InferRequest:
                 res[f'{key}s'].append(value)
             message['content'] = new_content
         return res
+
+    def to_template_inputs(self, *, tools_prompt: str = 'react_en') -> 'TemplateInputs':
+        from ..template import get_tools_prompt, TemplateInputs
+        request = self.copy()
+        messages = request.messages
+        tools = request.tools
+
+        assert len(messages) >= 1
+
+        if messages[0]['role'] == 'system':
+            message = messages.pop(0)
+            system = message['content']
+        else:
+            system = None
+
+        if tools is not None:
+            assert system is None
+            if isinstance(tools, str):
+                tools = json.loads(tools)
+            system = get_tools_prompt(tools, tools_prompt)
+
+        media_kwargs = InferRequest.remove_messages_media(messages)
+        inputs = TemplateInputs(messages, system, **media_kwargs, objects=request.objects)
+        return inputs

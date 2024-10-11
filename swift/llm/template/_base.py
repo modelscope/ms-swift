@@ -8,67 +8,15 @@ import json
 import torch
 import torch.nn as nn
 from modelscope import get_logger
-from PIL import Image
 from transformers import PreTrainedTokenizerBase
 
 from ..infer import InferRequest
-from ..utils import Messages, decode_base64
-from .agent import get_tools_prompt, loss_scale_map, split_str_parts_by
-from .utils import Context, ContextType, Prompt, StopWords, fetch_one
-from .vision_utils import load_batch, load_image, rescale_image, normalize_bbox
+from ..utils import decode_base64
+from .agent import loss_scale_map, split_str_parts_by
+from .utils import Context, ContextType, Prompt, StopWords, TemplateInputs, fetch_one
+from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
-
-
-@dataclass
-class TemplateInputs:
-    # only user/tool/assistant
-    messages: List[Dict[str, str]]
-    system: Optional[str] = None  # If it is None, set it to template.default_system.
-
-    images: List[Union[str, Image.Image]] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
-    videos: List[str] = field(default_factory=list)
-    objects: List[Dict[str, Any]] = field(default_factory=list)
-
-    def __post_init__(self):
-        self.image_idx = 0
-        self.audio_idx = 0
-        self.video_idx = 0
-        self.object_idx = 0
-        self.box_idx = 0
-
-    def copy(self):
-        return TemplateInputs(deepcopy(self.messages), self.system, self.images.copy(),
-                              self.audios.copy(), self.videos.copy(), self.objects.copy())
-
-    @property
-    def is_multimodal(self):
-        return bool(self.images or self.audios or self.videos or self.objects)
-
-
-    @staticmethod
-    def from_infer_request(request: InferRequest, *, tools_prompt: str = 'react_en') -> 'TemplateInputs':
-        request = request.copy()
-        messages = request.messages
-        assert len(messages) >= 1
-
-        tools = request.tools
-        if messages[0]['role'] == 'system':
-            message = messages.pop(0)
-            system = message['content']
-        else:
-            system = None
-
-        if tools is not None:
-            assert system is None
-            if isinstance(tools, str):
-                tools = json.loads(tools)
-            system = get_tools_prompt(tools, tools_prompt)
-
-        media_kwargs = InferRequest.remove_messages_media(request.messages)
-        inputs = TemplateInputs(messages, system, **media_kwargs, objects=request.objects)
-        return inputs
 
 
 class Template:
@@ -240,8 +188,12 @@ class Template:
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self.task: Literal['train', 'infer_pt', 'infer_vllm', 'infer_lmdeploy'] = 'infer_pt'
 
-
-    def _preprocess_inputs(self, inputs: TemplateInputs, *, max_image_size: int = -1,) -> None:
+    def _preprocess_inputs(
+        self,
+        inputs: TemplateInputs,
+        *,
+        max_image_size: int = -1,
+    ) -> None:
         system = inputs.system
         if system is None:
             system = self.default_system
@@ -456,7 +408,6 @@ class Template:
             return [all_objects]
         else:
             return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
-
 
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:

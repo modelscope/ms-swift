@@ -3,7 +3,7 @@ import base64
 import math
 import os
 from io import BytesIO
-from typing import Any, Callable, List, TypeVar, Union, Dict, Literal
+from typing import Any, Callable, Dict, List, Literal, TypeVar, Union
 
 import numpy as np
 import requests
@@ -341,7 +341,7 @@ def load_video_qwen2(video_path: str):
 
 
 def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
-                                                                                               'norm_1']) -> None:
+                                                                                              'norm_1']) -> None:
     """Normalize bbox to needed.
     to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
         or normalized by 1.
@@ -384,9 +384,7 @@ def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_
                 object_['bbox'] = [coord / 999. for coord in bbox]
             elif to_type == 'real':
                 width, height = image.width, image.height
-                object_['bbox'] = [
-                    int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])
-                ]
+                object_['bbox'] = [int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])]
             object_['bbox_type'] = to_type
         elif bbox_type == 'norm_1':
             if to_type == 'norm_1':
