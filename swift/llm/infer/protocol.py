@@ -4,6 +4,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
 from PIL import Image
+from copy import deepcopy
+import json
 from ..utils import Messages
 Tool = Dict[str, Union[str, Dict]]
 
@@ -212,7 +214,7 @@ class InferRequest:
             "content": [  # str or List[Dict[str, Any]]
                 {
                     "type": "image",  # or audio/video
-                    # This content can also be written in the `images` field
+                    # This content is usually written in the `images` field (recommended).
                     "image": "<url/path/base64/PIL.Image>",
                 },
                 {"type": "text", "text": "<text>"},
@@ -224,11 +226,42 @@ class InferRequest:
     """
     messages: Messages
 
-    images: Optional[List[Union[Image.Image, str]]] = None
-    audios: Optional[List[str]] = None
-    videos: Optional[List[str]] = None
+    images: List[Union[str, Image.Image]] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
+    videos: List[str] = field(default_factory=list)
 
-    objects: Union[str, None, List[Dict[str, Any]]] = None  # str: json
+    objects: Union[str, None, List[Dict[str, Any]]] = None  # List[Dict[str, Any]]
     tools: Optional[List[Tool]] = None
 
+    def __post_init__(self):
+        # Format objects(groundings/refs) to json
+        if isinstance(self.objects, str):
+            # reload grounding from str
+            self.objects = json.loads(self.objects)
+        elif self.objects is None:
+            self.objects = []
 
+    def copy(self):
+        return InferRequest(deepcopy(self.messages), self.images.copy(),
+                            self.audios.copy(), self.videos.copy(),
+                            deepcopy(self.objects), deepcopy(self.tools))
+
+    @staticmethod
+    def remove_messages_media(messages: Messages) -> Dict[str, Any]:
+        res = {'images': [], 'audios': [], 'videos': []}
+        for message in messages:
+            content = message['content']
+            if isinstance(content, str):
+                continue
+            # List[Dict[str, Any]]
+            new_content = ''
+            for item in content:
+                key = item['type']
+                value = item[key]
+                if key == 'text':
+                    new_content += value
+                    continue
+                new_content += f'<{key}>'
+                res[f'{key}s'].append(value)
+            message['content'] = new_content
+        return res

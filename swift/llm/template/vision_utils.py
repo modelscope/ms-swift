@@ -3,7 +3,7 @@ import base64
 import math
 import os
 from io import BytesIO
-from typing import Any, Callable, List, TypeVar, Union
+from typing import Any, Callable, List, TypeVar, Union, Dict, Literal
 
 import numpy as np
 import requests
@@ -92,7 +92,7 @@ def rescale_image(img: Image.Image, max_size: int) -> Image.Image:
     ratio = width / height
     height_scaled = int(math.sqrt(max_size / ratio))
     width_scaled = int(height_scaled * ratio)
-    return T.Resize((width_scaled, height_scaled))(img)
+    return T.Resize((height_scaled, width_scaled))(img)
 
 
 _T = TypeVar('_T')
@@ -338,6 +338,65 @@ def load_video_qwen2(video_path: str):
         antialias=True,
     ).float()
     return video
+
+
+def normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
+                                                                                               'norm_1']) -> None:
+    """Normalize bbox to needed.
+    to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
+        or normalized by 1.
+
+    Args:
+        objects: The objects containing the bbox
+        images: The images list
+        to_type: The coordinate type needed by the model.
+    """
+    if not objects or not images:
+        return
+
+    for object_ in objects:
+        bbox = object_['bbox']
+        bbox_type = object_['bbox_type']
+        idx = object_['image']
+        image = images[idx]
+        if bbox_type == 'real':
+            if to_type == 'real':
+                continue
+            width, height = image.width, image.height
+            if isinstance(bbox[0], list):
+                bboxes = []
+                for _box in bbox:
+                    bboxes.append([
+                        int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
+                        for coord, dim in zip(_box, [width, height, width, height])
+                    ])
+                object_['bbox'] = bboxes
+            else:
+                object_['bbox'] = [
+                    int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
+                    for coord, dim in zip(bbox, [width, height, width, height])
+                ]
+            object_['bbox_type'] = to_type
+        elif bbox_type == 'norm_1000':
+            if to_type == 'norm_1000':
+                continue
+            if to_type == 'norm_1':
+                object_['bbox'] = [coord / 999. for coord in bbox]
+            elif to_type == 'real':
+                width, height = image.width, image.height
+                object_['bbox'] = [
+                    int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])
+                ]
+            object_['bbox_type'] = to_type
+        elif bbox_type == 'norm_1':
+            if to_type == 'norm_1':
+                continue
+            if to_type == 'norm_1000':
+                object_['bbox'] = [int(coord * 999) for coord in bbox]
+            elif to_type == 'real':
+                width, height = image.width, image.height
+                object_['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
+            object_['bbox_type'] = to_type
 
 
 if __name__ == '__main__':

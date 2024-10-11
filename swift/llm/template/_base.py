@@ -15,7 +15,7 @@ from ..infer import InferRequest
 from ..utils import Messages, decode_base64
 from .agent import get_tools_prompt, loss_scale_map, split_str_parts_by
 from .utils import Context, ContextType, Prompt, StopWords, fetch_one
-from .vision_utils import load_batch, load_image, rescale_image
+from .vision_utils import load_batch, load_image, rescale_image, normalize_bbox
 
 logger = get_logger()
 
@@ -24,9 +24,9 @@ logger = get_logger()
 class TemplateInputs:
     # only user/tool/assistant
     messages: List[Dict[str, str]]
-    system: str = ''  # The final system, will not check the default_system.
+    system: Optional[str] = None  # If it is None, set it to template.default_system.
 
-    images: List[Image.Image] = field(default_factory=list)
+    images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
     objects: List[Dict[str, Any]] = field(default_factory=list)
@@ -38,9 +38,37 @@ class TemplateInputs:
         self.object_idx = 0
         self.box_idx = 0
 
+    def copy(self):
+        return TemplateInputs(deepcopy(self.messages), self.system, self.images.copy(),
+                              self.audios.copy(), self.videos.copy(), self.objects.copy())
+
     @property
     def is_multimodal(self):
         return bool(self.images or self.audios or self.videos or self.objects)
+
+
+    @staticmethod
+    def from_infer_request(request: InferRequest, *, tools_prompt: str = 'react_en') -> 'TemplateInputs':
+        request = request.copy()
+        messages = request.messages
+        assert len(messages) >= 1
+
+        tools = request.tools
+        if messages[0]['role'] == 'system':
+            message = messages.pop(0)
+            system = message['content']
+        else:
+            system = None
+
+        if tools is not None:
+            assert system is None
+            if isinstance(tools, str):
+                tools = json.loads(tools)
+            system = get_tools_prompt(tools, tools_prompt)
+
+        media_kwargs = InferRequest.remove_messages_media(request.messages)
+        inputs = TemplateInputs(messages, system, **media_kwargs, objects=request.objects)
+        return inputs
 
 
 class Template:
@@ -212,6 +240,31 @@ class Template:
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self.task: Literal['train', 'infer_pt', 'infer_vllm', 'infer_lmdeploy'] = 'infer_pt'
 
+
+    def _preprocess_inputs(self, inputs: TemplateInputs, *, max_image_size: int = -1,) -> None:
+        system = inputs.system
+        if system is None:
+            system = self.default_system
+        inputs.system = self._check_system(system)
+
+        self._get_std_messages(inputs.messages)
+        n_round = len(inputs.messages) // 2
+        if n_round > 1 and not self.support_multi_round:
+            raise ValueError(f'The template does not support multi-round chat, template_type: {self.template_type}')
+
+        images = inputs.images
+        if images and self.load_medias:
+            images = load_batch(images, load_image)
+            if max_image_size != -1:
+                assert self.grounding_type != 'real', 'not support'  # TODO:check
+                images = [rescale_image(img, max_image_size) for img in images]
+            inputs.images = images
+        if inputs.objects:
+            self._preprocess_objects(inputs, inputs.objects)
+
+        if inputs.is_multimodal:
+            self._add_default_tags(inputs)
+
     def encode(
         self,
         inputs: Union[InferRequest, TemplateInputs],
@@ -227,8 +280,11 @@ class Template:
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
 
         if isinstance(inputs, InferRequest):
-            inputs = self._request_to_inputs(inputs, max_image_size=self.max_image_size)
+            inputs = TemplateInputs.from_infer_request(inputs, tools_prompt=self.tools_prompt)
+        else:
+            inputs = inputs.copy()
         assert isinstance(inputs, TemplateInputs)
+        self._preprocess_inputs(inputs)
         if self.task in {'train', 'infer_pt'}:
             self._check_inputs(inputs)
             res = self._encode(inputs)
@@ -243,79 +299,16 @@ class Template:
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
-    def _preprocess_objects(self, inputs: TemplateInputs, objects: Union[str, List[Dict[str, Any]]]):
-        # Format objects(groundings/refs) to json
-        if isinstance(objects, str):
-            # reload grounding from str
-            objects = json.loads(objects)
-
+    def _preprocess_objects(self, inputs: TemplateInputs, objects: List[Dict[str, Any]]):
         # Load image into PIL format
         images = inputs.images
         images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
         # Normalize grounding bboxes
-        self._normalize_bbox(objects, images, to_type=self.grounding_type)
+        normalize_bbox(objects, images, to_type=self.grounding_type)
         if not self.load_medias:  # fix pt & qwen-vl
             images = decode_base64(images=images)['images']  # PIL.Image/base64 -> local_path
         inputs.images = images
         inputs.objects = objects
-
-    def _preprocess_media(self,
-                          inputs: TemplateInputs,
-                          images: Optional[List[Union[Image.Image, str]]] = None,
-                          audios: Optional[List[str]] = None,
-                          videos: Optional[List[str]] = None,
-                          *,
-                          max_image_size: int = -1) -> None:
-        if not (images or audios or videos):
-            for message in inputs.messages:
-                content = message['content']
-                if isinstance(content, str):
-                    continue
-                # List[Dict[str, Any]]
-                new_content = ''
-                for item in content:
-                    key = item['type']
-                    value = item[key]
-                    if key == 'text':
-                        new_content += value
-                        continue
-                    new_content += f'<{key}>'
-                    getattr(inputs, f'{key}s').append(value)
-                message['content'] = new_content
-
-        images = inputs.images
-        if images and self.load_medias:
-            images = load_batch(images, load_image)
-            if max_image_size != -1:
-                assert self.grounding_type != 'real', 'not support'  # TODO:check
-                images = [rescale_image(img, max_image_size) for img in images]
-            inputs.images = images
-
-    def _request_to_inputs(self, request: InferRequest, *, max_image_size: int = -1) -> TemplateInputs:
-        request = deepcopy(request)
-        messages = request.messages
-        tools = request.tools
-        assert len(messages) >= 1
-        if messages[0]['role'] == 'system':
-            message = messages.pop(0)
-            system = message['content']
-        else:
-            system = self.default_system
-        if tools is not None:
-            if isinstance(tools, str):
-                tools = json.loads(tools)
-            system = get_tools_prompt(tools, self.tools_prompt)
-        system = self._check_system(system)
-        inputs = TemplateInputs(messages, system)
-        if len(messages) > 1 and not self.support_multi_round:
-            raise ValueError(f'The template does not support multi-round chat, template_type: {self.template_type}')
-
-        self._preprocess_media(inputs, request.images, request.audios, request.videos, max_image_size=max_image_size)
-        if request.objects is not None:
-            self._preprocess_objects(inputs, request.objects)
-        if inputs.is_multimodal:
-            self._add_default_tags(inputs)
-        return inputs
 
     @staticmethod
     def _concat_context_list(
@@ -464,64 +457,6 @@ class Template:
         else:
             return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
 
-    @staticmethod
-    def _normalize_bbox(objects: List[Dict[str, Any]], images: List[Image.Image], to_type: Literal['real', 'norm_1000',
-                                                                                                   'norm_1']) -> None:
-        """Normalize bbox to needed.
-        to_type support real/norm_1000/norm_1, which literally means the coordinates in real, or normalized by 1000,
-            or normalized by 1.
-
-        Args:
-            objects: The objects containing the bbox
-            images: The images list
-            to_type: The coordinate type needed by the model.
-        """
-        if not objects or not images:
-            return
-
-        for object_ in objects:
-            bbox = object_['bbox']
-            bbox_type = object_['bbox_type']
-            idx = object_['image']
-            image = images[idx]
-            if bbox_type == 'real':
-                if to_type == 'real':
-                    continue
-                width, height = image.width, image.height
-                if isinstance(bbox[0], list):
-                    bboxes = []
-                    for _box in bbox:
-                        bboxes.append([
-                            int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
-                            for coord, dim in zip(_box, [width, height, width, height])
-                        ])
-                    object_['bbox'] = bboxes
-                else:
-                    object_['bbox'] = [
-                        int(coord / dim * 999) if to_type == 'norm_1000' else coord / dim
-                        for coord, dim in zip(bbox, [width, height, width, height])
-                    ]
-                object_['bbox_type'] = to_type
-            elif bbox_type == 'norm_1000':
-                if to_type == 'norm_1000':
-                    continue
-                if to_type == 'norm_1':
-                    object_['bbox'] = [coord / 999. for coord in bbox]
-                elif to_type == 'real':
-                    width, height = image.width, image.height
-                    object_['bbox'] = [
-                        int(coord / 999. * dim) for coord, dim in zip(bbox, [width, height, width, height])
-                    ]
-                object_['bbox_type'] = to_type
-            elif bbox_type == 'norm_1':
-                if to_type == 'norm_1':
-                    continue
-                if to_type == 'norm_1000':
-                    object_['bbox'] = [int(coord * 999) for coord in bbox]
-                elif to_type == 'real':
-                    width, height = image.width, image.height
-                    object_['bbox'] = [int(coord * dim) for coord, dim in zip(bbox, [width, height, width, height])]
-                object_['bbox_type'] = to_type
 
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
                       inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
@@ -637,7 +572,6 @@ class Template:
 
         prefix = self.system_prefix if inputs.system else self.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=inputs.system)
-        self._get_std_messages(inputs.messages)
 
         n_round = len(inputs.messages) // 2
         for i, (query_message, response_message) in enumerate(zip(inputs.messages[::2], inputs.messages[1::2])):
