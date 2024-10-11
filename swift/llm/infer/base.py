@@ -1,9 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from types import MethodType
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple
-
-from swift.llm.template.base import Context, Template, _findall
 
 
 class InferEngine:
@@ -26,7 +23,7 @@ class InferEngine:
               **kwargs) -> List[Dict[str, Any]]:
         pass
 
-    def inference_stream(
+    def infer_stream(
             self,
             request_list: List[Dict[str, Any]],
             *,

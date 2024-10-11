@@ -8,8 +8,8 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import torch
 import transformers
 from packaging import version
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PreTrainedModel,
-                          PreTrainedTokenizerBase)
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
+                          PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
 from transformers.utils.versions import require_version
@@ -173,7 +173,6 @@ def get_model_tokenizer_from_local(model_dir: str,
         logger.info(f'model.max_model_len: {max_model_len}')
     else:
         model = None
-    tokenizer.config = model_config
     return model, tokenizer
 
 
@@ -262,7 +261,18 @@ def get_default_device_map():
         return 'auto'
 
 
-def get_model_tokenizer(model_id_or_path: Optional[str] = None,
+def get_default_torch_dtype(model_config: PretrainedConfig, quant_info: Optional[Dict[str, Any]] = None) -> torch.dtype:
+    torch_dtype = HfConfigFactory.get_torch_dtype(model_config)
+    if torch_dtype is None:
+        if quant_info is None:
+            quant_info = HfConfigFactory.get_quant_info(model_config)
+        torch_dtype = quant_info.get('torch_dtype')
+    if torch_dtype in {torch.float32, None}:
+        torch_dtype = torch.bfloat16 if is_torch_bf16_gpu_available() else torch.float16
+    return torch_dtype
+
+
+def get_model_tokenizer(model_id_or_path: str,
                         torch_dtype: Optional[torch.dtype] = None,
                         model_kwargs: Optional[Dict[str, Any]] = None,
                         load_model: bool = True,
@@ -308,12 +318,7 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
         logger.info(f'Setting model_type: {model_type}')
     quant_info = HfConfigFactory.get_quant_info(model_config)
     if torch_dtype is None:
-        torch_dtype = HfConfigFactory.get_torch_dtype(model_config)
-        if torch_dtype is None:
-            torch_dtype = quant_info.get('torch_dtype')
-        if torch_dtype in {torch.float32, None}:
-            torch_dtype = torch.bfloat16 if is_torch_bf16_gpu_available() else torch.float16
-
+        torch_dtype = get_default_torch_dtype(model_config, quant_info)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
 
     if quant_info is not None:
@@ -328,6 +333,7 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
     get_function = model_info.get('get_function', get_model_tokenizer_from_local)
     model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
 
+    tokenizer.config = model_config
     is_multimodal = model_info['is_multimodal']
     is_moe = model_info['is_moe']
     template = model_info['template']
@@ -352,7 +358,6 @@ def get_model_tokenizer(model_id_or_path: Optional[str] = None,
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning
         fix_do_sample_warning(model.generation_config)
-
     return model, tokenizer
 
 

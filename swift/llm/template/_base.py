@@ -11,7 +11,7 @@ from modelscope import get_logger
 from PIL import Image
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import Messages, decode_base64
+from swift.llm import InferRequest, Messages, decode_base64
 from .agent import get_tools_prompt, loss_scale_map, split_str_parts_by
 from .utils import Context, ContextType, Prompt, StopWords, fetch_one
 from .vision_utils import load_batch, load_image, rescale_image
@@ -212,34 +212,11 @@ class Template:
         self.task: Literal['train', 'infer_pt', 'infer_vllm', 'infer_lmdeploy'] = 'infer_pt'
 
     def encode(
-            self,
-            messages: Union[Messages, TemplateInputs],
-            # If the input type is TemplateInputs, then the parameters for
-            # images/audios/videos/objects/tools/max_image_size become invalid.
-            images: Optional[List[Union[Image.Image, str]]] = None,
-            audios: Optional[List[str]] = None,
-            videos: Optional[List[str]] = None,
-            objects: Union[str, None, List[Dict[str, Any]]] = None,  # TODO:check
-            tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,  # TODO:check
+        self,
+        inputs: Union[InferRequest, TemplateInputs],
     ) -> Dict[str, Any]:
         """The entrance method of Template!
 
-        Args:
-            messages: Input in messages format.
-                Examples: [{
-                    "role": "user",  # or assistant/system/role
-                    "content": [  # str or List[Dict[str, Any]]
-                        {
-                            "type": "image",  # or audio/video
-                            # This content can also be written in the `images` field
-                            "image": "<url/path/base64/PIL.Image>",
-                        },
-                        {"type": "text", "text": "<text>"},
-                    ],
-                }]
-            objects: Used for grounding tasks in a general format.
-            tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
-                Specifying this parameter will override system.
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
@@ -248,15 +225,9 @@ class Template:
             raise ValueError(
                 'Template is not initialized, please use the `get_template` function to obtain the template.')
 
-        if isinstance(messages, TemplateInputs):
-            inputs = messages
-        else:
-            messages = deepcopy(messages)
-            objects = deepcopy(objects)
-            inputs = self._messages_to_inputs(
-                messages, images, audios, videos, objects, tools, max_image_size=self.max_image_size)
+        if isinstance(inputs, InferRequest):
+            inputs = self._request_to_inputs(inputs, max_image_size=self.max_image_size)
         assert isinstance(inputs, TemplateInputs)
-
         if self.task in {'train', 'infer_pt'}:
             self._check_inputs(inputs)
             res = self._encode(inputs)
@@ -319,15 +290,10 @@ class Template:
                 images = [rescale_image(img, max_image_size) for img in images]
             inputs.images = images
 
-    def _messages_to_inputs(self,
-                            messages: Messages,
-                            images: Optional[List[Union[Image.Image, str]]] = None,
-                            audios: Optional[List[str]] = None,
-                            videos: Optional[List[str]] = None,
-                            objects: Union[str, None, List[Dict[str, Any]]] = None,
-                            tools: Optional[List[Dict[str, Union[str, Dict]]]] = None,
-                            *,
-                            max_image_size: int = -1) -> TemplateInputs:
+    def _request_to_inputs(self, request: InferRequest, *, max_image_size: int = -1) -> TemplateInputs:
+        request = deepcopy(request)
+        messages = request.messages
+        tools = request.tools
         assert len(messages) >= 1
         if messages[0]['role'] == 'system':
             message = messages.pop(0)
@@ -343,9 +309,9 @@ class Template:
         if len(messages) > 1 and not self.support_multi_round:
             raise ValueError(f'The template does not support multi-round chat, template_type: {self.template_type}')
 
-        self._preprocess_media(inputs, images, audios, videos, max_image_size=max_image_size)
-        if objects is not None:
-            self._preprocess_objects(inputs, objects)
+        self._preprocess_media(inputs, request.images, request.audios, request.videos, max_image_size=max_image_size)
+        if request.objects is not None:
+            self._preprocess_objects(inputs, request.objects)
         if inputs.is_multimodal:
             self._add_default_tags(inputs)
         return inputs

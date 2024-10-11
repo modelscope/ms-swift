@@ -13,11 +13,10 @@ from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
-from swift.llm import InferArguments, InferTemplate
-from swift.llm.infer.base import InferFramework
-from swift.llm.model.model import get_model_tokenizer
-from swift.llm.template.template import Template, get_template
+from swift.llm import Messages, get_model_tokenizer
 from swift.utils import get_logger
+from ..model import get_default_torch_dtype
+from .patch import patch_auto_config, patch_auto_tokenizer
 
 try:
     from vllm.lora.request import LoRARequest
@@ -25,176 +24,203 @@ except ImportError:
     pass
 
 logger = get_logger()
+dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
 
 
-class _VllmGenerationConfigMixin:
+class VllmEngine:
 
-    def __setattr__(self, key: str, value: str) -> None:
-        if key == 'max_new_tokens':
-            self.max_tokens = value
-        elif key == 'do_sample' and hasattr(self, '_temperature'):
-            assert value in {True, False}
-            super().__setattr__('temperature', self._temperature if value else 0)
-        elif key == 'max_length':
-            raise ValueError('`max_length` is not supported, please use `max_new_tokens` for setting.')
-        else:
-            if key == 'temperature':
-                self._temperature = value
-            super().__setattr__(key, value)
-
-
-if version.parse(vllm.__version__) < version.parse('0.5.5'):
-
-    class VllmGenerationConfig(_VllmGenerationConfigMixin, SamplingParams):
-
-        def __init__(
+    def __init__(
             self,
-            max_tokens: int = 64,  # max_tokens
-            temperature: float = 1.,
-            top_k: int = 50,  # -1: all
-            top_p: float = 1.,
-            repetition_penalty: float = 1.,
-            num_beams: int = 1,
+            model_id_or_path: str,
+            torch_dtype: Optional[torch.dtype] = None,
             *,
-            n: int = 1,
-            logprobs: Optional[int] = None,
-            seed: Optional[int] = None,
-            length_penalty: float = 1.,
-            stop: Optional[List[str]] = None,
-            skip_special_tokens: bool = False,
-            **kwargs,
-        ) -> None:
-            # compat
-            max_new_tokens = kwargs.pop('max_new_tokens', None)
+            gpu_memory_utilization: float = 0.9,
+            tensor_parallel_size: int = 1,
+            max_num_seqs: int = 256,
+            max_model_len: Optional[int] = None,
+            disable_custom_all_reduce: bool = True,  # Default values different from vllm
+            enforce_eager: bool = False,
+            limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+            engine_kwargs: Optional[Dict[str, Any]] = None,
+            model_type: Optional[str] = None,
+            # lora
+            enable_lora: bool = False,
+            max_loras: int = 1,
+            max_lora_rank: int = 16,
+            **kwargs) -> AsyncLLMEngine:
+        # init
+        if engine_kwargs is None:
+            engine_kwargs = {}
+        self._init_env()
+
+        self._prepare_tokenizer(model_id_or_path, torch_dtype, False, model_type=model_type, **kwargs)
+        self._prepare_engine_kwargs(
+            self.model_dir,
+            self.torch_dtype,
+            gpu_memory_utilization=gpu_memory_utilization,
+            tensor_parallel_size=tensor_parallel_size,
+            max_num_seqs=max_num_seqs,
+            max_model_len=max_model_len,
+            disable_custom_all_reduce=disable_custom_all_reduce,
+            enforce_eager=enforce_eager,
+            limit_mm_per_prompt=limit_mm_per_prompt,
+            enable_lora=enable_lora,
+            max_loras=max_loras,
+            max_lora_rank=max_lora_rank,
+            **engine_kwargs)
+
+        self._prepare_engine()
+        self._prepare_generation_config()
+        self._fix_vllm_bug()
+
+    def _prepare_engine(self) -> None:
+        with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
+            engine = AsyncLLMEngine.from_engine_args()
+        self.engine = engine
+
+    def _prepare_tokenizer(self,
+                           model_id_or_path: str,
+                           torch_dtype: Optional[torch.dtype],
+                           load_model: bool,
+                           *,
+                           model_type: Optional[str] = None,
+                           **kwargs) -> None:
+        use_hf = kwargs.pop('use_hf', None)
+        revision = kwargs.pop('revision', None)
+        _, tokenizer = get_model_tokenizer(
+            model_id_or_path,
+            load_model=load_model,
+            model_type=model_type,
+            download_model=True,
+            use_hf=use_hf,
+            revision=revision)
+        config = tokenizer.config
+        if torch_dtype is None:
+            torch_dtype = get_default_torch_dtype(config)
+        self.config = config
+        self.tokenizer = tokenizer
+        self.torch_dtype = torch_dtype
+        self.model_type = tokenizer.model_type
+        self.model_dir = tokenizer.model_dir
+        self.is_multimodal = tokenizer.is_multimodal
+        self.is_moe = tokenizer.is_moe
+        self.chat_template = tokenizer.chat_template
+        self.generation_template = tokenizer.generation_template
+
+    def _prepare_engine_kwargs(
+            self,
+            model_dir: str,
+            torch_dtype: torch.dtype,
+            *,
+            gpu_memory_utilization: float = 0.9,
+            tensor_parallel_size: int = 1,
+            max_num_seqs: int = 256,
+            max_model_len: Optional[int] = None,
+            disable_custom_all_reduce: bool = True,  # Default values different from vllm
+            enforce_eager: bool = False,
+            limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+            enable_lora: bool = False,
+            max_loras: int = 1,
+            max_lora_rank: int = 16,
+            **engine_kwargs) -> AsyncEngineArgs:
+        disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
+        engine_kwargs['disable_log_requests'] = True
+
+        parameters = inspect.signature(AsyncEngineArgs.__init__).parameters
+        if 'enable_lora' in parameters and enable_lora:
+            engine_kwargs['enable_lora'] = enable_lora
+            engine_kwargs['max_loras'] = max_loras
+            engine_kwargs['max_lora_rank'] = max_lora_rank
+        else:
+            assert not enable_lora, 'The current version of vLLM does not support `enable_lora`. Please upgrade vLLM.'
+
+        if 'limit_mm_per_prompt' in parameters and limit_mm_per_prompt:
+            engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
+        else:
+            assert not limit_mm_per_prompt, (
+                'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
+
+        torch_dtype = dtype_mapping[torch_dtype]
+        engine_args = AsyncEngineArgs(
+            model=model_dir,
+            dtype=torch_dtype,
+            gpu_memory_utilization=gpu_memory_utilization,
+            tensor_parallel_size=tensor_parallel_size,
+            max_num_seqs=max_num_seqs,
+            max_model_len=max_model_len,
+            disable_log_stats=disable_log_stats,
+            disable_custom_all_reduce=disable_custom_all_reduce,
+            enforce_eager=enforce_eager,
+            trust_remote_code=True,
+            **engine_kwargs)
+        self.engine_args = engine_args
+        self.max_model_len = max_model_len
+
+    @staticmethod
+    def _init_env() -> None:
+        try:
+            from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
+            destroy_model_parallel()
+        except ImportError:
+            pass
+        # fix HTTPError bug (use model_dir)
+        os.environ.pop('VLLM_USE_MODELSCOPE', None)
+        if version.parse(vllm.__version__) >= version.parse('0.5.1'):
+            os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
+
+    def _fix_vllm_bug(self) -> None:
+        _engine = self.engine.engine
+        # compatible with vllm==0.3.*
+        if version.parse(vllm.__version__) >= version.parse('0.3'):
+            assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)
+            _engine.tokenizer.tokenizer = self.tokenizer
+
+            # fix vllm==0.4 bug (very slow)
+            if version.parse(vllm.__version__) >= version.parse('0.4'):
+                _tokenizer_len = len(self.tokenizer)
+                __old_len__ = self.tokenizer.__class__.__len__
+
+                def __len__(self) -> int:
+                    if self is self.tokenizer:
+                        return _tokenizer_len
+                    else:
+                        return __old_len__(self)
+
+                self.tokenizer.__class__.__len__ = __len__
+
+        else:
+            assert isinstance(_engine.tokenizer, PreTrainedTokenizerBase)
+            _engine.tokenizer = self.tokenizer
+
+    def _prepare_generation_config(self) -> None:
+        generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
+        if os.path.isfile(generation_config_path):
+            generation_config = GenerationConfig.from_pretrained(self.model_dir)
+            kwargs = generation_config.to_dict()
+            max_new_tokens = kwargs.get('max_new_tokens')
             if max_new_tokens is not None:
-                max_tokens = max_new_tokens
-            if num_beams > 1:
-                top_k = -1
-                top_p = 1
-                temperature = 0
-                logger.warning('The output of num_beams in vllm may not be consistent with '
-                               'the output of num_beams in transformers.')
-            if top_k == 0:
-                top_k = -1
-            if stop is None:
-                stop = []
-            kwargs['max_tokens'] = max_tokens
-            kwargs['temperature'] = temperature
-            kwargs['top_k'] = top_k
-            kwargs['top_p'] = top_p
-            kwargs['repetition_penalty'] = repetition_penalty
-            if num_beams > 1:
-                best_of = kwargs.get('best_of')
-                assert 'use_beam_search' not in kwargs and best_of is None
-                kwargs['use_beam_search'] = True
-                kwargs['best_of'] = num_beams
-            kwargs['n'] = n
-            kwargs['logprobs'] = logprobs
-            kwargs['seed'] = seed
-            kwargs['length_penalty'] = length_penalty
-            kwargs['stop'] = stop
-            kwargs['skip_special_tokens'] = skip_special_tokens
+                kwargs['max_tokens'] = max_new_tokens
             parameters = inspect.signature(SamplingParams.__init__).parameters
-            for k in kwargs.copy().keys():
-                if k not in parameters:
-                    logger.info(f'The VLLM version is too old and does not support the parameter: {k}.')
+            for k, v in kwargs.copy().items():
+                if k not in parameters or v is None:
                     kwargs.pop(k)
-            self._temperature = temperature
-            super().__init__(**kwargs)
+            self.generation_config = SamplingParams(**kwargs)
+        else:
+            self.generation_config = SamplingParams()
 
-else:
-
-    class VllmGenerationConfig(_VllmGenerationConfigMixin, SamplingParams):
-        max_tokens: int = 64
-        temperature: float = 1.
-        top_k: int = 50  # -1: all
-        top_p: float = 1.
-        repetition_penalty: float = 1.
-        num_beams: int = 1
-        n: int = 1
-        logprobs: Optional[int] = None
-        seed: Optional[int] = None
-        length_penalty: float = 1.
-        stop: Optional[List[str]] = None
-        skip_special_tokens: bool = False
-
-        def __post_init__(self):
-            if self.num_beams > 1:
-                self.top_k = -1
-                self.top_p = 1
-                self.temperature = 0
-                logger.warning('The output of num_beams in vllm may not be consistent with '
-                               'the output of num_beams in transformers.')
-                assert self.best_of is None
-                self.use_beam_search = True
-                self.best_of = self.num_beams
-            if self.top_k == 0:
-                self.top_k = -1
-            if self.stop is None:
-                self.stop = []
-            self._temperature = self.temperature
-            super().__post_init__()
-
-
-class VLLMFramework(InferFramework):
-
-    def __init__(self, args: InferArguments, use_async: bool = False):
-        logger.info(f'device_count: {torch.cuda.device_count()}')
-
-        assert not (args.sft_type == 'lora' and not args.vllm_enable_lora), 'you need to merge lora'
-        # Loading Model and Tokenizer
-        model_id_or_path = None
-        if args.sft_type == 'full' and args.ckpt_dir is not None:
-            model_id_or_path = args.ckpt_dir
-        elif args.model_id_or_path is not None:
-            model_id_or_path = args.model_id_or_path
-        llm_engine = self.get_vllm_engine(
-            args.model_type,
-            args.torch_dtype,
-            gpu_memory_utilization=args.gpu_memory_utilization,
-            tensor_parallel_size=args.tensor_parallel_size,
-            max_num_seqs=args.max_num_seqs,
-            max_model_len=args.max_model_len,
-            disable_custom_all_reduce=args.disable_custom_all_reduce,
-            enforce_eager=args.enforce_eager,
-            use_async=use_async,
-            model_id_or_path=model_id_or_path,
-            enable_lora=args.vllm_enable_lora,
-            max_loras=max(len(args.lora_modules), 1),
-            max_lora_rank=args.vllm_max_lora_rank)
-        setattr(llm_engine.generation_config, 'max_tokens', args.max_new_tokens)
-        for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
-            val = getattr(args, k, None)
-            if val is not None:
-                setattr(llm_engine.generation_config, k, val)
-        logger.info(f'llm_engine.generation_config: {llm_engine.generation_config}')
-
-        tokenizer = llm_engine.hf_tokenizer
-        template: Template = get_template(
-            args.template_type,
-            tokenizer,
-            args.system,
-            args.max_length,
-            args.truncation_strategy,
-            model=llm_engine,
-            tools_prompt=args.tools_prompt)
-        args.system = template.default_system
-        logger.info(f'system: {args.system}')
-        super().__init__(llm_engine, InferTemplate(template, framework='vllm'))
-
-    @torch.inference_mode
-    def inference(self,
-                  request_list: List[Dict[str, Any]],
-                  *,
-                  generation_config: Optional[Any] = None,
-                  generation_info: Optional[Dict[str, Any]] = None,
-                  max_batch_size: Optional[int] = None,
-                  lora_request: Optional[Any] = None,
-                  use_tqdm: bool = False,
-                  verbose: bool = False,
-                  prompt_prefix: str = '[PROMPT]',
-                  output_prefix: str = '[OUTPUT]',
-                  **kwargs) -> List[Dict[str, Any]]:
+    @torch.inference_mode()
+    def infer(self,
+              request_list: List[Dict[str, Any]],
+              *,
+              generation_config: Optional[Any] = None,
+              generation_info: Optional[Dict[str, Any]] = None,
+              max_batch_size: Optional[int] = None,
+              lora_request: Optional[Any] = None,
+              use_tqdm: bool = False,
+              verbose: bool = False,
+              prompt_prefix: str = '[PROMPT]',
+              output_prefix: str = '[OUTPUT]',
+              **kwargs) -> List[Dict[str, Any]]:
         if len(request_list) == 0:
             return []
         runtime = time.perf_counter()
