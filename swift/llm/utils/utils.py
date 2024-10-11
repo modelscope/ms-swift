@@ -13,7 +13,6 @@ logger = get_logger()
 History = List[Union[Tuple[str, str], List[str]]]
 Messages = List[Dict[str, Union[str, List[Dict[str, Any]]]]]
 
-
 def to_device(inputs: Any, device: torch.device) -> Any:
     """Move inputs to a device"""
     if callable(getattr(inputs, 'to', None)):

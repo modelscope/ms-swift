@@ -120,7 +120,7 @@ def register_model(model_type: str,
     return
 
 
-def load_by_unsloth(model_dir, torch_dtype, max_seq_length: int = None, load_in_4bit: bool = True):
+def load_by_unsloth(model_dir, torch_dtype, max_seq_length: Optional[int] = None, load_in_4bit: bool = True):
     """Load model by unsloth"""
     # TODO:check
     assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'

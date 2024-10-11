@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from .vllm import VLLMFramework, VllmGenerationConfig
     from .lmdeploy import LMDeployFramework, LmdeployGenerationConfig
     from .transformers import TransformersFramework
-    from .utils import InferRequest
+    from .protocol import InferRequest
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -18,7 +18,7 @@ else:
         'vllm': ['VLLMFramework', 'VllmGenerationConfig'],
         'lmdeploy': ['LMDeployFramework', 'LmdeployGenerationConfig'],
         'transformers': ['TransformersFramework'],
-        'utils': ['InferRequest'],
+        'protocol': ['InferRequest'],
     }
 
     import sys

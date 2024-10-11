@@ -3,9 +3,9 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Union
-
-from swift.llm.utils import Messages
-
+from PIL import Image
+from ..utils import Messages
+Tool = Dict[str, Union[str, Dict]]
 
 def random_uuid() -> str:
     return str(uuid.uuid4().hex)
@@ -77,9 +77,13 @@ class CompletionRequestMixin:
 @dataclass
 class ChatCompletionRequestMixin:
     model: str
-    messages: List[Dict[str, Union[str, List[Dict]]]]
-    tools: Optional[List[Dict[str, Union[str, Dict]]]] = None
-    tool_choice: Optional[Union[str, Dict]] = 'auto'
+    messages: Messages
+    tools: Optional[List[Tool]] = None
+    tool_choice: Optional[Union[str, Dict]] = None
+
+    def __post_init__(self):
+        if self.tool_choice is None:
+            self.tool_choice = 'none' if self.tools is None else 'auto'
 
 
 @dataclass
@@ -198,32 +202,33 @@ class CompletionStreamResponse:
     created: int = field(default_factory=lambda: int(time.time()))
 
 
-def messages_join_observation(messages: Messages):
+
+@dataclass
+class InferRequest:
     """
-        Joins observations from 'tool' message into the 'assistant' response.
+    messages: Input in messages format.
+        Examples: [{
+            "role": "user",  # or assistant/system/role
+            "content": [  # str or List[Dict[str, Any]]
+                {
+                    "type": "image",  # or audio/video
+                    # This content can also be written in the `images` field
+                    "image": "<url/path/base64/PIL.Image>",
+                },
+                {"type": "text", "text": "<text>"},
+            ],
+        }]
+    objects: Used for grounding tasks in a general format.
+    tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
+        Specifying this parameter will override system.
+    """
+    messages: Messages
 
-        Example:
-        ---------
-        Original messages:
-        messages = [
-            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                  [{"location": "Hangzhou"}]\nObservations:'},
-            {'role': 'tool', 'content': 'It is 26 degrees Celsius and sunny in Hangzhou today.'}
-        ]
+    images: Optional[List[Union[Image.Image, str]]] = None
+    audios: Optional[List[str]] = None
+    videos: Optional[List[str]] = None
 
-        Transformed messages:
-        messages = [
-            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                  [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.'}
-        ]
-        """
+    objects: Union[str, None, List[Dict[str, Any]]] = None  # str: json
+    tools: Optional[List[Tool]] = None
 
-    if len(messages) >= 2 and messages[-2]['role'] == 'assistant' and messages[-2]['content'] and messages[-2][
-            'content'].endswith('Observation:'):
-        assert messages[-1]['role'] == 'tool'
-        observations = messages[-1]['content']
-        messages.pop(-1)
-        messages[-1]['content'] += observations
-    return
+

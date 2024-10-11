@@ -10,12 +10,14 @@ import vllm
 from modelscope import GenerationConfig
 from packaging import version
 from tqdm import tqdm
+from .base import InferEngine
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
-from swift.llm import Messages, get_model_tokenizer
+
 from swift.utils import get_logger
-from ..model import get_default_torch_dtype
+from .utils import InferRequest
+from ..template import get_template, Template
 from .patch import patch_auto_config, patch_auto_tokenizer
 
 try:
@@ -27,13 +29,15 @@ logger = get_logger()
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
 
 
-class VllmEngine:
+class VllmEngine(InferEngine):
 
     def __init__(
             self,
             model_id_or_path: str,
             torch_dtype: Optional[torch.dtype] = None,
             *,
+            model_type: Optional[str] = None,
+            # engine_kwargs
             gpu_memory_utilization: float = 0.9,
             tensor_parallel_size: int = 1,
             max_num_seqs: int = 256,
@@ -41,19 +45,14 @@ class VllmEngine:
             disable_custom_all_reduce: bool = True,  # Default values different from vllm
             enforce_eager: bool = False,
             limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-            engine_kwargs: Optional[Dict[str, Any]] = None,
-            model_type: Optional[str] = None,
             # lora
             enable_lora: bool = False,
             max_loras: int = 1,
             max_lora_rank: int = 16,
-            **kwargs) -> AsyncLLMEngine:
-        # init
-        if engine_kwargs is None:
-            engine_kwargs = {}
+            engine_kwargs: Optional[Dict[str, Any]] = None,  # extra
+            **kwargs) -> None:
         self._init_env()
-
-        self._prepare_tokenizer(model_id_or_path, torch_dtype, False, model_type=model_type, **kwargs)
+        self._prepare_model_tokenizer(model_id_or_path, torch_dtype, False, model_type=model_type, **kwargs)
         self._prepare_engine_kwargs(
             self.model_dir,
             self.torch_dtype,
@@ -67,7 +66,7 @@ class VllmEngine:
             enable_lora=enable_lora,
             max_loras=max_loras,
             max_lora_rank=max_lora_rank,
-            **engine_kwargs)
+            engine_kwargs=engine_kwargs)
 
         self._prepare_engine()
         self._prepare_generation_config()
@@ -78,34 +77,15 @@ class VllmEngine:
             engine = AsyncLLMEngine.from_engine_args()
         self.engine = engine
 
-    def _prepare_tokenizer(self,
-                           model_id_or_path: str,
-                           torch_dtype: Optional[torch.dtype],
-                           load_model: bool,
-                           *,
-                           model_type: Optional[str] = None,
-                           **kwargs) -> None:
-        use_hf = kwargs.pop('use_hf', None)
-        revision = kwargs.pop('revision', None)
-        _, tokenizer = get_model_tokenizer(
-            model_id_or_path,
-            load_model=load_model,
-            model_type=model_type,
-            download_model=True,
-            use_hf=use_hf,
-            revision=revision)
-        config = tokenizer.config
-        if torch_dtype is None:
-            torch_dtype = get_default_torch_dtype(config)
-        self.config = config
-        self.tokenizer = tokenizer
-        self.torch_dtype = torch_dtype
-        self.model_type = tokenizer.model_type
-        self.model_dir = tokenizer.model_dir
-        self.is_multimodal = tokenizer.is_multimodal
-        self.is_moe = tokenizer.is_moe
-        self.chat_template = tokenizer.chat_template
-        self.generation_template = tokenizer.generation_template
+    def _prepare_template(self):
+        self.template = get_template(
+            self.chat_template,
+            tokenizer,
+            args.system,
+            args.max_length,
+            args.truncation_strategy,
+            model=llm_engine,
+            tools_prompt=args.tools_prompt)
 
     def _prepare_engine_kwargs(
             self,
@@ -122,7 +102,9 @@ class VllmEngine:
             enable_lora: bool = False,
             max_loras: int = 1,
             max_lora_rank: int = 16,
-            **engine_kwargs) -> AsyncEngineArgs:
+            engine_kwargs: Optional[Dict[str, Any]] = None) -> AsyncEngineArgs:
+        if engine_kwargs is None:
+            engine_kwargs = {}
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         engine_kwargs['disable_log_requests'] = True
 
@@ -209,8 +191,20 @@ class VllmEngine:
             self.generation_config = SamplingParams()
 
     @torch.inference_mode()
+    async def infer_async(self,
+        template: Template,
+        request_list: List[InferRequest],
+        *,
+        generation_config: Optional[SamplingParams] = None,
+
+      lora_request: Optional['LoRARequest'] = None,
+    ):
+        pass
+
+    @torch.inference_mode()
     def infer(self,
-              request_list: List[Dict[str, Any]],
+              template: Template,
+              request_list: List[InferRequest],
               *,
               generation_config: Optional[Any] = None,
               generation_info: Optional[Dict[str, Any]] = None,

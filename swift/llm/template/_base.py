@@ -11,7 +11,8 @@ from modelscope import get_logger
 from PIL import Image
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import InferRequest, Messages, decode_base64
+from ..infer import InferRequest
+from ..utils import Messages, decode_base64
 from .agent import get_tools_prompt, loss_scale_map, split_str_parts_by
 from .utils import Context, ContextType, Prompt, StopWords, fetch_one
 from .vision_utils import load_batch, load_image, rescale_image
