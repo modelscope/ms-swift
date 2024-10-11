@@ -12,7 +12,7 @@ from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, IA3Config, L
                           LoraConfig, LoRAConfig, NEFTuneConfig, ReftConfig, Swift, VeraConfig)
 from swift.utils import activate_model_parameters, freeze_model_parameters, get_logger, use_torchacc
 from swift.utils.module_mapping import MODEL_KEYS_MAPPING
-from .utils import SftArguments, find_all_linears, find_embedding, find_ln, is_adapter
+from .utils import SftArguments, find_all_linears, find_embedding, find_ln, get_model_with_value_head, is_adapter
 from .utils.callbacks import DynamicLayerActivationCallback, TrainerAdapterCallback
 
 logger = get_logger()
@@ -98,7 +98,8 @@ def prepare_model(model, args: SftArguments):
         if args.resume_from_checkpoint is None:
             handle_target_modules(model, args)
             handle_modules_to_save(model, args)
-            if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
+            if args.init_lora_weights and isinstance(args.init_lora_weights,
+                                                     str) and args.init_lora_weights.lower() in ('true', 'false'):
                 args.init_lora_weights = args.init_lora_weights.lower() in ('true', 'True')
             if args.target_regex:
                 logger.info(f'Value of target_modules: `{args.target_modules}` will have no effect '
@@ -327,6 +328,10 @@ def prepare_model(model, args: SftArguments):
             model=model)
         lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
         callbacks.append(lisa_callback)
+
+    # add value head for reward model
+    if args.train_type == 'rm':
+        model = get_model_with_value_head(model)
 
     if is_adapter(args.sft_type) and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))

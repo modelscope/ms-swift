@@ -90,7 +90,7 @@ def rescale_image(img: 'PIL.Image.Image', rescale_image: int = -1) -> 'PIL.Image
     ratio = width / height
     height_scaled = math.pow(rescale_image / ratio, 0.5)
     width_scaled = height_scaled * ratio
-    return T.Resize((int(width_scaled), int(height_scaled)))(img)
+    return T.Resize((int(height_scaled), int(width_scaled)))(img)
 
 
 _T = TypeVar('_T')

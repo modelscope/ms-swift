@@ -4,12 +4,10 @@ aiohttp
 attrdict
 binpacking
 dacite
-datasets<3.0
 einops
 importlib_metadata
 jieba
 matplotlib
-modelscope[datasets]>=1.17,<1.19
 nltk
 numpy<2.0
 oss2
@@ -22,4 +20,4 @@ tensorboard
 tqdm
 transformers>=4.33,<4.47
 transformers_stream_generator
-trl>=0.10.1
+trl>=0.11.0
