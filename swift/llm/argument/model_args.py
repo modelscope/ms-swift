@@ -4,16 +4,17 @@ from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
 import torch
+from transformers import AutoConfig
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING, ModelType, RLHFArguments
-from swift.llm.model import fix_do_sample_warning
+from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING
+from swift.llm.model import fix_do_sample_warning, get_default_torch_dtype
 from swift.utils import get_dist_setting, get_logger, use_hf_hub
 
 logger = get_logger()
 
-dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32', None: 'auto'}
+dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32'}
 dtype_mapping_reversed = {v: k for k, v in dtype_mapping.items()}
 
 
@@ -67,7 +68,6 @@ class QuantizeArguments:
             self.bnb_4bit_comp_dtype = self.dtype
 
         bnb_4bit_compute_dtype = dtype_mapping_reversed[self.bnb_4bit_comp_dtype]
-        assert bnb_4bit_compute_dtype in {torch.float16, torch.bfloat16, torch.float32}
 
         load_in_4bit, load_in_8bit = False, False  # default value
         if self.quant_method == 'bnb':
@@ -90,10 +90,10 @@ class QuantizeArguments:
 @dataclass
 class ModelArguments:
 
-    # You can specify the model by either using the model_type or model_id_or_path.
+    # You can specify the model by model.
+    model: Optional[str] = None
     model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
-    model_id_or_path: Optional[str] = None
     model_revision: Optional[str] = None
 
     dtype: Literal['bf16', 'fp16', 'fp32', 'auto'] = 'auto'
@@ -111,7 +111,7 @@ class ModelArguments:
 
     def prepare_model_extra_args(self: 'SftArguments'):
         """Prepare model kwargs and set them to the env"""
-        self.parse_to_dict(self, 'model_kwargs')
+        self.parse_to_dict('model_kwargs')
         for k, v in self.model_kwargs.items():
             k = k.upper()
             os.environ[k] = str(v)
@@ -126,22 +126,12 @@ class ModelArguments:
                 if isinstance(v, int):
                     self.device_map_config[k] += local_rank
 
-    def get_model_group(self):
-        """Find the model group. This is used to find the model structure"""
-        model_type = (self.model_type or self.model_id_or_path).replace('-', '_')
-        model_group = None
-        for key in MODEL_KEYS_MAPPING.keys():
-            if key in model_type.lower():
-                model_group = key
-                break
-        return model_group
-
     def check_flash_attn(self) -> None:
         """Some models do not support flash-attention"""
         model_info = MODEL_MAPPING.get(self.model_type, {})
         support_flash_attn = model_info.get('support_flash_attn', False)
-        if self.use_flash_attn and not support_flash_attn:
-            logger.warning(f'use_flash_attn: {self.use_flash_attn}, ' f'but support_flash_attn: {support_flash_attn}')
+        if 'flash' in self.attn_impl and not support_flash_attn:
+            logger.warning(f'attn_impl: {self.attn_impl}, ' f'but support_flash_attn: {support_flash_attn}')
 
     @property
     def is_multimodal(self) -> bool:
@@ -153,7 +143,7 @@ class ModelArguments:
         return 'multi-modal' in tags
 
     def select_dtype(self) -> None:
-        """If dtype is `auto`, find a proper dtype by the sft_type/GPU"""
+        """If dtype is `auto`, find a proper dtype by the train_type/GPU"""
         # Compatible with --fp16/--bf16
         from .train_args import SftArguments
         if isinstance(self, SftArguments):
@@ -165,26 +155,13 @@ class ModelArguments:
                     break
         # handle dtype == 'auto'
         if self.dtype == 'auto':
-            if is_torch_cuda_available() or is_torch_npu_available():
-                if is_torch_bf16_gpu_available():
-                    model_torch_dtype = MODEL_MAPPING[self.model_type].get('torch_dtype')
-                    if model_torch_dtype is not None:
-                        self.dtype = dtype_mapping[model_torch_dtype]
-                    elif isinstance(self, SftArguments):
-                        self.dtype = 'bf16'
-                    # else: Keep 'auto'. According to the model's config.json file,
-                    # this behavior is executed in the get_model_tokenizer function.
-                    # This situation will only occur during inference.
-                else:
-                    self.dtype = 'fp16'
-            else:
-                # cpu
-                self.dtype = 'fp32'
+            torch_dtype = get_default_torch_dtype(self.model_info.torch_dtype)
+            self.dtype = dtype_mapping[torch_dtype]
             logger.info(f'Setting args.dtype: {self.dtype}')
         # Check the validity of dtype
         if is_torch_cuda_available() or is_torch_npu_available():
             if self.dtype == 'fp16':
-                if isinstance(self, SftArguments) and self.sft_type == 'full':
+                if isinstance(self, SftArguments) and self.train_type == 'full':
                     self.dtype = 'fp32'
                     logger.warning(
                         'Fine-tuning with full parameters does not support fp16, and is prone to NaN. '
@@ -208,51 +185,22 @@ class ModelArguments:
             else:
                 raise ValueError(f'args.dtype: {self.dtype}')
 
-    def select_model_type(self) -> None:
-        """model_type may be None, find the right one by `model_id_or_path`"""
-        from swift.llm.argument import InferArguments
-        if self.model_id_or_path is not None:
-            model_mapping_reversed = {}
-            for k, v in MODEL_MAPPING.items():
-                if use_hf_hub():
-                    model_id = v.get('hf_model_id')
-                else:
-                    model_id = v.get('model_id_or_path')
-                if model_id is None:
-                    continue
-                model_id = model_id.lower()
-                model_mapping_reversed[model_id] = k
-            model_id_or_path = self.model_id_or_path
-            model_id_or_path_lower = model_id_or_path.lower()
-
-            if self.model_type is None and model_id_or_path_lower in model_mapping_reversed:
-                model_type = model_mapping_reversed[model_id_or_path_lower]
-                assert self.model_type is None or self.model_type == model_type
-                self.model_type = model_type
-                logger.info(f'Setting args.model_type: {model_type}')
-            else:
-                if (isinstance(self, InferArguments) and 'checkpoint-' in model_id_or_path
-                        and 'merged' not in model_id_or_path and self.ckpt_dir is None):
-                    raise ValueError('Please use `--ckpt_dir vx-xxx/checkpoint-xxx` to use the checkpoint.')
-
-        model_info = MODEL_MAPPING.get(self.model_type, {})
-        if self.model_revision is not None:
-            model_info['revision'] = self.model_revision
-            logger.info(f"Setting model_info['revision']: {self.model_revision}")
-        elif use_hf_hub():
-            model_info['revision'] = 'main'
-        self.model_revision = model_info['revision']
-        if self.model_id_or_path is None:
-            self.model_id_or_path = model_info['hf_model_id'] if use_hf_hub() else model_info['model_id_or_path']
-        requires = model_info.get('requires', [])
-        for require in requires:
-            require_version(require)
+    def prepare_model_info(self) -> None:
+        from swift.llm import safe_snapshot_download, HfConfigFactory
+        model_dir = safe_snapshot_download(self.model, revision=self.model_revision, load_model=False)
+        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        model_info = HfConfigFactory.get_model_info(model_config, model_dir)
+        self.model_info = model_info
+        if self.model_type is None:
+            self.model_type = model_info.model_type
+        if self.quant_method is None:
+            self.quant_method = model_info.quant_method
 
     def __post_init__(self: Union['SftArguments', 'InferArguments']):
         if self.rope_scaling:
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
         self.prepare_model_extra_args()
         self.prepare_device_map_args()
+        self.prepare_model_info()
         self.check_flash_attn()
         self.select_dtype()
-        self.select_model_type()

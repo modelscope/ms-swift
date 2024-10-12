@@ -290,8 +290,8 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             port = args.port
             # health check: try to get model_type until raises
             get_model_type(port, args.deploy_timeout)
-            model_type = 'default-lora' if args.sft_type in ('lora',
-                                                             'longlora') and not args.merge_lora else args.model_type
+            model_type = 'default-lora' if args.train_type in ('lora',
+                                                               'longlora') and not args.merge_lora else args.model_type
             from swift.llm.infer.deploy import is_generation_template
             if is_generation_template(args.template_type):
                 url = f'http://127.0.0.1:{port}/v1/completions'

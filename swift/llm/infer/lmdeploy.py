@@ -77,10 +77,10 @@ class LMDeployFramework(InferFramework):
         logger.info(f'device_count: {torch.cuda.device_count()}')
 
         assert args.quantization_bit == 0, 'not support bnb'
-        assert not args.sft_type == 'lora', 'you need to merge lora'
+        assert not args.train_type == 'lora', 'you need to merge lora'
         # Loading Model and Tokenizer
         model_id_or_path = None
-        if args.sft_type == 'full' and args.ckpt_dir is not None:
+        if args.train_type == 'full' and args.ckpt_dir is not None:
             model_id_or_path = args.ckpt_dir
         elif args.model_id_or_path is not None:
             model_id_or_path = args.model_id_or_path

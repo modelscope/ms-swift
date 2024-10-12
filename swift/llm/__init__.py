@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebuiArguments, AppUIArguments)
     from .template import TEMPLATE_MAPPING, Template, StopWords, get_template, TemplateType, register_template
-    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, get_default_template_type, HfConfigFactory
+    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory
     from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                           TextGenerationPreprocessor, DatasetName, DatasetLoader, HubDatasetLoader, LocalDatasetLoader,
@@ -42,7 +42,7 @@ else:
             'RLHFArguments', 'AppUIArguments'
         ],
         'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'get_template', 'TemplateType', 'register_template'],
-        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'get_default_template_type', 'HfConfigFactory'],
+        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory'],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'ConversationsPreprocessor',
             'ListPreprocessor', 'PreprocessFunc', 'RenameColumnsPreprocessor', 'SmartPreprocessor',

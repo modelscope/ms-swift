@@ -136,7 +136,7 @@ class SwiftMixin:
         if not hasattr(self, 'sft_args'):
             return
         sft_args = self.sft_args
-        if sft_args.sft_type == 'full':
+        if sft_args.train_type == 'full':
             return
         configuration_path = os.path.join(output_dir, 'configuration.json')
         new_cfg = {}
@@ -262,8 +262,8 @@ class SwiftMixin:
         save_safetensors = self.args.save_safetensors
 
         sft_args = getattr(self, 'sft_args', None)
-        if sft_args and sft_args.sft_type in extra_tuners:
-            tuner: Tuner = extra_tuners[sft_args.sft_type]
+        if sft_args and sft_args.train_type in extra_tuners:
+            tuner: Tuner = extra_tuners[sft_args.train_type]
             tuner.save_pretrained(self.model, output_dir)
         elif not isinstance(self.model, supported_classes):
             if state_dict is None:
@@ -284,14 +284,14 @@ class SwiftMixin:
         else:
             self.model.save_pretrained(output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         # tokenizer
-        if self.tokenizer is not None and sft_args is not None and sft_args.sft_type == 'full':
+        if self.tokenizer is not None and sft_args is not None and sft_args.train_type == 'full':
             if hasattr(self.tokenizer, 'processor'):
                 self.tokenizer.processor.save_pretrained(output_dir)
             self.tokenizer.save_pretrained(output_dir)
         # training_args.bin
         torch.save(self.args, os.path.join(output_dir, 'training_args.bin'))
         # additional files
-        if sft_args is not None and sft_args.sft_type == 'full':
+        if sft_args is not None and sft_args.train_type == 'full':
             # TODO:additional_saved_files
             additional_files = getattr(self.args, 'additional_saved_files', None) or [] + ['preprocessor_config.json']
             if model_dir is not None:

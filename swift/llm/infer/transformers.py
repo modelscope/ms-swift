@@ -115,7 +115,7 @@ class PtEngine(InferEngine):
         if args.use_flash_attn is not None:
             kwargs['use_flash_attn'] = args.use_flash_attn
         model_id_or_path = None
-        if args.sft_type == 'full' and args.ckpt_dir is not None:
+        if args.train_type == 'full' and args.ckpt_dir is not None:
             model_id_or_path = args.ckpt_dir
         elif args.model_id_or_path is not None:
             model_id_or_path = args.model_id_or_path

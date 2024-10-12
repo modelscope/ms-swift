@@ -317,13 +317,13 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
         if self.is_adapter:
             assert self.freeze_parameters_ratio == 0. and len(
                 self.additional_trainable_parameters) == 0, ('lora does not support, please use `--train_type full`')
-            if self.is_quant_model():
+            if self.quant_method is not None:
                 assert self.quantization_bit == 0, (
                     f'{self.model_type} is already a quantized model and does not need to be quantized again.')
         elif self.train_type == 'full':
             if self.freeze_vit:
-                if self.get_model_group():
-                    vision_tower = MODEL_KEYS_MAPPING[self.get_model_group()].vision_tower
+                if self.model_type in MODEL_KEYS_MAPPING:
+                    vision_tower = MODEL_KEYS_MAPPING[self.model_type].vision_tower
                     if vision_tower:
                         self.freeze_parameters += vision_tower
             assert 0 <= self.freeze_parameters_ratio <= 1
