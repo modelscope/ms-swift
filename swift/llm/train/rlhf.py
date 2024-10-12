@@ -5,7 +5,6 @@ from swift.trainers import TrainerFactory
 from swift.utils import get_logger, get_main, seed_everything
 from ..argument import RLHFArguments
 from ..template import TEMPLATE_MAPPING
-from .patcher import TrainTemplate
 from .sft import prepare_dataset, prepare_train_model_template, trainer_train
 
 logger = get_logger()
@@ -20,9 +19,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct.")
 
     msg = {}
-    model, ref_model, template, callbacks, optimizers = prepare_train_model_template(args)
+    model, ref_model, template, callbacks, optimizer_callback = prepare_train_model_template(args)
     with TrainerFactory.patch_template(args, template):
-        template = TrainTemplate(template)
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
 
         return trainer_train(
@@ -32,7 +30,7 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
             train_dataset,
             val_dataset,
             callbacks=callbacks,
-            optimizers=optimizers,
+            optimizers=optimizer_callback(model, train_dataset, args),
             msg=msg,
             ref_model=ref_model)
 

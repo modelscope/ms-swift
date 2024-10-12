@@ -1,11 +1,26 @@
-from transformers import Trainer
+import math
 
-from swift.llm.utils import calculate_max_steps
+from transformers import Trainer
+from swift.utils import get_dist_setting
 from swift.trainers.optimizers.galore import create_optimizer_and_scheduler
 
 
-def create_galore_optimizers(model, args):
-    training_steps = calculate_max_steps(args)
+def calculate_max_steps(dataset, args: 'SftArguments') -> int:
+    if args.max_steps:
+        max_steps = args.max_steps
+    else:
+        assert not args.streaming
+        len_dataset = len(dataset)
+        _, _, world_size, _ = get_dist_setting()
+        total_train_batch_size = args.batch_size * args.gradient_accumulation_steps * world_size
+        num_update_steps_per_epoch = len_dataset // total_train_batch_size
+        num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
+        max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
+    return max_steps
+
+
+def create_galore_optimizers(model, dataset, args):
+    training_steps = calculate_max_steps(dataset, args)
     return create_optimizer_and_scheduler(
         model,
         args.training_args,
@@ -15,8 +30,7 @@ def create_galore_optimizers(model, args):
         weight_decay=args.weight_decay)
 
 
-def create_lorap_optimizers(model, args):
-    training_steps = calculate_max_steps(args)
+def create_lorap_optimizers(model, dataset, args):
     args = args.training_args
     optimizer_grouped_parameters = None
     if hasattr(model, 'create_optimizer_param_groups'):
@@ -41,7 +55,7 @@ def create_lorap_optimizers(model, args):
     return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs), None
 
 
-def default_create_optimizers(model, args):
+def default_create_optimizers(model, dataset, args):
     return None, None
 
 

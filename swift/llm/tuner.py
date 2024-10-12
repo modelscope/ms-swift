@@ -4,6 +4,8 @@ import types
 from typing import List
 
 import json
+
+import numpy as np
 import torch
 import transformers
 from packaging import version
@@ -29,7 +31,7 @@ def handle_target_modules(model, args: SftArguments) -> None:
         args: The SftArguments
     """
 
-    if args.sft_type == 'ia3':
+    if args.train_type == 'ia3':
         assert len(args.ia3_feedforward_modules) > 0, ('Setting ia3_target_modules to `ALL` '
                                                        'need to pass MLP linear names to `ia3_feedforward_modules`')
     target_modules: List[str] = args.target_modules
@@ -93,7 +95,7 @@ class TrainerAdapterCallback(TrainerCallback):
         model = kwargs['model']
         if hasattr(model, 'set_active_adapters'):
             model.set_active_adapters(model.adapters.keys(), offload='cpu')
-        if self.args.sft_type == 'adalora':
+        if self.args.train_type == 'adalora':
             model.peft_config['default'].total_step = state.max_steps
 
             def zero_grad(_self, *args, **kwargs):
@@ -104,7 +106,7 @@ class TrainerAdapterCallback(TrainerCallback):
             model.zero_grad = types.MethodType(zero_grad, model)
 
     def on_step_end(self, _args, state, control, **kwargs):
-        if self.args.sft_type == 'adalora':
+        if self.args.train_type == 'adalora':
             self.global_step = state.global_step
 
 
@@ -161,7 +163,7 @@ def prepare_modules(model, args: SftArguments):
 
     group_type = args.get_model_group()
     # Preparing LoRA
-    if args.is_adapter():
+    if args.is_adapter:
         if args.resume_from_checkpoint is None:
             handle_target_modules(model, args)
             if args.init_lora_weights and args.init_lora_weights.lower() in ('true', 'false'):
@@ -182,7 +184,7 @@ def prepare_modules(model, args: SftArguments):
                 'init_lora_weights': args.init_lora_weights,
             }
 
-            if args.sft_type in ('lora', 'longlora'):
+            if args.train_type in ('lora', 'longlora'):
                 # Fix the name of the layer in xcomposer that contains Plora.
                 if any(['lora_' in n for n, p in model.named_parameters()]):
                     model.requires_grad_(False)
@@ -198,7 +200,7 @@ def prepare_modules(model, args: SftArguments):
                     logger.info(f'lora_config: {lora_config}')
                 elif args.tuner_backend == 'unsloth':
                     from unsloth import FastLanguageModel
-                    assert args.sft_type == 'lora', 'Unsloth does not support LongLoRA'
+                    assert args.train_type == 'lora', 'Unsloth does not support LongLoRA'
                     lora_kwargs.pop('lorap_lr_ratio')
                     model = FastLanguageModel.get_peft_model(
                         model,
@@ -207,13 +209,13 @@ def prepare_modules(model, args: SftArguments):
                         **lora_kwargs,
                     )
                     logger.info(f'unsloth_config: {lora_kwargs}')
-                if args.sft_type == 'longlora':
+                if args.train_type == 'longlora':
                     assert LongLoRAModelType.LLAMA in args.model_type
                     assert version.parse(transformers.__version__) >= version.parse('4.39.3')
                     from swift.tuners.longlora.llama import replace_llama_attn
                     replace_llama_attn(model)
                     model.config.group_size_ratio = 0.25
-            elif args.sft_type == 'adalora':
+            elif args.train_type == 'adalora':
                 lora_kwargs.pop('lorap_lr_ratio', None)
                 lora_kwargs['rank_pattern'] = None
                 adalora_config = AdaLoraConfig(
@@ -230,7 +232,7 @@ def prepare_modules(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, adalora_config)
                 logger.info(f'adalora_config: {adalora_config}')
-            elif args.sft_type == 'ia3':
+            elif args.train_type == 'ia3':
                 ia3_config = IA3Config(
                     task_type='CAUSAL_LM',
                     target_modules=args.target_modules,
@@ -239,14 +241,14 @@ def prepare_modules(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, ia3_config)
                 logger.info(f'ia3_config: {ia3_config}')
-            elif args.sft_type == 'llamapro':
+            elif args.train_type == 'llamapro':
                 llamapro_config = LLaMAProConfig(
                     model_type=group_type,
                     num_new_blocks=args.llamapro_num_new_blocks,
                     num_groups=args.llamapro_num_groups)
                 model = Swift.prepare_model(model, llamapro_config)
                 logger.info(f'llamapro_config: {llamapro_config}')
-            elif args.sft_type == 'adapter':
+            elif args.train_type == 'adapter':
                 assert group_type in MODEL_KEYS_MAPPING
                 mlp_key = MODEL_KEYS_MAPPING[group_type].mlp
                 mlp_key = mlp_key.split('.{}.')[1]
@@ -258,7 +260,7 @@ def prepare_modules(model, args: SftArguments):
                     act_layer=args.adapter_act)
                 model = Swift.prepare_model(model, adapter_config)
                 logger.info(f'adapter_config: {adapter_config}')
-            elif args.sft_type == 'vera':
+            elif args.train_type == 'vera':
                 vera_config = VeraConfig(
                     r=args.vera_rank,
                     target_modules=args.target_modules,
@@ -270,7 +272,7 @@ def prepare_modules(model, args: SftArguments):
                 vera_config = handle_vera_target_modules(model, vera_config)
                 model = Swift.prepare_model(model, vera_config)
                 logger.info(f'vera_config: {vera_config}')
-            elif args.sft_type == 'boft':
+            elif args.train_type == 'boft':
                 boft_config = BOFTConfig(
                     boft_block_size=args.boft_block_size,
                     boft_block_num=args.boft_block_num,
@@ -281,7 +283,7 @@ def prepare_modules(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, boft_config)
                 logger.info(f'boft_config: {boft_config}')
-            elif args.sft_type == 'fourierft':
+            elif args.train_type == 'fourierft':
                 from peft import FourierFTConfig
                 fourier_config = FourierFTConfig(
                     target_modules=args.target_modules,
@@ -291,7 +293,7 @@ def prepare_modules(model, args: SftArguments):
                 )
                 model = Swift.prepare_model(model, fourier_config)
                 logger.info(f'fourier_config: {fourier_config}')
-            elif args.sft_type == 'reft':
+            elif args.train_type == 'reft':
                 reft_config = ReftConfig(
                     model_type=group_type,
                     layer_key=args.reft_layer_key,
@@ -324,11 +326,11 @@ def prepare_modules(model, args: SftArguments):
                     logger.info('Convert trainable parameters from fp16 to fp32.')
                     is_logging = True
                 p.data = p.data.to(dtype=torch.float32)
-    elif args.sft_type in extra_tuners:
-        tuner: Tuner = extra_tuners[args.sft_type]
+    elif args.train_type in extra_tuners:
+        tuner: Tuner = extra_tuners[args.train_type]
         model = tuner.prepare_model(model, args)
         model.is_tuner_plugin = True
-    elif args.sft_type == 'full':
+    elif args.train_type == 'full':
         model.train()
         model.requires_grad_(True)
 
@@ -362,7 +364,7 @@ def prepare_modules(model, args: SftArguments):
                     logger.warning(
                         f'There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}.')
     else:
-        raise ValueError(f'args.sft_type: {args.sft_type}')
+        raise ValueError(f'args.train_type: {args.train_type}')
 
     if args.sequence_parallel_size > 1:
         from swift.trainers.xtuner import dispatch_module_xtuner
@@ -372,31 +374,15 @@ def prepare_modules(model, args: SftArguments):
     if args.lora_lr_ratio:
         optimizer_callback = optimizers_map['lorap']
     if args.use_galore:
-        from swift.trainers.optimizers.galore import GaLoreConfig
         if args.galore_target_modules is None:
             args.galore_target_modules = find_all_linears(model, 0, args.model_type, args.quant_method)
         if args.galore_with_embedding:
             args.galore_target_modules += find_embedding(model)
-        args.training_args.galore_config = GaLoreConfig(
-            target_modules=args.galore_target_modules,
-            rank=args.galore_rank,
-            update_proj_gap=args.galore_update_proj_gap,
-            galore_scale=args.galore_scale,
-            proj_type=args.galore_proj_type,
-            optim_per_parameter=args.galore_optim_per_parameter,
-            quantize=args.galore_quantization,
-            proj_quant=args.galore_proj_quant,
-            proj_bits=args.galore_proj_bits,
-            proj_group_size=args.galore_proj_group_size,
-            cos_threshold=args.galore_cos_threshold,
-            gamma_proj=args.galore_gamma_proj,
-            queue_size=args.galore_queue_size,
-        )
         optimizer_callback = optimizers_map['galore']
 
     callbacks = []
     if args.lisa_activated_layers > 0:
-        assert args.sft_type == 'full', 'LISA only supports full parameter training.'
+        assert args.train_type == 'full', 'LISA only supports full parameter training.'
         lisa_callback = DynamicLayerActivationCallback(
             n_layers=args.lisa_activated_layers,  # Number of layers to activate
             step_interval=args.lisa_step_interval,  # Step interval to update active layers
@@ -404,7 +390,7 @@ def prepare_modules(model, args: SftArguments):
         lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
         callbacks.append(lisa_callback)
 
-    if args.is_adapter() and args.tuner_backend == 'swift':
+    if args.is_adapter and args.tuner_backend == 'swift':
         callbacks.append(TrainerAdapterCallback(args))
     callbacks.extend(extra_callbacks or [])
-    return model, callbacks, optimizer_callback(model, args)
+    return model, callbacks, optimizer_callback

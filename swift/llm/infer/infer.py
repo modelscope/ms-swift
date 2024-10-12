@@ -90,7 +90,7 @@ def merge_lora(args: InferArguments,
                **kwargs) -> Optional[str]:
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
-    assert args.sft_type in args.adapters_can_be_merged, 'Only supports lora & llamapro series models'
+    assert args.train_type in args.adapters_can_be_merged, 'Only supports lora & llamapro series models'
     assert not args.is_quant_model(), f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
@@ -141,9 +141,9 @@ def merge_lora(args: InferArguments,
                 if tempdir:
                     shutil.rmtree(tempdir, ignore_errors=True)
 
-    logger.info("Setting args.sft_type: 'full'")
+    logger.info("Setting args.train_type: 'full'")
     logger.info(f'Setting args.ckpt_dir: {merged_lora_path}')
-    args.sft_type = 'full'
+    args.train_type = 'full'
     args.ckpt_dir = merged_lora_path
     return merged_lora_path
 

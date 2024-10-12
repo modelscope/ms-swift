@@ -7,7 +7,7 @@ import torch
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING, ModelType, RLHFArguments
+from swift.llm import MODEL_KEYS_MAPPING, MODEL_MAPPING
 from swift.llm.model import fix_do_sample_warning
 from swift.utils import get_dist_setting, get_logger, use_hf_hub
 

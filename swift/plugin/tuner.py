@@ -1,6 +1,6 @@
 from peft import IA3Config, PeftModel, get_peft_model
 
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
+from swift.llm.module_mapping import ModelKeys, MODEL_KEYS_MAPPING
 from swift.utils.torch_utils import find_all_linears
 
 

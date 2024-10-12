@@ -27,7 +27,7 @@ class StopWordsCriteria(StoppingCriteria):
         Like suffixes and chat seps in the template.
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: List[StopWord], **tokenizer_kwargs) -> None:
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: List[Context], **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
         self.tokenizer_kwargs = tokenizer_kwargs

@@ -187,4 +187,4 @@ class LLMEval(BaseUI):
         run_command, eval_args, log_file = cls.eval(*args)
         os.system(run_command)
         time.sleep(2)
-        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [eval_args.sft_type]
+        return gr.update(open=True), EvalRuntime.refresh_tasks(log_file), [eval_args.train_type]

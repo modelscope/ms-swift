@@ -184,7 +184,7 @@ def llm_export(args: ExportArguments) -> None:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
     if args.to_peft_format:
-        assert args.sft_type == 'lora', f'args.sft_type: {args.sft_type}'
+        assert args.train_type == 'lora', f'args.train_type: {args.train_type}'
         args.ckpt_dir = swift_to_peft_format(args.ckpt_dir)
 
     if args.merge_lora:
@@ -248,7 +248,7 @@ def llm_export(args: ExportArguments) -> None:
         assert args.quant_output_dir is not None
         _args = args
         assert args.quantization_bit == 0, f'args.quantization_bit: {args.quantization_bit}'
-        assert args.sft_type == 'full', 'you need to merge lora'
+        assert args.train_type == 'full', 'you need to merge lora'
         if args.quant_method == 'awq':
             from awq import AutoAWQForCausalLM
             model, template = prepare_model_template(

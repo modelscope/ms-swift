@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from swift.llm import DATASET_MAPPING, TEMPLATE_MAPPING, get_default_template_type, register_dataset_info_file
+from swift.llm import DATASET_MAPPING, TEMPLATE_MAPPING, register_dataset_info_file
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -70,7 +70,8 @@ class TemplateArguments:
         # [TODO:]
         """If setting template to `auto`, find a proper one"""
         if self.template_type == 'auto':
-            self.template_type = get_default_template_type(self.model_type)
+            from swift.llm.model.register import ModelInfoReader
+            self.template_type = ModelInfoReader.get_default_template_type(self.model_type)
             logger.info(f'Setting template_type: {self.template_type}')
 
     def __post_init__(self):
