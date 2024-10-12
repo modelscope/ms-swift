@@ -11,10 +11,9 @@ from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 from swift.llm import History, to_device
 
-_Tokens = Union[str, List[int], List[str]]
-Context = Union[str, List[int]]
-Prompt = List[_Tokens]
-StopWords = List[_Tokens]
+Prompt = List[Union[str, List[int], List[str]]]
+Word = Union[str, List[int]]
+Context = Word
 
 
 class ContextType:
@@ -28,7 +27,7 @@ class StopWordsCriteria(StoppingCriteria):
         Like suffixes and chat seps in the template.
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: StopWords, **tokenizer_kwargs) -> None:
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: List[StopWord], **tokenizer_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
         self.tokenizer_kwargs = tokenizer_kwargs

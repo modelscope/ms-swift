@@ -3,9 +3,11 @@ import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
+from http import HTTPStatus
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
+from fastapi.responses import JSONResponse
 from PIL import Image
 
 from ..utils import Messages
@@ -15,6 +17,11 @@ Tool = Dict[str, Union[str, Dict]]
 
 def random_uuid() -> str:
     return str(uuid.uuid4().hex)
+
+
+def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
+    status_code = int(status_code)
+    return JSONResponse({'message': message, 'object': 'error'}, status_code)
 
 
 @dataclass
@@ -35,7 +42,7 @@ class ModelList:
 
 
 @dataclass
-class XRequestConfig:
+class RequestConfig:
     """NOTE: The following behavior is inconsistent with the OpenAI API.
     Default values for OpenAI:
         temperature = 1.
@@ -91,14 +98,24 @@ class ChatCompletionRequestMixin:
         if self.tool_choice is None:
             self.tool_choice = 'none' if self.tools is None else 'auto'
 
+        if self.tools:
+            if self.tool_choice == 'none':
+                self.tools = None
+            elif isinstance(self.tool_choice, dict):
+                name = self.tool_choice['function']['name']
+                tool = next(tool for tool in self.tools if tool['function']['name'] == name)
+                if tool is None:
+                    raise ValueError(f"Tool choice '{name}' not found in tools.")
+                self.tools = [tool]
+
 
 @dataclass
-class CompletionRequest(MultiModalRequestMixin, XRequestConfig, CompletionRequestMixin):
+class CompletionRequest(MultiModalRequestMixin, RequestConfig, CompletionRequestMixin):
     pass
 
 
 @dataclass
-class ChatCompletionRequest(MultiModalRequestMixin, XRequestConfig, ChatCompletionRequestMixin):
+class ChatCompletionRequest(MultiModalRequestMixin, RequestConfig, ChatCompletionRequestMixin):
     pass
 
 
@@ -325,7 +342,6 @@ class InferRequest:
         inputs = TemplateInputs(messages, system, **media_kwargs, objects=request.objects)
         return inputs
 
-
     @staticmethod
     def messages_join_observation(messages: Messages) -> None:
         """
@@ -352,11 +368,11 @@ class InferRequest:
             return
         i = 1
         while i < len(messages):
-            pre_message, message = messages[i-1], messages[i]
+            pre_message, message = messages[i - 1], messages[i]
             pre_role, pre_content = pre_message['role'], pre_message['content']
             role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool' and isinstance(
-                    content, str) and content.endswith('Observation:'):
+            if pre_role == 'assistant' and role == 'tool' and isinstance(content,
+                                                                         str) and content.endswith('Observation:'):
                 assert isinstance(pre_content, str)
                 pre_message['content'] = pre_content + content  # assistant
                 messages.pop(i)  # remove tool

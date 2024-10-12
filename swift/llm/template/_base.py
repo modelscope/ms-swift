@@ -10,7 +10,7 @@ from transformers import PreTrainedTokenizerBase
 from ..infer import InferRequest
 from ..utils import decode_base64
 from .agent import loss_scale_map, split_str_parts_by
-from .utils import Context, ContextType, Prompt, StopWords, TemplateInputs, fetch_one
+from .utils import Context, ContextType, Prompt, TemplateInputs, Word, fetch_one
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
@@ -75,7 +75,7 @@ class Template:
                  system_prefix: Optional[Prompt] = None,
                  tool_prompt: Optional[Prompt] = None,
                  *,
-                 stop_words: Optional[StopWords] = None,
+                 stop_words: Optional[List[Word]] = None,
                  placeholder_tokens: Union[int, str, None] = None,
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'react_en',
@@ -83,6 +83,8 @@ class Template:
         # check
         if default_system is None:
             default_system = ''
+        if stop_words is None:
+            stop_words = []
         for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
             assert x is None or isinstance(x, list)
 
