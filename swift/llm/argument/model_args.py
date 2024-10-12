@@ -111,7 +111,7 @@ class ModelArguments:
 
     def prepare_model_extra_args(self: 'SftArguments'):
         """Prepare model kwargs and set them to the env"""
-        self.parse_to_dict(self, 'model_kwargs')
+        self.parse_to_dict('model_kwargs')
         for k, v in self.model_kwargs.items():
             k = k.upper()
             os.environ[k] = str(v)
@@ -140,8 +140,8 @@ class ModelArguments:
         """Some models do not support flash-attention"""
         model_info = MODEL_MAPPING.get(self.model_type, {})
         support_flash_attn = model_info.get('support_flash_attn', False)
-        if self.use_flash_attn and not support_flash_attn:
-            logger.warning(f'use_flash_attn: {self.use_flash_attn}, ' f'but support_flash_attn: {support_flash_attn}')
+        if 'flash' in self.attn_impl and not support_flash_attn:
+            logger.warning(f'attn_impl: {self.attn_impl}, ' f'but support_flash_attn: {support_flash_attn}')
 
     @property
     def is_multimodal(self) -> bool:

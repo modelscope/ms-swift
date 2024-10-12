@@ -22,7 +22,7 @@ from peft.utils import _get_submodules
 
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
+from swift.llm.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 
 logger = get_logger()
 

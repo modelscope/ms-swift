@@ -7,7 +7,7 @@ import torch
 from torch import nn
 
 from swift.utils.logger import get_logger
-from swift.utils.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
+from swift.llm.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()
