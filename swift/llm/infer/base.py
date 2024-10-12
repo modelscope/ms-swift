@@ -134,12 +134,16 @@ class InferEngine:
         queue.put((i, None))
 
     @staticmethod
+    async def _batch_run(tasks):
+        return await asyncio.gather(*tasks)
+
+    @staticmethod
     def _infer_stream(tasks,
                       use_tqdm: bool = True,
                       stream: bool = True) -> Iterator[List[ChatCompletionStreamResponse]]:
         queue = Queue()
         new_tasks = [InferEngine._run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
-        thread = Thread(target=asyncio.run(asyncio.gather(*new_tasks)))
+        thread = Thread(target=asyncio.run(InferEngine._batch_run(new_tasks)))
         thread.start()
         prog_bar = tqdm(total=len(new_tasks), dynamic_ncols=True, disable=not use_tqdm)
         n_finished = 0
@@ -163,7 +167,6 @@ class InferEngine:
                           template: Template,
                           infer_request: InferRequest,
                           request_config: Optional[RequestConfig] = None,
-                          *,
                           request_id: Optional[str] = None,
                           **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         pass
@@ -176,7 +179,7 @@ class InferEngine:
         request_config: Optional[RequestConfig] = None,
         *,
         use_tqdm: bool = True,
-        **kwargs,
+        **kwargs
     ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
         request_config = request_config or RequestConfig()
 

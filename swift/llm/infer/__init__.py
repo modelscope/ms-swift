@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .deploy import deploy_main
     from .infer import infer_main, merge_lora_main, merge_lora
-    from .vllm import VLLMFramework, VllmGenerationConfig
+    from .vllm import VllmEngine
     from .lmdeploy import LMDeployFramework, LmdeployGenerationConfig
     from .transformers import TransformersFramework
     from .protocol import InferRequest
@@ -15,7 +15,7 @@ else:
     _import_structure = {
         'deploy': ['deploy_main'],
         'infer': ['infer_main', 'merge_lora_main', 'merge_lora'],
-        'vllm': ['VLLMFramework', 'VllmGenerationConfig'],
+        'vllm': ['VllmEngine'],
         'lmdeploy': ['LMDeployFramework', 'LmdeployGenerationConfig'],
         'transformers': ['TransformersFramework'],
         'protocol': ['InferRequest'],

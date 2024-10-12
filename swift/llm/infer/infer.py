@@ -344,8 +344,8 @@ def llm_infer(args: InferArguments) -> Dict[str, List[Dict[str, Any]]]:
         merge_lora(args, device_map=args.merge_device_map)
 
     if args.infer_backend == 'vllm':
-        from .vllm import VLLMFramework
-        framework = VLLMFramework(args)
+        from .vllm import VllmEngine
+        framework = VllmEngine(args)
     elif args.infer_backend == 'lmdeploy':
         from .lmdeploy import LMDeployFramework
         framework = LMDeployFramework(args)

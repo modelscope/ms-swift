@@ -29,7 +29,7 @@ from swift.llm.infer.protocol import (ChatCompletionMessageToolCall, ChatComplet
                                       CompletionStreamResponse, DeltaMessage, Function, Model, ModelList, UsageInfo,
                                       messages_join_observation, random_uuid)
 from swift.llm.infer.transformers import TransformersFramework
-from swift.llm.infer.vllm import VLLMFramework
+from swift.llm.infer.vllm import VllmEngine
 from swift.llm.utils import set_generation_config
 from swift.utils import get_logger, get_main, get_seed, seed_everything
 from swift.utils.utils import split_action_action_input
@@ -892,7 +892,7 @@ def llm_deploy(args: DeployArguments) -> None:
     if args.merge_lora:
         merge_lora(args, device_map=args.merge_device_map)
     if args.infer_backend == 'vllm':
-        framework = VLLMFramework(args, use_async=True)
+        framework = VllmEngine(args, use_async=True)
     elif args.infer_backend == 'lmdeploy':
         framework = LMDeployFramework(args, use_async=True)
     else:

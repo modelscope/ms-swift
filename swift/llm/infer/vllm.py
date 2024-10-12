@@ -8,7 +8,7 @@ import vllm
 from modelscope import GenerationConfig
 from packaging import version
 from transformers import PreTrainedTokenizerBase
-from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
+from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
 from swift.utils import get_logger
 from ..template import Template, split_action_action_input
@@ -72,7 +72,7 @@ class VllmEngine(InferEngine):
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
-            engine = AsyncLLMEngine.from_engine_args()
+            engine = AsyncLLMEngine.from_engine_args(self.engine_args)
         self.engine = engine
 
     def _prepare_engine_kwargs(
@@ -139,28 +139,20 @@ class VllmEngine(InferEngine):
             os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
 
     def _fix_vllm_bug(self) -> None:
-        _engine = self.engine.engine
-        # compatible with vllm==0.3.*
-        if version.parse(vllm.__version__) >= version.parse('0.3'):
-            assert isinstance(_engine.tokenizer.tokenizer, PreTrainedTokenizerBase)
-            _engine.tokenizer.tokenizer = self.tokenizer
+        # fix vllm==0.4 bug (very slow)
+        tokenizer = self.tokenizer
+        if version.parse(vllm.__version__) >= version.parse('0.4') and not tokenizer.__class__.__name__.startswith("Cached"):
+            _tokenizer_len = len(tokenizer)
+            __old_len__ = tokenizer.__class__.__len__
 
-            # fix vllm==0.4 bug (very slow)
-            if version.parse(vllm.__version__) >= version.parse('0.4'):
-                _tokenizer_len = len(self.tokenizer)
-                __old_len__ = self.tokenizer.__class__.__len__
+            def __len__(self) -> int:
+                if self is tokenizer:
+                    return _tokenizer_len
+                else:
+                    return __old_len__(self)
 
-                def __len__(self) -> int:
-                    if self is self.tokenizer:
-                        return _tokenizer_len
-                    else:
-                        return __old_len__(self)
+            tokenizer.__class__.__len__ = __len__
 
-                self.tokenizer.__class__.__len__ = __len__
-
-        else:
-            assert isinstance(_engine.tokenizer, PreTrainedTokenizerBase)
-            _engine.tokenizer = self.tokenizer
 
     def _load_generation_config(self) -> None:
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
@@ -351,7 +343,7 @@ class VllmEngine(InferEngine):
         created_time = int(time.time())
         request_config = request_config or RequestConfig()
 
-        inputs = template.encode(infer_request)
+        inputs = template.encode(infer_request)  # TODO: `{}`
         request_config.stop = self._get_stop_words(request_config, template)
         generation_config = self._prepare_generation_config(request_config)
         result_generator = self._add_vllm_request(inputs, generation_config, request_id, lora_request=lora_request)
