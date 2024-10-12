@@ -79,7 +79,7 @@ class Template:
                  placeholder_tokens: Union[int, str, None] = None,
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'react_en',
-                 skip_input_len: bool = True) -> None:
+                 skip_prompt: bool = True) -> None:
         # check
         if default_system is None:
             default_system = ''
@@ -116,7 +116,7 @@ class Template:
         self.placeholder_tokens = placeholder_tokens
         self.auto_add_bos = auto_add_bos
         self.tools_prompt = tools_prompt
-        self.skip_input_len = skip_input_len
+        self.skip_prompt = skip_prompt
         self._is_init = False
 
     @staticmethod
@@ -621,86 +621,10 @@ class Template:
             generate_ids = generate_ids.tolist()
         if len(generate_ids) > 0 and not isinstance(generate_ids[0], (list, tuple)):
             generate_ids = generate_ids[0]  # to 1d list
-        if self.skip_input_len:
+        if self.skip_prompt:
             return generate_ids[input_token_len:]
         else:
             return generate_ids
-
-    @staticmethod
-    def _is_chinese_char(cp: int) -> bool:
-        """Checks whether CP is the codepoint of a CJK character."""
-        # copy from transformers.generation.streamers.TextStreamer
-        if ((0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or (0x20000 <= cp <= 0x2A6DF)
-                or (0x2A700 <= cp <= 0x2B73F) or (0x2B740 <= cp <= 0x2B81F) or (0x2B820 <= cp <= 0x2CEAF)
-                or (0xF900 <= cp <= 0xFAFF) or (0x2F800 <= cp <= 0x2FA1F)):
-            return True
-
-        return False
-
-    @staticmethod
-    def _get_safe_print_idx(response: str, print_idx: int, is_finished: bool = False) -> int:
-        if is_finished:
-            return len(response)
-        if response.endswith('\n') or len(response) > 0 and Template._is_chinese_char(ord(response[-1])):
-            print_idx = len(response)
-        else:
-            print_idx = max(response.rfind(' ') + 1, print_idx)
-        return print_idx
-
-    def generate_ids_to_response(
-        self,
-        generate_ids: List[int],
-        is_finished: bool = True,
-        *,
-        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
-        # only stream=True
-        return_delta: bool = False,
-        print_idx: Optional[List[int]] = None,
-        first_num_space: Optional[List[int]] = None,
-    ):
-        if tokenizer_kwargs is None:
-            tokenizer_kwargs = {}
-        tokenizer = self.tokenizer
-        if hasattr(generate_ids, 'tolist'):
-            generate_ids = generate_ids.tolist()
-        # avoid printing template.suffix[-1])
-        if isinstance(self.suffix[-1], list) and (not is_finished or is_finished
-                                                  and generate_ids[-len(self.suffix[-1]):] == self.suffix[-1]):
-            generate_ids = generate_ids[:-len(self.suffix[-1])]
-        if not is_finished or is_finished and generate_ids[-1:] == [self.tokenizer.eos_token_id]:
-            generate_ids = generate_ids[:-1]
-        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-        if first_num_space is not None:
-            # Avoid the occurrence of repeated words in sentence.
-            res_fns = first_num_space  # res_first_num_space
-            first_num_space = first_num_space[0]
-            cur_num_space = len(response) - len(response.lstrip(' '))
-            if not is_finished and first_num_space == -1:
-                first_num_space = cur_num_space
-                res_fns[0] = first_num_space
-            if cur_num_space < first_num_space:
-                response = ' ' * (first_num_space - cur_num_space) + response
-            elif cur_num_space > first_num_space:
-                response = response[cur_num_space - first_num_space:]
-        if isinstance(self.suffix[-1],
-                      str) and (not is_finished or is_finished and response[-len(self.suffix[-1]):] == self.suffix[-1]):
-            idx = max(len(response) - len(self.suffix[-1]), 0)
-            # To avoid response length being shorter than previous response length during streaming.
-            if print_idx is not None:
-                idx = max(idx, print_idx[0])
-            response = response[:idx]
-
-        if print_idx is not None:
-            old_print_idx = print_idx[0]
-            if not is_finished:
-                # avoid printing incomplete words
-                print_idx[0] = self._get_safe_print_idx(response, print_idx[0])
-                response = response[:print_idx[0]]
-            if return_delta:
-                response = response[old_print_idx:]
-        else:
-            assert is_finished and not return_delta
-        return response
 
     def post_process_generate_response(self, response: str, inputs: TemplateInputs) -> str:
         return response

@@ -7,13 +7,12 @@ import torch
 import vllm
 from modelscope import GenerationConfig
 from packaging import version
-from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
-from ..template import Template, get_template, split_action_action_input
-from .base import InferEngine
+from ..template import Template, split_action_action_input
+from .base import InferEngine, InferStreamer, InferTools
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionResponseChoice,
                        ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, DeltaMessage,
@@ -75,7 +74,6 @@ class VllmEngine(InferEngine):
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
             engine = AsyncLLMEngine.from_engine_args()
         self.engine = engine
-
 
     def _prepare_engine_kwargs(
             self,
@@ -262,9 +260,9 @@ class VllmEngine(InferEngine):
 
         return SamplingParams(**kwargs)
 
-    async def _infer_stream(self, result_generator, generation_config: SamplingParams, request_id: str,
-                            created_time: int) -> AsyncIterator[ChatCompletionStreamResponse]:
-        print_idx_list = [[0] for _ in range(generation_config.n)]
+    async def _infer_stream_async(self, template, result_generator, generation_config: SamplingParams, request_id: str,
+                                  created_time: int) -> AsyncIterator[ChatCompletionStreamResponse]:
+        infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
         total_res = ['' for _ in range(generation_config.n)]
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
@@ -275,14 +273,13 @@ class VllmEngine(InferEngine):
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
             is_diff = False
-            has_finished = False
+            is_finished = False
             for output in result.outputs:
-                output.delta_text = self.template.generate_ids_to_response(
-                    output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
+                output.delta_text = infer_streamers[output.index].put(output.token_ids, output.finished())
                 total_res[output.index] += output.delta_text
                 is_diff |= bool(output.delta_text)
-                has_finished |= output.finish_reason is not None
-            if not is_diff and not has_finished:
+                is_finished |= output.finish_reason is not None
+            if not is_diff and not is_finished:
                 continue
             choices = []
             for output in result.outputs:
@@ -304,8 +301,8 @@ class VllmEngine(InferEngine):
             yield ChatCompletionStreamResponse(
                 model=self.model_dir, choices=choices, usage=usage_info, id=request_id, created=created_time)
 
-    async def _infer_full(self, result_generator, generation_config: SamplingParams, request_id: str,
-                          created_time: int) -> ChatCompletionResponse:
+    async def _infer_async(self, template, result_generator, generation_config: SamplingParams, request_id: str,
+                           created_time: int) -> ChatCompletionResponse:
         result = None
         async for result in result_generator:
             pass
@@ -319,7 +316,7 @@ class VllmEngine(InferEngine):
         )
         choices = []
         for output in result.outputs:
-            response = self.template.generate_ids_to_response(output.token_ids)
+            response = InferTools.safe_decode(template, output.token_ids, True)
             logprobs = VllmEngine._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             action, action_input = split_action_action_input(response)
             toolcall = None
@@ -352,14 +349,14 @@ class VllmEngine(InferEngine):
         if request_id is None:
             request_id = f'chatcmpl-{random_uuid()}'
         created_time = int(time.time())
+        request_config = request_config or RequestConfig()
 
         inputs = template.encode(infer_request)
-        request_config = request_config or RequestConfig()
         request_config.stop = self._get_stop_words(request_config, template)
         generation_config = self._prepare_generation_config(request_config)
         result_generator = self._add_vllm_request(inputs, generation_config, request_id, lora_request=lora_request)
-        infer_args = (result_generator, generation_config, request_id, created_time)
+        infer_args = (template, result_generator, generation_config, request_id, created_time)
         if request_config.stream:
-            return self._infer_stream(*infer_args)
+            return self._infer_stream_async(*infer_args)
         else:
-            return await self._infer_full(*infer_args)
+            return await self._infer_async(*infer_args)
