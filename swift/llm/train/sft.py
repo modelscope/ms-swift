@@ -13,15 +13,13 @@ from transformers import IntervalStrategy
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_npu_available, strtobool
 
-from swift.llm import HfConfigFactory, get_model_tokenizer, get_template, TEMPLATE_MAPPING
+from swift.llm import TEMPLATE_MAPPING, HfConfigFactory, get_model_tokenizer, get_template
 from swift.llm.argument import PtArguments, RLHFArguments, SftArguments
 from swift.trainers import TrainerFactory
 from swift.trainers.utils import can_return_loss, find_labels
 from swift.utils import (append_to_jsonl, check_json_format, compute_acc_metrics, compute_nlg_metrics, get_logger,
                          get_main, get_model_info, is_ddp_plus_mp, is_dist, is_master, plot_images,
                          preprocess_logits_for_metrics, seed_everything, show_layers, use_torchacc)
-from .patcher import patch_ddp_mp
-from ..utils.utils import set_generation_config
 from ...utils.torchacc_utils import patch_acc_model
 from ...utils.utils import get_time_info
 from ..dataset.loader import DatasetLoader
@@ -29,7 +27,9 @@ from ..dataset.utils import (ConstantLengthDataset, LazyLLMDataset, dataset_map,
                              stat_dataset)
 from ..template import Template
 from ..tuner import prepare_modules
+from ..utils.utils import set_generation_config
 from .accelerator import ta_accelerate
+from .patcher import patch_ddp_mp
 
 logger = get_logger()
 
@@ -80,8 +80,8 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
         args.model_type, model_id_or_path=args.model_id_or_path, revision=args.model_revision, load_model=False)
 
     # Loading Dataset
-    template: Template = get_template(args.template_type, tokenizer, args.system, args.max_length,
-                                      truncation_strategy=args.truncation_strategy)
+    template: Template = get_template(
+        args.template_type, tokenizer, args.system, args.max_length, truncation_strategy=args.truncation_strategy)
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     td0, tkwargs0 = template.encode(train_dataset[0])
@@ -449,7 +449,7 @@ def trainer_train(args,
     logging_path = os.path.join(args.output_dir, 'logging.jsonl')
     logger.info(f'The logging file will be saved in: {logging_path}')
     with template.training_context([model] if ref_model is None else [model, ref_model],
-                          [template] if ref_model is None else [template, template]):
+                                   [template] if ref_model is None else [template, template]):
         trainer.train(training_args.resume_from_checkpoint)
     last_model_checkpoint = getattr(trainer.state, 'last_model_checkpoint', None)
     logger.info(f'last_model_checkpoint: {last_model_checkpoint}')
@@ -501,8 +501,14 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     model, template, callbacks, optimizer_callback = prepare_train_model_template(args, msg)
     train_dataset, val_dataset = prepare_dataset(args, template, msg)
     return trainer_train(
-        args, model, template, train_dataset, val_dataset, callbacks=callbacks,
-        optimizers=optimizer_callback(model, train_dataset, args), msg=msg)
+        args,
+        model,
+        template,
+        train_dataset,
+        val_dataset,
+        callbacks=callbacks,
+        optimizers=optimizer_callback(model, train_dataset, args),
+        msg=msg)
 
 
 def get_sft_main(args, llm):

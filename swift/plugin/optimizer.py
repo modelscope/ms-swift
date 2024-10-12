@@ -1,8 +1,9 @@
 import math
 
 from transformers import Trainer
-from swift.utils import get_dist_setting
+
 from swift.trainers.optimizers.galore import create_optimizer_and_scheduler
+from swift.utils import get_dist_setting
 
 
 def calculate_max_steps(dataset, args: 'SftArguments') -> int:

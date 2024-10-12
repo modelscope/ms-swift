@@ -20,9 +20,9 @@ from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
 
+from swift.llm.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 from swift.utils.constants import BIN_EXTENSIONS
 from swift.utils.logger import get_logger
-from swift.llm.module_mapping import MODEL_KEYS_MAPPING, ModelKeys
 
 logger = get_logger()
 

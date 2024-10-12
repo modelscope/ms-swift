@@ -4,7 +4,6 @@ import types
 from typing import List
 
 import json
-
 import numpy as np
 import torch
 import transformers

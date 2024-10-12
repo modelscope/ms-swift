@@ -1,7 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import hashlib
 import os
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import torch
 import torch.distributed as dist
@@ -18,8 +19,45 @@ from swift.utils import deep_getattr, is_dist, is_dist_ta, safe_ddp_context
 logger = get_logger()
 
 
+@dataclass
+class ModelInfo:
+    model_type: str
+    torch_dtype: torch.dtype
+    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None] = None
+    bits: int = 0
+
+
 class HfConfigFactory:
     """This class is used to read config from config.json(maybe params.json also)"""
+
+    @staticmethod
+    def _get_torch_dtype(config: PretrainedConfig, quant_info: Dict[str, Any]) -> torch.dtype:
+        for key in ['torch_dtype', 'params_dtype']:
+            torch_dtype = HfConfigFactory.get_config_attr(config, key)
+            if torch_dtype is not None:
+                break
+        torch_dtype = HfConfigFactory._to_torch_dtype(torch_dtype)
+        if torch_dtype is None:
+            torch_dtype = quant_info.get('torch_dtype')
+        return torch_dtype
+
+    @staticmethod
+    def get_model_info(config: PretrainedConfig, model_dir: str, model_type: Optional[str] = None) -> ModelInfo:
+        if model_type is None:
+            model_types = HfConfigFactory._get_matched_model_types(config, model_dir)
+            if len(model_types) > 1:
+                raise ValueError('Unable to obtain the accurate model_type based on the model architecture. '
+                                 f'Please explicitly provide the model_type. Available model_types: {model_types}')
+            model_type = model_types[0]
+
+        quant_info = HfConfigFactory._get_quant_info(config)
+        torch_dtype = HfConfigFactory._get_torch_dtype(config, quant_info)
+        res = ModelInfo(model_type, torch_dtype)
+        if quant_info is not None:
+            res.quant_method = quant_info['quant_method']
+            res.bits = quant_info['bits']
+
+        return res
 
     @staticmethod
     def _get_config_attrs(config: PretrainedConfig, attr_name: str) -> List[Tuple[PretrainedConfig, Any]]:
@@ -49,14 +87,6 @@ class HfConfigFactory:
             attrs.append((config, None))
         for config, _ in attrs:
             setattr(config, attr_name, value)
-
-    @staticmethod
-    def get_torch_dtype(config) -> Optional[torch.dtype]:
-        for key in ['torch_dtype', 'params_dtype']:
-            torch_dtype = HfConfigFactory.get_config_attr(config, key)
-            if torch_dtype is None:
-                continue
-            return HfConfigFactory._to_torch_dtype(torch_dtype)
 
     @staticmethod
     def get_max_model_len(config: PretrainedConfig) -> Optional[int]:
@@ -96,7 +126,7 @@ class HfConfigFactory:
         return torch_dtype
 
     @staticmethod
-    def get_quant_info(config: PretrainedConfig) -> Optional[Dict[str, Any]]:
+    def _get_quant_info(config: PretrainedConfig) -> Optional[Dict[str, Any]]:
         """Get quant_method, quant_bits, dtype. not support hqq/eetq now, support awq/gptq/bnb/aqlm"""
         quantization_config = getattr(config, 'quantization_config', None)
         if quantization_config is None:
@@ -111,7 +141,7 @@ class HfConfigFactory:
             if bits is not None:
                 res['bits'] = bits
         elif quant_method == 'bitsandbytes':
-            res['quant_method'] = quant_method
+            res['quant_method'] = 'bnb'
             load_in_4bit = quantization_config.get('load_in_4bit')
             load_in_8bit = quantization_config.get('load_in_8bit')
             bnb_4bit_compute_dtype = quantization_config.get('bnb_4bit_compute_dtype')
@@ -123,7 +153,7 @@ class HfConfigFactory:
         return res or None
 
     @staticmethod
-    def get_matched_model_types(config: PretrainedConfig, model_dir: Optional[str] = None) -> List[str]:
+    def _get_matched_model_types(config: PretrainedConfig, model_dir: Optional[str] = None) -> List[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.
         from .register import get_arch_mapping
