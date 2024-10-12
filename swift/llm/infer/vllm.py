@@ -7,13 +7,12 @@ import torch
 import vllm
 from modelscope import GenerationConfig
 from packaging import version
-from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
 
 from swift.utils import get_logger
-from ..template import Template, get_template, split_action_action_input
-from .base import InferEngine
+from ..template import Template, split_action_action_input
+from .base import InferEngine, InferStreamer, InferTools
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionResponseChoice,
                        ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, DeltaMessage,
@@ -261,9 +260,9 @@ class VllmEngine(InferEngine):
 
         return SamplingParams(**kwargs)
 
-    async def _infer_stream(self, template, result_generator, generation_config: SamplingParams, request_id: str,
-                            created_time: int) -> AsyncIterator[ChatCompletionStreamResponse]:
-        print_idx_list = [[0] for _ in range(generation_config.n)]
+    async def _infer_stream_async(self, template, result_generator, generation_config: SamplingParams, request_id: str,
+                                  created_time: int) -> AsyncIterator[ChatCompletionStreamResponse]:
+        infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
         total_res = ['' for _ in range(generation_config.n)]
         async for result in result_generator:
             num_prompt_tokens = len(result.prompt_token_ids)
@@ -274,14 +273,13 @@ class VllmEngine(InferEngine):
                 total_tokens=num_prompt_tokens + num_generated_tokens,
             )
             is_diff = False
-            has_finished = False
+            is_finished = False
             for output in result.outputs:
-                output.delta_text = template.generate_ids_to_response(
-                    output.token_ids, output.finished(), return_delta=True, print_idx=print_idx_list[output.index])
+                output.delta_text = infer_streamers[output.index].put(output.token_ids, output.finished())
                 total_res[output.index] += output.delta_text
                 is_diff |= bool(output.delta_text)
-                has_finished |= output.finish_reason is not None
-            if not is_diff and not has_finished:
+                is_finished |= output.finish_reason is not None
+            if not is_diff and not is_finished:
                 continue
             choices = []
             for output in result.outputs:
@@ -303,8 +301,8 @@ class VllmEngine(InferEngine):
             yield ChatCompletionStreamResponse(
                 model=self.model_dir, choices=choices, usage=usage_info, id=request_id, created=created_time)
 
-    async def _infer_full(self, template, result_generator, generation_config: SamplingParams, request_id: str,
-                          created_time: int) -> ChatCompletionResponse:
+    async def _infer_async(self, template, result_generator, generation_config: SamplingParams, request_id: str,
+                           created_time: int) -> ChatCompletionResponse:
         result = None
         async for result in result_generator:
             pass
@@ -318,7 +316,7 @@ class VllmEngine(InferEngine):
         )
         choices = []
         for output in result.outputs:
-            response = template.generate_ids_to_response(output.token_ids)
+            response = InferTools.safe_decode(template, output.token_ids, True)
             logprobs = VllmEngine._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
             action, action_input = split_action_action_input(response)
             toolcall = None
@@ -338,82 +336,6 @@ class VllmEngine(InferEngine):
         return ChatCompletionResponse(
             model=self.model_type, choices=choices, usage=usage_info, id=request_id, created=created_time)
 
-    @staticmethod
-    def _is_chinese_char(cp: int) -> bool:
-        """Checks whether CP is the codepoint of a CJK character."""
-        # copy from transformers.generation.streamers.TextStreamer
-        if ((0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or (0x20000 <= cp <= 0x2A6DF)
-                or (0x2A700 <= cp <= 0x2B73F) or (0x2B740 <= cp <= 0x2B81F) or (0x2B820 <= cp <= 0x2CEAF)
-                or (0xF900 <= cp <= 0xFAFF) or (0x2F800 <= cp <= 0x2FA1F)):
-            return True
-
-        return False
-
-    @staticmethod
-    def _get_safe_print_idx(response: str, print_idx: int, is_finished: bool = False) -> int:
-        if is_finished:
-            return len(response)
-        if response.endswith('\n') or len(response) > 0 and Template._is_chinese_char(ord(response[-1])):
-            print_idx = len(response)
-        else:
-            print_idx = max(response.rfind(' ') + 1, print_idx)
-        return print_idx
-
-    def generate_ids_to_response(
-        self,
-        generate_ids: List[int],
-        is_finished: bool = True,
-        *,
-        tokenizer_kwargs: Optional[Dict[str, Any]] = None,
-        # only stream=True
-        return_delta: bool = False,
-        print_idx: Optional[List[int]] = None,
-        first_num_space: Optional[List[int]] = None,
-    ):
-        if tokenizer_kwargs is None:
-            tokenizer_kwargs = {}
-        tokenizer = self.tokenizer
-        if hasattr(generate_ids, 'tolist'):
-            generate_ids = generate_ids.tolist()
-        # avoid printing template.suffix[-1])
-        if isinstance(self.suffix[-1], list) and (not is_finished or is_finished
-                                                  and generate_ids[-len(self.suffix[-1]):] == self.suffix[-1]):
-            generate_ids = generate_ids[:-len(self.suffix[-1])]
-        if not is_finished or is_finished and generate_ids[-1:] == [self.tokenizer.eos_token_id]:
-            generate_ids = generate_ids[:-1]
-        response = tokenizer.decode(generate_ids, **tokenizer_kwargs)
-        if first_num_space is not None:
-            # Avoid the occurrence of repeated words in sentence.
-            res_fns = first_num_space  # res_first_num_space
-            first_num_space = first_num_space[0]
-            cur_num_space = len(response) - len(response.lstrip(' '))
-            if not is_finished and first_num_space == -1:
-                first_num_space = cur_num_space
-                res_fns[0] = first_num_space
-            if cur_num_space < first_num_space:
-                response = ' ' * (first_num_space - cur_num_space) + response
-            elif cur_num_space > first_num_space:
-                response = response[cur_num_space - first_num_space:]
-        if isinstance(self.suffix[-1],
-                      str) and (not is_finished or is_finished and response[-len(self.suffix[-1]):] == self.suffix[-1]):
-            idx = max(len(response) - len(self.suffix[-1]), 0)
-            # To avoid response length being shorter than previous response length during streaming.
-            if print_idx is not None:
-                idx = max(idx, print_idx[0])
-            response = response[:idx]
-
-        if print_idx is not None:
-            old_print_idx = print_idx[0]
-            if not is_finished:
-                # avoid printing incomplete words
-                print_idx[0] = self._get_safe_print_idx(response, print_idx[0])
-                response = response[:print_idx[0]]
-            if return_delta:
-                response = response[old_print_idx:]
-        else:
-            assert is_finished and not return_delta
-        return response
-
     @torch.inference_mode()
     async def infer_async(
             self,
@@ -427,14 +349,14 @@ class VllmEngine(InferEngine):
         if request_id is None:
             request_id = f'chatcmpl-{random_uuid()}'
         created_time = int(time.time())
+        request_config = request_config or RequestConfig()
 
         inputs = template.encode(infer_request)
-        request_config = request_config or RequestConfig()
         request_config.stop = self._get_stop_words(request_config, template)
         generation_config = self._prepare_generation_config(request_config)
         result_generator = self._add_vllm_request(inputs, generation_config, request_id, lora_request=lora_request)
         infer_args = (template, result_generator, generation_config, request_id, created_time)
         if request_config.stream:
-            return self._infer_stream(*infer_args)
+            return self._infer_stream_async(*infer_args)
         else:
-            return await self._infer_full(*infer_args)
+            return await self._infer_async(*infer_args)

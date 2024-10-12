@@ -79,7 +79,7 @@ class Template:
                  placeholder_tokens: Union[int, str, None] = None,
                  auto_add_bos: bool = False,
                  tools_prompt: str = 'react_en',
-                 skip_input_len: bool = True) -> None:
+                 skip_prompt: bool = True) -> None:
         # check
         if default_system is None:
             default_system = ''
@@ -116,7 +116,7 @@ class Template:
         self.placeholder_tokens = placeholder_tokens
         self.auto_add_bos = auto_add_bos
         self.tools_prompt = tools_prompt
-        self.skip_input_len = skip_input_len
+        self.skip_prompt = skip_prompt
         self._is_init = False
 
     @staticmethod
@@ -621,7 +621,7 @@ class Template:
             generate_ids = generate_ids.tolist()
         if len(generate_ids) > 0 and not isinstance(generate_ids[0], (list, tuple)):
             generate_ids = generate_ids[0]  # to 1d list
-        if self.skip_input_len:
+        if self.skip_prompt:
             return generate_ids[input_token_len:]
         else:
             return generate_ids
