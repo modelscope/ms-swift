@@ -1596,6 +1596,7 @@ class _Qwen2VLTemplateMixin:
         labels = inputs['labels']
         images = example.get('images') or []
         videos = example.get('videos') or []
+        data = {}
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
@@ -1618,32 +1619,51 @@ class _Qwen2VLTemplateMixin:
                         labels = labels[:idx + added_tokens_len] + [-100] * token_len + labels[added_tokens_len + idx
                                                                                                + 1:]
                     added_tokens_len += token_len - 1
-                inputs.update(media_inputs)
+                data.update(media_inputs)
 
-        inputs['input_ids'] = input_ids
+        inputs['input_ids'] =input_ids
         inputs['labels'] = labels
-        inputs['_data'] = {'plain_text': not images and not videos, 'input_ids': torch.tensor(input_ids)[None]}
+        data['input_ids'] = torch.tensor(input_ids)[None]
+        inputs['_data'] = _data
         return inputs, {}
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
-        plain_text = data.pop('plain_text', False)
-        if is_deepspeed_enabled() and plain_text:
-            from PIL import Image
-            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-            processor = self.tokenizer.processor
-            media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
-            input_ids = data['input_ids']
-            device = input_ids.device
-            pixel_values = media_inputs['pixel_values'].to(device)
-            _model = model.model
-            if not hasattr(_model, 'embed_tokens'):
-                _model = _model.model  # LoRA
-            inputs_embeds = _model.embed_tokens(input_ids)
-            pixel_values = pixel_values.type(model.visual.get_dtype())
-            image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-            inputs_embeds += image_embeds.mean() * 0.
-            return {'inputs_embeds': inputs_embeds[0]}
-        return {}
+        _model = model.model
+        if not hasattr(_model, 'embed_tokens'):
+            _model = _model.model  # LoRA
+        input_ids = data['input_ids']
+        pixel_values = data.get('pixel_values')
+        pixel_values_videos = data.get('pixel_values_videos')
+        inputs_embeds = _model.embed_tokens(input_ids)
+        if pixel_values is None and pixel_values_videos is None:  # plain-text
+            if is_deepspeed_enabled():
+                from PIL import Image
+                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+                processor = self.tokenizer.processor
+                media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
+                device = input_ids.device
+                pixel_values = media_inputs['pixel_values'].to(device)
+
+                pixel_values = pixel_values.type(model.visual.get_dtype())
+                image_embeds = model.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+                inputs_embeds += image_embeds.mean() * 0.
+        else:
+            if pixel_values is not None:
+                image_grid_thw = data['image_grid_thw']
+                pixel_values = pixel_values.type(_model.visual.get_dtype())
+                image_embeds = _model.visual(pixel_values, grid_thw=image_grid_thw)
+                image_mask = (input_ids == _model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+            if pixel_values_videos is not None:
+                video_grid_thw = data['video_grid_thw']
+                pixel_values_videos = pixel_values_videos.type(_model.visual.get_dtype())
+                video_embeds = _model.visual(pixel_values_videos, grid_thw=video_grid_thw)
+                video_mask = (input_ids == _model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
+        return {'inputs_embeds': inputs_embeds[0]}
 
     def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to)
