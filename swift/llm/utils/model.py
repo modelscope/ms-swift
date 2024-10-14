@@ -2760,8 +2760,8 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
     hf_model_id='AIDC-AI/Ovis1.6-Gemma2-9B')
 def get_model_tokenizer_ovis(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
-    model.generation_config.cache_implementation = None
     if model is not None:
+        model.generation_config.cache_implementation = None
         func_list = ['generate', 'forward', 'get_input_embeddings']
         _use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
