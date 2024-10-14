@@ -348,7 +348,7 @@ RLHF parameters are an extension of the sft parameters, with the addition of the
 - `--bnb_4bit_quant_type`: Default is `'nf4'`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_use_double_quant`: Default is `True`.  See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
 - `--bnb_4bit_quant_storage`: Default value `None`.See `sft command line arguments` for parameter details. If `quantization_bit` is set to 0, this parameter has no effect.
-- `--🔥max_new_tokens`: Maximum number of new tokens to generate, default is `2048`.
+- `--🔥max_new_tokens`: Maximum number of new tokens to generate, default is `2048`. If using deployment, please control the maximum number of generated tokens by passing `max_tokens` in the client.
 - `--🔥do_sample`: Reference document: [https://huggingface.co/docs/transformers/main_classes/text_generation](https://huggingface.co/docs/transformers/main_classes/text_generation). Default is `None`, inheriting the model's generation_config.
 - `--temperature`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.
 - `--top_k`: Default is `None`, inheriting the model's generation_config. This parameter only takes effect when `do_sample` is set to True. This parameter will be used as default value in deployment parameters.

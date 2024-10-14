@@ -1625,7 +1625,7 @@ class _Qwen2VLTemplateMixin:
         inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         data['input_ids'] = torch.tensor(input_ids)[None]
-        inputs['_data'] = _data
+        inputs['_data'] = data
         return inputs, {}
 
     def _post_encode(self, model, data: Any) -> Dict[str, Any]:
@@ -1651,17 +1651,17 @@ class _Qwen2VLTemplateMixin:
         else:
             if pixel_values is not None:
                 image_grid_thw = data['image_grid_thw']
-                pixel_values = pixel_values.type(_model.visual.get_dtype())
-                image_embeds = _model.visual(pixel_values, grid_thw=image_grid_thw)
-                image_mask = (input_ids == _model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                pixel_values = pixel_values.type(model.visual.get_dtype())
+                image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
+                image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
                 video_grid_thw = data['video_grid_thw']
-                pixel_values_videos = pixel_values_videos.type(_model.visual.get_dtype())
-                video_embeds = _model.visual(pixel_values_videos, grid_thw=video_grid_thw)
-                video_mask = (input_ids == _model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                pixel_values_videos = pixel_values_videos.type(model.visual.get_dtype())
+                video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
+                video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
         return {'inputs_embeds': inputs_embeds[0]}
