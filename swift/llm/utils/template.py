@@ -1549,7 +1549,8 @@ def _process_image_qwen(image):
 
 
 class _Qwen2VLTemplateMixin:
-
+    image_token_id = 151655
+    video_token_id = 151656
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type in {'image', 'video'}
@@ -1598,13 +1599,13 @@ class _Qwen2VLTemplateMixin:
         for media_type in ['images', 'videos']:
             if locals()[media_type]:
                 if media_type == 'images':
-                    media_token = 151655
+                    media_token = self.image_token_id
                     media_inputs = processor.image_processor(images=images, videos=None, return_tensors='pt')
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     media_inputs = processor.image_processor(images=None, videos=videos, return_tensors='pt')
                     media_grid_thw = media_inputs['video_grid_thw']
-                    media_token = 151656
+                    media_token = self.video_token_id
                 idx_list = _findall(input_ids, media_token)
                 added_tokens_len = 0
                 for i, idx in enumerate(idx_list):
