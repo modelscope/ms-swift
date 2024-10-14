@@ -1551,6 +1551,7 @@ def _process_image_qwen(image):
 class _Qwen2VLTemplateMixin:
     image_token_id = 151655
     video_token_id = 151656
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
         assert media_type in {'image', 'video'}
@@ -1621,7 +1622,7 @@ class _Qwen2VLTemplateMixin:
                     added_tokens_len += token_len - 1
                 data.update(media_inputs)
 
-        inputs['input_ids'] =input_ids
+        inputs['input_ids'] = input_ids
         inputs['labels'] = labels
         data['input_ids'] = torch.tensor(input_ids)[None]
         inputs['_data'] = _data
