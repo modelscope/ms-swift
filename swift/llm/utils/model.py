@@ -2761,6 +2761,7 @@ def get_model_tokenizer_with_flash_attn(model_dir: str,
 def get_model_tokenizer_ovis(*args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     if model is not None:
+        model.generation_config.cache_implementation = None
         func_list = ['generate', 'forward', 'get_input_embeddings']
         _use_submodel_func(model, 'llm', func_list)
         embedding = model.get_input_embeddings()
