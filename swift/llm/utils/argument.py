@@ -1606,7 +1606,7 @@ class EvalArguments(InferArguments):
     eval_output_dir: str = 'eval_outputs'
     eval_backend: Literal['Native', 'OpenCompass'] = 'OpenCompass'
     eval_batch_size: int = 8
-    deploy_timeout: int = 60
+    deploy_timeout: int = 1800
 
     do_sample: bool = False  # Note: for evaluation default is False
     temperature: float = 0.
