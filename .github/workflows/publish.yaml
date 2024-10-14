@@ -15,12 +15,12 @@ jobs:
     #if: startsWith(github.event.ref, 'refs/tags')
     steps:
       - uses: actions/checkout@v2
-      - name: Set up Python 3.7
+      - name: Set up Python 3.8
         uses: actions/setup-python@v2
         with:
-          python-version: '3.7'
+          python-version: '3.8'
       - name: Install wheel
-        run: pip install wheel
+        run: pip install wheel packaging
       - name: Build ModelScope Swift
         run: python setup.py sdist bdist_wheel
       - name: Publish package to PyPI
