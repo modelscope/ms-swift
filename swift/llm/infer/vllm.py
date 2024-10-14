@@ -141,7 +141,8 @@ class VllmEngine(InferEngine):
     def _fix_vllm_bug(self) -> None:
         # fix vllm==0.4 bug (very slow)
         tokenizer = self.tokenizer
-        if version.parse(vllm.__version__) >= version.parse('0.4') and not tokenizer.__class__.__name__.startswith("Cached"):
+        if version.parse(
+                vllm.__version__) >= version.parse('0.4') and not tokenizer.__class__.__name__.startswith('Cached'):
             _tokenizer_len = len(tokenizer)
             __old_len__ = tokenizer.__class__.__len__
 
@@ -152,7 +153,6 @@ class VllmEngine(InferEngine):
                     return __old_len__(self)
 
             tokenizer.__class__.__len__ = __len__
-
 
     def _load_generation_config(self) -> None:
         generation_config_path = os.path.join(self.model_dir, 'generation_config.json')
@@ -309,7 +309,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             response = InferTools.safe_decode(template, output.token_ids, True)
-            logprobs = VllmEngine._get_logprobs(output.logprobs, output.token_ids, generation_config.top_logprobs)
+            logprobs = VllmEngine._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
             action, action_input = split_action_action_input(response)
             toolcall = None
             if action is not None:

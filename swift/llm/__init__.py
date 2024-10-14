@@ -6,8 +6,8 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
-    from .infer import (deploy_main, infer_main, merge_lora_main, merge_lora, VllmEngine, VllmGenerationConfig,
-                        LMDeployFramework, LmdeployGenerationConfig, TransformersFramework, InferRequest)
+    from .infer import (deploy_main, infer_main, merge_lora_main, merge_lora, VllmEngine, InferRequest, RequestConfig,
+                        InferStats)
     from .export import export_main
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
@@ -31,8 +31,8 @@ else:
         'app_ui': ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
         'rlhf': ['rlhf_main'],
         'infer': [
-            'deploy_main', 'merge_lora', 'infer_main', 'merge_lora_main', 'VllmEngine', 'VllmGenerationConfig',
-            'LMDeployFramework', 'LmdeployGenerationConfig', 'TransformersFramework', 'InferRequest'
+            'deploy_main', 'merge_lora', 'infer_main', 'merge_lora_main', 'VllmEngine', 'InferRequest', 'RequestConfig',
+            'InferStats'
         ],
         'export': ['export_main'],
         'eval': ['eval_main'],
