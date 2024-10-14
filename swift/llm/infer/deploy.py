@@ -726,10 +726,10 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
 
     adapter_kwargs = {}
     if _args.lora_request_list is not None:
-        if _args.use_dora or _args.is_quant_model() or _args.is_multimodal:
+        if _args.use_dora or _args.quant_method is not None or _args.is_multimodal:
             if _args.use_dora:
                 error_msg = 'Dora'
-            elif _args.is_quant_model():
+            elif _args.quant_method is not None:
                 error_msg = 'GPTQ/AWQ/AQLM model'
             else:
                 error_msg = 'Multimodal model'

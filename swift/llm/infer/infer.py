@@ -91,7 +91,7 @@ def merge_lora(args: InferArguments,
     logger.info(f'replace_if_exists: {replace_if_exists}')
     assert args.ckpt_dir is not None, 'args.ckpt_dir is not specified.'
     assert args.train_type in args.adapters_can_be_merged, 'Only supports lora & llamapro series models'
-    assert not args.is_quant_model(), f'{args.model_type} is a quantized model and does not support merge-lora.'
+    assert args.quant_method is None, f'{args.model_type} is a quantized model and does not support merge-lora.'
     if args.quantization_bit != 0:
         logger.warning('It is not recommended to merge quantized models, '
                        'as this can result in performance degradation')

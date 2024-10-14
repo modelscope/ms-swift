@@ -128,7 +128,7 @@ class ModelArguments:
 
     def check_flash_attn(self) -> None:
         """Some models do not support flash-attention"""
-        model_info = MODEL_MAPPING.get(self.model_type, {})
+        model_info = MODEL_MAPPING[self.model_type]
         support_flash_attn = model_info.get('support_flash_attn', False)
         if 'flash' in self.attn_impl and not support_flash_attn:
             logger.warning(f'attn_impl: {self.attn_impl}, ' f'but support_flash_attn: {support_flash_attn}')
@@ -138,9 +138,8 @@ class ModelArguments:
         """Is multi modal models?"""
         if self.model_type is None:
             return False
-        model_info = MODEL_MAPPING.get(self.model_type, {})
-        tags = model_info.get('tags') or []
-        return 'multi-modal' in tags
+        model_info = MODEL_MAPPING[self.model_type]
+        return model_info.get('is_multimodal')
 
     def select_dtype(self) -> None:
         """If dtype is `auto`, find a proper dtype by the train_type/GPU"""
