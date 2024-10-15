@@ -42,14 +42,14 @@ class Template(_Template):
     @contextmanager
     def vllm_context(self):
         task = self.task
-        self.task = 'infer_vllm'
+        self.task = 'vllm_infer'
         yield
         self.task = task
 
     @contextmanager
     def lmdeploy_context(self):
         task = self.task
-        self.task = 'infer_lmdeploy'
+        self.task = 'lmdeploy_infer'
         yield
         self.task = task
 
@@ -113,7 +113,7 @@ class Template(_Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: TemplateInputs) -> List[Context]:
-        if media_type == 'image' and self.task == 'infer_lmdeploy':
+        if media_type == 'image' and self.task == 'lmdeploy_infer':
             return [[-100]]
         else:
             return super().replace_tag(media_type, index, inputs)

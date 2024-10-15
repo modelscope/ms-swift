@@ -185,7 +185,7 @@ class Template:
             self.loss_scale = loss_scale
         self.max_image_size = max_image_size
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
-        self.task: Literal['train', 'infer_pt', 'infer_vllm', 'infer_lmdeploy'] = 'infer_pt'
+        self.task: Literal['train', 'pt_infer', 'vllm_infer', 'lmdeploy_infer'] = 'pt_infer'
 
     def _preprocess_inputs(
         self,
@@ -236,15 +236,13 @@ class Template:
             inputs = inputs.copy()
         assert isinstance(inputs, TemplateInputs)
         self._preprocess_inputs(inputs)
-        if self.task in {'train', 'infer_pt'}:
+        if self.task in {'train', 'pt_infer'}:
             self._check_inputs(inputs)
             res = self._encode(inputs)
         else:
             res = Template._encode(self, inputs)
             if inputs.images:
                 res['images'] = inputs.images
-        if self.task != 'train':
-            res.pop('loss_scale', None)
         return res
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -591,9 +589,6 @@ class Template:
         if tokenizer_kwargs:
             res['tokenizer_kwargs'] = tokenizer_kwargs
 
-        if response is None:
-            labels = None
-
         if self.max_length is not None:
             if self.truncation_strategy == 'delete' and len(input_ids) > self.max_length:
                 logger.warn(f'Current length of row({len(input_ids)}) is larger'
@@ -605,8 +600,9 @@ class Template:
             if loss_scale is not None:
                 loss_scale = loss_scale[-self.max_length:]
         res['input_ids'] = input_ids
-        res['labels'] = labels
-        res['loss_scale'] = loss_scale
+        if response is not None:
+            res['labels'] = labels
+            res['loss_scale'] = loss_scale
         return res
 
     def _get_tokenizer_kwargs(self, context: str) -> Dict[str, Any]:

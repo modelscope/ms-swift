@@ -4,6 +4,7 @@ import time
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import torch
+from contextlib import contextmanager
 from lmdeploy import GenerationConfig as LmdeployGenerationConfig
 from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
 from lmdeploy.api import autoget_backend_config
@@ -74,6 +75,7 @@ class LmdeployEngine(InferEngine):
             logger.info(f'vision_config: {vision_config}')
         self.pipeline_kwargs = pipeline_kwargs
 
+    @contextmanager
     def _patch_pipeline(self):
         _old_best_match_model = async_engine.best_match_model
 

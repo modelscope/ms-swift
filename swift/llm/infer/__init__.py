@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from .infer import infer_main, merge_lora_main, merge_lora
     from .utils import InferStats
     from .vllm import VllmEngine
-    from .lmdeploy import LMDeployFramework, LmdeployGenerationConfig
+    from .lmdeploy import LmdeployEngine
     from .transformers import TransformersFramework
     from .protocol import InferRequest, RequestConfig
 else:
@@ -18,7 +18,7 @@ else:
         'deploy': ['deploy_main'],
         'infer': ['infer_main', 'merge_lora_main', 'merge_lora'],
         'vllm': ['VllmEngine'],
-        'lmdeploy': ['LMDeployFramework', 'LmdeployGenerationConfig'],
+        'lmdeploy': ['LmdeployEngine'],
         'transformers': ['TransformersFramework'],
         'protocol': ['InferRequest', 'RequestConfig'],
     }
