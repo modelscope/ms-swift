@@ -4,16 +4,19 @@ import asyncio
 import time
 from queue import Queue
 from threading import Thread
-from typing import AsyncIterator, Iterator, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 from tqdm import tqdm
 
 from swift.plugin import Metric
+from swift.utils import get_logger
 from ..model import get_model_tokenizer
 from ..template import Template, split_action_action_input
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
                        InferRequest, RequestConfig, random_uuid)
+
+logger = get_logger()
 
 
 class InferEngine:
@@ -41,12 +44,13 @@ class InferEngine:
         self.model = model
         self.torch_dtype = config.torch_dtype
 
-        self.model_type = tokenizer.model_type
-        self.model_dir = tokenizer.model_dir
-        self.is_multimodal = tokenizer.is_multimodal
-        self.is_moe = tokenizer.is_moe
-        self.chat_template = tokenizer.chat_template
-        self.generation_template = tokenizer.generation_template
+        self.model_type = config.model_type
+        self.model_dir = config.model_dir
+        self.is_multimodal = config.is_multimodal
+        self.is_moe = config.is_moe
+        self.chat_template = config.chat_template
+        self.generation_template = config.generation_template
+        self.max_model_len = config.max_model_len
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
@@ -160,6 +164,7 @@ class InferEngine:
 
         inputs = template.encode(infer_request)
         assert len(inputs) >= 0
+        self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)
         infer_args = (template, inputs, generation_config, request_id, created_time)
@@ -167,3 +172,36 @@ class InferEngine:
             return self._infer_stream_async(*infer_args, **kwargs)
         else:
             return await self._infer_async(*infer_args, **kwargs)
+
+    @staticmethod
+    def _get_num_tokens(inputs: Dict[str, Any]) -> int:
+        if 'input_ids' in inputs:  # 1d
+            return len(inputs['input_ids'])
+        elif 'inputs_embeds' in inputs:  # 2d
+            return inputs['inputs_embeds'].shape[0]
+        raise ValueError(f'Unable to retrieve input_ids and inputs_embeds. inputs: {inputs}')
+
+    def set_default_max_tokens(self,
+                               request_config: RequestConfig,
+                               inputs: Dict[str, Any],
+                               strict: bool = False) -> None:
+        max_model_len = self.max_model_len
+        num_tokens = InferEngine._get_num_tokens(inputs)
+        max_tokens = request_config.max_tokens
+        if max_model_len is None:
+            max_model_len = 8192
+            logger.warning(
+                'The current model is unable to retrieve `max_model_len`. It is set to the default value of 8192.')
+        max_max_tokens = max_model_len - num_tokens
+        if max_tokens is None:
+            request_config.max_tokens = max_max_tokens
+        elif max_max_tokens < request_config.max_tokens:
+            if strict:
+                raise ValueError(
+                    f'Your prompt has {num_tokens} tokens, and you have set the `max_tokens` to {max_tokens}, '
+                    f'but the maximum model length supported is {max_model_len}. '
+                    'Please reduce the number of tokens in the prompt or the `max_tokens`.')
+            else:
+                logger.warning(f'max_model_len({max_model_len}) - num_tokens({num_tokens}) < max_tokens({max_tokens}). '
+                               f'Setting max_tokens: {max_model_len - num_tokens}')
+                request_config.max_tokens = max_max_tokens

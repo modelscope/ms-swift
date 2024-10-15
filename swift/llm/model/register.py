@@ -168,9 +168,6 @@ def get_model_tokenizer_from_local(model_dir: str,
         model.quant_method = kwargs.get('quant_method')  # TODO: check bnb
         model.quant_bits = kwargs.get('bits')
         model.is_training = kwargs.get('is_training', False)
-        max_model_len = HfConfigFactory.get_max_model_len(model_config)
-        model.max_model_len = max_model_len
-        logger.info(f'model.max_model_len: {max_model_len}')
     else:
         model = None
     return model, tokenizer
@@ -338,15 +335,15 @@ def get_model_tokenizer(model_id_or_path: str,
     is_moe = model_info['is_moe']
     template = model_info['template']
     chat_template, generation_template = template.chat_template, template.generation_template
-    for obj in [model, tokenizer]:
-        if obj is None:
-            continue
-        obj.model_type = model_type
-        obj.model_dir = model_dir
-        obj.is_multimodal = is_multimodal
-        obj.is_moe = is_moe
-        obj.chat_template = chat_template
-        obj.generation_template = generation_template
+    max_model_len = HfConfigFactory.get_max_model_len(model_config)
+
+    model_config.model_type = model_type
+    model_config.model_dir = model_dir
+    model_config.is_multimodal = is_multimodal
+    model_config.is_moe = is_moe
+    model_config.chat_template = chat_template
+    model_config.generation_template = generation_template
+    model_config.max_model_len = max_model_len
 
     if model is not None:
         fix_gradient_checkpointing_warning(is_moe)

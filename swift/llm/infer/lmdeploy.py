@@ -1,10 +1,10 @@
 import inspect
 import os
 import time
+from contextlib import contextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import torch
-from contextlib import contextmanager
 from lmdeploy import GenerationConfig as LmdeployGenerationConfig
 from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
 from lmdeploy.api import autoget_backend_config
