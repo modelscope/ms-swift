@@ -66,9 +66,9 @@ class InferStreamer(InferTools):
             response = response[cur_num_space - self.first_num_space:]
         return response
 
-    def _get_printable_text(self, response: str) -> str:
+    def _get_printable_text(self, response: str, is_finished: bool) -> str:
         # After the symbol for a new line, we flush the cache.
-        if response.endswith('\n'):
+        if response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
             if self.input_delta:
                 self.token_cache = []
@@ -93,7 +93,7 @@ class InferStreamer(InferTools):
             self.token_cache = tokens[self.cache_idx:]
         response = self.safe_decode(self.template, self.token_cache, is_finished, **self.decode_kwargs)
         response = self._align_blank_suffix(response)
-        return self._get_printable_text(response)
+        return self._get_printable_text(response, is_finished)
 
 
 class InferStats(Metric):

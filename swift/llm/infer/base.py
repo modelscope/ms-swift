@@ -49,13 +49,14 @@ class InferEngine(ABC):
         self.generation_template = tokenizer.generation_template
 
     @staticmethod
-    async def _run_infer(task, queue, stream: bool = False):
+    async def _run_infer(i, task, queue, stream: bool = False):
+        # task with queue
         if stream:
             async for stream_response in await task:
-                queue.put(stream_response)
+                queue.put((i, stream_response))
         else:
-            queue.put(await task)
-        queue.put(None)
+            queue.put((i, await task))
+        queue.put((i, None))
 
     @staticmethod
     async def _batch_run(tasks):
@@ -71,8 +72,8 @@ class InferEngine(ABC):
         for metric in metrics:
             metric.reset()
 
-        queue_list = [Queue() for i in range(len(tasks))]
-        new_tasks = [InferEngine._run_infer(task, queue_list[i], stream) for i, task in enumerate(tasks)]
+        queue = Queue()
+        new_tasks = [InferEngine._run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
         thread = Thread(target=lambda: asyncio.run(InferEngine._batch_run(new_tasks)))
         thread.start()
 
@@ -81,20 +82,18 @@ class InferEngine(ABC):
         outputs = [None] * len(new_tasks)
 
         while n_finished < len(new_tasks):
-            for i, queue in enumerate(queue_list):
-                try:
-                    output = queue.get(block=False)
-                except Empty:
-                    continue
-                if output is None:
-                    n_finished += 1
-                    prog_bar.update()
-                else:
-                    outputs[i] = output
-                for metric in metrics:
-                    metric.update(output)
-                time.sleep(0.01)
-            yield outputs
+            i, output = queue.get()
+            if output is None:  # is_finished
+                n_finished += 1
+                prog_bar.update()
+            else:
+                if outputs[i] is not None:  # The logic will only apply to the stream.
+                    yield outputs
+                    outputs = [None] * len(new_tasks)
+                outputs[i] = output
+            for metric in metrics:
+                metric.update(output)
+        yield outputs
 
     @staticmethod
     def _infer(tasks, use_tqdm: bool = True, metrics: Optional[List[Metric]] = None) -> List[ChatCompletionResponse]:
@@ -103,7 +102,6 @@ class InferEngine(ABC):
         return outputs
 
     @abstractmethod
-    @torch.inference_mode()
     async def infer_async(self,
                           template: Template,
                           infer_request: InferRequest,

@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .deploy import deploy_main
     from .infer import infer_main, merge_lora_main, merge_lora
-    from .base import InferStats
+    from .utils import InferStats
     from .vllm import VllmEngine
     from .lmdeploy import LMDeployFramework, LmdeployGenerationConfig
     from .transformers import TransformersFramework
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'base': ['InferStats'],
+        'utils': ['InferStats'],
         'deploy': ['deploy_main'],
         'infer': ['infer_main', 'merge_lora_main', 'merge_lora'],
         'vllm': ['VllmEngine'],

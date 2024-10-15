@@ -25,6 +25,7 @@ class Metric(ABC):
         for k, v in self._default_factory.items():
             setattr(self, k, v())
 
+    @abstractmethod
     def update(self, *args, **kwargs):
         pass
 

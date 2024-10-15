@@ -12,11 +12,12 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
 from swift.utils import get_logger
 from ..template import Template, split_action_action_input
-from .base import InferEngine, InferStreamer, InferTools
+from .base import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionResponseChoice,
                        ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, DeltaMessage,
                        Function, InferRequest, RequestConfig, UsageInfo, random_uuid)
+from .utils import InferStreamer, InferTools
 
 try:
     from vllm.lora.request import LoRARequest
@@ -207,7 +208,8 @@ class VllmEngine(InferEngine):
         return result_generator
 
     @staticmethod
-    def _get_logprobs(logprobs_list: Optional[List[Dict[int, float]]],
+    def _get_logprobs(tokenizer,
+                      logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
         if logprobs_list is None:
@@ -215,20 +217,22 @@ class VllmEngine(InferEngine):
         res = []
         for logprobs, token_id in zip(logprobs_list, token_ids):
             logprob = logprobs[token_id]
+            chosen_token = tokenizer.decode(token_id)
             _res = {
-                'token': logprob.decoded_token,
+                'token': chosen_token,
                 'logprob': logprob.logprob,
-                'bytes': list(logprob.decoded_token.encode('utf8'))
+                'bytes': list(chosen_token.encode('utf8'))
             }
             if top_logprobs is not None:
                 res_top_logprobs = []
                 for k, logprob in logprobs.items():
-                    if logprob.logprob == float('-inf') or k == token_id:
+                    token = tokenizer.decode(k)
+                    if logprob.logprob == float('-inf'):
                         continue
                     res_top_logprobs.append({
-                        'token': logprob.decoded_token,
+                        'token': token,
                         'logprob': logprob.logprob,
-                        'bytes': list(logprob.decoded_token.encode('utf8'))
+                        'bytes': list(token.encode('utf8'))
                     })
                 _res['top_logprobs'] = res_top_logprobs
             res.append(_res)
@@ -309,7 +313,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             response = InferTools.safe_decode(template, output.token_ids, True)
-            logprobs = VllmEngine._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
+            logprobs = VllmEngine._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
             action, action_input = split_action_action_input(response)
             toolcall = None
             if action is not None:
