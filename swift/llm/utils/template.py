@@ -1523,7 +1523,7 @@ register_template(
 
 def _process_image_qwen(image):
     from qwen_vl_utils.vision_process import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS, smart_resize
-    size_factor = get_env_args('size_factor', int, IMAGE_FACTOR)
+    size_factor = get_env_args('image_factor', int, IMAGE_FACTOR, ['size_factor'])
     # resize
     resized_height = get_env_args('resized_height', int, None)
     resized_width = get_env_args('resized_width', int, None)
@@ -1678,6 +1678,10 @@ class _Qwen2VLTemplateMixin:
                                                         res.get('video_grid_thw'), res['attention_mask'])
             res['position_ids'] = position_ids.contiguous()
         return res
+
+    @staticmethod
+    def _get_generate_ids(generate_ids: List[int], input_token_len: int) -> List[int]:
+        return generate_ids
 
 
 class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):
@@ -2170,16 +2174,27 @@ _T = TypeVar('_T')
 _log_set = set()  # log once
 
 
-def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: Optional[_T]) -> Optional[_T]:
-    args_name_upper = args_name.upper()
-    value = os.getenv(args_name_upper)
-    if value is None:
+def get_env_args(args_name: str,
+                 type_func: Callable[[str], _T],
+                 default_value: Optional[_T],
+                 compat_args_names: Optional[List[str]] = None) -> Optional[_T]:
+    # compat_args_names: compatibility
+    if compat_args_names is None:
+        compat_args_names = []
+    args_name_list = [args_name] + compat_args_names
+    for args_name in args_name_list:
+        args_name_upper = args_name.upper()
+        value = os.getenv(args_name_upper)
+        if value is not None:
+            value = type_func(value)
+            log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
+            break
+    else:
+        args_name = args_name_list[0]
+        args_name_upper = args_name.upper()
         value = default_value
         log_info = (f'Setting {args_name}: {default_value}. '
                     f'You can adjust this hyperparameter through the environment variable: `{args_name_upper}`.')
-    else:
-        value = type_func(value)
-        log_info = f'Using environment variable `{args_name_upper}`, Setting {args_name}: {value}.'
     if log_info not in _log_set:
         _log_set.add(log_info)
         logger.info(log_info)

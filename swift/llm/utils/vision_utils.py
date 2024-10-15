@@ -287,7 +287,7 @@ def load_video_qwen2(video_path: str):
     )
     nframes = get_env_args('nframes', int, None)
     fps = get_env_args('fps', int, None)
-    size_factor = get_env_args('size_factor', int, FRAME_FACTOR)
+    size_factor = get_env_args('frame_factor', int, FRAME_FACTOR, ['size_factor'])
     assert not (fps and nframes), 'Only accept either `fps` or `nframes`'
     if nframes is not None:
         nframes = round_by_factor(nframes, size_factor)
@@ -296,8 +296,8 @@ def load_video_qwen2(video_path: str):
             fps = FPS
         nframes = video.size(0) / info['video_fps'] * fps
         nframes = round_by_factor(nframes, size_factor)
-        min_frames = get_env_args('min_frames', int, FPS_MIN_FRAMES)
-        max_frames = get_env_args('max_frames', int, FPS_MAX_FRAMES)
+        min_frames = get_env_args('fps_min_frames', int, FPS_MIN_FRAMES, ['min_frames'])
+        max_frames = get_env_args('fps_max_frames', int, FPS_MAX_FRAMES, ['max_frames'])
         if nframes < min_frames:
             nframes = ceil_by_factor(min_frames, size_factor)
         if nframes > max_frames:
@@ -310,9 +310,9 @@ def load_video_qwen2(video_path: str):
     height, width = video.shape[2:]
     video = video[idx]
 
-    min_pixels = get_env_args('min_pixels', int, VIDEO_MIN_PIXELS)
-    total_pixels = get_env_args('total_pixels', int, VIDEO_TOTAL_PIXELS)
-    max_pixels = get_env_args('max_pixels', int, None)
+    min_pixels = get_env_args('video_min_pixels', int, VIDEO_MIN_PIXELS, ['min_pixels'])
+    total_pixels = get_env_args('video_total_pixels', int, VIDEO_TOTAL_PIXELS, ['total_pixels'])
+    max_pixels = get_env_args('video_max_pixels', int, None, ['max_pixels'])
     if max_pixels is None:
         max_pixels = VIDEO_MAX_PIXELS
         max_pixels = max(min(max_pixels, total_pixels / nframes * size_factor), min_pixels * 1.05)
