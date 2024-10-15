@@ -1,42 +1,31 @@
 import asyncio
-import concurrent.futures
 import inspect
 import os
 import time
-from contextlib import contextmanager
-from copy import deepcopy
-from dataclasses import dataclass
-from functools import wraps
-from queue import Queue
-from threading import Thread
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple, Union
+
+import torch
+from lmdeploy import GenerationConfig as LmdeployGenerationConfig
+from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
+from lmdeploy.api import autoget_backend_config
+from transformers import GenerationConfig, PreTrainedTokenizerBase
+
+from swift.utils import get_logger
+from ..template import Template
+from .base import InferEngine
+from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionResponseChoice,
                        ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, DeltaMessage,
                        Function, InferRequest, RequestConfig, UsageInfo, random_uuid)
 from .utils import InferStreamer, InferTools
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
-
-import torch
-from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
-from lmdeploy.api import autoget_backend_config
-from lmdeploy.serve.async_engine import AsyncEngine
-from lmdeploy.serve.vl_async_engine import VLAsyncEngine
-from .patch import patch_auto_config, patch_auto_tokenizer
-from tqdm import tqdm
-from transformers import AutoConfig, AutoTokenizer, GenerationConfig
-
-from .base import InferEngine
-from ..model import get_model_tokenizer, HfConfigFactory
-from ..template import Template, get_template
-from swift.utils import get_logger, get_seed
-
-from lmdeploy import GenerationConfig as LmdeployGenerationConfig
 
 logger = get_logger()
 
 
 class LMDeployEngine(InferEngine):
 
-    def __init__(self,
+    def __init__(
+            self,
             model_id_or_path: str,
             torch_dtype: Optional[torch.dtype] = None,
             *,
@@ -59,7 +48,6 @@ class LMDeployEngine(InferEngine):
 
         self._prepare_engine()
         self._load_generation_config()
-
 
     def _prepare_engine_kwargs(self,
                                tp: int = 1,
@@ -98,7 +86,6 @@ class LMDeployEngine(InferEngine):
         yield
         async_engine.best_match_model = _old_best_match_model
 
-
     def _prepare_engine(self):
         with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config), self._patch_pipeline():
             engine = pipeline(self.model_dir, backend_config=self.backend_config, **self.pipeline_kwargs)
@@ -120,19 +107,55 @@ class LMDeployEngine(InferEngine):
         else:
             self.generation_config = LmdeployGenerationConfig()
 
-    def _get_stop_words(self, request_config: RequestConfig, template: Template) -> List[str]:
-        stop_words = (request_config.stop or []) + (
-            self.generation_config.stop_words or []) + template.stop_words + [template.suffix[-1], self.tokenizer.eos_token]
-        
+    def _prepare_generation_config(self):
+        pass
 
-    def _add_stop_word(self, stop_words: List[int], token: Union[List[int], int, str, None]) -> None:
-        if token is None:
-            return
-        elif isinstance(token, int):
-            stop_words.append(token)
-        elif isinstance(token, str) and self.tokenizer is not None:
-            token_list = self.tokenizer.encode(token, add_special_tokens=False)
-            if len(token_list) == 1 and token_list[0] not in stop_words:
-                stop_words.append(token_list[0])
-        elif isinstance(token, list) and len(token) == 1 and token[0] not in stop_words:
-            stop_words.append(token[0])
+    def _add_stop_words(self):
+        pass
+
+    @staticmethod
+    def _get_logprobs(tokenizer: PreTrainedTokenizerBase,
+                      logprobs_list: Optional[List[Dict[int, float]]],
+                      token_ids: List[int],
+                      top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        if logprobs_list is None:
+            return None
+        res = []
+        for logprobs, token_id in zip(logprobs_list, token_ids):
+            token = tokenizer.decode(token_id)
+            _res = {'token': token, 'logprob': logprobs[token_id], 'bytes': list(token.encode('utf8'))}
+            if top_logprobs is not None:
+                res_top_logprobs = []
+                for k, logprob in logprobs.items():
+                    if k == token_id:  # TODO
+                        continue
+                    token = tokenizer.decode(k)
+                    res_top_logprobs.append({'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))})
+                _res['top_logprobs'] = res_top_logprobs
+            res.append(_res)
+        return {'content': res}
+
+    @torch.inference_mode()
+    async def infer_async(
+            self,
+            template: Template,
+            infer_request: InferRequest,
+            request_config: Optional[RequestConfig] = None,
+            *,
+            request_id: Optional[str] = None
+    ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
+        if request_id is None:
+            request_id = f'chatcmpl-{random_uuid()}'
+        created_time = int(time.time())
+        request_config = request_config or RequestConfig()
+
+        inputs = template.encode(infer_request)
+        assert len(inputs) >= 0
+        generation_config = self._prepare_generation_config(request_config)
+        self._add_stop_words(generation_config, request_config, template)
+        result_generator = self._add_request(inputs, generation_config, request_id)
+        infer_args = (template, result_generator, generation_config, request_id, created_time)
+        if request_config.stream:
+            return self._infer_stream_async(*infer_args)
+        else:
+            return await self._infer_async(*infer_args)

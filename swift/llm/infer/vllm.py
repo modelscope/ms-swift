@@ -166,8 +166,7 @@ class VllmEngine(InferEngine):
             self.generation_config = SamplingParams()
 
     def _add_stop_words(self, generation_config, request_config: RequestConfig, template: Template) -> None:
-        stop_words = (request_config.stop or []) + (
-                      self.generation_config.stop or []) + template.stop_words
+        stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template.stop_words
         stop_words += [template.suffix[-1], self.tokenizer.eos_token]
         stop: List[str] = []
         for stop_word in stop_words:
@@ -180,7 +179,7 @@ class VllmEngine(InferEngine):
                 stop.append(stop_word)
         generation_config.stop = stop
 
-    def _add_vllm_request(self, inputs: Dict[str, Any], generation_config: SamplingParams, request_id: str, **kwargs):
+    def _add_request(self, inputs: Dict[str, Any], generation_config: SamplingParams, request_id: str, **kwargs):
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
@@ -212,11 +211,7 @@ class VllmEngine(InferEngine):
         for logprobs, token_id in zip(logprobs_list, token_ids):
             logprob = logprobs[token_id]
             chosen_token = tokenizer.decode(token_id)
-            _res = {
-                'token': chosen_token,
-                'logprob': logprob.logprob,
-                'bytes': list(chosen_token.encode('utf8'))
-            }
+            _res = {'token': chosen_token, 'logprob': logprob.logprob, 'bytes': list(chosen_token.encode('utf8'))}
             if top_logprobs is not None:
                 res_top_logprobs = []
                 for k, logprob in logprobs.items():
@@ -307,7 +302,8 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             response = InferTools.safe_decode(template, output.token_ids, True)
-            logprobs = VllmEngine._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
+            logprobs = VllmEngine._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
+                                                generation_config.logprobs)
             action, action_input = split_action_action_input(response)
             toolcall = None
             if action is not None:
@@ -341,10 +337,11 @@ class VllmEngine(InferEngine):
         created_time = int(time.time())
         request_config = request_config or RequestConfig()
 
-        inputs = template.encode(infer_request)  # TODO: `{}`
+        inputs = template.encode(infer_request)
+        assert len(inputs) >= 0
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)
-        result_generator = self._add_vllm_request(inputs, generation_config, request_id, lora_request=lora_request)
+        result_generator = self._add_request(inputs, generation_config, request_id, lora_request=lora_request)
         infer_args = (template, result_generator, generation_config, request_id, created_time)
         if request_config.stream:
             return self._infer_stream_async(*infer_args)
