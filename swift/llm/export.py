@@ -141,7 +141,7 @@ def get_block_name_to_quantize(model: nn.Module, model_type: str) -> Optional[st
     if module_lists:
         module_list = max(module_lists, key=lambda x: len(x[1]))
         _patch_model_forward(module_list[1])
-        return f'{prefix}.{module_list[0]}'
+        return f'{prefix}.{module_list[0]}' if prefix else module_list[0]
 
 
 def gptq_model_quantize(model, tokenizer, batch_size):
