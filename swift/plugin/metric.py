@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
 
-
 class Metric(ABC):
 
     def __init__(self):
@@ -20,13 +19,11 @@ class Metric(ABC):
             assert name not in self._default_factory, f'self._default_factory: {self._default_factory}'
         setattr(self, name, default)
 
-
     def reset(self):
         for k, v in self._default.items():
             setattr(self, k, v)
         for k, v in self._default_factory.items():
             setattr(self, k, v())
-
 
     def update(self, *args, **kwargs):
         pass
@@ -34,4 +31,3 @@ class Metric(ABC):
     @abstractmethod
     def compute(self):
         pass
-
