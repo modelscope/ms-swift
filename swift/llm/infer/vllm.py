@@ -1,6 +1,5 @@
 import inspect
 import os
-import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import torch
@@ -11,12 +10,11 @@ from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
 from swift.utils import get_logger
-from ..template import Template, split_action_action_input
+from ..template import Template
 from .base import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionResponseChoice,
-                       ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, DeltaMessage,
-                       Function, InferRequest, RequestConfig, UsageInfo, random_uuid)
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo)
 from .utils import InferStreamer, InferTools
 
 try:
@@ -165,19 +163,11 @@ class VllmEngine(InferEngine):
         else:
             self.generation_config = SamplingParams()
 
-    def _add_stop_words(self, generation_config, request_config: RequestConfig, template: Template) -> None:
+    def _add_stop_words(self, generation_config: SamplingParams, request_config: RequestConfig,
+                        template: Template) -> None:
         stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template.stop_words
         stop_words += [template.suffix[-1], self.tokenizer.eos_token]
-        stop: List[str] = []
-        for stop_word in stop_words:
-            if stop_word is None:
-                continue
-            elif isinstance(stop_word, list):
-                stop_word = self.tokenizer.decode(stop_word)
-            assert isinstance(stop_word, str)
-            if stop_word not in stop:
-                stop.append(stop_word)
-        generation_config.stop = stop
+        generation_config.stop = self._get_stop_words(stop_words)
 
     def _add_request(self, inputs: Dict[str, Any], generation_config: SamplingParams, request_id: str, **kwargs):
         input_ids = inputs['input_ids']
@@ -229,8 +219,6 @@ class VllmEngine(InferEngine):
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
-        for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'seed']:
-            kwargs[key] = getattr(request_config, key)
         for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
             new_value = getattr(request_config, key)
             if new_value is None:
@@ -243,41 +231,44 @@ class VllmEngine(InferEngine):
             if request_config.top_logprobs is not None:
                 kwargs['logprobs'] = max(1, request_config.top_logprobs)
 
+        for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'seed']:
+            kwargs[key] = getattr(request_config, key)
+
         return SamplingParams(**kwargs)
 
-    async def _infer_stream_async(self, template, result_generator, generation_config: SamplingParams, request_id: str,
-                                  created_time: int) -> AsyncIterator[ChatCompletionStreamResponse]:
+    @staticmethod
+    def _get_usage_info(result) -> UsageInfo:
+        num_prompt_tokens = len(result.prompt_token_ids)
+        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+        return UsageInfo(
+            prompt_tokens=num_prompt_tokens,
+            completion_tokens=num_generated_tokens,
+            total_tokens=num_prompt_tokens + num_generated_tokens,
+        )
+
+    async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
+                                  request_id: str, created_time: int,
+                                  **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
+        result_generator = self._add_request(inputs, generation_config, request_id, **kwargs)
         infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
         total_res = ['' for _ in range(generation_config.n)]
         async for result in result_generator:
-            num_prompt_tokens = len(result.prompt_token_ids)
-            num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
-            usage_info = UsageInfo(
-                prompt_tokens=num_prompt_tokens,
-                completion_tokens=num_generated_tokens,
-                total_tokens=num_prompt_tokens + num_generated_tokens,
-            )
+
             is_diff = False
             is_finished = False
             for output in result.outputs:
                 output.delta_text = infer_streamers[output.index].put(output.token_ids, output.finished())
+                output.is_finished = output.finish_reason is not None
                 total_res[output.index] += output.delta_text
                 is_diff |= bool(output.delta_text)
-                is_finished |= output.finish_reason is not None
+                is_finished |= output.is_finished
             if not is_diff and not is_finished:
                 continue
+
+            usage_info = VllmEngine._get_usage_info(result)
             choices = []
             for output in result.outputs:
-                toolcall = None
-                if output.finish_reason is not None:
-                    action, action_input = split_action_action_input(total_res[output.index])
-                    if action is not None:
-                        toolcall = [
-                            ChatCompletionMessageToolCall(
-                                id=f'toolcall-{random_uuid()}',
-                                type='function',
-                                function=Function(name=action, arguments=action_input))
-                        ]
+                toolcall = InferEngine._get_toolcall(total_res[output.index], output.is_finished)
                 choice = ChatCompletionResponseStreamChoice(
                     index=output.index,
                     delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
@@ -286,33 +277,20 @@ class VllmEngine(InferEngine):
             yield ChatCompletionStreamResponse(
                 model=self.model_dir, choices=choices, usage=usage_info, id=request_id, created=created_time)
 
-    async def _infer_async(self, template, result_generator, generation_config: SamplingParams, request_id: str,
-                           created_time: int) -> ChatCompletionResponse:
+    async def _infer_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
+                           request_id: str, created_time: int, **kwargs) -> ChatCompletionResponse:
+        result_generator = self._add_request(inputs, generation_config, request_id, **kwargs)
         result = None
         async for result in result_generator:
             pass
         assert result is not None
-        num_prompt_tokens = len(result.prompt_token_ids)
-        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
-        usage_info = UsageInfo(
-            prompt_tokens=num_prompt_tokens,
-            completion_tokens=num_generated_tokens,
-            total_tokens=num_prompt_tokens + num_generated_tokens,
-        )
+        usage_info = VllmEngine._get_usage_info(result)
         choices = []
         for output in result.outputs:
             response = InferTools.safe_decode(template, output.token_ids, True)
             logprobs = VllmEngine._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
                                                 generation_config.logprobs)
-            action, action_input = split_action_action_input(response)
-            toolcall = None
-            if action is not None:
-                toolcall = [
-                    ChatCompletionMessageToolCall(
-                        id=f'toolcall-{random_uuid()}',
-                        type='function',
-                        function=Function(name=action, arguments=action_input))
-                ]
+            toolcall = InferEngine._get_toolcall(response, True)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
@@ -324,26 +302,13 @@ class VllmEngine(InferEngine):
 
     @torch.inference_mode()
     async def infer_async(
-            self,
-            template: Template,
-            infer_request: InferRequest,
-            request_config: Optional[RequestConfig] = None,
-            *,
-            lora_request: Optional['LoRARequest'] = None,
-            request_id: Optional[str] = None
+        self,
+        template: Template,
+        infer_request: InferRequest,
+        request_config: Optional[RequestConfig] = None,
+        *,
+        request_id: Optional[str] = None,
+        lora_request: Optional['LoRARequest'] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        if request_id is None:
-            request_id = f'chatcmpl-{random_uuid()}'
-        created_time = int(time.time())
-        request_config = request_config or RequestConfig()
-
-        inputs = template.encode(infer_request)
-        assert len(inputs) >= 0
-        generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template)
-        result_generator = self._add_request(inputs, generation_config, request_id, lora_request=lora_request)
-        infer_args = (template, result_generator, generation_config, request_id, created_time)
-        if request_config.stream:
-            return self._infer_stream_async(*infer_args)
-        else:
-            return await self._infer_async(*infer_args)
+        return await super().infer_async(
+            template, infer_request, request_config, request_id=request_id, lora_request=lora_request)

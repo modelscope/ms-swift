@@ -1,28 +1,27 @@
-import asyncio
 import inspect
 import os
 import time
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import torch
 from lmdeploy import GenerationConfig as LmdeployGenerationConfig
 from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, VisionConfig, pipeline
 from lmdeploy.api import autoget_backend_config
+from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
-from swift.utils import get_logger
+from swift.utils import get_logger, get_seed
 from ..template import Template
 from .base import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
-from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionResponseChoice,
-                       ChatCompletionResponseStreamChoice, ChatCompletionStreamResponse, ChatMessage, DeltaMessage,
-                       Function, InferRequest, RequestConfig, UsageInfo, random_uuid)
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo)
 from .utils import InferStreamer, InferTools
 
 logger = get_logger()
 
 
-class LMDeployEngine(InferEngine):
+class LmdeployEngine(InferEngine):
 
     def __init__(
             self,
@@ -76,7 +75,6 @@ class LMDeployEngine(InferEngine):
         self.pipeline_kwargs = pipeline_kwargs
 
     def _patch_pipeline(self):
-        from lmdeploy.serve import async_engine
         _old_best_match_model = async_engine.best_match_model
 
         def _best_match_model(*args, **kwargs) -> Optional[str]:
@@ -107,12 +105,6 @@ class LMDeployEngine(InferEngine):
         else:
             self.generation_config = LmdeployGenerationConfig()
 
-    def _prepare_generation_config(self):
-        pass
-
-    def _add_stop_words(self):
-        pass
-
     @staticmethod
     def _get_logprobs(tokenizer: PreTrainedTokenizerBase,
                       logprobs_list: Optional[List[Dict[int, float]]],
@@ -135,27 +127,116 @@ class LMDeployEngine(InferEngine):
             res.append(_res)
         return {'content': res}
 
-    @torch.inference_mode()
-    async def infer_async(
-            self,
-            template: Template,
-            infer_request: InferRequest,
-            request_config: Optional[RequestConfig] = None,
-            *,
-            request_id: Optional[str] = None
-    ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        if request_id is None:
-            request_id = f'chatcmpl-{random_uuid()}'
-        created_time = int(time.time())
-        request_config = request_config or RequestConfig()
+    def _add_stop_words(self, generation_config: LmdeployGenerationConfig, request_config: RequestConfig,
+                        template: Template) -> None:
+        stop_words = (request_config.stop or []) + (self.generation_config.stop_words or []) + template.stop_words
+        stop_words += [template.suffix[-1], self.tokenizer.eos_token]
+        generation_config.stop_words = self._get_stop_words(stop_words)
 
-        inputs = template.encode(infer_request)
-        assert len(inputs) >= 0
-        generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template)
-        result_generator = self._add_request(inputs, generation_config, request_id)
-        infer_args = (template, result_generator, generation_config, request_id, created_time)
-        if request_config.stream:
-            return self._infer_stream_async(*infer_args)
-        else:
-            return await self._infer_async(*infer_args)
+    def _prepare_generation_config(self, request_config: RequestConfig) -> LmdeployGenerationConfig:
+        kwargs = {'max_new_tokens': request_config.max_tokens}
+        for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+            new_value = getattr(request_config, key)
+            if new_value is None:
+                kwargs[key] = getattr(self.generation_config, key)
+            else:
+                kwargs[key] = new_value
+        if request_config.seed is None:
+            request_config.seed = get_seed()
+        kwargs['random_seed'] = request_config.seed
+
+        if request_config.logprobs:
+            kwargs['logprobs'] = 1
+            if request_config.top_logprobs is not None:
+                kwargs['logprobs'] = max(1, request_config.top_logprobs)
+
+        return LmdeployGenerationConfig(**kwargs)
+
+    async def _add_request(self, template: Template, inputs: Dict[str, Any], session_id: int):
+
+        generator = await self.engine.get_generator(False, session_id)
+        images = inputs.pop('images', None) or []
+        if len(images) > 0:
+            inputs['images'] = await self.engine.vl_encoder.async_infer(images)
+            await template.prepare_lmdeploy_inputs(inputs)
+        return generator
+
+    @staticmethod
+    def _get_finish_reason(output, generation_config: LmdeployGenerationConfig):
+        finish_reason = None
+        if output.status.name == 'FINISH':
+            if output.num_token >= generation_config.max_new_tokens:
+                finish_reason = 'length'
+            else:
+                finish_reason = 'stop'
+        return finish_reason
+
+    @staticmethod
+    def _get_usage_info(inputs, output) -> UsageInfo:
+        num_prompt_tokens = len(inputs['input_ids'])
+        return UsageInfo(
+            prompt_tokens=num_prompt_tokens,
+            completion_tokens=output.num_token,
+            total_tokens=num_prompt_tokens + output.num_token,
+        )
+
+    async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any],
+                                  generation_config: LmdeployGenerationConfig, request_id: str,
+                                  created_time: int) -> AsyncIterator[ChatCompletionStreamResponse]:
+        session_id = time.time_ns()
+        generator = await self._add_request(template, inputs, session_id)
+
+        infer_streamer = InferStreamer(template)
+        total_response = ''
+        async with self.engine.safe_run(session_id):
+            async_iter = generator.async_stream_infer(
+                session_id=session_id, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
+            is_finished = False
+            while not is_finished:
+                try:
+                    output = await async_iter.__anext__()
+                except StopAsyncIteration:
+                    is_finished = True
+                delta_text = infer_streamer.put(output.token_ids, is_finished)
+                if not delta_text and not is_finished:
+                    continue
+
+                usage_info = LmdeployEngine._get_usage_info(inputs, output)
+                total_response += delta_text
+                finish_reason = LmdeployEngine._get_finish_reason(output, generation_config)
+                toolcall = InferEngine._get_toolcall(total_response, is_finished)
+                choices = [
+                    ChatCompletionResponseStreamChoice(
+                        index=0,
+                        delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
+                        finish_reason=finish_reason)
+                ]
+                yield ChatCompletionStreamResponse(
+                    model=self.model_type, choices=choices, usage=usage_info, id=request_id, created=created_time)
+
+    async def _infer_async(self, template: Template, inputs: Dict[str,
+                                                                  Any], generation_config: LmdeployGenerationConfig,
+                           request_id: str, created_time: int) -> ChatCompletionResponse:
+        session_id = time.time_ns()
+        generator = await self._add_request(template, inputs, session_id)
+
+        async with self.engine.safe_run(session_id):
+            async for output in generator.async_stream_infer(
+                    session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
+                pass
+
+        usage_info = LmdeployEngine._get_usage_info(inputs, output)
+        response = InferTools.safe_decode(template, output.token_ids, True)
+        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
+        finish_reason = LmdeployEngine._get_finish_reason(output, generation_config)
+        toolcall = InferEngine._get_toolcall(response, True)
+        choices = [
+            ChatCompletionResponseChoice(
+                index=0,
+                message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                finish_reason=finish_reason,
+                logprobs=logprobs)
+        ]
+        response = ChatCompletionResponse(
+            model=self.model_type, choices=choices, usage=usage_info, id=request_id, created=created_time)
+        return response

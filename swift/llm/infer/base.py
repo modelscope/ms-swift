@@ -2,21 +2,21 @@
 
 import asyncio
 import time
-from abc import ABC, abstractmethod
-from queue import Empty, Queue
+from queue import Queue
 from threading import Thread
-from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import AsyncIterator, Iterator, List, Optional, Union
 
 import torch
 from tqdm import tqdm
 
 from swift.plugin import Metric
-from ..model import get_default_torch_dtype, get_model_tokenizer
-from ..template import Template
-from .protocol import ChatCompletionResponse, ChatCompletionStreamResponse, InferRequest, RequestConfig
+from ..model import get_model_tokenizer
+from ..template import Template, split_action_action_input
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
+                       InferRequest, RequestConfig, random_uuid)
 
 
-class InferEngine(ABC):
+class InferEngine:
 
     def _prepare_model_tokenizer(self,
                                  model_id_or_path: str,
@@ -47,6 +47,18 @@ class InferEngine(ABC):
         self.is_moe = tokenizer.is_moe
         self.chat_template = tokenizer.chat_template
         self.generation_template = tokenizer.generation_template
+
+    def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
+        stop: List[str] = []
+        for stop_word in stop_words:
+            if stop_word is None:
+                continue
+            elif isinstance(stop_word, list):
+                stop_word = self.tokenizer.decode(stop_word)
+            assert isinstance(stop_word, str)
+            if stop_word not in stop:
+                stop.append(stop_word)
+        return stop
 
     @staticmethod
     async def _run_infer(i, task, queue, stream: bool = False):
@@ -101,16 +113,6 @@ class InferEngine(ABC):
             pass
         return outputs
 
-    @abstractmethod
-    async def infer_async(self,
-                          template: Template,
-                          infer_request: InferRequest,
-                          request_config: Optional[RequestConfig] = None,
-                          *,
-                          request_id: Optional[str] = None,
-                          **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        pass
-
     @torch.inference_mode()
     def infer(self,
               template: Template,
@@ -129,3 +131,39 @@ class InferEngine(ABC):
             return self._infer_stream(tasks, True, use_tqdm, metrics)
         else:
             return self._infer(tasks, use_tqdm, metrics)
+
+    @staticmethod
+    def _get_toolcall(response: str, is_finished: bool) -> Optional[List[ChatCompletionMessageToolCall]]:
+        if is_finished:
+            return None
+        action, action_input = split_action_action_input(response)
+        if action is None:
+            return None
+
+        return [
+            ChatCompletionMessageToolCall(
+                id=f'toolcall-{random_uuid()}', type='function', function=Function(name=action, arguments=action_input))
+        ]
+
+    @torch.inference_mode()
+    async def infer_async(self,
+                          template: Template,
+                          infer_request: InferRequest,
+                          request_config: Optional[RequestConfig] = None,
+                          *,
+                          request_id: Optional[str] = None,
+                          **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
+        if request_id is None:
+            request_id = f'chatcmpl-{random_uuid()}'
+        created_time = int(time.time())
+        request_config = request_config or RequestConfig()
+
+        inputs = template.encode(infer_request)
+        assert len(inputs) >= 0
+        generation_config = self._prepare_generation_config(request_config)
+        self._add_stop_words(generation_config, request_config, template)
+        infer_args = (template, inputs, generation_config, request_id, created_time)
+        if request_config.stream:
+            return self._infer_stream_async(*infer_args, **kwargs)
+        else:
+            return await self._infer_async(*infer_args, **kwargs)
