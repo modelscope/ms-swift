@@ -22,6 +22,7 @@ class InferTools:
 
     @staticmethod
     def safe_decode(template: Template, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> str:
+        # Do not print template.suffix[-1] and eos_token.
         tokenizer = template.tokenizer
 
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
@@ -33,8 +34,8 @@ class InferTools:
         template_suffix = template.suffix[-1]
         if isinstance(template_suffix, list):
             template_suffix = tokenizer.decode(template_suffix)
-        len_suffix = len(template.suffix[-1])
-        if not is_finished or is_finished and response[-len_suffix:] == template.suffix[-1]:
+        len_suffix = len(template_suffix)
+        if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
             # To avoid response length being shorter than previous response length during streaming.
             # TODO:check
             # idx = max(len(response) - len_suffix, 0, self.print_idx)

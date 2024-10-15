@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebuiArguments, AppUIArguments)
-    from .template import TEMPLATE_MAPPING, Template, StopWords, get_template, TemplateType, register_template
+    from .template import TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template
     from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory
     from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                           ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
@@ -41,7 +41,7 @@ else:
             'EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebuiArguments', 'DeployArguments',
             'RLHFArguments', 'AppUIArguments'
         ],
-        'template': ['TEMPLATE_MAPPING', 'Template', 'StopWords', 'get_template', 'TemplateType', 'register_template'],
+        'template': ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template'],
         'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory'],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'ConversationsPreprocessor',

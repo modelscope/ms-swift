@@ -1,7 +1,7 @@
 import inspect
 import os
 import time
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import torch
 import vllm
@@ -53,8 +53,6 @@ class VllmEngine(InferEngine):
         self._init_env()
         self._prepare_model_tokenizer(model_id_or_path, torch_dtype, False, model_type=model_type, **kwargs)
         self._prepare_engine_kwargs(
-            self.model_dir,
-            self.torch_dtype,
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
             max_num_seqs=max_num_seqs,
@@ -78,9 +76,6 @@ class VllmEngine(InferEngine):
 
     def _prepare_engine_kwargs(
             self,
-            model_dir: str,
-            torch_dtype: torch.dtype,
-            *,
             gpu_memory_utilization: float = 0.9,
             tensor_parallel_size: int = 1,
             max_num_seqs: int = 256,
@@ -111,10 +106,9 @@ class VllmEngine(InferEngine):
             assert not limit_mm_per_prompt, (
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
-        torch_dtype = dtype_mapping[torch_dtype]
         engine_args = AsyncEngineArgs(
-            model=model_dir,
-            dtype=torch_dtype,
+            model=self.model_dir,
+            dtype=dtype_mapping[self.torch_dtype],
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
             max_num_seqs=max_num_seqs,
@@ -171,10 +165,10 @@ class VllmEngine(InferEngine):
         else:
             self.generation_config = SamplingParams()
 
-    def _get_stop_words(self, request_config: RequestConfig, template: Template) -> List[str]:
+    def _add_stop_words(self, generation_config, request_config: RequestConfig, template: Template) -> None:
         stop_words = (request_config.stop or []) + (
-            self.generation_config.stop or []) + template.stop_words + [template.suffix[-1], self.tokenizer.eos_token]
-
+                      self.generation_config.stop or []) + template.stop_words
+        stop_words += [template.suffix[-1], self.tokenizer.eos_token]
         stop: List[str] = []
         for stop_word in stop_words:
             if stop_word is None:
@@ -184,7 +178,7 @@ class VllmEngine(InferEngine):
             assert isinstance(stop_word, str)
             if stop_word not in stop:
                 stop.append(stop_word)
-        return stop
+        generation_config.stop = stop
 
     def _add_vllm_request(self, inputs: Dict[str, Any], generation_config: SamplingParams, request_id: str, **kwargs):
         input_ids = inputs['input_ids']
@@ -208,7 +202,7 @@ class VllmEngine(InferEngine):
         return result_generator
 
     @staticmethod
-    def _get_logprobs(tokenizer,
+    def _get_logprobs(tokenizer: PreTrainedTokenizerBase,
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
@@ -240,7 +234,7 @@ class VllmEngine(InferEngine):
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
-        for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'stop', 'seed']:
+        for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
         for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
             new_value = getattr(request_config, key)
@@ -348,8 +342,8 @@ class VllmEngine(InferEngine):
         request_config = request_config or RequestConfig()
 
         inputs = template.encode(infer_request)  # TODO: `{}`
-        request_config.stop = self._get_stop_words(request_config, template)
         generation_config = self._prepare_generation_config(request_config)
+        self._add_stop_words(generation_config, request_config, template)
         result_generator = self._add_vllm_request(inputs, generation_config, request_id, lora_request=lora_request)
         infer_args = (template, result_generator, generation_config, request_id, created_time)
         if request_config.stream:
