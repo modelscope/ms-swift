@@ -638,6 +638,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Pixtral                                | [mistralai](https://huggingface.co/mistralai)                               | 英文       | 12B      | chat模型       |
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | 英文       | 8B      | chat模型       |
 | Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | 英文       | 9B      | chat模型       |
+| Molmo              | [Molmo系列模型](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | 英文       | 1B-72B      | chat模型       |
 
 
 #### 扩散模型

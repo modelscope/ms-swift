@@ -590,6 +590,11 @@ class ModelType:
     cogvlm2_video_13b_chat = 'cogvlm2-video-13b-chat'
     cogagent_18b_chat = 'cogagent-18b-chat'
     cogagent_18b_instruct = 'cogagent-18b-instruct'
+    # molmo
+    molmoe_1b = 'molmoe-1b'
+    molmo_7b_o = 'molmo-7b-o'
+    molmo_7b_d = 'molmo-7b-d'
+    molmo_72b = 'molmo-72b'
     # mamba
     mamba_130m = 'mamba-130m'
     mamba_370m = 'mamba-370m'
@@ -656,6 +661,7 @@ class LoRATM(NamedTuple):
     got_ocr2 = 'got_ocr2'
     llama3_2_vision = 'llama3_2_vision'
     ovis1_6 = 'ovis1_6'
+    molmo = 'molmo'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -1269,6 +1275,102 @@ def get_model_tokenizer_cogagent(model_dir: str,
     model, tokenizer = get_model_tokenizer_from_repo(
         model_dir, torch_dtype, model_kwargs, load_model, tokenizer=tokenizer, **kwargs)
     logger.info('Please ignore the unimported warning.')
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.molmoe_1b,
+    'LLM-Research/MolmoE-1B-0924',
+    LoRATM.molmo,
+    TemplateType.molmo,
+    support_flash_attn=True,
+    support_vllm=False,
+    support_lmdeploy=False,
+    support_gradient_checkpointing=False,
+    eos_token='<|endoftext|>',
+    requires=['transformers>=4.45.0'],
+    placeholder_tokens=['<|image|>'],
+    torch_dtype=torch.float32,
+    tags=['multi-modal', 'vision'],
+    hf_model_id='allenai/MolmoE-1B-0924')
+def get_model_tokenizer_molmoe_1b(model_dir: str,
+                                  torch_dtype: torch.dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+
+    # fix bug for molmoe-1b
+    def to_dict(self, *args, **kwargs):
+        res = self._to_dict(*args, **kwargs)
+        res['vision_backbone'] = self.vision_backbone.__dict__
+        res.pop('to_dict')
+        res.pop('_to_dict')
+        return res
+
+    model.config._to_dict = model.config.to_dict
+    model.config.to_dict = MethodType(to_dict, model.config)
+    from transformers import GenerationMixin
+    model.generate = MethodType(GenerationMixin.generate, model)
+
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.molmo_7b_o,
+    'LLM-Research/Molmo-7B-O-0924',
+    LoRATM.molmo,
+    TemplateType.molmo,
+    support_flash_attn=True,
+    support_vllm=False,
+    support_lmdeploy=False,
+    support_gradient_checkpointing=False,
+    eos_token='<|endoftext|>',
+    requires=['transformers>=4.45.0'],
+    placeholder_tokens=['<|image|>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='allenai/Molmo-7B-O-0924')
+@register_model(
+    ModelType.molmo_7b_d,
+    'LLM-Research/Molmo-7B-D-0924',
+    LoRATM.molmo,
+    TemplateType.molmo,
+    support_flash_attn=True,
+    support_vllm=False,
+    support_lmdeploy=False,
+    support_gradient_checkpointing=False,
+    eos_token='<|endoftext|>',
+    requires=['transformers>=4.45.0'],
+    placeholder_tokens=['<|image|>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='allenai/Molmo-7B-D-0924')
+@register_model(
+    ModelType.molmo_72b,
+    'LLM-Research/Molmo-72B-0924',
+    LoRATM.molmo,
+    TemplateType.molmo,
+    support_flash_attn=True,
+    support_vllm=False,
+    support_lmdeploy=False,
+    support_gradient_checkpointing=False,
+    eos_token='<|endoftext|>',
+    requires=['transformers>=4.45.0'],
+    placeholder_tokens=['<|image|>'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='allenai/Molmo-72B-0924')
+def get_model_tokenizer_molmo(model_dir: str,
+                              torch_dtype: torch.dtype,
+                              model_kwargs: Dict[str, Any],
+                              load_model: bool = True,
+                              **kwargs):
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+
     return model, tokenizer
 
 
@@ -6926,7 +7028,9 @@ def get_additional_saved_files(model_type: str) -> List[str]:
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
         'yi-vl': ['vit'],
-        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py']
+        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py'],
+        'molmoe': ['modeling_molmoe.py'],
+        'molmo': ['modeling_molmo.py'],
     }
     for key, files_list in files_mapping.items():
         if key in model_type:
