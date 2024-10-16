@@ -320,8 +320,7 @@ def prepare_model_template_train(args, msg: Optional[Dict[str, Any]] = None):
     template._is_training = True
     if args.streaming:
         template.encode = partial(template.encode, streaming=args.streaming)
-    args.system = template.default_system
-    logger.info(f'system: {args.system}')
+    logger.info(f'system: {template.default_system}')
     logger.info(f'args.lazy_tokenize: {args.lazy_tokenize}')
 
     if not isinstance(args, RLHFArguments):
