@@ -1,8 +1,10 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import time
+import torch
 from typing import List
-
+from queue import Queue
+from transformers.generation.streamers import BaseStreamer
 from swift.plugin import Metric
 from ..template import Template
 
@@ -125,3 +127,29 @@ class InferStats(Metric):
             'samples/s': self.num_samples / runtime,
             'tokens/s': num_generated_tokens / runtime,
         }
+
+
+class TokensIteratorStreamer(BaseStreamer):
+
+    def __init__(self):
+        self.queue = Queue()  # Queue[int]
+
+    def put(self, value: torch.Tensor) -> None:
+        if value.ndim > 1:
+            assert value.shape[0] == 1
+            value = value[0]
+        value = value.tolist()
+        self.queue.put(value)
+
+    def end(self) -> None:
+        self.queue.put(None)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> List[int]:
+        value = self.queue.get()
+        if value is None:
+            raise StopIteration()
+        else:
+            return value
