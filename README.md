@@ -656,7 +656,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 ### Supported Open Source Datasets
 
-| Dataset Type        | Training Task   | Documentation                                                                                                                                                                                                                                |
+| Dataset Type        | Training Task   | Dataset                                                                                                                                                                                                                                |
 |---------------------|:----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | General             | Fine-tuning     | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
 | Agent               | Fine-tuning     | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                                                                                             |

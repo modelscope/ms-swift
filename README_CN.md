@@ -650,7 +650,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 ### 支持的开源数据集
 
-| 数据集类型 | 训练任务 | 文档                                                                                                                                                                                                                                           |
+| 数据集类型 | 训练任务 | 数据集                                                                                                                                                                                                                                          |
 |-------|:-----|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 通用    | 微调   | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
 | Agent | 微调   | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                                                                                             |
