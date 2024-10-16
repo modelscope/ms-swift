@@ -229,7 +229,7 @@ class LmdeployEngine(InferEngine):
 
         usage_info = LmdeployEngine._get_usage_info(inputs, output)
         response = InferTools.safe_decode(template, output.token_ids, True)
-        logprobs = self._get_logprobs(output.logprobs, output.token_ids, generation_config.logprobs)
+        logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
         finish_reason = LmdeployEngine._get_finish_reason(output, generation_config)
         toolcall = InferEngine._get_toolcall(response, True)
         choices = [
