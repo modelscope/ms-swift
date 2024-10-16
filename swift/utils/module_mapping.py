@@ -307,7 +307,7 @@ OVIS1_6 = MultiModelKeys(
     vision_tower='visual_tokenizer',
 )
 
-MOLMO_KEYS= MultiModelKeys(
+MOLMO_KEYS = MultiModelKeys(
     language_model='model.transformer',
     vision_tower='model.vision_backbone',
 )

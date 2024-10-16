@@ -660,6 +660,7 @@ class LoRATM(NamedTuple):
     got_ocr2 = 'got_ocr2'
     llama3_2_vision = 'llama3_2_vision'
     ovis1_6 = 'ovis1_6'
+    molmo = 'molmo'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -695,7 +696,6 @@ class LoRATM(NamedTuple):
     ]
     # compat
     llama2 = llama
-    molmo = 'molmo'
 
 
 GetModelTokenizerFunction = Callable[..., Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]]
@@ -1276,6 +1276,7 @@ def get_model_tokenizer_cogagent(model_dir: str,
     logger.info('Please ignore the unimported warning.')
     return model, tokenizer
 
+
 @register_model(
     ModelType.molmoe_1b,
     'LLM-Research/MolmoE-1B-0924',
@@ -1300,20 +1301,22 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
+
     # fix bug for molmoe-1b
-    from types import MethodType
     def to_dict(self, *args, **kwargs):
         res = self._to_dict(*args, **kwargs)
         res['vision_backbone'] = self.vision_backbone.__dict__
         res.pop('to_dict')
         res.pop('_to_dict')
         return res
+
     model.config._to_dict = model.config.to_dict
     model.config.to_dict = MethodType(to_dict, model.config)
     from transformers import GenerationMixin
     model.generate = MethodType(GenerationMixin.generate, model)
 
     return model, tokenizer
+
 
 @register_model(
     ModelType.molmo_7b_o,
@@ -1368,6 +1371,7 @@ def get_model_tokenizer_molmo(model_dir: str,
     tokenizer.processor = processor
 
     return model, tokenizer
+
 
 @register_model(
     ModelType.internlm_20b_chat,
@@ -7023,10 +7027,8 @@ def get_additional_saved_files(model_type: str) -> List[str]:
         'qwen-audio': ['mel_filters.npz'],
         'yi-vl': ['vit'],
         'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py'],
-        'molmoe-1b': ['modeling_molmoe.py'],
-        'molmo-7b-d': ['modeling_molmo.py'],
-        'molmo-7b-o': ['modeling_molmo.py'],
-        'molmo-72b': ['modeling_molmo.py']
+        'molmoe': ['modeling_molmoe.py'],
+        'molmo': ['modeling_molmo.py'],
     }
     for key, files_list in files_mapping.items():
         if key in model_type:

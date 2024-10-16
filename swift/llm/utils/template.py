@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 from functools import partial, wraps
 from types import MethodType
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
 import json
 import torch
@@ -2969,36 +2969,36 @@ class LLavaLlamaTemplate(Llama3Template):
 
 register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_model=True, lazy_tokenize=True)
 
+
 class MolmoTemplate(Template):
     system = None
-    image_placeholder = ["<|image|>"]
-    DEFAULT_IMAGE_PATCH_TOKEN = f"<im_patch>"
-    DEFAULT_IM_START_TOKEN = f"<im_start>"
-    DEFAULT_IM_END_TOKEN = f"<im_end>"
-    DEFAULT_IM_COL_TOKEN = f"<im_col>"
+    image_placeholder = ['<|image|>']
+    DEFAULT_IMAGE_PATCH_TOKEN = '<im_patch>'
+    DEFAULT_IM_START_TOKEN = '<im_start>'
+    DEFAULT_IM_END_TOKEN = '<im_end>'
+    DEFAULT_IM_COL_TOKEN = '<im_col>'
 
     def __init__(self):
-        Template.__init__(
-                self, [], [' User: {{QUERY}} Assistant:'], ['<|endoftext|>'],
-                ['<|endoftext|>'], self.system)
+        Template.__init__(self, [], [' User: {{QUERY}} Assistant:'], ['<|endoftext|>'], ['<|endoftext|>'], self.system)
         self.processor_kwargs = {
-            "images_kwargs": {
-                "max_crops": 12,
-                "overlap_margins": [4, 4],
-                "base_image_input_size": [336, 336],
-                "image_token_length_w": 12,
-                "image_token_length_h": 12,
-                "image_patch_size": 14,
-                "image_padding_mask": True,
+            'images_kwargs': {
+                'max_crops': 12,
+                'overlap_margins': [4, 4],
+                'base_image_input_size': [336, 336],
+                'image_token_length_w': 12,
+                'image_token_length_h': 12,
+                'image_patch_size': 14,
+                'image_padding_mask': True,
             },
-            "text_kwargs": {
-                "style": "long_caption",
-                "system_prompt": "none",
-                "message_format": "role",
-                "always_start_with_space": True,
-                "sequence_length": 1536,
-                "padding": False,
-            }}
+            'text_kwargs': {
+                'style': 'long_caption',
+                'system_prompt': 'none',
+                'message_format': 'role',
+                'always_start_with_space': True,
+                'sequence_length': 1536,
+                'padding': False,
+            }
+        }
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
@@ -3013,13 +3013,13 @@ class MolmoTemplate(Template):
             idx_list = _findall(inputs['input_ids'], image_id)
             res = self._process_images(raw_image, inputs['input_ids'], idx_list, labels)
             import numpy as np
-            if "image_input_idx" in res:
+            if 'image_input_idx' in res:
                 # Shift patch mapping up by one since we added BOS
-                image_input_idx = res["image_input_idx"]
-                res["image_input_idx"] = np.where(image_input_idx < 0, image_input_idx, image_input_idx + 1)
+                image_input_idx = res['image_input_idx']
+                res['image_input_idx'] = np.where(image_input_idx < 0, image_input_idx, image_input_idx + 1)
             inputs['input_ids'] = res.pop('input_ids').tolist()
             if labels:
-                inputs['labels'] = [-100] + res.pop('labels') # add one label for BOS
+                inputs['labels'] = [-100] + res.pop('labels')  # add one label for BOS
 
             for k, v in res.items():
                 res[k] = torch.from_numpy(v).unsqueeze(0)
@@ -3039,10 +3039,7 @@ class MolmoTemplate(Template):
             image_arrays = []
             for image in images:
                 if isinstance(image, Image):
-                    image = image.convert("RGB")
-                    # Handle images with EXIF orientation tags, which PIL will ignore by default
-                    # https://github.com/python-pillow/Pillow/issues/4703
-                    img = ImageOps.exif_transpose(image)
+                    image = image.convert('RGB')
                     image_arrays.append(np.array(image))
                 else:
                     assert len(image.shape) == 3 and image.shape[-1] == 3
@@ -3055,7 +3052,7 @@ class MolmoTemplate(Template):
         image_col_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_COL_TOKEN]
         image_start_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_START_TOKEN]
         image_end_token_id = self.tokenizer.processor.special_token_ids[self.DEFAULT_IM_END_TOKEN]
-        sequence_length = self.processor_kwargs["text_kwargs"]["sequence_length"]
+        sequence_length = self.processor_kwargs['text_kwargs']['sequence_length']
         res = self.tokenizer.processor.image_processor.multimodal_preprocess(
             images=images,
             image_idx=idx_list,
@@ -3065,8 +3062,7 @@ class MolmoTemplate(Template):
             image_col_token_id=image_col_token_id,
             image_start_token_id=image_start_token_id,
             image_end_token_id=image_end_token_id,
-            **self.processor_kwargs["images_kwargs"]
-        )
+            **self.processor_kwargs['images_kwargs'])
         if labels is not None:
             new_labels = []
             cur_idx = 0
@@ -3096,10 +3092,7 @@ class MolmoTemplate(Template):
         append_last_valid_logits: Optional[torch.Tensor] = None
         if self.model.config.use_position_ids and attention_mask is None:
             attention_mask = input_ids != -1
-            position_ids = torch.clamp(
-                torch.cumsum(attention_mask.to(torch.int32), dim=-1) - 1,
-                min=0
-            )
+            position_ids = torch.clamp(torch.cumsum(attention_mask.to(torch.int32), dim=-1) - 1, min=0)
             append_last_valid_logits = attention_mask.long().sum(dim=-1) - 1
             attention_mask = torch.cat(
                 [attention_mask, attention_mask.new_ones((batch_size, max_new_tokens))],
@@ -3112,10 +3105,10 @@ class MolmoTemplate(Template):
             attention_mask = attention_mask.squeeze(0)
             position_ids = position_ids.squeeze(0)
         data.update({
-                "attention_mask": attention_mask,
-                "position_ids": position_ids,
-                "append_last_valid_logits": append_last_valid_logits,
-            })
+            'attention_mask': attention_mask,
+            'position_ids': position_ids,
+            'append_last_valid_logits': append_last_valid_logits,
+        })
         if 'images' in data:
             data['images'] = data['images'].to(self.model.dtype)
         return data
@@ -3138,6 +3131,7 @@ class MolmoTemplate(Template):
             res[key] = torch.concat(batch_input)
 
         return res
+
 
 register_template(TemplateType.molmo, MolmoTemplate())
 
