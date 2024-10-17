@@ -420,10 +420,10 @@ async def inference_vllm_async(request: Union[ChatCompletionRequest, CompletionR
                     choices.append(choice)
                 response = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-            yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+            yield f'data: {json.dumps(asdict(response), ensure_ascii=False)}\n\n'
         if _args.log_interval > 0:
             _update_stats(response)
-        yield 'data:[DONE]\n\n'
+        yield 'data: [DONE]\n\n'
 
     if request.stream:
         return StreamingResponse(_generate_stream())
@@ -599,10 +599,10 @@ async def inference_lmdeploy_async(request: Union[ChatCompletionRequest, Complet
                     choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=finish_reason)]
                     response = CompletionStreamResponse(
                         model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-                yield f'data:{json.dumps(asdict(response), ensure_ascii=False)}\n\n'
+                yield f'data: {json.dumps(asdict(response), ensure_ascii=False)}\n\n'
             if _args.log_interval > 0:
                 _update_stats(response)
-            yield 'data:[DONE]\n\n'
+            yield 'data: [DONE]\n\n'
 
     if request.stream:
         return StreamingResponse(_generate_stream())
@@ -827,10 +827,10 @@ async def inference_pt_async(request: Union[ChatCompletionRequest, CompletionReq
                 choices = [CompletionResponseStreamChoice(index=0, text=delta_text, finish_reason=None)]
                 resp = CompletionStreamResponse(
                     model=request.model, choices=choices, usage=usage_info, id=request_id, created=created_time)
-            yield f'data:{json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
+            yield f'data: {json.dumps(asdict(resp), ensure_ascii=False)}\n\n'
         if _args.log_interval > 0:
             _update_stats(resp)
-        yield 'data:[DONE]\n\n'
+        yield 'data: [DONE]\n\n'
 
     if request.stream:
         return StreamingResponse(_generate_stream())
