@@ -68,8 +68,8 @@ class RequestConfig:
     length_penalty: float = 1.
 
     # additional
-    num_beams: int = 1
     # None: use deploy_args
+    num_beams: Optional[int] = None
     top_k: Optional[int] = None
     repetition_penalty: Optional[float] = None
 

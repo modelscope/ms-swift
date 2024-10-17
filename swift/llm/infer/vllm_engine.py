@@ -1,6 +1,6 @@
 import inspect
 import os
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import torch
 import vllm
@@ -9,12 +9,14 @@ from packaging import version
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
+from swift.plugin import Metric
 from swift.utils import get_logger
 from ..template import Template
 from .base import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo)
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo,
+                       random_uuid)
 from .utils import InferStreamer, InferTools
 
 try:
@@ -117,6 +119,7 @@ class VllmEngine(InferEngine):
             trust_remote_code=True,
             **engine_kwargs)
         self.engine_args = engine_args
+        self.enable_lora = enable_lora
         self.max_model_len = max_model_len
 
     @staticmethod
@@ -169,7 +172,14 @@ class VllmEngine(InferEngine):
         stop_words += [template.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop = self._get_stop_words(stop_words)
 
-    def _add_request(self, inputs: Dict[str, Any], generation_config: SamplingParams, request_id: str, **kwargs):
+    def _add_request(self,
+                     inputs: Dict[str, Any],
+                     generation_config: SamplingParams,
+                     request_id: str,
+                     lora_request: Optional['LoRARequest'] = None):
+        kwargs = {}
+        if self.enable_lora:
+            kwargs['lora_request'] = lora_request
         input_ids = inputs['input_ids']
         if version.parse(vllm.__version__) >= version.parse('0.4.3'):
             llm_inputs = {'prompt_token_ids': input_ids}
@@ -236,19 +246,9 @@ class VllmEngine(InferEngine):
 
         return SamplingParams(**kwargs)
 
-    @staticmethod
-    def _get_usage_info(result) -> UsageInfo:
-        num_prompt_tokens = len(result.prompt_token_ids)
-        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
-        return UsageInfo(
-            prompt_tokens=num_prompt_tokens,
-            completion_tokens=num_generated_tokens,
-            total_tokens=num_prompt_tokens + num_generated_tokens,
-        )
-
     async def _infer_stream_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
-                                  request_id: str, created_time: int,
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
+        request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, **kwargs)
         infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
         total_res = ['' for _ in range(generation_config.n)]
@@ -257,7 +257,8 @@ class VllmEngine(InferEngine):
             is_diff = False
             is_finished = False
             for output in result.outputs:
-                output.delta_text = infer_streamers[output.index].put(output.token_ids, output.finished())
+                output.delta_text = infer_streamers[output.index].get_printable_text(
+                    output.token_ids, output.finished())
                 output.is_finished = output.finish_reason is not None
                 total_res[output.index] += output.delta_text
                 is_diff |= bool(output.delta_text)
@@ -265,7 +266,8 @@ class VllmEngine(InferEngine):
             if not is_diff and not is_finished:
                 continue
 
-            usage_info = VllmEngine._get_usage_info(result)
+            num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+            usage_info = InferEngine._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
             choices = []
             for output in result.outputs:
                 toolcall = InferEngine._get_toolcall(total_res[output.index], output.is_finished)
@@ -274,17 +276,21 @@ class VllmEngine(InferEngine):
                     delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
                     finish_reason=output.finish_reason)
                 choices.append(choice)
-            yield ChatCompletionStreamResponse(
-                model=self.model_dir, choices=choices, usage=usage_info, id=request_id, created=created_time)
+            yield ChatCompletionStreamResponse(model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
 
-    async def _infer_async(self, template: Template, inputs: Dict[str, Any], generation_config: SamplingParams,
-                           request_id: str, created_time: int, **kwargs) -> ChatCompletionResponse:
-        result_generator = self._add_request(inputs, generation_config, request_id, **kwargs)
+    async def _infer_full_async(self,
+                                template: Template,
+                                inputs: Dict[str, Any],
+                                generation_config: SamplingParams,
+                                lora_request: Optional['LoRARequest'] = None) -> ChatCompletionResponse:
+        request_id = random_uuid()
+        result_generator = self._add_request(inputs, generation_config, request_id, lora_request=lora_request)
         result = None
         async for result in result_generator:
             pass
         assert result is not None
-        usage_info = VllmEngine._get_usage_info(result)
+        num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
+        usage_info = InferEngine._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
         for output in result.outputs:
             response = InferTools.safe_decode(template, output.token_ids, True)
@@ -297,8 +303,20 @@ class VllmEngine(InferEngine):
                 finish_reason=output.finish_reason,
                 logprobs=logprobs)
             choices.append(choice)
-        return ChatCompletionResponse(
-            model=self.model_type, choices=choices, usage=usage_info, id=request_id, created=created_time)
+        return ChatCompletionResponse(model=self.model_type, choices=choices, usage=usage_info, id=request_id)
+
+    @torch.inference_mode()
+    def infer(
+        self,
+        template: Template,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        *,
+        use_tqdm: Optional[bool] = None,
+        metrics: Optional[List[Metric]] = None,
+        lora_request: Optional['LoRARequest'] = None
+    ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
+        return super().infer(template, infer_requests, request_config, use_tqdm=use_tqdm, lora_request=lora_request)
 
     @torch.inference_mode()
     async def infer_async(
@@ -307,8 +325,6 @@ class VllmEngine(InferEngine):
         infer_request: InferRequest,
         request_config: Optional[RequestConfig] = None,
         *,
-        request_id: Optional[str] = None,
         lora_request: Optional['LoRARequest'] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        return await super().infer_async(
-            template, infer_request, request_config, request_id=request_id, lora_request=lora_request)
+        return await super().infer_async(template, infer_request, request_config, lora_request=lora_request)

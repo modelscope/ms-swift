@@ -1,10 +1,13 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import time
-import torch
-from typing import List
 from queue import Queue
+from typing import List
+
+import torch
+from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.generation.streamers import BaseStreamer
+
 from swift.plugin import Metric
 from ..template import Template
 
@@ -47,13 +50,12 @@ class InferTools:
 
 class InferStreamer(InferTools):
 
-    def __init__(self, template, input_delta: bool = False, **decode_kwargs):
+    def __init__(self, template, **decode_kwargs):
         self.template = template
         self.tokenizer = template.tokenizer
 
         self.token_cache = []  # Reduce the time of tokenizer.decode
-        self.input_delta = input_delta
-        self.cache_idx = 0  # This parameter takes effect when input_delta is set to False.
+        self.cache_idx = 0
         self.print_idx = 0
         self.decode_kwargs = decode_kwargs
         self.first_num_space = -1  # The number of whitespace characters before the first token.
@@ -69,14 +71,11 @@ class InferStreamer(InferTools):
             response = response[cur_num_space - self.first_num_space:]
         return response
 
-    def _get_printable_text(self, response: str, is_finished: bool) -> str:
+    def _get_response(self, response: str, is_finished: bool) -> str:
         # After the symbol for a new line, we flush the cache.
         if response.endswith('\n') or is_finished:
             printable_text = response[self.print_idx:]
-            if self.input_delta:
-                self.token_cache = []
-            else:
-                self.cache_idx += len(self.token_cache)
+            self.cache_idx += len(self.token_cache)
             self.print_idx = 0
         # If the last token is a CJK character, we print the characters.
         elif len(response) > 0 and self._is_chinese_char(ord(response[-1])):
@@ -89,14 +88,11 @@ class InferStreamer(InferTools):
             self.print_idx += len(printable_text)
         return printable_text
 
-    def put(self, tokens: List[int], is_finished: bool) -> str:
-        if self.input_delta:
-            self.token_cache += tokens
-        else:
-            self.token_cache = tokens[self.cache_idx:]
+    def get_printable_text(self, raw_tokens: List[int], is_finished: bool) -> str:
+        self.token_cache = raw_tokens[self.cache_idx:]
         response = self.safe_decode(self.template, self.token_cache, is_finished, **self.decode_kwargs)
         response = self._align_blank_suffix(response)
-        return self._get_printable_text(response, is_finished)
+        return self._get_response(response, is_finished)
 
 
 class InferStats(Metric):
@@ -153,3 +149,24 @@ class TokensIteratorStreamer(BaseStreamer):
             raise StopIteration()
         else:
             return value
+
+
+class StopWordsCriteria(StoppingCriteria):
+    # The returned sentence includes stop words.
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: List[str], **decode_kwargs) -> None:
+        self.tokenizer = tokenizer
+        self.stop_words = stop_words
+        self.decode_kwargs = decode_kwargs
+        self.start_idx = -1
+
+    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> bool:
+        if self.start_idx == -1:
+            self.start_idx = len(input_ids[0]) - 1
+        # [-20:]: Assuming the end tokens do not exceed 20 tokens,
+        #   to avoid input_ids being too long and affecting efficiency.
+        text = self.tokenizer.decode(input_ids[0, self.start_idx:][-20:], **self.decode_kwargs)
+        for stop_word in self.stop_words:
+            assert isinstance(stop_word, str)
+            if stop_word in text:
+                return True
+        return False
