@@ -126,7 +126,11 @@ class Template(_Template):
         res['_data'] = batch
         return res
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch
@@ -135,7 +139,9 @@ class Template(_Template):
         """
         tokenizer = self.tokenizer
         assert tokenizer.pad_token_id is not None
-        padding_right = self.padding_side == 'right'
+        if padding_side is None:
+            padding_side = self.padding_side
+        padding_right = padding_side == 'right'
         res = {}
 
         if 'inputs_embeds' in batch[0]:
@@ -165,7 +171,7 @@ class Template(_Template):
         for key, value in zip(['input_ids', 'inputs_embeds', 'attention_mask', 'labels', 'loss_scale', 'position_ids'],
                               [tokenizer.pad_token_id, 0., 0, -100, 0., -1]):
             if key in res:
-                res[key] = self._pad_sequence(res[key], value, self.padding_side)
+                res[key] = self._pad_sequence(res[key], value, padding_side)
 
         # multimodal
         pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]

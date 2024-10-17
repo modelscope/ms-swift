@@ -131,10 +131,6 @@ class TokensIteratorStreamer(BaseStreamer):
         self.queue = Queue()  # Queue[int]
 
     def put(self, value: torch.Tensor) -> None:
-        if value.ndim > 1:
-            assert value.shape[0] == 1
-            value = value[0]
-        value = value.tolist()
         self.queue.put(value)
 
     def end(self) -> None:
@@ -159,14 +155,20 @@ class StopWordsCriteria(StoppingCriteria):
         self.decode_kwargs = decode_kwargs
         self.start_idx = -1
 
-    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> bool:
+    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor, **kwargs) -> torch.Tensor:
         if self.start_idx == -1:
-            self.start_idx = len(input_ids[0]) - 1
-        # [-20:]: Assuming the end tokens do not exceed 20 tokens,
-        #   to avoid input_ids being too long and affecting efficiency.
-        text = self.tokenizer.decode(input_ids[0, self.start_idx:][-20:], **self.decode_kwargs)
-        for stop_word in self.stop_words:
-            assert isinstance(stop_word, str)
-            if stop_word in text:
-                return True
-        return False
+            self.start_idx = input_ids.shape[1] - 1
+
+        is_finished = torch.zeros((input_ids.shape[0], ), device=input_ids.device, dtype=torch.bool)
+        for i in range(input_ids.shape[0]):
+            # [-20:]: Assuming the end tokens do not exceed 20 tokens,
+            #   to avoid input_ids being too long and affecting efficiency.
+            text = self.tokenizer.decode(input_ids[i, self.start_idx:][-20:], **self.decode_kwargs)
+            for stop_word in self.stop_words:
+                assert isinstance(stop_word, str)
+                if stop_word in text:
+                    is_finished[i] = True
+                    break
+            else:
+                is_finished[i] = False
+        return is_finished

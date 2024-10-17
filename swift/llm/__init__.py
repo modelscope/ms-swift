@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
     from .infer import (deploy_main, infer_main, merge_lora_main, merge_lora, VllmEngine, InferRequest, RequestConfig,
-                        InferStats, LmdeployEngine)
+                        InferStats, LmdeployEngine, PtEngine)
     from .export import export_main
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
@@ -32,7 +32,7 @@ else:
         'rlhf': ['rlhf_main'],
         'infer': [
             'deploy_main', 'merge_lora', 'infer_main', 'merge_lora_main', 'VllmEngine', 'InferRequest', 'RequestConfig',
-            'InferStats', 'LmdeployEngine'
+            'InferStats', 'LmdeployEngine', 'PtEngine'
         ],
         'export': ['export_main'],
         'eval': ['eval_main'],

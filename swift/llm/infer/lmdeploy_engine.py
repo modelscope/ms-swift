@@ -16,7 +16,7 @@ from ..template import Template
 from .base import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo)
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
 from .utils import InferStreamer, InferTools
 
 logger = get_logger()
@@ -178,10 +178,10 @@ class LmdeployEngine(InferEngine):
             self, template: Template, inputs: Dict[str, Any],
             generation_config: LmdeployGenerationConfig) -> AsyncIterator[ChatCompletionStreamResponse]:
         session_id = time.time_ns()
+        request_id = f'chatcmpl-{random_uuid()}'
         generator = await self._add_request(template, inputs, session_id)
 
         infer_streamer = InferStreamer(template)
-        total_response = ''
         async with self.engine.safe_run(session_id):
             async_iter = generator.async_stream_infer(
                 session_id=session_id, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
@@ -195,17 +195,17 @@ class LmdeployEngine(InferEngine):
                 if not delta_text and not is_finished:
                     continue
 
-                usage_info = InferEngine._get_usage_info(len(inputs['input_ids']), output.num_token)
-                total_response += delta_text
-                finish_reason = LmdeployEngine._get_finish_reason(output, generation_config)
-                toolcall = InferEngine._get_toolcall(total_response, is_finished)
+                usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
+                finish_reason = self._get_finish_reason(output, generation_config)
+                toolcall = self._get_toolcall(output.token_ids, is_finished)
                 choices = [
                     ChatCompletionResponseStreamChoice(
                         index=0,
                         delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
                         finish_reason=finish_reason)
                 ]
-                yield ChatCompletionStreamResponse(model=self.model_type, choices=choices, usage=usage_info)
+                yield ChatCompletionStreamResponse(
+                    model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
 
     async def _infer_full_async(self, template: Template, inputs: Dict[str, Any],
                                 generation_config: LmdeployGenerationConfig) -> ChatCompletionResponse:
@@ -217,11 +217,11 @@ class LmdeployEngine(InferEngine):
                     session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
                 pass
 
-        usage_info = InferEngine._get_usage_info(len(inputs['input_ids']), output.num_token)
+        usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         response = InferTools.safe_decode(template, output.token_ids, True)
         logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
-        finish_reason = LmdeployEngine._get_finish_reason(output, generation_config)
-        toolcall = InferEngine._get_toolcall(response, True)
+        finish_reason = self._get_finish_reason(output, generation_config)
+        toolcall = self._get_toolcall(response, True)
         choices = [
             ChatCompletionResponseChoice(
                 index=0,
@@ -229,5 +229,4 @@ class LmdeployEngine(InferEngine):
                 finish_reason=finish_reason,
                 logprobs=logprobs)
         ]
-        response = ChatCompletionResponse(model=self.model_type, choices=choices, usage=usage_info)
-        return response
+        return ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info)

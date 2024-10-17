@@ -81,12 +81,7 @@ class InferEngine:
     @staticmethod
     def __infer_stream(tasks,
                        stream: bool = True,
-                       use_tqdm: bool = True,
-                       metrics: Optional[List[Metric]] = None) -> Iterator[List[ChatCompletionStreamResponse]]:
-        if metrics is None:
-            metrics = []
-        for metric in metrics:
-            metric.reset()
+                       use_tqdm: bool = True) -> Iterator[List[ChatCompletionStreamResponse]]:
 
         queue = Queue()
         new_tasks = [InferEngine.__run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
@@ -107,15 +102,11 @@ class InferEngine:
                     yield outputs
                     outputs = [None] * len(new_tasks)
                 outputs[i] = output
-            for metric in metrics:
-                metric.update(output)
         yield outputs
 
     @staticmethod
-    def __infer_full(tasks,
-                     use_tqdm: bool = True,
-                     metrics: Optional[List[Metric]] = None) -> List[ChatCompletionResponse]:
-        for outputs in InferEngine.__infer_stream(tasks, False, use_tqdm, metrics):
+    def __infer_full(tasks, use_tqdm: bool = True) -> List[ChatCompletionResponse]:
+        for outputs in InferEngine.__infer_stream(tasks, False, use_tqdm):
             pass
         return outputs
 
@@ -127,14 +118,29 @@ class InferEngine:
             total_tokens=num_prompt_tokens + num_generated_tokens,
         )
 
+    @staticmethod
+    def _update_metrics_wrapper(gen, metrics: Optional[List[Metric]] = None):
+        for res in gen:
+            yield InferEngine._update_metrics(res, metrics)
+
+    @staticmethod
+    def _update_metrics(result, metrics: Optional[List[Metric]] = None):
+        result_origin = result
+        if not isinstance(result, (list, tuple)):
+            result = [result]
+        for response in result:
+            for metric in metrics:
+                metric.update(response)
+        return result_origin
+
     @torch.inference_mode()
     def infer(self,
               template: Template,
               infer_requests: List[InferRequest],
               request_config: Optional[RequestConfig] = None,
+              metrics: Optional[List[Metric]] = None,
               *,
               use_tqdm: Optional[bool] = None,
-              metrics: Optional[List[Metric]] = None,
               **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
         tasks = [
             self.infer_async(template, infer_request, request_config, **kwargs) for infer_request in infer_requests
@@ -142,14 +148,16 @@ class InferEngine:
         if use_tqdm is None:
             use_tqdm = not request_config.stream
         if request_config.stream:
-            return self.__infer_stream(tasks, True, use_tqdm, metrics)
+            return self._update_metrics_wrapper(self.__infer_stream(tasks, True, use_tqdm), metrics)
         else:
-            return self.__infer_full(tasks, use_tqdm, metrics)
+            return self._update_metrics(self.__infer_full(tasks, use_tqdm), metrics)
 
-    @staticmethod
-    def _get_toolcall(response: str, is_finished: bool) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self, response: Union[str, List[int]],
+                      is_finished: bool) -> Optional[List[ChatCompletionMessageToolCall]]:
         if is_finished:
             return None
+        if not isinstance(response, str):
+            response = self.tokenizer.decode(response)
         action, action_input = split_action_action_input(response)
         if action is None:
             return None
@@ -177,15 +185,19 @@ class InferEngine:
 
     @staticmethod
     def _get_num_tokens(inputs: Dict[str, Any]) -> int:
-        if 'input_ids' in inputs:  # 1d
-            return len(inputs['input_ids'])
-        elif 'inputs_embeds' in inputs:  # 2d
-            return inputs['inputs_embeds'].shape[0]
+        if 'input_ids' in inputs:  # 1d or 2d
+            input_ids = inputs['input_ids']
+            if isinstance(input_ids, list):
+                return len(input_ids)
+            else:
+                return input_ids.shape[-1]
+        elif 'inputs_embeds' in inputs:  # 2d or 3d
+            return inputs['inputs_embeds'].shape[-1]
         raise ValueError(f'Unable to retrieve input_ids and inputs_embeds. inputs: {inputs}')
 
     def set_default_max_tokens(self,
                                request_config: RequestConfig,
-                               inputs: Union[Dict[str, Any], List[Dict[str, Any]]],
+                               inputs: Dict[str, Any],
                                strict: bool = False) -> None:
         max_model_len = self.max_model_len
         if isinstance(inputs, dict):
@@ -193,7 +205,7 @@ class InferEngine:
         # The num_tokens takes the maximum value from inputs_list.
         num_tokens = 0
         for inp in inputs:
-            num_tokens = max(num_tokens, InferEngine._get_num_tokens(inp))
+            num_tokens = max(num_tokens, self._get_num_tokens(inp))
         max_tokens = request_config.max_tokens
         if max_model_len is None:
             max_model_len = 8192

@@ -19,7 +19,7 @@ else:
         'infer': ['infer_main', 'merge_lora_main', 'merge_lora'],
         'vllm_engine': ['VllmEngine'],
         'lmdeploy_engine': ['LmdeployEngine'],
-        'pt_engine': ['TransformersFramework'],
+        'pt_engine': ['PtEngine'],
         'protocol': ['InferRequest', 'RequestConfig'],
     }
 

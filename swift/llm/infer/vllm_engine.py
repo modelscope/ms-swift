@@ -120,7 +120,8 @@ class VllmEngine(InferEngine):
             **engine_kwargs)
         self.engine_args = engine_args
         self.enable_lora = enable_lora
-        self.max_model_len = max_model_len
+        if max_model_len is not None:
+            self.max_model_len = max_model_len
 
     @staticmethod
     def _init_env() -> None:
@@ -251,7 +252,6 @@ class VllmEngine(InferEngine):
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, **kwargs)
         infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
-        total_res = ['' for _ in range(generation_config.n)]
         async for result in result_generator:
 
             is_diff = False
@@ -260,17 +260,16 @@ class VllmEngine(InferEngine):
                 output.delta_text = infer_streamers[output.index].get_printable_text(
                     output.token_ids, output.finished())
                 output.is_finished = output.finish_reason is not None
-                total_res[output.index] += output.delta_text
                 is_diff |= bool(output.delta_text)
                 is_finished |= output.is_finished
             if not is_diff and not is_finished:
                 continue
 
             num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
-            usage_info = InferEngine._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
+            usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
             choices = []
             for output in result.outputs:
-                toolcall = InferEngine._get_toolcall(total_res[output.index], output.is_finished)
+                toolcall = self._get_toolcall(output.token_ids, output.is_finished)
                 choice = ChatCompletionResponseStreamChoice(
                     index=output.index,
                     delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
@@ -290,20 +289,20 @@ class VllmEngine(InferEngine):
             pass
         assert result is not None
         num_generated_tokens = sum(len(output.token_ids) for output in result.outputs)
-        usage_info = InferEngine._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
+        usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
         for output in result.outputs:
             response = InferTools.safe_decode(template, output.token_ids, True)
-            logprobs = VllmEngine._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
-                                                generation_config.logprobs)
-            toolcall = InferEngine._get_toolcall(response, True)
+            logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
+                                          generation_config.logprobs)
+            toolcall = self._get_toolcall(response, True)
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
                 logprobs=logprobs)
             choices.append(choice)
-        return ChatCompletionResponse(model=self.model_type, choices=choices, usage=usage_info, id=request_id)
+        return ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
 
     @torch.inference_mode()
     def infer(
@@ -311,12 +310,13 @@ class VllmEngine(InferEngine):
         template: Template,
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
+        metrics: Optional[List[Metric]] = None,
         *,
         use_tqdm: Optional[bool] = None,
-        metrics: Optional[List[Metric]] = None,
         lora_request: Optional['LoRARequest'] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
-        return super().infer(template, infer_requests, request_config, use_tqdm=use_tqdm, lora_request=lora_request)
+        return super().infer(
+            template, infer_requests, request_config, metrics, use_tqdm=use_tqdm, lora_request=lora_request)
 
     @torch.inference_mode()
     async def infer_async(

@@ -13,7 +13,8 @@ from ..template import Template
 from ..utils import to_device
 from .base import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig)
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
+                       random_uuid)
 from .utils import InferStreamer, InferTools, StopWordsCriteria, TokensIteratorStreamer
 
 logger = get_logger()
@@ -82,7 +83,7 @@ class PtEngine(InferEngine):
 
     def _add_stop_words(self, generation_config: GenerationConfig, request_config: RequestConfig,
                         template: Template) -> None:
-        stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template.stop_words
+        stop_words = (request_config.stop or []) + template.stop_words
         stop_words += [template.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop_words = self._get_stop_words(stop_words)
 
@@ -132,11 +133,9 @@ class PtEngine(InferEngine):
         return self.infer(template, [infer_request], request_config, use_tqdm=False, adapter_names=adapter_names)[0]
 
     def __model_generate(self, *args, **kwargs):
-        queue = kwargs.pop('queue')
         if is_torch_npu_available():
             torch.npu.set_device(self.model.device)
-        res = self.model.generate(*args, **kwargs)
-        queue.put(res)
+        self.model.generate(*args, **kwargs)
 
     @staticmethod
     def _get_finish_reason(generation_config: GenerationConfig, num_prompt_tokens: int, is_finished: bool):
@@ -149,6 +148,10 @@ class PtEngine(InferEngine):
             finish_reason = None
         return finish_reason
 
+    @staticmethod
+    def _ignore_pad_token(generate_ids: List[int], pad_token_id: int) -> List[int]:
+        return [token for token in generate_ids if token != pad_token_id]
+
     def _infer_stream(self,
                       template: Template,
                       inputs: Dict[str, Any],
@@ -157,6 +160,7 @@ class PtEngine(InferEngine):
                       adapter_names: Optional[List[str]] = None) -> Iterator[List[ChatCompletionStreamResponse]]:
         if adapter_names is not None:
             inputs['adapter_names'] = adapter_names
+        num_prompt_tokens = self._get_num_tokens(inputs)
         stopping_criteria = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, generation_config.stop_words)])
         if generation_config.num_beams != 1:
             error_msg = 'Streaming generation does not support beam search.'
@@ -172,32 +176,49 @@ class PtEngine(InferEngine):
                 **inputs
             })
         thread.start()
-        num_prompt_tokens = InferEngine._get_num_tokens(inputs)
-        infer_stream = InferStreamer(template)
-        raw_generate_ids = []
-        total_response = ''
-        is_finished = False
-        while not is_finished:
+        batch_size = inputs['attention_mask'].shape[0]
+        infer_streamers = [InferStreamer(template) for _ in range(batch_size)]
+        generate_ids_list = [[] for _ in range(batch_size)]
+        all_is_finished = False
+        is_finished = [False] * batch_size
+        request_id_list = [f'chatcmpl-{random_uuid()}' for _ in range(batch_size)]
+        while not all_is_finished:
             try:
-                raw_generate_ids += next(streamer)
+                tokens = next(streamer)
             except StopIteration:
-                is_finished = True
-            generate_ids = template.get_generate_ids(raw_generate_ids, num_prompt_tokens)
-            delta_text = infer_stream.get_printable_text(generate_ids, is_finished)
-            if not delta_text and not is_finished:
-                continue
-            num_generated_tokens = len(generate_ids)
-            usage_info = InferEngine._get_usage_info(num_prompt_tokens, num_generated_tokens)
-            total_response += delta_text
-            finish_reason = PtEngine._get_finish_reason(generation_config, num_prompt_tokens, is_finished)
-            toolcall = InferEngine._get_toolcall(total_response, is_finished)
-            choices = [
-                ChatCompletionResponseStreamChoice(
-                    index=0,
-                    delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
-                    finish_reason=finish_reason)
-            ]
-            yield ChatCompletionStreamResponse(model=self.model_type, choices=choices, usage=usage_info)
+                all_is_finished = True
+            res = []
+            for i, token in enumerate(tokens):
+                if is_finished[i]:
+                    res.append(None)
+                    continue
+                generate_ids = generate_ids_list[i]
+                token = token.tolist()
+                generate_ids += token if isinstance(token, list) else [token]
+                is_finished[i] = (
+                    all_is_finished or is_finished[i]
+                    or len(generate_ids) > 0 and generate_ids[-1] == generation_config.pad_token_id)
+                generate_ids = template.get_generate_ids(generate_ids, num_prompt_tokens)
+                generate_ids = self._ignore_pad_token(generate_ids, generation_config.pad_token_id)
+                delta_text = infer_streamers[i].get_printable_text(generate_ids, is_finished[i])
+                if not delta_text and not is_finished[i]:
+                    res.append(None)
+                    continue
+                usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
+                finish_reason = self._get_finish_reason(generation_config, num_prompt_tokens, is_finished[i])
+                toolcall = self._get_toolcall(generate_ids, is_finished[i])
+
+                choices = [
+                    ChatCompletionResponseStreamChoice(
+                        index=0,
+                        delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
+                        finish_reason=finish_reason)
+                ]
+                res.append(
+                    ChatCompletionStreamResponse(
+                        model=self.model_dir, choices=choices, usage=usage_info, id=request_id_list[i]))
+            if any(res):
+                yield res
 
     def _infer_full(self,
                     template: Template,
@@ -205,27 +226,33 @@ class PtEngine(InferEngine):
                     generation_config: GenerationConfig,
                     *,
                     adapter_names: Optional[List[str]] = None) -> List[ChatCompletionResponse]:
+        # bos_token TODO: encoder-decoder
         if adapter_names is not None:
             inputs['adapter_names'] = adapter_names
+        num_prompt_tokens = self._get_num_tokens(inputs)
         stopping_criteria = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, generation_config.stop_words)])
-        res = dict(
+        output = dict(
             self.model.generate(generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs))
-        generate_ids = res['sequences']
-        num_prompt_tokens = InferEngine._get_num_tokens(inputs)
-        num_generated_tokens = len(generate_ids)
-        generate_ids = template.get_generate_ids(generate_ids, num_prompt_tokens)
-        usage_info = InferEngine._get_usage_info(num_prompt_tokens, num_generated_tokens)
-        response = InferTools.safe_decode(template, generate_ids, True)
-        logprobs = self._get_logprobs(self.tokenizer, res['logits'], generate_ids, generation_config.top_logprobs)
-        toolcall = InferEngine._get_toolcall(response, True)
-        choices = [
-            ChatCompletionResponseChoice(
-                index=0,
-                message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
-                finish_reason=None,
-                logprobs=logprobs)
-        ]
-        return [ChatCompletionResponse(model=self.model_type, choices=choices, usage=usage_info)]
+        batched_generate_ids = output['sequences']
+
+        res = []
+        for i, generate_ids in enumerate(batched_generate_ids):
+            generate_ids = template.get_generate_ids(generate_ids, num_prompt_tokens)
+            generate_ids = self._ignore_pad_token(generate_ids, generation_config.pad_token_id)
+            usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
+            response = InferTools.safe_decode(template, generate_ids, True)
+            logprobs = self._get_logprobs(self.tokenizer, output['logits'], generate_ids,
+                                          generation_config.top_logprobs)
+            toolcall = self._get_toolcall(response, True)
+            choices = [
+                ChatCompletionResponseChoice(
+                    index=0,
+                    message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                    finish_reason=None,
+                    logprobs=logprobs)
+            ]
+            res.append(ChatCompletionResponse(model=self.model_dir, choices=choices, usage=usage_info))
+        return res
 
     @torch.inference_mode()
     async def infer_async(
@@ -248,9 +275,9 @@ class PtEngine(InferEngine):
         template: Template,
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
+        metrics: Optional[List[Metric]] = None,
         *,
         use_tqdm: Optional[bool] = None,
-        metrics: Optional[List[Metric]] = None,
         adapter_names: Optional[List[str]] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
         self.model.eval()
@@ -261,13 +288,15 @@ class PtEngine(InferEngine):
             inputs = template.encode(infer_request)
             assert len(inputs) >= 0
             batched_inputs.append(inputs)
-        self.set_default_max_tokens(request_config, batched_inputs)
+        inputs = to_device(
+            template.data_collator(batched_inputs, padding_side='left'),
+            next(self.model.parameters()).device)
+        self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
         self._add_stop_words(generation_config, request_config, template)
 
-        inputs = to_device(template.data_collator(batched_inputs), next(self.model.parameters()).device)
         infer_args = (template, inputs, generation_config)
         if request_config.stream:
-            return self._infer_stream(*infer_args, adapter_names=adapter_names)
+            return self._update_metrics_wrapper(self._infer_stream(*infer_args, adapter_names=adapter_names), metrics)
         else:
-            return self._infer_full(*infer_args, adapter_names=adapter_names)
+            return self._update_metrics(self._infer_full(*infer_args, adapter_names=adapter_names), metrics)
