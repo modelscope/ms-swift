@@ -523,6 +523,8 @@ class ModelType:
     # owl
     mplug_owl2_chat = 'mplug-owl2-chat'  # llama
     mplug_owl2_1_chat = 'mplug-owl2_1-chat'  # qwen
+    mplug_owl3_1b_chat = 'mplug-owl3-1b-chat'
+    mplug_owl3_2b_chat = 'mplug-owl3-2b-chat'
     mplug_owl3_7b_chat = 'mplug-owl3-7b-chat'
     # yuan
     yuan2_2b_instruct = 'yuan2-2b-instruct'
@@ -2887,6 +2889,24 @@ def get_model_tokenizer_ovis(*args, **kwargs):
     return model, tokenizer
 
 
+@register_model(
+    ModelType.mplug_owl3_1b_chat,
+    'iic/mPLUG-Owl3-1B-241014',
+    LoRATM.mplug_owl3,
+    TemplateType.mplug_owl3,
+    requires=['transformers>=4.36', 'icecream'],  # decord
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='mPLUG/mPLUG-Owl3-1B-241014')
+@register_model(
+    ModelType.mplug_owl3_2b_chat,
+    'iic/mPLUG-Owl3-2B-241014',
+    LoRATM.mplug_owl3,
+    TemplateType.mplug_owl3,
+    requires=['transformers>=4.36', 'icecream'],  # decord
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision', 'video'],
+    hf_model_id='mPLUG/mPLUG-Owl3-2B-241014')
 @register_model(
     ModelType.mplug_owl3_7b_chat,
     'iic/mPLUG-Owl3-7B-240728',
