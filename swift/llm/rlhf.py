@@ -38,9 +38,9 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
         kwargs['reward_model'] = reward_model
         kwargs['value_model'] = value_model
 
+    msg = {}
     model, ref_model, template, callbacks = prepare_model_template_train(args)
 
-    msg = {}
     with TrainerFactory.patch_template(args, template):
         train_dataset, val_dataset = prepare_dataset(args, template, msg)
 
