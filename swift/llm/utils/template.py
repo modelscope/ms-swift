@@ -3800,11 +3800,10 @@ class mPlugOwl3Template(QwenTemplateMixin, Template):
         processor = self.tokenizer.processor
         text = processor.image_processor.cut_prompt_template(img_token='<|image|>', h=cut_shape[0], w=cut_shape[1])
         text_list = text.split('<|image|>')
-        if text_list[-1] == '':
-            text_list.pop()
         res_text_list = []
-        for text in text_list:
+        for text in text_list[:-1]:
             res_text_list += [text, '<|image|>']
+        res_text_list += text_list[-1]
         token_list = self._encode_context_list(res_text_list)[0]
         return token_list
 
