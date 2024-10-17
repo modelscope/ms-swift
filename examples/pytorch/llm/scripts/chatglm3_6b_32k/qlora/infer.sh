@@ -10,3 +10,4 @@ python llm_infer.py \
     --repetition_penalty 1. \
     --do_sample true \
     --merge_lora false
+swdf
