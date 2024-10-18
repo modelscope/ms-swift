@@ -8,9 +8,9 @@ import requests
 from dacite import from_dict
 from requests.exceptions import HTTPError
 
+from swift.llm import History, Messages
 from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
                                       CompletionStreamResponse, ModelList, XRequestConfig)
-from swift.llm import Messages, History
 
 
 def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:

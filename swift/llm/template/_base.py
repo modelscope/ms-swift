@@ -612,13 +612,10 @@ class Template:
     def _concat_tokenizer_kwargs(self, tokenizer_kwargs: Dict[str, Any], curr_tokenizer_kwargs: Dict[str, Any]) -> None:
         assert len(tokenizer_kwargs) == 0
 
-    def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]], num_prompt_tokens: int) -> List[int]:
-        # generate_ids: 1d
-        if isinstance(generate_ids, torch.Tensor):
-            assert generate_ids.ndim == 1
-            generate_ids = generate_ids.tolist()
+    def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
+                         num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
         if self.skip_prompt:
-            return generate_ids[num_prompt_tokens:]
+            return generate_ids[..., num_prompt_tokens:]
         else:
             return generate_ids
 

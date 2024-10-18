@@ -1,20 +1,21 @@
 import inspect
+from queue import Empty, Queue
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import json
 import torch
-from transformers import GenerationConfig, PreTrainedTokenizerBase, StoppingCriteriaList, LogitsProcessorList
+from transformers import GenerationConfig, LogitsProcessorList, PreTrainedTokenizerBase, StoppingCriteriaList
 from transformers.utils import is_torch_npu_available
 
+from swift.llm import Template, to_device
 from swift.plugin import Metric
 from swift.utils import get_logger
-from swift.llm import Template, to_device
-from .base import InferEngine
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
-                       random_uuid)
-from ..utils import InferStreamer, InferTools, StopWordsCriteria, TokensIteratorStreamer, LogitsStreamer
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
+                        random_uuid)
+from ..utils import InferStreamer, InferTools, LogitsStreamer, StopWordsCriteria, TokensIteratorStreamer
+from .base import InferEngine
 
 logger = get_logger()
 
@@ -91,14 +92,14 @@ class PtEngine(InferEngine):
                       logits_list: Optional[List[torch.Tensor]],
                       generate_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        if logits_list is None:
+        if logits_list is None or len(generate_ids) == 0:
             return None
-        assert len(generate_ids) > 0
-        logits_list = logits_list[-len(generate_ids):]
+        if len(generate_ids) > 0:
+            logits_list = logits_list[-len(generate_ids):]
         res = []
         for logits, token_id in zip(logits_list, generate_ids):
             token = tokenizer.decode(token_id)
-            logprobs = torch.log_softmax(logits[0], -1)
+            logprobs = torch.log_softmax(logits, -1)
             logprob = logprobs[token_id].item()
             sorted_logprobs_idx = logprobs.argsort(descending=True).tolist()
             _res = {'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))}
@@ -150,8 +151,17 @@ class PtEngine(InferEngine):
         return finish_reason
 
     @staticmethod
-    def _ignore_pad_token(generate_ids: List[int], pad_token_id: int) -> List[int]:
-        return [token for token in generate_ids if token != pad_token_id]
+    def _get_batched_logits(batched_logits: torch.Tensor, queue: Queue) -> torch.Tensor:
+        res = [] if batched_logits is None else [batched_logits]
+        while True:
+            try:
+                item = queue.get_nowait()
+            except Empty:
+                break
+            if item.ndim == 2:
+                item = item[:, None]
+            res.append(item)
+        return torch.concat(res, dim=1) if len(res) > 0 else None
 
     def _infer_stream(self,
                       template: Template,
@@ -180,41 +190,60 @@ class PtEngine(InferEngine):
             })
         thread.start()
         batch_size = inputs['attention_mask'].shape[0]
-        infer_streamers = [InferStreamer(template) for _ in range(batch_size)]
-        generate_ids_list = [[] for _ in range(batch_size)]
         all_is_finished = False
         is_finished = [False] * batch_size
+        infer_streamers = [InferStreamer(template) for _ in range(batch_size)]
         request_id_list = [f'chatcmpl-{random_uuid()}' for _ in range(batch_size)]
         token_idxs = [0] * batch_size
+
+        raw_batched_generate_ids = None
+        batched_logits = None
         while not all_is_finished:
             try:
-                tokens = next(streamer)
+                batched_tokens = next(streamer)
+                if batched_tokens.ndim == 1:
+                    batched_tokens = batched_tokens[:, None]
+
+                raw_batched_generate_ids = torch.concat(
+                    [batched_tokens]
+                    if raw_batched_generate_ids is None else [raw_batched_generate_ids, batched_tokens],
+                    dim=1)
             except StopIteration:
                 all_is_finished = True
+
+            batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
+            batched_logits = self._get_batched_logits(batched_logits, logits_streamer.queue)
+
             res = []
-            for i, token in enumerate(tokens):
+            for i in range(batched_generate_ids.shape[0]):
                 if is_finished[i]:
                     res.append(None)
                     continue
-                generate_ids = generate_ids_list[i]
-                token = token.tolist()
-                generate_ids += token if isinstance(token, list) else [token]
+                generate_ids = batched_generate_ids[i]
+
+                # ignore pad_token
+                masks = generate_ids != generation_config.pad_token_id
+                generate_ids = generate_ids[masks]
+                if batched_logits is not None:
+                    logits = batched_logits[i]
+                    logits = logits[masks]
+                else:
+                    logits = None
+
                 is_finished[i] = (
                     all_is_finished or is_finished[i]
                     or len(generate_ids) > 0 and generate_ids[-1] == generation_config.pad_token_id)
-                generate_ids = template.get_generate_ids(generate_ids, num_prompt_tokens)
-                generate_ids = self._ignore_pad_token(generate_ids, generation_config.pad_token_id)
                 delta_text = infer_streamers[i].get_printable_text(generate_ids, is_finished[i])
                 if not delta_text and not is_finished[i]:
                     res.append(None)
                     continue
-                usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
-                logprobs = None
-                # logprobs = self._get_logprobs(self.tokenizer, output.get('logits'), generate_ids[token_idxs[i]:],
-                #                               generation_config.top_logprobs)
+                logprobs = self._get_logprobs(self.tokenizer, logits, generate_ids[token_idxs[i]:],
+                                              generation_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
-                finish_reason = self._get_finish_reason(generation_config, num_prompt_tokens, is_finished[i])
+
+                usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
                 toolcall = self._get_toolcall(generate_ids, is_finished[i])
+                finish_reason = self._get_finish_reason(generation_config, num_prompt_tokens, is_finished[i])
 
                 choices = [
                     ChatCompletionResponseStreamChoice(
@@ -243,15 +272,28 @@ class PtEngine(InferEngine):
         output = dict(
             self.model.generate(generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs))
         batched_generate_ids = output['sequences']
+        batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
+
+        batched_logits = output.get('logits')
+        if batched_logits is not None:
+            batched_logits = torch.stack(batched_logits, dim=1)
 
         res = []
-        for i, generate_ids in enumerate(batched_generate_ids):
-            generate_ids = template.get_generate_ids(generate_ids, num_prompt_tokens)
-            generate_ids = self._ignore_pad_token(generate_ids, generation_config.pad_token_id)
+        for i in range(batched_generate_ids.shape[0]):
+            generate_ids = batched_generate_ids[i]
+
+            # ignore pad_token
+            masks = generate_ids != generation_config.pad_token_id
+            generate_ids = generate_ids[masks]
+            if batched_logits is not None:
+                logits = batched_logits[i]
+                logits = logits[masks]
+            else:
+                logits = None
+            logprobs = self._get_logprobs(self.tokenizer, logits, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
             response = InferTools.safe_decode(template, generate_ids, True)
-            logprobs = self._get_logprobs(self.tokenizer, output.get('logits'), generate_ids,
-                                          generation_config.top_logprobs)
+
             toolcall = self._get_toolcall(response, True)
             choices = [
                 ChatCompletionResponseChoice(

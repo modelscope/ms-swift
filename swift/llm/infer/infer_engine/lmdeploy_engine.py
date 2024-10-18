@@ -11,13 +11,13 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
-from swift.utils import get_logger, get_seed
 from swift.llm import Template
-from .base import InferEngine
+from swift.utils import get_logger, get_seed
 from ..patch import patch_auto_config, patch_auto_tokenizer
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
 from ..utils import InferStreamer, InferTools
+from .base import InferEngine
 
 logger = get_logger()
 
@@ -112,10 +112,10 @@ class LmdeployEngine(InferEngine):
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        if logprobs_list is None:
+        if logprobs_list is None or len(token_ids) == 0:
             return None
-        assert len(token_ids) > 0
-        logprobs_list = logprobs_list[-len(token_ids):]
+        if len(token_ids) > 0:
+            logprobs_list = logprobs_list[-len(token_ids):]
         res = []
         for logprobs, token_id in zip(logprobs_list, token_ids):
             token = tokenizer.decode(token_id)
@@ -198,12 +198,13 @@ class LmdeployEngine(InferEngine):
                 if not delta_text and not is_finished:
                     continue
 
-                usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
                 logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids[token_idx:],
                                               generation_config.logprobs)
                 token_idx = len(output.token_ids)
-                finish_reason = self._get_finish_reason(output, generation_config)
+
+                usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
                 toolcall = self._get_toolcall(output.token_ids, is_finished)
+                finish_reason = self._get_finish_reason(output, generation_config)
                 choices = [
                     ChatCompletionResponseStreamChoice(
                         index=0,
@@ -224,11 +225,12 @@ class LmdeployEngine(InferEngine):
                     session_id=session_id, **inputs, stream_output=False, gen_config=generation_config):
                 pass
 
-        usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         response = InferTools.safe_decode(template, output.token_ids, True)
         logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids, generation_config.logprobs)
-        finish_reason = self._get_finish_reason(output, generation_config)
+
+        usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         toolcall = self._get_toolcall(response, True)
+        finish_reason = self._get_finish_reason(output, generation_config)
         choices = [
             ChatCompletionResponseChoice(
                 index=0,

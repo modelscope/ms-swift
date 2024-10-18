@@ -9,15 +9,15 @@ from packaging import version
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
+from swift.llm import Template
 from swift.plugin import Metric
 from swift.utils import get_logger
-from swift.llm import Template
-from .base import InferEngine
 from ..patch import patch_auto_config, patch_auto_tokenizer
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo,
-                       random_uuid)
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo,
+                        random_uuid)
 from ..utils import InferStreamer, InferTools
+from .base import InferEngine
 
 try:
     from vllm.lora.request import LoRARequest
@@ -206,10 +206,10 @@ class VllmEngine(InferEngine):
                       logprobs_list: Optional[List[Dict[int, float]]],
                       token_ids: List[int],
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        if logprobs_list is None:
+        if logprobs_list is None or len(token_ids) == 0:
             return None
-        assert len(token_ids) > 0
-        logprobs_list = logprobs_list[-len(token_ids):]
+        if len(token_ids) > 0:
+            logprobs_list = logprobs_list[-len(token_ids):]
         res = []
         for logprobs, token_id in zip(logprobs_list, token_ids):
             logprob = logprobs[token_id]
@@ -260,6 +260,7 @@ class VllmEngine(InferEngine):
             is_diff = False
             is_finished = False
             for output in result.outputs:
+                output.token_ids = list(output.token_ids)
                 output.delta_text = infer_streamers[output.index].get_printable_text(
                     output.token_ids, output.finished())
                 output.is_finished = output.finish_reason is not None
@@ -299,6 +300,7 @@ class VllmEngine(InferEngine):
         usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
         choices = []
         for output in result.outputs:
+            output.token_ids = list(output.token_ids)
             response = InferTools.safe_decode(template, output.token_ids, True)
             logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids,
                                           generation_config.logprobs)

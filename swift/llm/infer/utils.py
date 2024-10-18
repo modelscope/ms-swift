@@ -5,7 +5,7 @@ from queue import Queue
 from typing import List
 
 import torch
-from transformers import PreTrainedTokenizerBase, StoppingCriteria, LogitsProcessor
+from transformers import LogitsProcessor, PreTrainedTokenizerBase, StoppingCriteria
 from transformers.generation.streamers import BaseStreamer
 
 from swift.plugin import Metric
@@ -129,7 +129,9 @@ class InferStats(Metric):
             'tokens/s': num_generated_tokens / runtime,
         }
 
+
 class StreamerMixin:
+
     def __init__(self):
         self.queue = Queue()  # Queue[int]
 
@@ -143,7 +145,9 @@ class StreamerMixin:
         else:
             return value
 
+
 class TokensIteratorStreamer(StreamerMixin, BaseStreamer):
+
     def put(self, value: torch.Tensor) -> None:
         self.queue.put(value)
 
@@ -151,11 +155,15 @@ class TokensIteratorStreamer(StreamerMixin, BaseStreamer):
         self.queue.put(None)
 
 
+class LogitsStreamer(LogitsProcessor):
 
-class LogitsStreamer(StreamerMixin, LogitsProcessor):
+    def __init__(self):
+        self.queue = Queue()
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
-        print()
+        self.queue.put(scores)
+        return scores
+
 
 class StopWordsCriteria(StoppingCriteria):
     # The returned sentence includes stop words.
