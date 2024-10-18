@@ -129,17 +129,9 @@ class InferStats(Metric):
             'tokens/s': num_generated_tokens / runtime,
         }
 
-
-class TokensIteratorStreamer(BaseStreamer):
-
+class StreamerMixin:
     def __init__(self):
         self.queue = Queue()  # Queue[int]
-
-    def put(self, value: torch.Tensor) -> None:
-        self.queue.put(value)
-
-    def end(self) -> None:
-        self.queue.put(None)
 
     def __iter__(self):
         return self
@@ -151,6 +143,19 @@ class TokensIteratorStreamer(BaseStreamer):
         else:
             return value
 
+class TokensIteratorStreamer(StreamerMixin, BaseStreamer):
+    def put(self, value: torch.Tensor) -> None:
+        self.queue.put(value)
+
+    def end(self) -> None:
+        self.queue.put(None)
+
+
+
+class LogitsStreamer(StreamerMixin, LogitsProcessor):
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        print()
 
 class StopWordsCriteria(StoppingCriteria):
     # The returned sentence includes stop words.

@@ -12,12 +12,12 @@ from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
 from swift.utils import get_logger, get_seed
-from ..template import Template
+from swift.llm import Template
 from .base import InferEngine
-from .patch import patch_auto_config, patch_auto_tokenizer
-from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+from ..patch import patch_auto_config, patch_auto_tokenizer
+from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
-from .utils import InferStreamer, InferTools
+from ..utils import InferStreamer, InferTools
 
 logger = get_logger()
 

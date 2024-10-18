@@ -1,7 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
 import asyncio
-import time
 from queue import Queue
 from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
@@ -11,9 +10,9 @@ from tqdm import tqdm
 
 from swift.plugin import Metric
 from swift.utils import get_logger
-from ..model import get_model_tokenizer
-from ..template import Template, split_action_action_input
-from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
+from swift.llm import get_model_tokenizer
+from swift.llm.template import Template, split_action_action_input
+from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
                        InferRequest, RequestConfig, UsageInfo)
 
 logger = get_logger()

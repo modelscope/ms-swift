@@ -9,13 +9,12 @@ from transformers.utils import is_torch_npu_available
 
 from swift.plugin import Metric
 from swift.utils import get_logger
-from ..template import Template
-from ..utils import to_device
+from swift.llm import Template, to_device
 from .base import InferEngine
-from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
                        random_uuid)
-from .utils import InferStreamer, InferTools, StopWordsCriteria, TokensIteratorStreamer, LogitsStreamer
+from ..utils import InferStreamer, InferTools, StopWordsCriteria, TokensIteratorStreamer, LogitsStreamer
 
 logger = get_logger()
 
@@ -176,6 +175,7 @@ class PtEngine(InferEngine):
                 'generation_config': generation_config,
                 'stopping_criteria': stopping_criteria,
                 'streamer': streamer,
+                'logits_processor': LogitsProcessorList([logits_streamer]),
                 **inputs
             })
         thread.start()
