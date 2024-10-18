@@ -36,7 +36,7 @@
 - [Citation](#-citation)
 
 ## 📝 Introduction
-SWIFT supports training(PreTraining/Fine-tuning/RLHF), inference, evaluation and deployment of **350+ LLMs and 90+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
+SWIFT supports training(PreTraining/Fine-tuning/RLHF), inference, evaluation and deployment of **350+ LLMs and 100+ MLLMs** (multimodal large models). Developers can directly apply our framework to their own research and production environments to realize the complete workflow from model training and evaluation to application. In addition to supporting the lightweight training solutions provided by [PEFT](https://github.com/huggingface/peft), we also provide a complete **Adapters library** to support the latest training techniques such as NEFTune, LoRA+, LLaMA-PRO, etc. This adapter library can be used directly in your own custom workflow without our training scripts.
 
 To facilitate use by users unfamiliar with deep learning, we provide a Gradio web-ui for controlling training and inference, as well as accompanying deep learning courses and best practices for beginners. SWIFT web-ui is available both on [Huggingface space](https://huggingface.co/spaces/tastelikefeet/swift) and [ModelScope studio](https://www.modelscope.cn/studios/iic/Scalable-lightWeight-Infrastructure-for-Fine-Tuning/summary), please feel free to try!
 
@@ -55,6 +55,8 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.10.09: Support for reward modeling for LLM and MLLM, as well as PPO training for LLM. Refer to the [documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md).
+- 2024.10.09: Support for training and deploying ovis1.6-gemma2 series models. Experience it using `swift infer --model_type ovis1_6-gemma2-9b`.
 - 2024.09.26: Support for training and deploying llama3.2-vision series models. Experience it using `swift infer --model_type llama3_2-11b-vision-instruct`.
 - 2024.09.26: Support for training and deploying llama3.2 series models. Experience it using `swift infer --model_type llama3_2-1b-instruct`.
 - 2024.09.25: Support for training to deployment with got-ocr2. Best practices can be found [here](https://github.com/modelscope/ms-swift/issues/2122).
@@ -633,7 +635,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llava-HF                                                   | [Llava-HF series models](https://huggingface.co/llava-hf)                          | English       | 0.5B-110B           | chat model           |
 | Llava1.5<br>Llava1.6                                       | [Llava series models](https://github.com/haotian-liu/LLaVA)                            | English            | 7B-34B                                | chat model               |
 | Llava-Next<br>Llava-Next-Video                             | [Llava-Next series models](https://github.com/LLaVA-VL/LLaVA-NeXT)                     | Chinese<br>English | 7B-110B                               | chat model               |
-| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3                | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 11B                                   | chat model               |
+| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3                | [mPLUG-Owl series models](https://github.com/X-PLUG/mPLUG-Owl)                         | English            | 1B-11B                                   | chat model               |
 | InternVL<br>Mini-InternVL<br>InternVL2                     | [InternVL](https://github.com/OpenGVLab/InternVL)                                      | Chinese<br>English | 1B-40B<br>including quantized version | chat model               |
 | Llava-llama3                                               | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers)             | English            | 8B                                    | chat model               |
 | Phi3-Vision                                                | Microsoft                                                                              | English            | 4B                                    | chat model               |
@@ -642,7 +644,8 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Idefics3                                                   | [HuggingFaceM4](https://huggingface.co/HuggingFaceM4)                               | English       | 8B      | chat model       |
 | Pixtral                                | [mistralai](https://huggingface.co/mistralai)                     | English       | 12B      | chat model       |
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
-
+| Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | English       | 9B      | chat model       |
+| Molmo              | [Molmo series models](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | English       | 1B-72B      | chat model       |
 
 #### Diffusion Models
 
@@ -653,7 +656,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 
 ### Supported Open Source Datasets
 
-| Dataset Type        | Training Task   | Documentation                                                                                                                                                                                                                                |
+| Dataset Type        | Training Task   | Dataset                                                                                                                                                                                                                                |
 |---------------------|:----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | General             | Fine-tuning     | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
 | Agent               | Fine-tuning     | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                                                                                             |

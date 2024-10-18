@@ -84,6 +84,13 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     res[k] = v
             with open(new_sft_args_path, 'w', encoding='utf-8') as f:
                 json.dump(res, f, ensure_ascii=False, indent=2)
+        # value head weights
+        value_head_weights_fname_list = ['value_head.safetensors', 'value_head.bin']
+        for fname in value_head_weights_fname_list:
+            old_value_head_weights_path = os.path.join(ckpt_dir, fname)
+            new_value_head_weights_path = os.path.join(target_dir, fname)
+            if os.path.exists(old_value_head_weights_path):
+                shutil.copy(old_value_head_weights_path, new_value_head_weights_path)
 
 
 def merge_lora(args: InferArguments,
@@ -109,7 +116,7 @@ def merge_lora(args: InferArguments,
         if device_map is None:
             device_map = args.merge_device_map
         logger.info(f'merge_device_map: {device_map}')
-        model, template = prepare_model_template(args, device_map=device_map, verbose=False)
+        model, template = prepare_model_template(args, device_map=device_map, task='export')
         logger.info('Merge LoRA...')
         Swift.merge_and_unload(model)
         model = model.model
@@ -133,7 +140,7 @@ def merge_lora(args: InferArguments,
 def prepare_model_template(args: InferArguments,
                            *,
                            device_map: Optional[str] = None,
-                           verbose: bool = True,
+                           task: Literal['infer', 'export'] = 'infer',
                            automodel_class=None) -> Tuple[PreTrainedModel, Template]:
     from .sft import get_default_device_map
     if is_torch_npu_available():
@@ -188,25 +195,7 @@ def prepare_model_template(args: InferArguments,
         revision=args.model_revision,
         quant_method=args.quant_method,
         **kwargs)
-    if verbose:
-        logger.info(f'model_config: {model.config}')
 
-    generation_config = GenerationConfig(
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        top_k=args.top_k,
-        top_p=args.top_p,
-        do_sample=args.do_sample,
-        repetition_penalty=args.repetition_penalty,
-        num_beams=args.num_beams,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id)
-    set_generation_config(model, generation_config)
-    logger.info(f'model.generation_config: {model.generation_config}')
-
-    if model.generation_config.num_beams != 1:
-        args.stream = False
-        logger.info('Setting args.stream: False')
     if model.max_model_len is None:
         model.max_model_len = args.max_model_len
     elif args.max_model_len is not None:
@@ -215,6 +204,26 @@ def prepare_model_template(args: InferArguments,
         else:
             raise ValueError('args.max_model_len exceeds the maximum max_model_len supported by the model.'
                              f'args.max_model_len: {args.max_model_len}, model.max_model_len: {model.max_model_len}')
+    if task == 'infer':
+        logger.info(f'model_config: {model.config}')
+        generation_config = GenerationConfig(
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+            do_sample=args.do_sample,
+            repetition_penalty=args.repetition_penalty,
+            num_beams=args.num_beams,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id)
+        model._generation_config_origin = model.generation_config
+        set_generation_config(model, generation_config)
+        logger.info(f'model.generation_config: {model.generation_config}')
+
+        if model.generation_config.num_beams != 1:
+            args.stream = False
+            logger.info('Setting args.stream: False')
+
     # Preparing LoRA
     if is_adapter(args.sft_type) and args.ckpt_dir is not None:
         if isinstance(args, DeployArguments) and args.lora_request_list is not None:
@@ -227,7 +236,7 @@ def prepare_model_template(args: InferArguments,
         model = model.to(model.dtype)
     model.requires_grad_(False)
 
-    if verbose:
+    if task == 'infer':
         show_layers(model)
         logger.info(model)
     logger.info(get_model_info(model))
