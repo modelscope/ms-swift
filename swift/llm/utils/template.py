@@ -1134,6 +1134,8 @@ class Template:
         tokenizer = self.tokenizer
         if hasattr(generate_ids, 'tolist'):
             generate_ids = generate_ids.tolist()
+        elif isinstance(generate_ids, tuple):
+            generate_ids = list(generate_ids)
         # avoid printing template.suffix[-1])
         if isinstance(self.suffix[-1], list) and (not is_finished or is_finished
                                                   and generate_ids[-len(self.suffix[-1]):] == self.suffix[-1]):
