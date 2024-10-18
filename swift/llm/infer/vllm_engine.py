@@ -252,6 +252,7 @@ class VllmEngine(InferEngine):
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, **kwargs)
         infer_streamers = [InferStreamer(template) for _ in range(generation_config.n)]
+        token_idxs = [0 for _ in range(generation_config.n)]
         async for result in result_generator:
 
             is_diff = False
@@ -269,11 +270,16 @@ class VllmEngine(InferEngine):
             usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
             choices = []
             for output in result.outputs:
+                token_idx = token_idxs[output.index]
+                logprobs = self._get_logprobs(template.tokenizer, output.logprobs[token_idx:], output.token_ids[token_idx:],
+                                generation_config.logprobs)
+                token_idxs[output.index] = len(output.logprobs)
                 toolcall = self._get_toolcall(output.token_ids, output.is_finished)
                 choice = ChatCompletionResponseStreamChoice(
                     index=output.index,
                     delta=DeltaMessage(role='assistant', content=output.delta_text, tool_calls=toolcall),
-                    finish_reason=output.finish_reason)
+                    finish_reason=output.finish_reason,
+                    logprobs=logprobs)
                 choices.append(choice)
             yield ChatCompletionStreamResponse(model=self.model_dir, choices=choices, usage=usage_info, id=request_id)
 

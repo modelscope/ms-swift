@@ -129,6 +129,8 @@ class InferEngine:
         if not isinstance(result, (list, tuple)):
             result = [result]
         for response in result:
+            if response is None:
+                continue
             for metric in metrics:
                 metric.update(response)
         return result_origin
@@ -154,7 +156,7 @@ class InferEngine:
 
     def _get_toolcall(self, response: Union[str, List[int]],
                       is_finished: bool) -> Optional[List[ChatCompletionMessageToolCall]]:
-        if is_finished:
+        if not is_finished:
             return None
         if not isinstance(response, str):
             response = self.tokenizer.decode(response)

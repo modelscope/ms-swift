@@ -9,7 +9,7 @@ from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from transformers.generation.streamers import BaseStreamer
 
 from swift.plugin import Metric
-from ..template import Template
+from ..template import Template, Word
 
 
 class InferTools:
@@ -26,26 +26,34 @@ class InferTools:
         return False
 
     @staticmethod
+    def _skip_stop_tokens(generate_ids: List[int], stop_tokens: List[int], is_finished: bool) -> List[int]:
+        len_tokens = len(stop_tokens)
+        if is_finished and generate_ids[-len_tokens:] == stop_tokens:
+            return generate_ids[:-len_tokens]
+        if not is_finished:
+            for i in range(len_tokens, 0, -1):
+                if generate_ids[-i:] == stop_tokens[:i]:
+                    return generate_ids[:-i]
+        return generate_ids
+
+    @staticmethod
     def safe_decode(template: Template, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> str:
         # Do not print template.suffix[-1] and eos_token.
         tokenizer = template.tokenizer
 
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
             generate_ids = generate_ids[:-1]
-        response = tokenizer.decode(generate_ids, **decode_kwargs)
-        if len(response) == 0 or response.endswith('\n'):
-            return response
         # skip suffix and eos_token
         template_suffix = template.suffix[-1]
-        if isinstance(template_suffix, list):
-            template_suffix = tokenizer.decode(template_suffix)
-        len_suffix = len(template_suffix)
-        if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
-            # To avoid response length being shorter than previous response length during streaming.
-            # TODO:check
-            # idx = max(len(response) - len_suffix, 0, self.print_idx)
-            response = response[:-len_suffix]
-        return response
+        if isinstance(template_suffix, str):
+            template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)
+        generate_ids = InferTools._skip_stop_tokens(generate_ids, template_suffix, is_finished)
+        return tokenizer.decode(generate_ids, **decode_kwargs)
+        # if not is_finished or is_finished and response[-len_suffix:] == template_suffix:
+        #     # To avoid response length being shorter than previous response length during streaming.
+        #     # TODO:check
+        #     # idx = max(len(response) - len_suffix, 0, self.print_idx)
+        #     response = response[:-len_suffix]
 
 
 class InferStreamer(InferTools):
@@ -102,25 +110,22 @@ class InferStats(Metric):
         self.add_state('start_runtime', default_factory=lambda: time.perf_counter())
         self.add_state('num_prompt_tokens', default_factory=dict)
         self.add_state('num_generated_tokens', default_factory=dict)
-        self.add_state('num_samples', 0)
 
     def update(self, output):
-        if output is None:
-            self.num_samples += 1
-            return
         id_ = output.id
         self.num_prompt_tokens[id_] = output.usage.prompt_tokens
         self.num_generated_tokens[id_] = output.usage.completion_tokens
 
     def compute(self):
         runtime = time.perf_counter() - self.start_runtime
+        num_samples = len(self.num_generated_tokens)
         num_generated_tokens = sum(self.num_generated_tokens.values())
         return {
             'num_prompt_tokens': sum(self.num_prompt_tokens.values()),
             'num_generated_tokens': num_generated_tokens,
-            'num_samples': self.num_samples,
+            'num_samples': num_samples,
             'runtime': runtime,
-            'samples/s': self.num_samples / runtime,
+            'samples/s': num_samples / runtime,
             'tokens/s': num_generated_tokens / runtime,
         }
 
@@ -149,7 +154,7 @@ class TokensIteratorStreamer(BaseStreamer):
 
 class StopWordsCriteria(StoppingCriteria):
     # The returned sentence includes stop words.
-    def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: List[str], **decode_kwargs) -> None:
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, stop_words: List[Word], **decode_kwargs) -> None:
         self.tokenizer = tokenizer
         self.stop_words = stop_words
         self.decode_kwargs = decode_kwargs
@@ -165,8 +170,8 @@ class StopWordsCriteria(StoppingCriteria):
             #   to avoid input_ids being too long and affecting efficiency.
             text = self.tokenizer.decode(input_ids[i, self.start_idx:][-20:], **self.decode_kwargs)
             for stop_word in self.stop_words:
-                assert isinstance(stop_word, str)
-                if stop_word in text:
+                if isinstance(stop_word, str) and stop_word in text or isinstance(
+                    stop_word, list) and input_ids[i][-len(stop_word):].tolist() == stop_word:
                     is_finished[i] = True
                     break
             else:
