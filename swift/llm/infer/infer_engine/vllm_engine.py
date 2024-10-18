@@ -17,7 +17,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo,
                         random_uuid)
 from ..utils import InferStreamer, InferTools
-from .base import InferEngine
+from .infer_engine import InferEngine
 
 try:
     from vllm.lora.request import LoRARequest

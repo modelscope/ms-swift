@@ -5,6 +5,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import json
 import torch
+from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList, PreTrainedTokenizerBase, StoppingCriteriaList
 from transformers.utils import is_torch_npu_available
 
@@ -15,7 +16,7 @@ from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Ch
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
                         random_uuid)
 from ..utils import InferStreamer, InferTools, LogitsStreamer, StopWordsCriteria, TokensIteratorStreamer
-from .base import InferEngine
+from .infer_engine import InferEngine
 
 logger = get_logger()
 
@@ -134,11 +135,6 @@ class PtEngine(InferEngine):
                                 adapter_names: Optional[List[str]] = None) -> ChatCompletionResponse:
         return self.infer(template, [infer_request], request_config, use_tqdm=False, adapter_names=adapter_names)[0]
 
-    def __model_generate(self, *args, **kwargs):
-        if is_torch_npu_available():
-            torch.npu.set_device(self.model.device)
-        self.model.generate(*args, **kwargs)
-
     @staticmethod
     def _get_finish_reason(generation_config: GenerationConfig, num_prompt_tokens: int, is_finished: bool):
         if is_finished:
@@ -179,8 +175,14 @@ class PtEngine(InferEngine):
 
         streamer = TokensIteratorStreamer()
         logits_streamer = LogitsStreamer()
+
+        def _model_generate(*args, **kwargs):
+            if is_torch_npu_available():
+                torch.npu.set_device(self.model.device)
+            self.model.generate(*args, **kwargs)
+
         thread = Thread(
-            target=self.__model_generate,
+            target=_model_generate,
             kwargs={
                 'generation_config': generation_config,
                 'stopping_criteria': stopping_criteria,
@@ -213,7 +215,7 @@ class PtEngine(InferEngine):
 
             batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
             batched_logits = self._get_batched_logits(batched_logits, logits_streamer.queue)
-
+            # TODO: MLLM
             res = []
             for i in range(batched_generate_ids.shape[0]):
                 if is_finished[i]:
@@ -320,15 +322,13 @@ class PtEngine(InferEngine):
         else:
             return await self._infer_full_async(*infer_args, adapter_names=adapter_names)
 
-    @torch.inference_mode()
-    def infer(
+    def _infer(
         self,
         template: Template,
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
-        use_tqdm: Optional[bool] = None,
         adapter_names: Optional[List[str]] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
         self.model.eval()
@@ -351,3 +351,49 @@ class PtEngine(InferEngine):
             return self._update_metrics_wrapper(self._infer_stream(*infer_args, adapter_names=adapter_names), metrics)
         else:
             return self._update_metrics(self._infer_full(*infer_args, adapter_names=adapter_names), metrics)
+
+    @torch.inference_mode()
+    def infer(
+        self,
+        template: Template,
+        infer_requests: List[InferRequest],
+        request_config: Optional[RequestConfig] = None,
+        metrics: Optional[List[Metric]] = None,
+        *,
+        batch_size: int = 16,
+        use_tqdm: Optional[bool] = None,
+        adapter_names: Optional[List[str]] = None
+    ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
+
+        if use_tqdm is None:
+            use_tqdm = not request_config.stream
+        prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)
+
+        def _infer_full():
+            res = []
+            i = 0
+            while i < len(infer_requests):
+                infer_requests_samples = infer_requests[i:i + batch_size]
+                res += self._infer(
+                    template, infer_requests_samples, request_config, metrics, adapter_names=adapter_names)
+                i += batch_size
+                prog_bar.update(len(infer_requests_samples))
+            return res
+
+        def _infer_stream():
+            i = 0
+            while i < len(infer_requests):
+                infer_requests_samples = infer_requests[i:i + batch_size]
+                gen = self._infer(
+                    template, infer_requests_samples, request_config, metrics, adapter_names=adapter_names)
+                for response in gen:
+                    res = [None] * len(infer_requests)
+                    res[i:i + batch_size] = response
+                    yield response
+                i += batch_size
+                prog_bar.update(len(infer_requests_samples))
+
+        if request_config.stream:
+            return _infer_stream()
+        else:
+            return _infer_full()

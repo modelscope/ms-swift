@@ -17,7 +17,7 @@ from ..patch import patch_auto_config, patch_auto_tokenizer
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
 from ..utils import InferStreamer, InferTools
-from .base import InferEngine
+from .infer_engine import InferEngine
 
 logger = get_logger()
 
