@@ -10,8 +10,7 @@ from requests.exceptions import HTTPError
 
 from swift.llm.infer.protocol import (ChatCompletionResponse, ChatCompletionStreamResponse, CompletionResponse,
                                       CompletionStreamResponse, ModelList, XRequestConfig)
-from swift.llm.template.base import Messages
-from swift.llm.template.template import History
+from swift.llm import Messages, History
 
 
 def _get_request_kwargs(api_key: Optional[str] = None) -> Dict[str, Any]:

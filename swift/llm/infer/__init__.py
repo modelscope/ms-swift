@@ -7,9 +7,7 @@ if TYPE_CHECKING:
     from .deploy import deploy_main
     from .infer import infer_main, merge_lora_main, merge_lora
     from .utils import InferStats
-    from .vllm_engine import VllmEngine
-    from .lmdeploy_engine import LmdeployEngine
-    from .pt_engine import PtEngine
+    from .infer_engine import InferEngine, VllmEngine, LmdeployEngine, PtEngine
     from .protocol import InferRequest, RequestConfig
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -17,9 +15,7 @@ else:
         'utils': ['InferStats'],
         'deploy': ['deploy_main'],
         'infer': ['infer_main', 'merge_lora_main', 'merge_lora'],
-        'vllm_engine': ['VllmEngine'],
-        'lmdeploy_engine': ['LmdeployEngine'],
-        'pt_engine': ['PtEngine'],
+        'infer_engine': ['InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine'],
         'protocol': ['InferRequest', 'RequestConfig'],
     }
 
