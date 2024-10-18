@@ -219,7 +219,7 @@ class VllmEngine(InferEngine):
                 res_top_logprobs = []
                 for k, logprob in logprobs.items():
                     token = tokenizer.decode(k)
-                    if logprob.logprob == float('-inf'):
+                    if logprob.logprob == float('-inf') or chosen_token == token:
                         continue
                     res_top_logprobs.append({
                         'token': token,

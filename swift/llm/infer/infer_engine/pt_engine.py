@@ -89,32 +89,22 @@ class PtEngine(InferEngine):
         generation_config.stop_words = self._get_stop_words(stop_words)
 
     @staticmethod
-    def _get_logprobs(tokenizer: PreTrainedTokenizerBase,
-                      logits_list: Optional[List[torch.Tensor]],
-                      generate_ids: List[int],
-                      top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        if logits_list is None or len(generate_ids) == 0:
+    def preprocess_logits(batched_logits: Optional[List[torch.Tensor]], batched_generate_ids: torch.Tensor,
+                          top_logprobs: int):
+        batch_size = batched_generate_ids.shape[0]
+        if batched_logits is None:
             return None
-        if len(generate_ids) > 0:
-            logits_list = logits_list[-len(generate_ids):]
-        res = []
-        for logits, token_id in zip(logits_list, generate_ids):
-            token = tokenizer.decode(token_id)
-            logprobs = torch.log_softmax(logits, -1)
-            logprob = logprobs[token_id].item()
-            sorted_logprobs_idx = logprobs.argsort(descending=True).tolist()
-            _res = {'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))}
-            if top_logprobs is not None:
-                res_top_logprobs = []
-                for idx in sorted_logprobs_idx[:top_logprobs]:
-                    token = tokenizer.decode(idx)
-                    logprob = logprobs[idx].item()
-                    if idx == token_id or logprob == float('-inf'):
-                        continue
-                    res_top_logprobs.append({'token': token, 'logprob': logprob, 'bytes': list(token.encode('utf8'))})
-                _res['top_logprobs'] = res_top_logprobs
-            res.append(_res)
-        return {'content': res}
+        batched_logprobs = []
+        for i in range(batch_size):
+            logprobs_list = []
+            generate_ids = batched_generate_ids[i]
+            for j, logits in enumerate(batched_logits):
+                token = generate_ids[j].item()
+                logprobs = torch.log_softmax(logits[i], -1)
+                tokens = [token] + logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
+                logprobs_list.append({token: logprobs[token].item() for token in tokens})
+            batched_logprobs.append(logprobs_list)
+        return batched_logprobs
 
     async def _infer_stream_async(
             self,
@@ -147,17 +137,18 @@ class PtEngine(InferEngine):
         return finish_reason
 
     @staticmethod
-    def _get_batched_logits(batched_logits: torch.Tensor, queue: Queue) -> torch.Tensor:
-        res = [] if batched_logits is None else [batched_logits]
-        while True:
-            try:
-                item = queue.get_nowait()
-            except Empty:
-                break
-            if item.ndim == 2:
-                item = item[:, None]
-            res.append(item)
-        return torch.concat(res, dim=1) if len(res) > 0 else None
+    def _update_batched_logprobs(batched_logprobs: List[torch.Tensor], logits_streamer: Optional[LogitsStreamer],
+                                 generate_ids: torch.Tensor, top_logprobs: int) -> None:
+        seq_len = generate_ids.shape[1] - len(batched_logprobs[0])
+        if logits_streamer is None or seq_len == 0:
+            return batched_logprobs
+
+        res = []
+        for i in range(seq_len):
+            res.append(logits_streamer.queue.get())
+        new_batched_logprobs = PtEngine.preprocess_logits(res, generate_ids[:, -seq_len:], top_logprobs)
+        for logprobs, new_logprobs in zip(batched_logprobs, new_batched_logprobs):
+            logprobs += new_logprobs
 
     def _infer_stream(self,
                       template: Template,
@@ -165,8 +156,9 @@ class PtEngine(InferEngine):
                       generation_config: GenerationConfig,
                       *,
                       adapter_names: Optional[List[str]] = None) -> Iterator[List[ChatCompletionStreamResponse]]:
+        kwargs = {}
         if adapter_names is not None:
-            inputs['adapter_names'] = adapter_names
+            kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
         stopping_criteria = StoppingCriteriaList([StopWordsCriteria(self.tokenizer, generation_config.stop_words)])
         if generation_config.num_beams != 1:
@@ -174,12 +166,16 @@ class PtEngine(InferEngine):
             raise ValueError(error_msg)
 
         streamer = TokensIteratorStreamer()
-        logits_streamer = LogitsStreamer()
 
         def _model_generate(*args, **kwargs):
             if is_torch_npu_available():
                 torch.npu.set_device(self.model.device)
             self.model.generate(*args, **kwargs)
+
+        logits_streamer = None
+        if generation_config.output_logits:
+            logits_streamer = LogitsStreamer()
+            kwargs['logits_processor'] = LogitsProcessorList([logits_streamer])
 
         thread = Thread(
             target=_model_generate,
@@ -187,8 +183,8 @@ class PtEngine(InferEngine):
                 'generation_config': generation_config,
                 'stopping_criteria': stopping_criteria,
                 'streamer': streamer,
-                'logits_processor': LogitsProcessorList([logits_streamer]),
-                **inputs
+                **inputs,
+                **kwargs
             })
         thread.start()
         batch_size = inputs['attention_mask'].shape[0]
@@ -198,8 +194,8 @@ class PtEngine(InferEngine):
         request_id_list = [f'chatcmpl-{random_uuid()}' for _ in range(batch_size)]
         token_idxs = [0] * batch_size
 
-        raw_batched_generate_ids = None
-        batched_logits = None
+        raw_batched_generate_ids = None  # or torch.Tensor: [batch_size, seq_len]
+        batched_logprobs = [[] for _ in range(batch_size)]
         while not all_is_finished:
             try:
                 batched_tokens = next(streamer)
@@ -214,7 +210,8 @@ class PtEngine(InferEngine):
                 all_is_finished = True
 
             batched_generate_ids = template.get_generate_ids(raw_batched_generate_ids, num_prompt_tokens)
-            batched_logits = self._get_batched_logits(batched_logits, logits_streamer.queue)
+            self._update_batched_logprobs(batched_logprobs, logits_streamer, batched_generate_ids,
+                                          generation_config.top_logprobs or 1)
             # TODO: MLLM
             res = []
             for i in range(batched_generate_ids.shape[0]):
@@ -225,12 +222,10 @@ class PtEngine(InferEngine):
 
                 # ignore pad_token
                 masks = generate_ids != generation_config.pad_token_id
-                generate_ids = generate_ids[masks]
-                if batched_logits is not None:
-                    logits = batched_logits[i]
-                    logits = logits[masks]
-                else:
-                    logits = None
+                generate_ids = generate_ids[masks].tolist()
+                logprobs_list = None
+                if batched_logprobs[i]:
+                    logprobs_list = [logprobs for m, logprobs in zip(masks, batched_logprobs[i]) if m.item()]
 
                 is_finished[i] = (
                     all_is_finished or is_finished[i]
@@ -239,7 +234,7 @@ class PtEngine(InferEngine):
                 if not delta_text and not is_finished[i]:
                     res.append(None)
                     continue
-                logprobs = self._get_logprobs(self.tokenizer, logits, generate_ids[token_idxs[i]:],
+                logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids[token_idxs[i]:],
                                               generation_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
@@ -275,10 +270,8 @@ class PtEngine(InferEngine):
             self.model.generate(generation_config=generation_config, stopping_criteria=stopping_criteria, **inputs))
         batched_generate_ids = output['sequences']
         batched_generate_ids = template.get_generate_ids(batched_generate_ids, num_prompt_tokens)
-
-        batched_logits = output.get('logits')
-        if batched_logits is not None:
-            batched_logits = torch.stack(batched_logits, dim=1)
+        batched_logprobs = self.preprocess_logits(
+            output.get('logits'), batched_generate_ids, generation_config.top_logprobs)
 
         res = []
         for i in range(batched_generate_ids.shape[0]):
@@ -286,13 +279,12 @@ class PtEngine(InferEngine):
 
             # ignore pad_token
             masks = generate_ids != generation_config.pad_token_id
-            generate_ids = generate_ids[masks]
-            if batched_logits is not None:
-                logits = batched_logits[i]
-                logits = logits[masks]
-            else:
-                logits = None
-            logprobs = self._get_logprobs(self.tokenizer, logits, generate_ids, generation_config.top_logprobs)
+            generate_ids = generate_ids[masks].tolist()
+            logprobs_list = None
+            if batched_logprobs is not None:
+                logprobs_list = [logprobs for m, logprobs in zip(masks, batched_logprobs[i]) if m.item()]
+
+            logprobs = self._get_logprobs(self.tokenizer, logprobs_list, generate_ids, generation_config.top_logprobs)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
             response = InferTools.safe_decode(template, generate_ids, True)
 
@@ -360,8 +352,8 @@ class PtEngine(InferEngine):
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
-        batch_size: int = 16,
         use_tqdm: Optional[bool] = None,
+        max_batch_size: int = 16,
         adapter_names: Optional[List[str]] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
 
@@ -373,24 +365,24 @@ class PtEngine(InferEngine):
             res = []
             i = 0
             while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + batch_size]
+                infer_requests_samples = infer_requests[i:i + max_batch_size]
                 res += self._infer(
                     template, infer_requests_samples, request_config, metrics, adapter_names=adapter_names)
-                i += batch_size
+                i += max_batch_size
                 prog_bar.update(len(infer_requests_samples))
             return res
 
         def _infer_stream():
             i = 0
             while i < len(infer_requests):
-                infer_requests_samples = infer_requests[i:i + batch_size]
+                infer_requests_samples = infer_requests[i:i + max_batch_size]
                 gen = self._infer(
                     template, infer_requests_samples, request_config, metrics, adapter_names=adapter_names)
                 for response in gen:
                     res = [None] * len(infer_requests)
-                    res[i:i + batch_size] = response
-                    yield response
-                i += batch_size
+                    res[i:i + max_batch_size] = response
+                    yield res
+                i += max_batch_size
                 prog_bar.update(len(infer_requests_samples))
 
         if request_config.stream:

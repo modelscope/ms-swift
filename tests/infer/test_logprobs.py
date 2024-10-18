@@ -1,11 +1,15 @@
+import os
 from typing import Literal
 
 import torch
 
-from swift.llm import InferRequest, InferStats, RequestConfig, get_template
+if __name__ == '__main__':
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
+    from swift.llm import InferRequest, get_template
+
     if infer_backend == 'lmdeploy':
         from swift.llm import LmdeployEngine
         engine = LmdeployEngine('qwen/Qwen2-7B-Instruct', torch.float32)
@@ -30,6 +34,8 @@ def _prepare(infer_backend: Literal['vllm', 'pt', 'lmdeploy']):
 
 
 def test_infer(engine, template, infer_requests):
+    from swift.llm import InferStats, RequestConfig
+
     request_config = RequestConfig(temperature=0, logprobs=True, top_logprobs=2)
     infer_stats = InferStats()
 
@@ -41,6 +47,8 @@ def test_infer(engine, template, infer_requests):
 
 
 def test_stream(engine, template, infer_requests):
+    from swift.llm import InferStats, RequestConfig
+
     infer_stats = InferStats()
     request_config = RequestConfig(temperature=0, stream=True, logprobs=True, top_logprobs=2)
 
