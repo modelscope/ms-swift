@@ -114,6 +114,8 @@ class LmdeployEngine(InferEngine):
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
         if logprobs_list is None:
             return None
+        assert len(token_ids) > 0
+        logprobs_list = logprobs_list[-len(token_ids):]
         res = []
         for logprobs, token_id in zip(logprobs_list, token_ids):
             token = tokenizer.decode(token_id)
@@ -182,6 +184,7 @@ class LmdeployEngine(InferEngine):
         generator = await self._add_request(template, inputs, session_id)
 
         infer_streamer = InferStreamer(template)
+        token_idx = 0
         async with self.engine.safe_run(session_id):
             async_iter = generator.async_stream_infer(
                 session_id=session_id, **inputs, stream_output=True, gen_config=generation_config).__aiter__()
@@ -196,13 +199,17 @@ class LmdeployEngine(InferEngine):
                     continue
 
                 usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
+                logprobs = self._get_logprobs(template.tokenizer, output.logprobs, output.token_ids[token_idx:],
+                                              generation_config.logprobs)
+                token_idx = len(output.token_ids)
                 finish_reason = self._get_finish_reason(output, generation_config)
                 toolcall = self._get_toolcall(output.token_ids, is_finished)
                 choices = [
                     ChatCompletionResponseStreamChoice(
                         index=0,
                         delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
-                        finish_reason=finish_reason)
+                        finish_reason=finish_reason,
+                        logprobs=logprobs)
                 ]
                 yield ChatCompletionStreamResponse(
                     model=self.model_dir, choices=choices, usage=usage_info, id=request_id)

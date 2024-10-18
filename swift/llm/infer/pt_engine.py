@@ -4,7 +4,7 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 import json
 import torch
-from transformers import GenerationConfig, PreTrainedTokenizerBase, StoppingCriteriaList
+from transformers import GenerationConfig, PreTrainedTokenizerBase, StoppingCriteriaList, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
 
 from swift.plugin import Metric
@@ -15,7 +15,7 @@ from .base import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
                        random_uuid)
-from .utils import InferStreamer, InferTools, StopWordsCriteria, TokensIteratorStreamer
+from .utils import InferStreamer, InferTools, StopWordsCriteria, TokensIteratorStreamer, LogitsStreamer
 
 logger = get_logger()
 
@@ -94,6 +94,8 @@ class PtEngine(InferEngine):
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
         if logits_list is None:
             return None
+        assert len(generate_ids) > 0
+        logits_list = logits_list[-len(generate_ids):]
         res = []
         for logits, token_id in zip(logits_list, generate_ids):
             token = tokenizer.decode(token_id)
@@ -167,6 +169,7 @@ class PtEngine(InferEngine):
             raise ValueError(error_msg)
 
         streamer = TokensIteratorStreamer()
+        logits_streamer = LogitsStreamer()
         thread = Thread(
             target=self.__model_generate,
             kwargs={
@@ -182,6 +185,7 @@ class PtEngine(InferEngine):
         all_is_finished = False
         is_finished = [False] * batch_size
         request_id_list = [f'chatcmpl-{random_uuid()}' for _ in range(batch_size)]
+        token_idxs = [0] * batch_size
         while not all_is_finished:
             try:
                 tokens = next(streamer)
@@ -205,6 +209,10 @@ class PtEngine(InferEngine):
                     res.append(None)
                     continue
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
+                logprobs = None
+                # logprobs = self._get_logprobs(self.tokenizer, output.get('logits'), generate_ids[token_idxs[i]:],
+                #                               generation_config.top_logprobs)
+                token_idxs[i] = len(generate_ids)
                 finish_reason = self._get_finish_reason(generation_config, num_prompt_tokens, is_finished[i])
                 toolcall = self._get_toolcall(generate_ids, is_finished[i])
 
@@ -212,7 +220,8 @@ class PtEngine(InferEngine):
                     ChatCompletionResponseStreamChoice(
                         index=0,
                         delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
-                        finish_reason=finish_reason)
+                        finish_reason=finish_reason,
+                        logprobs=logprobs)
                 ]
                 res.append(
                     ChatCompletionStreamResponse(
@@ -241,7 +250,7 @@ class PtEngine(InferEngine):
             generate_ids = self._ignore_pad_token(generate_ids, generation_config.pad_token_id)
             usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
             response = InferTools.safe_decode(template, generate_ids, True)
-            logprobs = self._get_logprobs(self.tokenizer, output['logits'], generate_ids,
+            logprobs = self._get_logprobs(self.tokenizer, output.get('logits'), generate_ids,
                                           generation_config.top_logprobs)
             toolcall = self._get_toolcall(response, True)
             choices = [

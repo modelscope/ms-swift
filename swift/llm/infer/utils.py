@@ -5,7 +5,7 @@ from queue import Queue
 from typing import List
 
 import torch
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from transformers import PreTrainedTokenizerBase, StoppingCriteria, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
 
 from swift.plugin import Metric
@@ -171,7 +171,7 @@ class StopWordsCriteria(StoppingCriteria):
             text = self.tokenizer.decode(input_ids[i, self.start_idx:][-20:], **self.decode_kwargs)
             for stop_word in self.stop_words:
                 if isinstance(stop_word, str) and stop_word in text or isinstance(
-                    stop_word, list) and input_ids[i][-len(stop_word):].tolist() == stop_word:
+                        stop_word, list) and input_ids[i][-len(stop_word):].tolist() == stop_word:
                     is_finished[i] = True
                     break
             else:

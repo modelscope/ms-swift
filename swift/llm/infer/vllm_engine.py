@@ -208,6 +208,8 @@ class VllmEngine(InferEngine):
                       top_logprobs: Optional[int] = None) -> Optional[Dict[str, Any]]:
         if logprobs_list is None:
             return None
+        assert len(token_ids) > 0
+        logprobs_list = logprobs_list[-len(token_ids):]
         res = []
         for logprobs, token_id in zip(logprobs_list, token_ids):
             logprob = logprobs[token_id]
@@ -270,10 +272,9 @@ class VllmEngine(InferEngine):
             usage_info = self._get_usage_info(len(result.prompt_token_ids), num_generated_tokens)
             choices = []
             for output in result.outputs:
-                token_idx = token_idxs[output.index]
-                logprobs = self._get_logprobs(template.tokenizer, output.logprobs[token_idx:], output.token_ids[token_idx:],
-                                generation_config.logprobs)
-                token_idxs[output.index] = len(output.logprobs)
+                logprobs = self._get_logprobs(template.tokenizer, output.logprobs,
+                                              output.token_ids[token_idxs[output.index]:], generation_config.logprobs)
+                token_idxs[output.index] = len(output.token_ids)
                 toolcall = self._get_toolcall(output.token_ids, output.is_finished)
                 choice = ChatCompletionResponseStreamChoice(
                     index=output.index,
