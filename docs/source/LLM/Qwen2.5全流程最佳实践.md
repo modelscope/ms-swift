@@ -1,20 +1,20 @@
 
-# Qwen1.5全流程最佳实践
+# Qwen2.5全流程最佳实践
 
-这里介绍对**Qwen1.5-7B-Chat**和对**Qwen1.5-72B-Chat**进行推理, 自我认知微调, 量化, 部署. 分别对应**低配置和高配置**环境.
+这里介绍对**Qwen2.5-7B-Instruct**和对**Qwen2.5-72B-Instruct**进行推理, 自我认知微调, 量化, 部署. 分别对应**低配置和高配置**环境.
 
 使用双卡80GiB A100对**Qwen2-72B-Instruct**进行自我认知微调并推理部署的最佳实践可以查看[这里](https://github.com/modelscope/swift/issues/1092).
 
 
 ## 目录
 - [环境准备](#环境准备)
-- [Qwen1.5-7B-Chat](#qwen15-7b-chat)
+- [Qwen2.5-7B-Instruct](#qwen25-7b-instruct)
   - [推理](#推理)
   - [自我认知微调](#自我认知微调)
   - [微调后推理](#微调后推理)
   - [量化](#量化)
   - [部署](#部署)
-- [Qwen1.5-72B-Chat](#qwen15-72b-chat)
+- [Qwen2.5-72B-Instruct](#qwen25-72b-instruct)
   - [推理](#推理-1)
   - [自我认知微调](#自我认知微调-1)
   - [微调后推理](#微调后推理-1)
@@ -33,13 +33,13 @@ pip install vllm
 pip install openai
 ```
 
-## Qwen1.5-7B-Chat
+## Qwen2.5-7B-Instruct
 
 ### 推理
 
-这里我们会对Qwen1.5-7B-Chat及其**awq-int4量化**版本进行**流式**推理, 并展示使用**可视化**方式推理.
+这里我们会对Qwen2.5-7B-Instruct及其**awq-int4量化**版本进行**流式**推理, 并展示使用**可视化**方式推理.
 
-使用python推理`qwen1half-7b-chat`:
+使用python推理`qwen2_5-7b-instruct`:
 ```python
 # Experimental environment: 3090
 import os
@@ -52,7 +52,7 @@ from swift.llm import (
 from swift.utils import seed_everything
 import torch
 
-model_type = ModelType.qwen1half_7b_chat
+model_type = ModelType.qwen2_5_7b_instruct
 template_type = get_default_template_type(model_type)
 print(f'template_type: {template_type}')  # template_type: qwen
 
@@ -90,12 +90,17 @@ print(f'history: {history}')
 query: 浙江的省会在哪里？
 response: 浙江省的省会是杭州市。
 query: 这有什么好吃的？
-response: 浙江有很多美食，比如杭州的西湖醋鱼、东坡肉、龙井虾仁，宁波的汤圆、奉化芋头羹，温州的鱼饼、楠溪江豆腐干，嘉兴的南湖菱角等等。每一道菜都有其独特的风味和历史背景，值得一试。
-history: [['浙江的省会在哪里？', '浙江省的省会是杭州市。'], ['这有什么好吃的？', '浙江有很多美食，比如杭州的西湖醋鱼、东坡肉、龙井虾仁，宁波的汤圆、奉化芋头羹，温州的鱼饼、楠溪江豆腐干，嘉兴的南湖菱角等等。每一道菜都有其独特的风味和历史背景，值得一试。']]
+response: 浙江有很多美食，以下是一些著名的菜肴和小吃：
+
+1. **西湖醋鱼**：一道传统的杭州菜，以草鱼为主料，用米醋、白糖等调味品烹制而成，酸甜可口。
+2. **龙井虾仁**：选用新鲜的虾仁与龙井茶叶一起炒制，清香鲜美。
+3. **东坡肉**：这是浙江的一道名菜，选自五花肉，经过长时间炖煮，肥而不腻。
+4. **绍兴黄酒**：虽然严格意义上不算食物，但绍兴黄酒是浙江非常有名的一种传统
+history: [['浙江的省会在哪里？', '浙江省的省会是杭州市。'], ['这有什么好吃的？', '浙江有很多美食，以下是一些著名的菜肴和小吃：\n\n1. **西湖醋鱼**：一道传统的杭州菜，以草鱼为主料，用米醋、白糖等调味品烹制而成，酸甜可口。\n2. **龙井虾仁**：选用新鲜的虾仁与龙井茶叶一起炒制，清香鲜美。\n3. **东坡肉**：这是浙江的一道名菜，选自五花肉，经过长时间炖煮，肥而不腻。\n4. **绍兴黄酒**：虽然严格意义上不算食物，但绍兴黄酒是浙江非常有名的一种传统']]
 """
 ```
 
-使用python推理`qwen1half-7b-chat-awq`, 这里我们使用**VLLM**进行推理加速:
+使用python推理`qwen2_5-7b-instruct-awq`, 这里我们使用**vLLM**进行推理加速:
 ```python
 # Experimental environment: 3090
 import os
@@ -107,7 +112,7 @@ from swift.llm import (
 )
 import torch
 
-model_type = ModelType.qwen1half_7b_chat_awq
+model_type = ModelType.qwen2_5_7b_instruct_awq
 model_id_or_path = None
 llm_engine = get_vllm_engine(model_type, torch.float16, model_id_or_path=model_id_or_path, max_model_len=4096)
 template_type = get_default_template_type(model_type)
@@ -139,35 +144,45 @@ print(f"history: {resp_list[0]['history']}")
 
 """
 query: 你好!
-response: 你好！有什么问题我可以帮助你吗？
+response: 你好！很高兴为你服务。有什么问题或者需要帮助的吗？
 query: 浙江的省会在哪？
-response: 浙江省的省会是杭州市。
+response: 浙江省的省会是杭州。杭州不仅是浙江省的政治中心，也是重要的文化、教育和科技中心。
 query: 这有什么好吃的
-response: 浙江有很多美食，以下列举一些具有代表性的：
+response: 浙江有很多美食，各地风味各异，以下是几个著名的例子：
 
-1. 杭州菜：杭州作为浙江的省会，以其精致细腻、注重原汁原味而闻名，如西湖醋鱼、龙井虾仁、叫化童鸡等都是特色菜品。
+1. **杭州**：
+   - 西湖醋鱼：选用西湖边的草鱼，用醋和糖烹制而成。
+   - 龙井虾仁：将新鲜的虾仁与龙井茶叶一同炒制。
+   - 油爆虾：用油爆炒的虾，味道鲜美。
 
-2. 宁波汤圆：宁波的汤圆皮薄馅大，甜而不腻，尤其是冬至和元宵节时，当地人会吃宁波汤圆庆祝。
+2. **宁波**：
+   - 宁波汤圆：软糯的汤圆搭配甜美的红豆沙或芝麻馅。
+   - 宁波海鲜：各种新鲜的海鲜，如带鱼、大黄鱼等。
+   - 蟹壳黄：一种传统的宁波糕点，外皮酥脆，内里香甜。
 
-3. 温州鱼丸：温州鱼丸选用新鲜鱼类制作，口感弹滑，味道鲜美，常常配以海鲜煮食。
+3. **温州**：
+   - 温州肉燕：用猪肉制成的燕状食品，口感细腻。
+   - 温州麦饼：一种圆形的麦面饼，外皮酥脆，内里柔软。
+   - 温州鱼饼：用鱼肉制成的饼状食品，通常搭配葱花和辣椒酱食用。
 
-4. 嘉兴粽子：嘉兴粽子以其独特的三角形和咸甜两种口味著名，特别是五芳斋的粽子非常有名。
+4. **金华**：
+   - 金华火腿：一种著名的腌制火腿，色泽红润，味道鲜美。
+   - 金华酥饼：一种传统的酥皮糕点，口感酥脆。
 
-5. 金华火腿：金华火腿是中国著名的腌制肉类，肉质紧实，香味浓郁，常作为节日礼品。
+5. **绍兴**：
+   - 绍兴酒酿圆子：以酒酿为底料，加入小圆子，甜度适中。
+   - 绍兴霉干菜：用霉制的青菜制成，味道独特。
+   - 绍兴糟鸡：用绍兴黄酒糟制的鸡肉，味道鲜美。
 
-6. 衢州烂柯山豆腐干：衢州豆腐干质地细腻，味道鲜美，是浙江的传统小吃。
-
-7. 舟山海鲜：浙江沿海地带的舟山有丰富的海鲜资源，如梭子蟹、带鱼、乌贼等，新鲜美味。
-
-以上只是部分浙江美食，浙江各地还有许多特色小吃，你可以根据自己的口味去尝试。
-history: [('浙江的省会在哪？', '浙江省的省会是杭州市。'), ('这有什么好吃的', '浙江有很多美食，以下列举一些具有代表性的：\n\n1. 杭州菜：杭州作为浙江的省会，以其精致细腻、注重原汁原味而闻名，如西湖醋鱼、龙井虾仁、叫化童鸡等都是特色菜品。\n\n2. 宁波汤圆：宁波的汤圆皮薄馅大，甜而不腻，尤其是冬至和元宵节时，当地人会吃宁波汤圆庆祝。\n\n3. 温州鱼丸：温州鱼丸选用新鲜鱼类制作，口感弹滑，味道鲜美，常常配以海鲜煮食。\n\n4. 嘉兴粽子：嘉兴粽子以其独特的三角形和咸甜两种口味著名，特别是五芳斋的粽子非常有名。\n\n5. 金华火腿：金华火腿是中国著名的腌制肉类，肉质紧实，香味浓郁，常作为节日礼品。\n\n6. 衢州烂柯山豆腐干：衢州豆腐干质地细腻，味道鲜美，是浙江的传统小吃。\n\n7. 舟山海鲜：浙江沿海地带的舟山有丰富的海鲜资源，如梭子蟹、带鱼、乌贼等，新鲜美味。\n\n以上只是部分浙江美食，浙江各地还有许多特色小吃，你可以根据自己的口味去尝试。')]
+这些只是浙江美食的一部分，每个地方都有其独特的风味和特色小吃。你可以根据自己的口味尝试不同的美食。
+history: [['浙江的省会在哪？', '浙江省的省会是杭州。杭州不仅是浙江省的政治中心，也是重要的文化、教育和科技中心。'], ['这有什么好吃的', '浙江有很多美食，各地风味各异，以下是几个著名的例子：\n\n1. **杭州**：\n   - 西湖醋鱼：选用西湖边的草鱼，用醋和糖烹制而成。\n   - 龙井虾仁：将新鲜的虾仁与龙井茶叶一同炒制。\n   - 油爆虾：用油爆炒的虾，味道鲜美。\n\n2. **宁波**：\n   - 宁波汤圆：软糯的汤圆搭配甜美的红豆沙或芝麻馅。\n   - 宁波海鲜：各种新鲜的海鲜，如带鱼、大黄鱼等。\n   - 蟹壳黄：一种传统的宁波糕点，外皮酥脆，内里香甜。\n\n3. **温州**：\n   - 温州肉燕：用猪肉制成的燕状食品，口感细腻。\n   - 温州麦饼：一种圆形的麦面饼，外皮酥脆，内里柔软。\n   - 温州鱼饼：用鱼肉制成的饼状食品，通常搭配葱花和辣椒酱食用。\n\n4. **金华**：\n   - 金华火腿：一种著名的腌制火腿，色泽红润，味道鲜美。\n   - 金华酥饼：一种传统的酥皮糕点，口感酥脆。\n\n5. **绍兴**：\n   - 绍兴酒酿圆子：以酒酿为底料，加入小圆子，甜度适中。\n   - 绍兴霉干菜：用霉制的青菜制成，味道独特。\n   - 绍兴糟鸡：用绍兴黄酒糟制的鸡肉，味道鲜美。\n\n这些只是浙江美食的一部分，每个地方都有其独特的风味和特色小吃。你可以根据自己的口味尝试不同的美食。']]
 """
 ```
 
 使用可视化方式推理, 并使用VLLM:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift app-ui \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --infer_backend vllm --max_model_len 4096
 ```
 效果如下:
@@ -188,7 +203,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from swift.llm import DatasetName, ModelType, SftArguments, sft_main
 
 sft_args = SftArguments(
-    model_type=ModelType.qwen1half_7b_chat,
+    model_type=ModelType.qwen2_5_7b_instruct,
     dataset=[f'{DatasetName.alpaca_zh}#500', f'{DatasetName.alpaca_en}#500',
              f'{DatasetName.self_cognition}#500'],
     max_length=2048,
@@ -196,7 +211,8 @@ sft_args = SftArguments(
     output_dir='output',
     lora_target_modules=['ALL'],
     model_name=['小黄', 'Xiao Huang'],
-    model_author=['魔搭', 'ModelScope'])
+    model_author=['魔搭', 'ModelScope'],
+    system='You are a helpful assistant.')
 output = sft_main(sft_args)
 last_model_checkpoint = output['last_model_checkpoint']
 print(f'last_model_checkpoint: {last_model_checkpoint}')
@@ -210,7 +226,7 @@ print(f'last_model_checkpoint: {last_model_checkpoint}')
 # 2 * 18GB GPU memory
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 2048 \
     --learning_rate 1e-4 \
@@ -218,6 +234,7 @@ swift sft \
     --lora_target_modules ALL \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
+    --system "You are a helpful assistant."
 ```
 
 使用**zero2**进行分布式训练的脚本:
@@ -227,7 +244,7 @@ swift sft \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
-    --model_type qwen1half-7b-chat \
+    --model_type qwen2_5-7b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 2048 \
     --learning_rate 1e-4 \
@@ -236,6 +253,7 @@ swift sft \
     --model_name 小黄 'Xiao Huang' \
     --model_author 魔搭 ModelScope \
     --deepspeed default-zero2 \
+    --system "You are a helpful assistant."
 ```
 
 如果你想要使用**界面的方式进行训练**, 可以输入以下命令, 并填入相应的值:
@@ -262,8 +280,8 @@ from swift.tuners import Swift
 
 seed_everything(42)
 
-ckpt_dir = 'output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx'
-model_type = ModelType.qwen1half_7b_chat
+ckpt_dir = 'output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx'
+model_type = ModelType.qwen2_5_7b_instruct
 template_type = get_default_template_type(model_type)
 model_id_or_path = None
 model, tokenizer = get_model_tokenizer(model_type, model_id_or_path=model_id_or_path, model_kwargs={'device_map': 'auto'})
@@ -287,7 +305,7 @@ history: [('你是qwen吗？', '不是，我是魔搭的人工智能助手小黄
 ```shell
 # Experimental environment: 3090
 CUDA_VISIBLE_DEVICES=0 swift app-ui \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx \
     --infer_backend vllm --max_model_len 4096 \
     --merge_lora true
 ```
@@ -302,7 +320,7 @@ CUDA_VISIBLE_DEVICES=0 swift app-ui \
 # Experimental environment: 3090
 # 14GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx \
     --quant_bits 4 --quant_method awq \
     --merge_lora true
 ```
@@ -319,8 +337,8 @@ from swift.llm import (
 )
 import torch
 
-model_type = ModelType.qwen1half_7b_chat
-model_id_or_path = 'output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4'
+model_type = ModelType.qwen2_5_7b_instruct
+model_id_or_path = 'output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4'
 llm_engine = get_vllm_engine(model_type,
                              model_id_or_path=model_id_or_path,
                              max_model_len=4096)
@@ -368,7 +386,7 @@ history: [('浙江的省会在哪？', '浙江省的省会是杭州市。'), ('�
 ```shell
 # Experimental environment: 3090
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --ckpt_dir output/qwen1half-7b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4 \
+    --ckpt_dir output/qwen2_5-7b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4 \
     --infer_backend vllm --max_model_len 4096
 ```
 
@@ -416,7 +434,7 @@ for query in ['78654+657=?', '晚上睡不着觉怎么办']:
     messages.append({'role': 'assistant', 'content': response})
 
 """
-model_type: qwen1half-7b-chat
+model_type: qwen2_5-7b-instruct
 query: 你是谁？
 response: 我是魔搭的人工智能助手，我的名字叫小黄。我可以回答各种问题，提供信息和帮助。有什么我可以帮助你的吗？
 query: what's your name?
@@ -439,7 +457,7 @@ response: 晚上睡不着觉可能是因为压力、焦虑、环境因素等。�
 """
 ```
 
-## Qwen1.5-72B-Chat
+## Qwen2.5-72B-Instruct
 
 
 ### 推理
@@ -448,7 +466,7 @@ response: 晚上睡不着觉可能是因为压力、焦虑、环境因素等。�
 ```shell
 # Experimental environment: 4 * A100
 RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
-    --model_type qwen1half-72b-chat \
+    --model_type qwen2_5-72b-instruct \
     --infer_backend vllm --tensor_parallel_size 4
 ```
 
@@ -475,7 +493,7 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
-    --model_type qwen1half-72b-chat \
+    --model_type qwen2_5-72b-instruct \
     --dataset alpaca-zh#500 alpaca-en#500 self-cognition#500 \
     --max_length 4096 \
     --learning_rate 1e-4 \
@@ -491,7 +509,7 @@ swift sft \
 ```shell
 # Experimental environment: 4 * A100
 RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx \
     --infer_backend vllm --tensor_parallel_size 4 \
     --merge_lora true
 ```
@@ -517,7 +535,7 @@ RAY_memory_monitor_refresh_ms=0 CUDA_VISIBLE_DEVICES=0,1,2,3 swift infer \
 # Experimental environment: A100
 # 30GB GPU memory
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx \
     --quant_bits 4 --quant_method awq \
     --merge_lora true
 ```
@@ -529,7 +547,7 @@ CUDA_VISIBLE_DEVICES=0 swift export \
 ```shell
 # Experimental environment: A100
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --ckpt_dir output/qwen1half-72b-chat/vx-xxx/checkpoint-xxx-merged-awq-int4 \
+    --ckpt_dir output/qwen2_5-72b-instruct/vx-xxx/checkpoint-xxx-merged-awq-int4 \
     --infer_backend vllm --max_model_len 8192
 ```
 
@@ -577,7 +595,7 @@ for query in ['78654+657=?', '晚上睡不着觉怎么办']:
     messages.append({'role': 'assistant', 'content': response})
 
 """
-model_type: qwen1half-72b-chat
+model_type: qwen2_5-72b-instruct
 query: 你是谁？
 response: 我是由魔搭开发的人工智能语言模型，可以回答问题、提供信息、进行对话和解决问题。有什么我可以帮助你的吗？
 query: what's your name?
