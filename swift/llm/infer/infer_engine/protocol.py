@@ -10,7 +10,7 @@ import json
 from fastapi.responses import JSONResponse
 from PIL import Image
 
-from ..utils import Messages
+from swift.llm import Messages
 
 Tool = Dict[str, Union[str, Dict]]
 

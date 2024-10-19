@@ -12,11 +12,11 @@ from transformers.utils import is_torch_npu_available
 from swift.llm import Template, to_device
 from swift.plugin import Metric
 from swift.utils import get_logger
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
-                        random_uuid)
-from ..utils import InferStreamer, InferTools, LogitsStreamer, StopWordsCriteria, TokensIteratorStreamer
 from .infer_engine import InferEngine
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
+                       random_uuid)
+from .utils import InferStreamer, InferTools, LogitsStreamer, StopWordsCriteria, TokensIteratorStreamer
 
 logger = get_logger()
 

@@ -12,12 +12,12 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 from swift.llm import Template
 from swift.plugin import Metric
 from swift.utils import get_logger
-from ..patch import patch_auto_config, patch_auto_tokenizer
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo,
-                        random_uuid)
-from ..utils import InferStreamer, InferTools
 from .infer_engine import InferEngine
+from .patch import patch_auto_config, patch_auto_tokenizer
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig, UsageInfo,
+                       random_uuid)
+from .utils import InferStreamer, InferTools
 
 try:
     from vllm.lora.request import LoRARequest

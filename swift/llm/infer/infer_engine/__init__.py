@@ -7,14 +7,20 @@ if TYPE_CHECKING:
     from .vllm_engine import VllmEngine
     from .lmdeploy_engine import LmdeployEngine
     from .pt_engine import PtEngine
-    from .base import InferEngine
+    from .infer_engine import InferEngine
+    from .base import BaseInferEngine
+    from .protocol import InferRequest, RequestConfig
+    from .utils import InferStats
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
         'vllm_engine': ['VllmEngine'],
         'lmdeploy_engine': ['LmdeployEngine'],
         'pt_engine': ['PtEngine'],
-        'base': ['InferEngine']
+        'infer_engine': ['InferEngine'],
+        'base': ['BaseInferEngine'],
+        'protocol': ['InferRequest', 'RequestConfig'],
+        'utils': ['InferStats']
     }
 
     import sys

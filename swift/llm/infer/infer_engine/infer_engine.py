@@ -13,9 +13,9 @@ from swift.llm import get_model_tokenizer
 from swift.llm.template import Template, split_action_action_input
 from swift.plugin import Metric
 from swift.utils import get_logger
-from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
-                        InferRequest, RequestConfig, UsageInfo)
 from .base import BaseInferEngine
+from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
+                       InferRequest, RequestConfig, UsageInfo)
 
 logger = get_logger()
 

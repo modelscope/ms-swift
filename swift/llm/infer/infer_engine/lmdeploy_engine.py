@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import os
 import time
@@ -13,11 +14,11 @@ from transformers import GenerationConfig, PreTrainedTokenizerBase
 
 from swift.llm import Template
 from swift.utils import get_logger, get_seed
-from ..patch import patch_auto_config, patch_auto_tokenizer
-from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
-from ..utils import InferStreamer, InferTools
 from .infer_engine import InferEngine
+from .patch import patch_auto_config, patch_auto_tokenizer
+from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
+from .utils import InferStreamer, InferTools
 
 logger = get_logger()
 
