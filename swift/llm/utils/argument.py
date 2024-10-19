@@ -1196,6 +1196,10 @@ class SftArguments(ArgumentsBase):
         if 'accelerator_config' in parameters:
             kwargs['accelerator_config'] = {'dispatch_batches': False}
 
+        metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
+        if hasattr(self, 'rlhf_type') and self.rlhf_type == 'ppo':
+            metric_for_best_model = None
+
         training_args = training_args_cls(
             output_dir=self.output_dir,
             logging_dir=self.logging_dir,
@@ -1220,7 +1224,7 @@ class SftArguments(ArgumentsBase):
             eval_steps=self.eval_steps,
             dataloader_num_workers=self.dataloader_num_workers,
             dataloader_pin_memory=self.dataloader_pin_memory,
-            metric_for_best_model='rouge-l' if self.predict_with_generate else 'loss',
+            metric_for_best_model=metric_for_best_model,
             greater_is_better=self.predict_with_generate,
             full_determinism=self.full_determinism,
             optim=self.optim,
@@ -1745,14 +1749,14 @@ class PtArguments(SftArguments):
 
 @dataclass
 class RLHFArguments(SftArguments):
-    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo'] = 'dpo'
+    rlhf_type: Literal['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo'] = 'dpo'
     ref_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     ref_model_id_or_path: Optional[str] = None
     ref_model_revision: Optional[str] = None
 
     beta: Optional[float] = None
-    label_smoothing: float = 0
+    label_smoothing: float = 0.0
     # dpo: 'sigmoid', 'hinge', 'ipo', 'exo_pair', 'nca_pair', 'robust', 'bco_pair',
     #      'sppo_hard', 'aot', 'aot_pair', 'apo_zero', 'apo_down'
     # cpo: 'sigmoid', 'hinge', 'ipo', 'simpo'
@@ -1768,12 +1772,26 @@ class RLHFArguments(SftArguments):
     # KTO
     desirable_weight: float = 1.0
     undesirable_weight: float = 1.0
+    # PPO
+    reward_model_id_or_path: Optional[str] = None
+    reward_model_type: Optional[str] = field(
+        default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
+    reward_model_revision: Optional[str] = None
+    local_rollout_forward_batch_size: int = 64
+    whiten_rewards: bool = False
+    kl_coef: float = 0.05
+    cliprange: float = 0.2
+    vf_coef: float = 0.1
+    cliprange_value: float = 0.2
+    gamma: float = 1.0
+    lam: float = 0.95
 
     def __post_init__(self):
         self._check_simpo()
         self._set_default()
-        self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
+        self.ref_model_free = self.rlhf_type in ['cpo', 'orpo', 'rm']
         super().__post_init__()
+        self._check_ppo()
 
     def _check_simpo(self):
         if self.rlhf_type != 'simpo':
@@ -1793,6 +1811,22 @@ class RLHFArguments(SftArguments):
                 self.loss_type = 'sigmoid'  # else None
             elif self.rlhf_type in ['kto']:
                 self.loss_type = 'kto'
+
+    def _check_ppo(self):
+        if self.rlhf_type != 'ppo':
+            return
+        if self.streaming:
+            raise ValueError('Streaming is currently not supported by PPO')
+        if self.is_multimodal:
+            raise ValueError('MLLM is currently not supported by PPO')
+
+        self.response_length = self.max_new_tokens
+        logger.info(
+            f'set max_new_tokens {self.max_new_tokens} in generation config during ppo, you can set by --max_new_tokens'
+        )
+        self.num_ppo_epochs = self.num_train_epochs
+        logger.info(
+            f'set num_ppo_epochs {self.num_train_epochs} in ppo training config, you can set by --num_train_epochs')
 
 
 @dataclass

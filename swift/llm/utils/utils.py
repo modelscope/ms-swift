@@ -648,8 +648,8 @@ def _prepare_inputs(model: PreTrainedModel,
         inputs_embeds = inputs['inputs_embeds'][None]
         inputs['inputs_embeds'] = inputs_embeds
         token_len = inputs_embeds.shape[1]
-
-    inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
+    if 'attention_mask' not in inputs:
+        inputs['attention_mask'] = torch.ones(token_len, dtype=torch.int64)[None]
     if 'token_type_ids' in inputs:
         inputs['token_type_ids'] = torch.tensor(inputs['token_type_ids'])[None]
     model.eval()

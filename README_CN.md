@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.10.09: 支持 llm 和 mllm 的 reward modeling 训练, 支持 llm 的 PPO 训练. 参考[文档](docs/source/LLM/人类偏好对齐训练文档.md)
 - 2024.10.09: 支持ovis1.6-gemma2的训练到部署. 使用`swift infer --model_type ovis1_6-gemma2-9b`进行体验.
 - 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
 - 2024.09.26: 支持llama3.2系列模型的训练到部署. 使用`swift infer --model_type llama3_2-1b-instruct`进行体验.
@@ -627,7 +628,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llava-HF               | [Llava-HF系列模型](https://huggingface.co/llava-hf)                          | 英文       | 0.5B-110B           | chat模型           |
 | Llava1.5<br>Llava1.6                                    | [Llava系列模型](https://github.com/haotian-liu/LLaVA)                          | 英文       | 7B-34B           | chat模型           |
 | Llava-Next<br>Llava-Next-Video                          | [Llava-Next系列模型](https://github.com/LLaVA-VL/LLaVA-NeXT)                   | 中文<br>英文 | 7B-110B          | chat模型           |
-| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3           | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 11B              | chat模型           |
+| mPLUG-Owl2<br>mPLUG-Owl2.1<br>mPLUG-Owl3           | [mPLUG-Owl系列模型](https://github.com/X-PLUG/mPLUG-Owl)                       | 英文       | 1B-11B              | chat模型           |
 | InternVL<br>Mini-InternVL<br>InternVL2                  | [InternVL](https://github.com/OpenGVLab/InternVL)                          | 中文<br>英文 | 1B-40B<br>包含量化版本 | chat模型           |
 | Llava-llama3                                            | [xtuner](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) | 英文       | 8B               | chat模型       |
 | Phi3-Vision                                             | 微软                                                                         | 英文       | 4B               | chat模型       |
@@ -637,6 +638,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Pixtral                                | [mistralai](https://huggingface.co/mistralai)                               | 英文       | 12B      | chat模型       |
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | 英文       | 8B      | chat模型       |
 | Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | 英文       | 9B      | chat模型       |
+| Molmo              | [Molmo系列模型](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | 英文       | 1B-72B      | chat模型       |
 
 
 #### 扩散模型
@@ -648,7 +650,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 
 ### 支持的开源数据集
 
-| 数据集类型 | 训练任务 | 文档                                                                                                                                                                                                                                           |
+| 数据集类型 | 训练任务 | 数据集                                                                                                                                                                                                                                          |
 |-------|:-----|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 通用    | 微调   | 🔥ruozhiba, 🔥ms-bench, 🔥alpaca-en(gpt4), 🔥alpaca-zh(gpt4), multi-alpaca, instinwild, cot-en, cot-zh, firefly-zh, instruct-en, gpt4all-en, sharegpt, tulu-v2-sft-mixture, wikipedia-zh, open-orca, sharegpt-gpt4, deepctrl-sft, coig-cqia. |
 | Agent | 微调   | 🔥ms-agent, 🔥ms-agent-for-agentfabric, ms-agent-multirole, 🔥toolbench-for-alpha-umi, damo-agent-zh, damo-agent-zh-mini, agent-instruct-all-en.                                                                                             |

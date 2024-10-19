@@ -307,6 +307,11 @@ OVIS1_6 = MultiModelKeys(
     vision_tower='visual_tokenizer',
 )
 
+MOLMO_KEYS = MultiModelKeys(
+    language_model='model.transformer',
+    vision_tower='model.vision_backbone',
+)
+
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
     ('qwen_audio', QWEN_AUDIO_KEYS),
@@ -330,6 +335,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('got_ocr2', GOT_OCR2),
     ('llama3_2_vision', LLAMA3_2_VISION),
     ('ovis1_6', OVIS1_6),
+    ('molmo', MOLMO_KEYS),
     # LLM begins here
     ('llama', LLAMA_KEYS),
     ('mistral', LLAMA_KEYS),

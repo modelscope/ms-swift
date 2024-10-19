@@ -4,8 +4,9 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .arguments import Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig
-    from .rlhf_trainer import CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer
+    from .arguments import (Seq2SeqTrainingArguments, TrainingArguments, DPOConfig, CPOConfig, KTOConfig, ORPOConfig,
+                            PPOConfig)
+    from .rlhf_trainer import CPOTrainer, DPOTrainer, KTOTrainer, ORPOTrainer, RewardTrainer, PPOTrainer
     from .trainer_factory import TrainerFactory
     from .trainers import Seq2SeqTrainer, Trainer
     from .mixin import SwiftMixin, RLHFTrainerMixin
@@ -15,9 +16,11 @@ if TYPE_CHECKING:
                         ShardedDDPOption, TrainerCallback)
 else:
     _import_structure = {
-        'arguments':
-        ['Seq2SeqTrainingArguments', 'TrainingArguments', 'DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig'],
-        'rlhf_trainer': ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer'],
+        'arguments': [
+            'Seq2SeqTrainingArguments', 'TrainingArguments', 'DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig',
+            'RewardConfig', 'PPOConfig'
+        ],
+        'rlhf_trainer': ['CPOTrainer', 'DPOTrainer', 'KTOTrainer', 'ORPOTrainer', 'RewardTrainer', 'PPOTrainer'],
         'trainer_factory': ['TrainerFactory'],
         'trainers': ['Seq2SeqTrainer', 'Trainer'],
         'mixin': ['SwiftMixin', 'RLHFTrainerMixin'],
