@@ -22,7 +22,7 @@ class DataArguments:
     dataset_seed: Optional[int] = None
     max_length: Optional[int] = None
 
-    truncation_strategy: Literal['delete', 'truncation_left'] = 'delete'
+    truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left'
     check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none'
 
     custom_register_path: Optional[str] = None  # .py

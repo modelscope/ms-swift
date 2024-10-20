@@ -82,15 +82,15 @@ def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbn
 # <<< internvl
 
 
-def rescale_image(img: Image.Image, max_size: int) -> Image.Image:
+def rescale_image(img: Image.Image, max_pixels: int) -> Image.Image:
     import torchvision.transforms as T
     width = img.width
     height = img.height
-    if max_size <= 0 or width * height <= max_size:
+    if max_pixels <= 0 or width * height <= max_pixels:
         return img
 
     ratio = width / height
-    height_scaled = int(math.sqrt(max_size / ratio))
+    height_scaled = int(math.sqrt(max_pixels / ratio))
     width_scaled = int(height_scaled * ratio)
     return T.Resize((height_scaled, width_scaled))(img)
 

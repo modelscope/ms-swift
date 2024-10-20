@@ -100,8 +100,9 @@ class Template(_Template):
                        *,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
                        loss_scale: str = 'default',
-                       max_image_size: int = -1,
-                       sequence_parallel_size: int = 1) -> None:
+                       max_pixels: int = -1,
+                       sequence_parallel_size: int = 1,  # only for train
+                       tools_prompt: str = 'react_en') -> None:
         self.sequence_parallel_size = sequence_parallel_size
         return super()._init_template(
             tokenizer,
@@ -109,7 +110,8 @@ class Template(_Template):
             max_length,
             truncation_strategy=truncation_strategy,
             loss_scale=loss_scale,
-            max_image_size=max_image_size)
+            max_pixels=max_pixels,
+            tools_prompt=tools_prompt)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: TemplateInputs) -> List[Context]:

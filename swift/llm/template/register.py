@@ -26,8 +26,9 @@ def get_template(
         *,
         truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
         loss_scale: str = 'default',
-        max_image_size: int = -1,  # h * w
-        sequence_parallel_size: int = 1) -> 'Template':
+        max_pixels: int = -1,  # h * w
+        sequence_parallel_size: int = 1,
+        tools_prompt: str = 'react_en') -> 'Template':
     template_info = TEMPLATE_MAPPING[template_type]
     # To ensure that obtaining the same template_type multiple times does not interfere with each other.
     template = deepcopy(template_info['template'])
@@ -37,6 +38,7 @@ def get_template(
         max_length,
         truncation_strategy=truncation_strategy,
         loss_scale=loss_scale,
-        max_image_size=max_image_size,
-        sequence_parallel_size=sequence_parallel_size)
+        max_pixels=max_pixels,
+        sequence_parallel_size=sequence_parallel_size,
+        tools_prompt=tools_prompt)
     return template

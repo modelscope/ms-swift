@@ -34,7 +34,6 @@ class Template:
         placeholder_tokens: A list of placeholder tokens, where each placeholder token can only be a single token.
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
             whether to add it based on `tokenizer.encode('')`.
-        tools_prompt: The type of tools_prompt added in the system.
 
     Examples:
         chatml (with bos):
@@ -78,7 +77,6 @@ class Template:
                  stop_words: Optional[List[Word]] = None,
                  placeholder_tokens: Union[int, str, None] = None,
                  auto_add_bos: bool = False,
-                 tools_prompt: str = 'react_en',
                  skip_prompt: bool = True) -> None:
         # check
         if default_system is None:
@@ -115,7 +113,6 @@ class Template:
         self.stop_words = stop_words
         self.placeholder_tokens = placeholder_tokens
         self.auto_add_bos = auto_add_bos
-        self.tools_prompt = tools_prompt
         self.skip_prompt = skip_prompt
         self._is_init = False
 
@@ -157,14 +154,16 @@ class Template:
                        *,
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
                        loss_scale: Optional[str] = None,
-                       max_image_size: int = -1) -> None:
+                       max_pixels: int = -1,
+                       tools_prompt: str = 'react_en') -> None:
         """
         default_system: Override the default_system in the template.
         max_length: Max length of the sequence
         truncation_strategy: The truncation strategy
         loss_scale: The loss scale function to use
-        max_image_size: Rescale image to reduce memory usage, default `-1` means no limitation.
+        max_pixels: Rescale image to reduce memory usage, default `-1` means no limitation.
             e.g. 512 * 512 (H*W)
+        tools_prompt: The type of tools_prompt added in the system.
         """
         assert self._is_init is False, 'The template has been initialized.'
         self._is_init = True
@@ -183,15 +182,16 @@ class Template:
         self.truncation_strategy = truncation_strategy
         if loss_scale:
             self.loss_scale = loss_scale
-        self.max_image_size = max_image_size
+        self.max_pixels = max_pixels
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self.task: Literal['train', 'pt_infer', 'vllm_infer', 'lmdeploy_infer'] = 'pt_infer'
+        self.tools_prompt = tools_prompt
 
     def _preprocess_inputs(
         self,
         inputs: TemplateInputs,
         *,
-        max_image_size: int = -1,
+        max_pixels: int = -1,
     ) -> None:
         system = inputs.system
         if system is None:
@@ -206,9 +206,9 @@ class Template:
         images = inputs.images
         if images and self.load_medias:
             images = load_batch(images, load_image)
-            if max_image_size != -1:
+            if max_pixels != -1:
                 assert self.grounding_type != 'real', 'not support'  # TODO:check
-                images = [rescale_image(img, max_image_size) for img in images]
+                images = [rescale_image(img, max_pixels) for img in images]
             inputs.images = images
         if inputs.objects:
             self._preprocess_objects(inputs, inputs.objects)
