@@ -1,5 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, List
+from typing import Any, Dict, List, Union
 
 import json
 import requests
@@ -35,11 +35,20 @@ def write_to_jsonl(fpath: str, obj_list: List[Any], encoding: str = 'utf-8') -> 
         f.write(f'{text}\n')
 
 
-def append_to_jsonl(fpath: str, obj: Any, encoding: str = 'utf-8') -> None:
-    obj = check_json_format(obj)
+def append_to_jsonl(fpath: str, obj: Union[Dict, List[Dict]], *, encoding: str = 'utf-8', strict: bool = True) -> None:
+    if not isinstance(obj, (list, tuple)):
+        obj_list = [obj]
+    else:
+        obj_list = obj
+    obj_list = check_json_format(obj_list)
     try:
+        text = ''
+        for _obj in obj_list:
+            text += f'{json.dumps(_obj, ensure_ascii=False)}\n'
         with open(fpath, 'a', encoding=encoding) as f:
-            f.write(f'{json.dumps(obj, ensure_ascii=False)}\n')
+            f.write(text)
     except Exception as e:
-        logger.error(f'Cannot write content to jsonl file:{obj}')
+        if strict:
+            raise
+        logger.error(f'Cannot write content to jsonl file. obj: {obj}')
         logger.error(e)

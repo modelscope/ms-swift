@@ -36,27 +36,34 @@ def get_time_info(log_history: List[Dict[str, Any]], n_train_samples: Optional[i
     return time_info
 
 
-def check_json_format(obj: Any) -> Any:
+def check_json_format(obj: Any, token_safe: bool = True) -> Any:
     if obj is None or isinstance(obj, (int, float, str, complex)):  # bool is a subclass of int
         return obj
 
     if isinstance(obj, Sequence):
         res = []
         for x in obj:
-            res.append(check_json_format(x))
+            res.append(check_json_format(x, token_safe))
     elif isinstance(obj, Mapping):
         res = {}
         for k, v in obj.items():
-            if 'hub_token' in k:
+            if token_safe and isinstance(k, str) and '_token' in k:
                 res[k] = None
             else:
-                if isinstance(v, TrainingArguments):
-                    for _k in v.__dict__.keys():
-                        if 'hub_token' in _k:
-                            setattr(v, _k, None)
-                res[k] = check_json_format(v)
+                res[k] = check_json_format(v, token_safe)
     else:
-        res = repr(obj)  # e.g. function
+        if token_safe:
+            unsafe_items = {}
+            for k, v in obj.__dict__.items():
+                if '_token' in k:
+                    unsafe_items[k] = v
+                    setattr(obj, k, None)
+            res = repr(obj)
+            # recover
+            for k, v in unsafe_items.items():
+                setattr(obj, k, v)
+        else:
+            res = repr(obj)  # e.g. function, object
     return res
 
 

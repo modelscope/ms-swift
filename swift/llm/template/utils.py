@@ -141,7 +141,8 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
 class TemplateInputs:
     # only user/tool/assistant
     messages: List[Dict[str, str]]
-    system: Optional[str] = None  # If it is None, set it to template.default_system.
+    # None: use default system; '': not use system
+    system: Optional[str] = None
 
     images: List[Union[str, Image.Image]] = field(default_factory=list)
     audios: List[str] = field(default_factory=list)

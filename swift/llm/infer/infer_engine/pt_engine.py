@@ -392,7 +392,7 @@ class PtEngine(InferEngine):
         metrics: Optional[List[Metric]] = None,
         *,
         use_tqdm: Optional[bool] = None,
-        max_batch_size: int = 16,
+        max_batch_size: int = 16,  # TODO: async batch_size
         lora_request: Optional[PtLoRARequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
 
