@@ -36,11 +36,13 @@ class VllmEngine(InferEngine):
             torch_dtype: Optional[torch.dtype] = None,
             *,
             model_type: Optional[str] = None,
+            use_hf: Optional[bool] = None,
+            revision: Optional[str] = None,
             # engine_kwargs
             gpu_memory_utilization: float = 0.9,
             tensor_parallel_size: int = 1,
-            max_num_seqs: int = 256,
             max_model_len: Optional[int] = None,
+            max_num_seqs: int = 256,
             disable_custom_all_reduce: bool = True,  # Default values different from vllm
             enforce_eager: bool = False,
             limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
@@ -48,15 +50,15 @@ class VllmEngine(InferEngine):
             enable_lora: bool = False,
             max_loras: int = 1,
             max_lora_rank: int = 16,
-            engine_kwargs: Optional[Dict[str, Any]] = None,  # extra
-            **kwargs) -> None:
+            engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
         self._init_env()
-        self._prepare_model_tokenizer(model_id_or_path, torch_dtype, False, model_type=model_type, **kwargs)
+        self._prepare_model_tokenizer(
+            model_id_or_path, torch_dtype, False, model_type=model_type, use_hf=use_hf, revision=revision)
         self._prepare_engine_kwargs(
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
-            max_num_seqs=max_num_seqs,
             max_model_len=max_model_len,
+            max_num_seqs=max_num_seqs,
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
             limit_mm_per_prompt=limit_mm_per_prompt,
@@ -78,8 +80,8 @@ class VllmEngine(InferEngine):
             self,
             gpu_memory_utilization: float = 0.9,
             tensor_parallel_size: int = 1,
-            max_num_seqs: int = 256,
             max_model_len: Optional[int] = None,
+            max_num_seqs: int = 256,
             disable_custom_all_reduce: bool = True,  # Default values different from vllm
             enforce_eager: bool = False,
             limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
@@ -111,8 +113,8 @@ class VllmEngine(InferEngine):
             dtype=dtype_mapping[self.torch_dtype],
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
-            max_num_seqs=max_num_seqs,
             max_model_len=max_model_len,
+            max_num_seqs=max_num_seqs,
             disable_log_stats=disable_log_stats,
             disable_custom_all_reduce=disable_custom_all_reduce,
             enforce_eager=enforce_eager,
@@ -323,7 +325,7 @@ class VllmEngine(InferEngine):
         *,
         use_tqdm: Optional[bool] = None,
         lora_request: Optional['LoRARequest'] = None
-    ) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
+    ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
             template, infer_requests, request_config, metrics, use_tqdm=use_tqdm, lora_request=lora_request)
 

@@ -108,6 +108,7 @@ def register_model(model_type: str,
         'support_flash_attn': support_flash_attn,
         'support_vllm': support_vllm,
         'support_lmdeploy': support_lmdeploy,
+        'support_gradient_checkpointing': support_gradient_checkpointing,
         'is_multimodal': is_multimodal,
         'is_moe': is_moe,
         **kwargs
@@ -274,16 +275,17 @@ def get_default_torch_dtype(torch_dtype: torch.dtype):
     return res
 
 
-def get_model_tokenizer(model_id_or_path: str,
-                        torch_dtype: Optional[torch.dtype] = None,
-                        model_kwargs: Optional[Dict[str, Any]] = None,
-                        load_model: bool = True,
-                        *,
-                        use_hf: Optional[bool] = None,
-                        model_type: Optional[str] = None,
-                        attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto',
-                        download_model: Optional[bool] = None,
-                        **kwargs) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
+def get_model_tokenizer(
+        model_id_or_path: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
+        load_model: bool = True,
+        *,
+        use_hf: Optional[bool] = None,
+        revision: Optional[str] = None,
+        model_type: Optional[str] = None,
+        attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto',
+        download_model: Optional[bool] = None) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
     torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
@@ -301,7 +303,6 @@ def get_model_tokenizer(model_id_or_path: str,
         model_kwargs = {}
     if download_model is None:
         download_model = load_model
-    revision = kwargs.pop('revision', None)
     model_dir = safe_snapshot_download(
         model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
@@ -310,7 +311,6 @@ def get_model_tokenizer(model_id_or_path: str,
     elif 'device_map' not in model_kwargs:
         model_kwargs['device_map'] = get_default_device_map()
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['model_config'] = model_config
     model_info = HfConfigFactory.get_model_info(model_config, model_dir)
     if model_type is None:
         model_type = model_info.model_type
@@ -318,6 +318,7 @@ def get_model_tokenizer(model_id_or_path: str,
     if torch_dtype is None:
         torch_dtype = get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
+    kwargs = {'model_config': model_config}
     if model_info.quant_method is not None:
         kwargs['quant_method'] = model_info.quant_method
         kwargs['bits'] = model_info.bits

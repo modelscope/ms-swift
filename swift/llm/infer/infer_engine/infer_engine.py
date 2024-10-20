@@ -3,7 +3,7 @@
 import asyncio
 from queue import Queue
 from threading import Thread
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
 import torch
 from tqdm import tqdm
@@ -22,15 +22,18 @@ logger = get_logger()
 
 class InferEngine(BaseInferEngine):
 
-    def _prepare_model_tokenizer(self,
-                                 model_id_or_path: str,
-                                 torch_dtype: Optional[torch.dtype],
-                                 load_model: bool,
-                                 *,
-                                 model_type: Optional[str] = None,
-                                 **kwargs) -> None:
-        use_hf = kwargs.pop('use_hf', None)
-        revision = kwargs.pop('revision', None)
+    def _prepare_model_tokenizer(
+            self,
+            model_id_or_path: str,
+            torch_dtype: Optional[torch.dtype],
+            load_model: bool,
+            *,
+            model_type: Optional[str] = None,
+            use_hf: Optional[bool] = None,
+            revision: Optional[str] = None,
+            # model
+            model_kwargs: Optional[Dict[str, Any]] = None,
+            attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto') -> None:
         model, tokenizer = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -38,7 +41,9 @@ class InferEngine(BaseInferEngine):
             model_type=model_type,
             download_model=True,
             use_hf=use_hf,
-            revision=revision)
+            revision=revision,
+            model_kwargs=model_kwargs,
+            attn_impl=attn_impl)
         config = tokenizer.config
         self.config = config
         self.tokenizer = tokenizer
@@ -68,7 +73,7 @@ class InferEngine(BaseInferEngine):
     @staticmethod
     def __infer_stream(tasks,
                        stream: bool = True,
-                       use_tqdm: bool = True) -> Iterator[List[ChatCompletionStreamResponse]]:
+                       use_tqdm: bool = True) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
 
         async def _run_infer(i, task, queue, stream: bool = False):
             # task with queue
@@ -142,7 +147,7 @@ class InferEngine(BaseInferEngine):
               metrics: Optional[List[Metric]] = None,
               *,
               use_tqdm: Optional[bool] = None,
-              **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
+              **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         tasks = [
             self.infer_async(template, infer_request, request_config, **kwargs) for infer_request in infer_requests
         ]

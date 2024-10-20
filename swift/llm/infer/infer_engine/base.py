@@ -1,6 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Iterator, List, Union
+from typing import AsyncIterator, Iterator, List, Optional, Union
 
 from .protocol import ChatCompletionResponse, ChatCompletionStreamResponse
 
@@ -9,7 +9,7 @@ class BaseInferEngine(ABC):
 
     @abstractmethod
     def infer(self, *args,
-              **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[ChatCompletionStreamResponse]]]:
+              **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         pass
 
     @abstractmethod

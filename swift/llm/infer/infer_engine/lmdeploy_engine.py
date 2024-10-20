@@ -31,15 +31,17 @@ class LmdeployEngine(InferEngine):
             torch_dtype: Optional[torch.dtype] = None,
             *,
             model_type: Optional[str] = None,
+            use_hf: Optional[bool] = None,
+            revision: Optional[str] = None,
             # engine_kwargs
             tp: int = 1,
             cache_max_entry_count: float = 0.8,
             quant_policy: int = 0,  # e.g. 4, 8
             vision_batch_size: int = 1,  # max_batch_size in VisionConfig
-            engine_kwargs: Optional[Dict[str, Any]] = None,  # extra
-            **kwargs) -> None:
+            engine_kwargs: Optional[Dict[str, Any]] = None) -> None:
 
-        self._prepare_model_tokenizer(model_id_or_path, torch_dtype, False, model_type=model_type, **kwargs)
+        self._prepare_model_tokenizer(
+            model_id_or_path, torch_dtype, False, model_type=model_type, use_hf=use_hf, revision=revision)
         self._prepare_engine_kwargs(
             tp=tp,
             cache_max_entry_count=cache_max_entry_count,

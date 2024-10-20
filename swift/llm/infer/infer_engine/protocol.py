@@ -310,7 +310,7 @@ class InferRequest:
         return res
 
     def to_template_inputs(self, *, tools_prompt: str = 'react_en') -> 'TemplateInputs':
-        from ..template import get_tools_prompt, TemplateInputs
+        from swift.llm.template import get_tools_prompt, TemplateInputs
         request = self.copy()
         messages = request.messages
         tools = request.tools
