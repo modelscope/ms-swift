@@ -317,9 +317,13 @@ class TestRun(unittest.TestCase):
                     train_dataset_sample=100,
                     eval_steps=5,
                     **kwargs))
-            best_model_checkpoint = output['best_model_checkpoint']
+            if rlhf_type == 'ppo':
+                model_checkpoint = output['last_model_checkpoint']
+            else:
+                model_checkpoint = output['best_model_checkpoint']
+
             torch.cuda.empty_cache()
-            infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
+            infer_main(InferArguments(ckpt_dir=model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
 
         # mllm rlhf
         visual_rlhf_types = ['dpo', 'orpo', 'simpo', 'cpo', 'rm']
