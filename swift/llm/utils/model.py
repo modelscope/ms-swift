@@ -261,6 +261,8 @@ class ModelType:
     llama3_1_405b_instruct_awq = 'llama3_1-405b-instruct-awq'
     llama3_1_405b_instruct_gptq_int4 = 'llama3_1-405b-instruct-gptq-int4'
     llama3_1_405b_instruct_bnb = 'llama3_1-405b-instruct-bnb'
+    # llama3.1-nemotron
+    llama3_1_nemotron_70B_instruct_hf = 'llama-3.1-nemotron-70B-instruct-hf'
     # llama3.2
     llama3_2_1b = 'llama3_2-1b'
     llama3_2_1b_instruct = 'llama3_2-1b-instruct'
@@ -4892,6 +4894,17 @@ def get_model_tokenizer_deepseek_vl(model_dir: str,
     return model, tokenizer
 
 
+@register_model(
+    ModelType.llama3_1_nemotron_70B_instruct_hf,
+    'AI-ModelScope/Llama-3.1-Nemotron-70B-Instruct-HF',
+    LoRATM.llama,
+    TemplateType.llama3,
+    support_flash_attn=True,
+    support_vllm=True,
+    support_lmdeploy=True,
+    requires=['transformers>=4.43'],
+    ignore_file_pattern=[r'.+\.pth$'],
+    hf_model_id='nvidia/Llama-3.1-Nemotron-70B-Instruct-HF')
 @register_model(
     ModelType.openbuddy_llama3_1_8b_chat,
     'OpenBuddy/openbuddy-llama3.1-8b-v22.1-131k',
