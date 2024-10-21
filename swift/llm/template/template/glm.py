@@ -4,10 +4,10 @@ import torch
 from transformers import PreTrainedTokenizerBase
 
 from swift.llm import history_to_messages
-from .base import Template
-from .constant import TemplateType
-from .register import register_template
-from .utils import Context, findall
+from ..base import Template
+from ..constant import TemplateType
+from ..register import register_template
+from ..utils import Context, findall
 
 
 class GLMTemplate(Template):

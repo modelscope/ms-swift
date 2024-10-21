@@ -5,11 +5,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-from .base import Template
-from .constant import TemplateType
+from ..base import Template
+from ..constant import TemplateType
 from .qwen import DefaultGenerationTemplate
-from .register import register_template
-from .utils import Context, findall
+from ..register import register_template
+from ..utils import Context, findall
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (

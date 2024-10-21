@@ -9,10 +9,10 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
-from .constant import LLMModelType, MLLMModelType
-from .patcher import patch_output_to_input_device
-from .register import Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local, register_model
-from .utils import AttnImpl
+from ..constant import LLMModelType, MLLMModelType
+from ..patcher import patch_output_to_input_device
+from ..register import Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local, register_model
+from ..utils import AttnImpl
 
 logger = get_logger()
 

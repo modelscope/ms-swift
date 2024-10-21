@@ -23,7 +23,7 @@ from swift import get_logger
 from swift.llm.template.template import TemplateType, get_env_args
 from swift.llm.utils import to_device
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
-from .patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device, patch_rope_scaling
+from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device, patch_rope_scaling
 
 logger = get_logger()
 

@@ -7,9 +7,9 @@ from transformers import AutoConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.llm import TemplateType
-from .constant import LLMModelType, MLLMModelType
-from .patcher import patch_output_to_input_device
-from .register import Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local, register_model
+from ..constant import LLMModelType, MLLMModelType
+from ..patcher import patch_output_to_input_device
+from ..register import Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local, register_model
 
 
 def get_model_tokenizer_internlm_chat(model_dir: str,

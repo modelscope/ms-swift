@@ -15,6 +15,7 @@ from modelscope.utils.config_ds import MS_CACHE_HOME
 from numpy.random import RandomState
 from pandas import DataFrame
 from transformers.utils import strtobool
+from .register import Dataset
 
 from swift.hub.hub import HFHub, MSHub
 from swift.llm.dataset.preprocess import RowPreprocessor
@@ -31,7 +32,7 @@ PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 
 
-class DatasetLoader(ABC):
+class _DatasetLoader:
 
     @classmethod
     def dataset_get_function(cls,
@@ -225,11 +226,30 @@ class DatasetLoader(ABC):
 
         return local_dir
 
-    @classmethod
-    def convert_to_dataset_names(cls, datasets: List[str]) -> List[str]:
+    @staticmethod
+    def _create_dataset_name_mapping():
+        dataset_name_mapping = {}
+        for dataset_name, v in DATASET_MAPPING.items():
+            dataset: Dataset = v['dataset']
+            if len(dataset.dataset_path) > 0:
+                dataset_name_mapping[tuple(dataset.dataset_path)] = dataset_name
+            else:
+                if dataset.ms_dataset_id is not None:
+                    k = f'MS::{dataset.ms_dataset_id}'
+                    assert k not in dataset_name_mapping
+                    dataset_name_mapping[k] = dataset_name
+                if dataset.hf_dataset_id is not None:
+                    k = f'HF::{dataset.ms_dataset_id}'
+                    assert k not in dataset_name_mapping
+                    dataset_name_mapping[k] = dataset_name
+        return dataset_name_mapping
+
+    @staticmethod
+    def _convert_to_dataset_names(datasets: List[Union[str, Dataset]]) -> List[str]:
+        # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_name mapping
+        dataset_name_mapping = _DatasetLoader._create_dataset_name_mapping()
+
         # Convert dataset_id to dataset_name.
-        ms_dataset_mapping = {}  # id -> name
-        hf_dataset_mapping = {}
         for k_name, container in zip(['dataset_id_or_path', 'hf_dataset_id'], [ms_dataset_mapping, hf_dataset_mapping]):
             for k, v in DATASET_MAPPING.items():
                 if v.get(k_name) is None or not v.get('is_main', True):
@@ -556,13 +576,12 @@ def dataset_name_exists(dataset_list: List[str], dataset_name: str) -> List[int]
     return res
 
 
-def load_dataset(
-        datasets: Union[List[str], str],
+def load_datasets(
+        datasets: List[Union[str, Dataset]],  # dataset_name/dataset_path/dataset_id/Dataset
         split_dataset_ratio: float = 0.,
         dataset_seed: Union[int, RandomState] = 42,
         *,
         use_hf: Optional[bool] = None,
-        revision: Optional[str] = None,
         load_from_cache_file: bool = False,
         num_proc: int = 1,
         force_redownload: bool = False,
@@ -585,13 +604,13 @@ def load_dataset(
     Returns:
         The train dataset and val dataset
     """
-    if isinstance(datasets, str):
+    if not isinstance(datasets, (list, tuple)):
         datasets = [datasets]
     train_datasets: List[DATASET_TYPE] = []
     val_datasets: List[DATASET_TYPE] = []
 
     # dataset_id_or_path -> dataset_name
-    datasets = DatasetLoader.convert_to_dataset_names(datasets)
+    datasets = _DatasetLoader._convert_to_dataset_names(datasets)
     for dataset_name in datasets:
         use_hf, dataset_name, subsets, dataset_sample = parse_dataset_name(dataset_name)
         dataset_info = DATASET_MAPPING[dataset_name]

@@ -7,11 +7,11 @@ from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
 from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
-from .constant import LLMModelType, MLLMModelType
-from .patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
-from .register import (Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
+from ..constant import LLMModelType, MLLMModelType
+from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
+from ..register import (Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
                        get_model_tokenizer_with_flash_attn, register_model)
-from .utils import AttnImpl
+from ..utils import AttnImpl
 
 logger = get_logger()
 dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: 'fp32'}

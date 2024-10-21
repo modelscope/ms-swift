@@ -5,11 +5,11 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import torch
 
 from swift.utils import get_env_args, is_deepspeed_enabled
-from .base import Template
-from .constant import TemplateType
-from .register import register_template
-from .utils import Context, findall
-from .vision_utils import load_audio_qwen, load_batch, load_video_qwen2
+from ..base import Template
+from ..constant import TemplateType
+from ..register import register_template
+from ..utils import Context, findall
+from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 

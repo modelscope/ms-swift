@@ -4,13 +4,5 @@ from .register import (MODEL_MAPPING, Model, ModelGroup, TemplateGroup, fix_do_s
                        get_default_torch_dtype, get_model_tokenizer, get_model_tokenizer_from_local,
                        get_model_tokenizer_with_flash_attn)
 from .utils import HfConfigFactory, safe_snapshot_download
+from . import model
 
-
-def _register_files():
-    from . import qwen
-    from . import llama
-    # TODO
-    # from . import model
-
-
-_register_files()

@@ -19,18 +19,25 @@ SubsetSplit = Union[str, Tuple[str, str], List[str]]
 PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 
+@dataclass
+class SubsetDataset:
+    subset_name: str = 'default'
+    split: List[str] = field(default_factory=lambda: ['train'])
+    columns_mapping: Dict[str, Any] = field(default_factory=dict)
+    preprocess_func: Optional[PreprocessFunc] = SmartPreprocessor()
+    # If the dataset_name does not specify subsets, this parameter determines whether the dataset is used.
+    is_weak_subset: bool = False
 
 @dataclass
 class Dataset:
     ms_dataset_id: Optional[str] = None
     hf_dataset_id: Optional[str] = None
-    subsets: Optional[List[str]] = field(default_factory=lambda: ['default'])
-    splits: Optional[List[str]] = field(default_factory=lambda: ['train'])
+
+    ms_revision: Optional[str] = None
+    hf_revision: Optional[str] = None
+    subsets: List[SubsetDataset] = field(default_factory=lambda: [SubsetSplit()])
 
     dataset_path: List[str] = field(default_factory=list)
-
-    columns_mapping: Dict[str, Any] = field(default_factory=dict)
-    preprocess_func: Optional[PreprocessFunc] = SmartPreprocessor()
 
 
 LoadFunction = Callable[..., Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]]
