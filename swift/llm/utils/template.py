@@ -145,11 +145,12 @@ class TemplateType:
     chatml = 'chatml'
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
+    molmo = 'molmo'
+    deepseek_janus = 'deepseek-janus'
     # compatibility. (Deprecated)
     default_generation_bos = 'default-generation-bos'
     yi = 'yi'
     yi1_5 = 'yi1_5'
-    molmo = 'molmo'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -3322,6 +3323,8 @@ class DeepseekVLTemplate(Template):
                          ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        is_janus = getattr(self, 'is_janus', False)
+
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -3335,15 +3338,22 @@ class DeepseekVLTemplate(Template):
             new_input_ids += input_ids[lo:hi]
             if labels is not None:
                 new_labels += labels[lo:hi]
-            new_input_ids += [processor.image_id] * processor.num_image_tokens
-            new_labels += [-100] * processor.num_image_tokens
+            image_tokens = [processor.image_id] * processor.num_image_tokens
+            if is_janus:
+                image_tokens = [processor.image_start_id] + image_tokens + [processor.image_end_id]
+            new_input_ids += image_tokens
+            new_labels += [-100] * len(image_tokens)
             lo = hi + 1
         new_input_ids += input_ids[lo:]
         if labels is not None:
             new_labels += labels[lo:]
         else:
             new_labels = None
-        from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+        if is_janus:
+            from janus.models.processing_vlm import VLChatProcessorOutput
+        else:
+            from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+
         images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
@@ -3365,6 +3375,14 @@ class DeepseekVLTemplate(Template):
 
 
 register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class DeepseekJanus(DeepseekVLTemplate):
+    is_janus = True
+    image_placeholder = ['<image_placeholder>\n']
+
+
+register_template(TemplateType.deepseek_janus, DeepseekJanus(), use_model=True, lazy_tokenize=True)
 
 register_template(
     TemplateType.zephyr,
