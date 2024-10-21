@@ -4860,8 +4860,11 @@ def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
     tokenizer.processor = processor
     if model:
-        func_list = ['generate', 'get_input_embeddings', 'forward']
+        model.language_model.model.embed_tokens.register_forward_hook(_clone_hook)
+        model.language_model.model.embed_tokens.register_forward_hook(_output_device_map_hook)
+        func_list = ['generate', 'get_input_embeddings', 'forward', 'gradient_checkpointing_enable']
         _use_submodel_func(model, 'language_model', func_list)
+        model.generation_config = model.language_model.generation_config
     return model, tokenizer
 
 

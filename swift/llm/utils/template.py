@@ -3323,6 +3323,8 @@ class DeepseekVLTemplate(Template):
                          ['<｜end▁of▁sentence｜>'], ['<｜end▁of▁sentence｜>'], self.DEEPSEEK_VL_SYSTEM)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        is_janus = getattr(self, 'is_janus', False)
+
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
@@ -3336,15 +3338,18 @@ class DeepseekVLTemplate(Template):
             new_input_ids += input_ids[lo:hi]
             if labels is not None:
                 new_labels += labels[lo:hi]
-            new_input_ids += [processor.image_id] * processor.num_image_tokens
-            new_labels += [-100] * processor.num_image_tokens
+            image_tokens = [processor.image_id] * processor.num_image_tokens
+            if is_janus:
+                image_tokens = [processor.image_start_id] + image_tokens + [processor.image_end_id]
+            new_input_ids += image_tokens
+            new_labels += [-100] * len(image_tokens)
             lo = hi + 1
         new_input_ids += input_ids[lo:]
         if labels is not None:
             new_labels += labels[lo:]
         else:
             new_labels = None
-        if getattr(self, 'is_janus', False):
+        if is_janus:
             from janus.models.processing_vlm import VLChatProcessorOutput
         else:
             from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
@@ -3374,6 +3379,7 @@ register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True
 
 class DeepseekJanus(DeepseekVLTemplate):
     is_janus = True
+    image_placeholder = ['<image_placeholder>\n']
 
 
 register_template(TemplateType.deepseek_janus, DeepseekJanus(), use_model=True, lazy_tokenize=True)
