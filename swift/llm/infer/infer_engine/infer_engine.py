@@ -11,10 +11,11 @@ from threading import Thread
 from typing import Any, AsyncIterator, Dict, Iterator, List, Literal, Optional, Union
 
 import torch
+from datasets import Dataset as HfDataset
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import InferArguments, Messages, get_model_tokenizer, get_template
+from swift.llm import InferArguments, Messages, get_model_tokenizer, get_template, load_dataset
 from swift.llm.template import Template, split_action_action_input
 from swift.plugin import Metric
 from swift.utils import append_to_jsonl, get_logger
@@ -406,7 +407,7 @@ class InferEngine(BaseInferEngine):
             repetition_penalty=args.repetition_penalty)
 
     def prepare_template(self, args: InferArguments) -> Template:
-        template: Template = get_template(
+        template = get_template(
             args.template_type,
             self.tokenizer,
             args.system,
@@ -416,8 +417,16 @@ class InferEngine(BaseInferEngine):
             max_pixels=args.max_pixels,
             sequence_parallel_size=args.sequence_parallel_size,
             tools_prompt=args.tools_prompt)
+        logger.info(f'default_system: {template.default_system}')
+        return template
 
     def infer_cli(self, args: InferArguments) -> List[Dict[str, Any]]:
+        template = self.prepare_template(args)
+        result_path = None
+        if args.save_result:
+            result_path = self._prepare_save_result(args)
+        request_config = self._prepare_request_config(args)
+
         result = []
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
@@ -427,12 +436,7 @@ class InferEngine(BaseInferEngine):
         else:
             logger.info('The current template only supports single-round dialogues.')
 
-        result_path = None
-        if args.save_result:
-            result_path = self._prepare_save_result(args)
-
         infer_state = InferCliState()
-        request_config = self._prepare_request_config(args)
         while True:
             if not template.support_multi_round:
                 infer_state.clear()
@@ -464,9 +468,16 @@ class InferEngine(BaseInferEngine):
 
         return result
 
-    def infer_dataset(self, args: InferArguments, template: Template):
+    def prepare_dataset(self, args: InferArguments) -> HfDataset:
+        load_dataset(args.val_dataset, args.split_dataset_ratio)
+        if len(args.val_dataset) > 0:
+            _, val_dataset = get_dataset(args.val_dataset, 1.0, **dataset_kwargs)
+        else:
+            _, val_dataset = get_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
+
+    def infer_dataset(self, args: InferArguments):
+        template = self.prepare_template(args)
         result_path = None
         if args.save_result:
             result_path = self._prepare_save_result(args)
-        pass
-
+        request_config = self._prepare_request_config(args)

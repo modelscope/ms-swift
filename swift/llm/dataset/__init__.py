@@ -6,12 +6,12 @@ import datasets.fingerprint
 from swift.utils.torch_utils import _find_local_mac
 from .dataset import DatasetName, standard_keys
 from .loader import (DATASET_MAPPING, DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists,
-                     parse_dataset_name)
+                     load_dataset, parse_dataset_name)
 from .media import MediaResource
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, multimodal_keys, multimodal_tags)
-from .register import register_dataset, register_dataset_info_file, register_local_dataset, register_single_dataset
+from .register import register_dataset, register_dataset_info
 from .utils import (ConstantLengthDataset, LazyLLMDataset, LLMDataset, LLMIterableDataset, dataset_map, print_example,
                     sort_by_max_length, stat_dataset)
 

@@ -42,7 +42,7 @@ class DatasetLoader(ABC):
                              dataset_sample: int = -1,
                              *,
                              random_state: Optional[RandomState] = None,
-                             dataset_test_ratio: float = 0.,
+                             split_dataset_ratio: float = 0.,
                              remove_useless_columns: bool = True,
                              use_hf: bool = False,
                              **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
@@ -55,7 +55,7 @@ class DatasetLoader(ABC):
             split: The dataset split
             dataset_sample: The sample number, default `-1`, means all data
             random_state: The random state, default `None`
-            dataset_test_ratio: The dataset split ratio, default `0`
+            split_dataset_ratio: The dataset split ratio, default `0`
             remove_useless_columns: Remove useless columns or not, default `True`
             use_hf: Using hf hub or ms hub, default `False` means ms hub.
         Returns:
@@ -119,7 +119,7 @@ class DatasetLoader(ABC):
         dataset_sample: int,
         random_state: Optional[RandomState] = None,
         preprocess_func: Optional[PreprocessFunc] = None,
-        dataset_test_ratio: float = 0.,
+        split_dataset_ratio: float = 0.,
         remove_useless_columns: bool = True,
         **kwargs,
     ) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
@@ -133,7 +133,7 @@ class DatasetLoader(ABC):
             dataset_sample: The sample number, required
             random_state: The random state, default `None`
             preprocess_func: The preprocessor, default is `None`
-            dataset_test_ratio: The dataset split ratio, Default `0`
+            split_dataset_ratio: The dataset split ratio, Default `0`
             remove_useless_columns: Remove useless columns or not, default `True`
             **kwargs:
                 dataset_enable_cache: Enable cache or not, default `False`
@@ -145,8 +145,8 @@ class DatasetLoader(ABC):
         if not streaming:
             if dataset_sample == -1:
                 dataset_sample = len(train_dataset)
-            assert 0 <= dataset_test_ratio <= 1
-            if dataset_test_ratio == 1:
+            assert 0 <= split_dataset_ratio <= 1
+            if split_dataset_ratio == 1:
                 # The validation scenario, switch all data to validation set
                 train_dataset, val_dataset = None, train_dataset
                 val_sample = dataset_sample
@@ -155,13 +155,13 @@ class DatasetLoader(ABC):
                 val_dataset = cls.sample_dataset(val_dataset, val_sample, random_state)
             else:
                 # The training scenario
-                if dataset_test_ratio == 0:
+                if split_dataset_ratio == 0:
                     train_sample = dataset_sample
                     val_dataset = None
                 else:
                     # Avoid having a high train_sample causing a high val_sample.
                     _train_len = min(len(train_dataset), dataset_sample)
-                    val_sample = max(int(_train_len * dataset_test_ratio), 1)
+                    val_sample = max(int(_train_len * split_dataset_ratio), 1)
                     train_sample = dataset_sample - val_sample
                     assert isinstance(val_sample, int)
                     train_dataset, val_dataset = train_dataset.train_test_split(
@@ -173,7 +173,7 @@ class DatasetLoader(ABC):
                 train_dataset = cls.sample_dataset(train_dataset, train_sample, random_state)
         else:
             val_dataset = None
-            if dataset_test_ratio == 1:
+            if split_dataset_ratio == 1:
                 train_dataset, val_dataset = None, train_dataset
             else:
                 streaming_val_size = kwargs.get('streaming_val_size', 0)
@@ -226,117 +226,9 @@ class DatasetLoader(ABC):
         return local_dir
 
     @classmethod
-    def load_dataset(
-            cls,
-            dataset_name_list: Union[List[str], str],
-            dataset_test_ratio: float = 0.,
-            dataset_seed: Union[int, RandomState] = 42,
-            check_dataset_strategy: Literal['none', 'discard', 'error', 'warning'] = 'none',
-            *,
-            # for self-cognition
-            model_name: Union[Tuple[str, str], List[str], None] = None,
-            model_author: Union[Tuple[str, str], List[str], None] = None,
-            streaming: bool = False,
-            **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
-        """The interface to load any registered dataset
-
-        Args:
-            dataset_name_list: The dataset name list
-            dataset_test_ratio: The dataset split ratio
-            dataset_seed: The dataset random seed
-            check_dataset_strategy: The check_dataset_strategy
-            model_name: Model name in self-cognition task
-            model_author: Model author in self-cognition task
-            streaming: Streaming mode or not
-        Returns:
-            The train dataset and val dataset
-        """
-        if isinstance(dataset_name_list, str):
-            dataset_name_list = [dataset_name_list]
-        train_dataset_list: List[DATASET_TYPE] = []
-        val_dataset_list: List[DATASET_TYPE] = []
-
-        # dataset_id_or_path -> dataset_name
-        dataset_name_list = cls.dataset_id_to_name(dataset_name_list)
-        for dataset_name in dataset_name_list:
-            use_hf, dataset_name, subsets, dataset_sample = parse_dataset_name(dataset_name)
-            dataset_info = DATASET_MAPPING[dataset_name]
-            if subsets is None:
-                subsets = dataset_info['subsets']
-            if dataset_sample == -1:
-                dataset_sample = dataset_info.get('dataset_sample', -1)
-            if isinstance(dataset_seed, int):
-                random_state = RandomState(dataset_seed)
-            else:
-                random_state = dataset_seed
-
-            get_function = dataset_info['get_function'] or cls.dataset_get_function
-            is_local = dataset_info.get('is_local', False)
-            dataset_id_or_path = dataset_info['dataset_id_or_path']
-            remove_useless_columns = dataset_info.get('remove_useless_columns', True)
-
-            if not is_local:
-                dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
-                if not dataset_id_or_path:
-                    use_hf = True
-                if use_hf:
-                    dataset_id_or_path = dataset_info['hf_dataset_id']
-                    dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id_or_path)
-                else:
-                    dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id_or_path)
-                logger.info(dataset_str)
-                assert dataset_id_or_path is not None, (f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
-                                                        f'dataset_id_or_path: {dataset_id_or_path}.')
-            dataset = get_function(
-                dataset_id_or_path,
-                subsets,
-                dataset_info['preprocess_func'],
-                dataset_info['split'],
-                dataset_sample,
-                random_state=random_state,
-                dataset_test_ratio=dataset_test_ratio,
-                remove_useless_columns=remove_useless_columns,
-                use_hf=use_hf,
-                revision=dataset_info.get('revision'),
-                **kwargs)
-
-            if dataset_name == 'self-cognition':
-                assert model_name is not None and model_author is not None
-                dataset = cls.preprocess_self_cognition_dataset(dataset, model_name, model_author)
-
-            train_d: HfDataset
-            if isinstance(dataset, (list, tuple)):
-                train_d, val_d = dataset
-            else:
-                train_d, val_d = dataset, None
-
-            assert train_d is not None or val_d is not None
-            if train_d is not None:
-                train_dataset_list.append(train_d)
-            if val_d is not None:
-                val_dataset_list.append(val_d)
-
-        if len(train_dataset_list) > 1:
-            train_dataset = concatenate_datasets(train_dataset_list) if not streaming else interleave_datasets(
-                train_dataset_list)
-        else:
-            train_dataset = train_dataset_list[0] if train_dataset_list else None
-
-        if len(val_dataset_list) > 1:
-            val_dataset = concatenate_datasets(val_dataset_list) if not streaming else interleave_datasets(
-                val_dataset_list)
-        else:
-            val_dataset = val_dataset_list[0] if val_dataset_list else None
-        if check_dataset_strategy != 'none':
-            logger.info('check dataset...')
-            logger.info(f"check_dataset_strategy: '{check_dataset_strategy}'")
-
-        return train_dataset, val_dataset
-
-    @classmethod
-    def dataset_id_to_name(cls, dataset_name_list: List[str]) -> List[str]:
-        # register dataset_id (ms/hf). Convert dataset_id to dataset_name.
-        ms_dataset_mapping = {}
+    def convert_to_dataset_names(cls, datasets: List[str]) -> List[str]:
+        # Convert dataset_id to dataset_name.
+        ms_dataset_mapping = {}  # id -> name
         hf_dataset_mapping = {}
         for k_name, container in zip(['dataset_id_or_path', 'hf_dataset_id'], [ms_dataset_mapping, hf_dataset_mapping]):
             for k, v in DATASET_MAPPING.items():
@@ -464,18 +356,18 @@ class DatasetLoader(ABC):
 class HubDatasetLoader(DatasetLoader):
 
     @classmethod
-    def dataset_get_function(cls,
-                             dataset_id: str,
-                             subsets: Optional[List[str]],
-                             preprocess_func: Union[PreprocessFunc, RowPreprocessor],
-                             split: List[str],
-                             dataset_sample: int = -1,
-                             *,
-                             random_state: Optional[RandomState] = None,
-                             dataset_test_ratio: float = 0.,
-                             remove_useless_columns: bool = True,
-                             use_hf: bool = False,
-                             **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    def get_dataset(cls,
+                    dataset_id: str,
+                    subsets: Optional[List[str]],
+                    preprocess_func: Union[PreprocessFunc, RowPreprocessor],
+                    split: List[str],
+                    dataset_sample: int = -1,
+                    *,
+                    random_state: Optional[RandomState] = None,
+                    split_dataset_ratio: float = 0.,
+                    remove_useless_columns: bool = True,
+                    use_hf: bool = False,
+                    **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         if subsets is None:
             subsets = []
         assert len(split) > 0
@@ -490,9 +382,9 @@ class HubDatasetLoader(DatasetLoader):
             use_hf,
             streaming=kwargs.get('streaming', False),
             revision=kwargs.get('revision'),
-            force_redownload=kwargs.get('force_redownload'))
+            force_redownload=kwargs.get('force_redownload', False))
 
-        return cls.post_preprocess(dataset, dataset_sample, random_state, preprocess_func, dataset_test_ratio,
+        return cls.post_preprocess(dataset, dataset_sample, random_state, preprocess_func, split_dataset_ratio,
                                    remove_useless_columns, **kwargs)
 
     @classmethod
@@ -566,12 +458,12 @@ class LocalDatasetLoader(DatasetLoader):
                              dataset_sample: int = -1,
                              *,
                              random_state: Optional[RandomState] = None,
-                             dataset_test_ratio: float = 0.,
+                             split_dataset_ratio: float = 0.,
                              remove_useless_columns: bool = True,
                              use_hf: bool = False,
                              **kwargs) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
         dataset = cls.load_dataset_from_local(split, preprocess_func, streaming=kwargs.get('streaming', False))
-        return cls.post_preprocess(dataset, dataset_sample, random_state, None, dataset_test_ratio,
+        return cls.post_preprocess(dataset, dataset_sample, random_state, None, split_dataset_ratio,
                                    remove_useless_columns, **kwargs)
 
     @classmethod
@@ -662,3 +554,111 @@ def dataset_name_exists(dataset_list: List[str], dataset_name: str) -> List[int]
         if cache_name == dataset_name:
             res.append(i)
     return res
+
+
+def load_dataset(
+        datasets: Union[List[str], str],
+        split_dataset_ratio: float = 0.,
+        dataset_seed: Union[int, RandomState] = 42,
+        *,
+        use_hf: Optional[bool] = None,
+        revision: Optional[str] = None,
+        load_from_cache_file: bool = False,
+        num_proc: int = 1,
+        force_redownload: bool = False,
+        # self-cognition
+        model_name: Union[Tuple[str, str], List[str], None] = None,
+        model_author: Union[Tuple[str, str], List[str], None] = None,
+        # streaming
+        streaming: bool = False,
+        streaming_val_size: int = 0,
+        streaming_buffer_size: int = 16384) -> Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]:
+    """The interface to load any registered dataset
+
+    Args:
+        datasets: The dataset name list
+        split_dataset_ratio: The dataset split ratio
+        dataset_seed: The dataset random seed
+        model_name: Model name in self-cognition task
+        model_author: Model author in self-cognition task
+        streaming: Streaming mode or not
+    Returns:
+        The train dataset and val dataset
+    """
+    if isinstance(datasets, str):
+        datasets = [datasets]
+    train_datasets: List[DATASET_TYPE] = []
+    val_datasets: List[DATASET_TYPE] = []
+
+    # dataset_id_or_path -> dataset_name
+    datasets = DatasetLoader.convert_to_dataset_names(datasets)
+    for dataset_name in datasets:
+        use_hf, dataset_name, subsets, dataset_sample = parse_dataset_name(dataset_name)
+        dataset_info = DATASET_MAPPING[dataset_name]
+        if subsets is None:
+            subsets = dataset_info['subsets']
+        if dataset_sample == -1:
+            dataset_sample = dataset_info.get('dataset_sample', -1)
+        if isinstance(dataset_seed, int):
+            random_state = RandomState(dataset_seed)
+        else:
+            random_state = dataset_seed
+
+        get_function = dataset_info['get_function'] or DatasetLoader.dataset_get_function
+        is_local = dataset_info.get('is_local', False)
+        dataset_id_or_path = dataset_info['dataset_id_or_path']
+        remove_useless_columns = dataset_info.get('remove_useless_columns', True)
+
+        if not is_local:
+            dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
+            if not dataset_id_or_path:
+                use_hf = True
+            if use_hf:
+                dataset_id_or_path = dataset_info['hf_dataset_id']
+                dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id_or_path)
+            else:
+                dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id_or_path)
+            logger.info(dataset_str)
+            assert dataset_id_or_path is not None, (f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
+                                                    f'dataset_id_or_path: {dataset_id_or_path}.')
+        dataset = get_function(
+            dataset_id_or_path,
+            subsets,
+            dataset_info['preprocess_func'],
+            dataset_info['split'],
+            dataset_sample,
+            random_state=random_state,
+            split_dataset_ratio=split_dataset_ratio,
+            remove_useless_columns=remove_useless_columns,
+            use_hf=use_hf,
+            revision=dataset_info.get('revision'),
+            **kwargs)
+
+        if dataset_name == 'self-cognition':
+            assert model_name is not None and model_author is not None
+            dataset = DatasetLoader.preprocess_self_cognition_dataset(dataset, model_name, model_author)
+
+        train_d: HfDataset
+        if isinstance(dataset, (list, tuple)):
+            train_d, val_d = dataset
+        else:
+            train_d, val_d = dataset, None
+
+        assert train_d is not None or val_d is not None
+        if train_d is not None:
+            train_dataset_list.append(train_d)
+        if val_d is not None:
+            val_dataset_list.append(val_d)
+
+    if len(train_dataset_list) > 1:
+        train_dataset = concatenate_datasets(train_dataset_list) if not streaming else interleave_datasets(
+            train_dataset_list)
+    else:
+        train_dataset = train_dataset_list[0] if train_dataset_list else None
+
+    if len(val_dataset_list) > 1:
+        val_dataset = concatenate_datasets(val_dataset_list) if not streaming else interleave_datasets(val_dataset_list)
+    else:
+        val_dataset = val_dataset_list[0] if val_dataset_list else None
+
+    return train_dataset, val_dataset

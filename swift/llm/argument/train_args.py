@@ -56,7 +56,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
             else:
                 self.learning_rate = 1e-4
         self.parse_to_dict('lr_scheduler_kwargs')
-        if len(self.val_dataset) == 0 and self.val_dataset_ratio:
+        if len(self.val_dataset) == 0 and self.split_dataset_ratio:
             self.eval_strategy = 'no'
 
     def prepare_dataloader(self: 'SftArguments'):
@@ -382,11 +382,11 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
             self.lazy_tokenize = False
             logger.info('lazy_tokenize set to False in streaming dataset')
 
-        if self.val_dataset_ratio > 0:
-            logger.info('Set val_dataset_ratio to 0 in streaming mode.'
+        if self.split_dataset_ratio > 0:
+            logger.info('Set split_dataset_ratio to 0 in streaming mode.'
                         'You can manually set val_dataset and val_dataset_sample.'
                         'or set streaming_val_size instead to split from train dataset')
-            self.val_dataset_ratio = 0
+            self.split_dataset_ratio = 0
 
         if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
             logger.info('Set dataloader_num_workers to 0 in streaming mode')

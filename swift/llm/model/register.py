@@ -31,7 +31,9 @@ class Model:
     ms_model_id: Optional[str] = None
     hf_model_id: Optional[str] = None
     model_path: Optional[str] = None
+
     ms_revision: Optional[str] = None
+    hf_revision: Optional[str] = None
 
 
 @dataclass

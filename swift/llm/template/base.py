@@ -93,16 +93,17 @@ class Template(_Template):
         if _deepspeed_initialize:
             deepspeed.initialize = _deepspeed_initialize
 
-    def _init_template(self,
-                       tokenizer: PreTrainedTokenizerBase,
-                       default_system: Optional[str] = None,
-                       max_length: Optional[int] = None,
-                       *,
-                       truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-                       loss_scale: str = 'default',
-                       max_pixels: int = -1,
-                       sequence_parallel_size: int = 1,  # only for train
-                       tools_prompt: str = 'react_en') -> None:
+    def _init_template(
+            self,
+            tokenizer: PreTrainedTokenizerBase,
+            default_system: Optional[str] = None,
+            max_length: Optional[int] = None,
+            *,
+            truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+            loss_scale: str = 'default',
+            max_pixels: int = -1,
+            sequence_parallel_size: int = 1,  # only for train
+            tools_prompt: str = 'react_en') -> None:
         self.sequence_parallel_size = sequence_parallel_size
         return super()._init_template(
             tokenizer,

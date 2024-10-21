@@ -120,7 +120,7 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
             imported_keys += ['sft_type', 'rope_scaling', 'system']
             if getattr(self, 'load_dataset_config', False) and from_sft_args:
                 imported_keys += [
-                    'dataset', 'val_dataset', 'dataset_seed', 'val_dataset_ratio', 'check_dataset_strategy',
+                    'dataset', 'val_dataset', 'dataset_seed', 'split_dataset_ratio', 'check_dataset_strategy',
                     'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
                 ]
         # read settings
