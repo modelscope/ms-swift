@@ -3173,7 +3173,7 @@ class MolmoTemplate(Template):
         return res
 
 
-register_template(TemplateType.molmo, MolmoTemplate())
+register_template(TemplateType.molmo, MolmoTemplate(), lazy_tokenize=True, use_model=True)
 
 
 class PaliGemmaTemplate(Template):
