@@ -306,13 +306,17 @@ class TestRun(unittest.TestCase):
         rlhf_types = ['dpo', 'orpo', 'simpo', 'kto', 'cpo', 'rm', 'ppo']
         for rlhf_type in rlhf_types:
             dataset_name = 'hh-rlhf-cn-harmless-base-cn' if rlhf_type != 'kto' else 'ultrafeedback-kto'
+            kwargs = {}
+            if rlhf_type == 'ppo':
+                kwargs['reward_model_type'] = 'qwen2-1_5b-instruct'
             output = rlhf_main(
                 RLHFArguments(
                     rlhf_type=rlhf_type,
-                    model_type=ModelType.qwen_1_8b_chat,
+                    model_type=ModelType.qwen2_1_5b_instruct,
                     dataset=dataset_name,
                     train_dataset_sample=100,
-                    eval_steps=5))
+                    eval_steps=5,
+                    **kwargs))
             best_model_checkpoint = output['best_model_checkpoint']
             torch.cuda.empty_cache()
             infer_main(InferArguments(ckpt_dir=best_model_checkpoint, load_dataset_config=True, val_dataset_sample=2))
