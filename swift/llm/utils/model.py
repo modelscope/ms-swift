@@ -439,6 +439,7 @@ class ModelType:
     # numina-math
     numina_math_7b = 'numina-math-7b'
     # deepseek-vl
+    deepseek_janus = 'deepseek-janus'
     deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
     # deepseek-v2
@@ -664,6 +665,7 @@ class LoRATM(NamedTuple):
     llama3_2_vision = 'llama3_2_vision'
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
+    deepseek_janus = 'deepseek_janus'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -3800,7 +3802,8 @@ def get_model_tokenizer_qwen2_audio(model_dir: str,
                                     **kwargs):
     from transformers import Qwen2AudioForConditionalGeneration, AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = Qwen2AudioForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
@@ -3830,7 +3833,8 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
 
     from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
     if model is not None:
@@ -4831,6 +4835,37 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
             submodel.__class__.device = model.device
         if key == 'forward' and 'generate' in func_list:
             setattr(submodel, key, MethodType(_get_new_func(key), submodel))  # fix device_map
+
+
+@register_model(
+    ModelType.deepseek_janus,
+    'deepseek-ai/Janus-1.3B',
+    LoRATM.deepseek_janus,
+    TemplateType.deepseek_janus,
+    support_flash_attn=True,
+    tags=['multi-modal', 'vision'],
+    placeholder_tokens=['<image_placeholder>'],
+    hf_model_id='deepseek-ai/Janus-1.3B')
+def get_model_tokenizer_deepseek_janus(model_dir: str,
+                                    *args,
+                                    **kwargs):
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = git_clone_github('https://github.com/deepseek-ai/Janus')
+    sys.path.append(os.path.join(local_repo_path))
+    from janus.models import MultiModalityCausalLM, VLChatProcessor
+    from janus.utils.io import load_pil_images
+
+    processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
+    tokenizer = processor.tokenizer
+    model, tokenizer = get_model_tokenizer_with_flash_attn(
+        model_dir, *args, tokenizer=tokenizer, **kwargs)
+    tokenizer.processor = processor
+    if model:
+        func_list = ['generate', 'get_input_embeddings', 'forward']
+        _use_submodel_func(model, 'language_model', func_list)
+    return model, tokenizer
 
 
 @register_model(
@@ -6418,7 +6453,8 @@ def get_model_tokenizer_llava_hf(model_dir: str, *args, **kwargs):
     hf_model_id='meta-llama/Llama-3.2-90B-Vision-Instruct')
 def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
     from transformers import MllamaForConditionalGeneration
-    kwargs['automodel_class'] = MllamaForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = MllamaForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -6484,7 +6520,8 @@ def get_model_tokenizer_llava_1_5(*args, **kwargs):
     hf_model_id='llava-hf/llava-onevision-qwen2-72b-ov-hf')
 def get_model_tokenizer_llava_onevision(*args, **kwargs):
     from transformers import LlavaOnevisionForConditionalGeneration
-    kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaOnevisionForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -6614,7 +6651,8 @@ def get_model_tokenizer_llava_next_yi(*args, **kwargs):
     hf_model_id='llava-hf/LLaVA-NeXT-Video-7B-hf')
 def get_model_tokenizer_llava_next_video(*args, **kwargs):
     from transformers import LlavaNextVideoForConditionalGeneration
-    kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = LlavaNextVideoForConditionalGeneration
     return get_model_tokenizer_llava_hf(*args, **kwargs)
 
 
@@ -6737,7 +6775,8 @@ def get_model_tokenizer_llava(model_dir: str,
 def get_model_tokenizer_idefics(model_dir: str, *args, **kwargs):
     from transformers import AutoProcessor, AutoModelForVision2Seq
     processor = AutoProcessor.from_pretrained(model_dir)
-    kwargs['automodel_class'] = AutoModelForVision2Seq
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = AutoModelForVision2Seq
     model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
     tokenizer.processor = processor
     return model, tokenizer
@@ -6823,7 +6862,8 @@ def get_model_tokenizer_omnli(model_dir: str,
     model_config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
     if not os.path.exists(model_config.speech_encoder):
         whisper.load_model('large-v3', download_root=model_dir)
-    kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = OmniSpeech2SLlamaForCausalLM
     kwargs['model_config'] = model_config
     for key in ['forward', 'generate']:
         try:
@@ -6851,7 +6891,8 @@ def get_model_tokenizer_omnli(model_dir: str,
     tags=['multi-modal', 'audio'],
     hf_model_id='stepfun-ai/GOT-OCR2_0')
 def get_model_tokenizer_got_ocr2(*args, **kwargs):
-    kwargs['automodel_class'] = AutoModel
+    if 'automodel_class' not in kwargs:
+        kwargs['automodel_class'] = AutoModel
     model, tokenizer = get_model_tokenizer_with_flash_attn(*args, **kwargs)
     return model, tokenizer
 

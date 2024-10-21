@@ -145,11 +145,12 @@ class TemplateType:
     chatml = 'chatml'
     got_ocr2 = 'got_ocr2'
     ovis1_6 = 'ovis1_6'
+    molmo = 'molmo'
+    deepseek_janus = 'deepseek-janus'
     # compatibility. (Deprecated)
     default_generation_bos = 'default-generation-bos'
     yi = 'yi'
     yi1_5 = 'yi1_5'
-    molmo = 'molmo'
 
     @classmethod
     def get_template_name_list(cls) -> List[str]:
@@ -3343,7 +3344,11 @@ class DeepseekVLTemplate(Template):
             new_labels += labels[lo:]
         else:
             new_labels = None
-        from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+        if getattr(self, 'is_janus', False):
+            from janus.models.processing_vlm import VLChatProcessorOutput
+        else:
+            from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
+            
         images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
@@ -3365,6 +3370,14 @@ class DeepseekVLTemplate(Template):
 
 
 register_template(TemplateType.deepseek_vl, DeepseekVLTemplate(), use_model=True, lazy_tokenize=True)
+
+
+class DeepseekJanus(DeepseekVLTemplate):
+    is_janus = True
+
+
+register_template(TemplateType.deepseek_janus, DeepseekJanus(), use_model=True, lazy_tokenize=True)
+
 
 register_template(
     TemplateType.zephyr,
