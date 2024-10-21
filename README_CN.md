@@ -622,7 +622,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llama3.2-Vision              | [Llama3.2](https://huggingface.co/collections/meta-llama/llama-32-66f448ffc8c32f949b04c8cf)                | 英文       | 11B-90B      | base模型<br>chat模型 |
 | YI-VL                                                   | [01AI的YI系列视觉模型](https://github.com/01-ai)                                  | 中文<br>英文 | 6B-34B           | chat模型           |
 | XComposer2<br>XComposer2.5                              | [浦江实验室书生浦语视觉模型](https://github.com/InternLM/InternLM-XComposer)            | 中文<br>英文 | 7B               | chat模型           |
-| DeepSeek-VL                                             | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
+| DeepSeek-VL<br>Deepseek-Janus                                | [幻方系列视觉模型](https://github.com/deepseek-ai)                                 | 中文<br>英文 | 1.3B-7B          | chat模型           |
 | MiniCPM-V<br>MiniCPM-V-2<br>MiniCPM-V-2.5<br>MiniCPM-V-2.6               | [OpenBmB MiniCPM视觉模型](https://github.com/OpenBMB/MiniCPM)                  | 中文<br>英文 | 3B-9B            | chat模型           |
 | CogVLM<br>CogAgent<br>CogVLM2<br>CogVLM2-Video<br>GLM4V | [智谱ChatGLM视觉问答和Agent模型](https://github.com/THUDM/)                         | 中文<br>英文 | 9B-19B           | chat模型           |
 | Llava-HF               | [Llava-HF系列模型](https://huggingface.co/llava-hf)                          | 英文       | 0.5B-110B           | chat模型           |
