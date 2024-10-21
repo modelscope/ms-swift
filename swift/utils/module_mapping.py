@@ -315,8 +315,7 @@ DEEPSPEED_JANUS = MultiModelKeys(
     language_model='language_model',
     vision_tower='vision_model',
     connector='aligner',
-    generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed']
-)
+    generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed'])
 
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here

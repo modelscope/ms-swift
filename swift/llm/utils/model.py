@@ -4846,9 +4846,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
     tags=['multi-modal', 'vision'],
     placeholder_tokens=['<image_placeholder>'],
     hf_model_id='deepseek-ai/Janus-1.3B')
-def get_model_tokenizer_deepseek_janus(model_dir: str,
-                                    *args,
-                                    **kwargs):
+def get_model_tokenizer_deepseek_janus(model_dir: str, *args, **kwargs):
     if 'local_repo_path' in kwargs:
         local_repo_path = kwargs['local_repo_path']
     else:
@@ -4859,8 +4857,7 @@ def get_model_tokenizer_deepseek_janus(model_dir: str,
 
     processor: VLChatProcessor = VLChatProcessor.from_pretrained(model_dir)
     tokenizer = processor.tokenizer
-    model, tokenizer = get_model_tokenizer_with_flash_attn(
-        model_dir, *args, tokenizer=tokenizer, **kwargs)
+    model, tokenizer = get_model_tokenizer_with_flash_attn(model_dir, *args, tokenizer=tokenizer, **kwargs)
     tokenizer.processor = processor
     if model:
         func_list = ['generate', 'get_input_embeddings', 'forward']

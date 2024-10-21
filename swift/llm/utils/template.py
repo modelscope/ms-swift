@@ -3348,7 +3348,7 @@ class DeepseekVLTemplate(Template):
             from janus.models.processing_vlm import VLChatProcessorOutput
         else:
             from deepseek_vl.models.processing_vlm import VLChatProcessorOutput
-            
+
         images_outputs = processor.image_processor(images, return_tensors='pt')
         output = VLChatProcessorOutput(
             sft_format=None,
@@ -3377,7 +3377,6 @@ class DeepseekJanus(DeepseekVLTemplate):
 
 
 register_template(TemplateType.deepseek_janus, DeepseekJanus(), use_model=True, lazy_tokenize=True)
-
 
 register_template(
     TemplateType.zephyr,
