@@ -439,7 +439,7 @@ class ModelType:
     # numina-math
     numina_math_7b = 'numina-math-7b'
     # deepseek-vl
-    deepseek_janus = 'deepseek-janus'
+    deepseek_janus_1_3b = 'deepseek-janus-1_3b'
     deepseek_vl_1_3b_chat = 'deepseek-vl-1_3b-chat'
     deepseek_vl_7b_chat = 'deepseek-vl-7b-chat'
     # deepseek-v2
@@ -4838,7 +4838,7 @@ def _use_submodel_func(model, submodel_name: str, func_list: List[str]) -> None:
 
 
 @register_model(
-    ModelType.deepseek_janus,
+    ModelType.deepseek_janus_1_3b,
     'deepseek-ai/Janus-1.3B',
     LoRATM.deepseek_janus,
     TemplateType.deepseek_janus,
