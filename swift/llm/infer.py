@@ -248,8 +248,7 @@ def prepare_model_template(args: InferArguments,
         args.truncation_strategy,
         model=model,
         tools_prompt=args.tools_prompt)
-    args.system = template.default_system
-    logger.info(f'system: {args.system}')
+    logger.info(f'system: {template.default_system}')
     return model, template
 
 
