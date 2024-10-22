@@ -311,6 +311,11 @@ MOLMO_KEYS = MultiModelKeys(
     language_model='model.transformer',
     vision_tower='model.vision_backbone',
 )
+DEEPSPEED_JANUS = MultiModelKeys(
+    language_model='language_model',
+    vision_tower='vision_model',
+    connector='aligner',
+    generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed'])
 
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
@@ -336,6 +341,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('llama3_2_vision', LLAMA3_2_VISION),
     ('ovis1_6', OVIS1_6),
     ('molmo', MOLMO_KEYS),
+    ('deepseek_janus', DEEPSPEED_JANUS),
     # LLM begins here
     ('llama', LLAMA_KEYS),
     ('mistral', LLAMA_KEYS),
