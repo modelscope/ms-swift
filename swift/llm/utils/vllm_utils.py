@@ -620,6 +620,5 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         args.truncation_strategy,
         model=llm_engine,
         tools_prompt=args.tools_prompt)
-    args.system = template.default_system
-    logger.info(f'system: {args.system}')
+    logger.info(f'system: {template.default_system}')
     return llm_engine, template
