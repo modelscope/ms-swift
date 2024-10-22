@@ -660,7 +660,7 @@ def get_mantis_dataset(dataset_id: str,
         dataset = load_ms_dataset(dataset_id, [subset], use_hf, streaming=streaming)
         dataset = preprocess_mantis_image(dataset, subset=subset[0])
         all_datasets.append(dataset)
-        
+
     if len(all_datasets) > 1:
         dataset = concatenate_datasets(all_datasets) if not streaming else interleave_datasets(all_datasets)
     else:
@@ -939,17 +939,19 @@ register_dataset(
 
 
 def preprocess_llava_video_178k(dataset: DATASET_TYPE, subset, dataset_id) -> DATASET_TYPE:
-    
-    dataset_dir = '/mnt/workspace/.cache/modelscope/datasets'   # YOUR PATH TO `lmms-lab` directory
-    local_dir = f'{dataset_dir}/{dataset_id}/{subset}/'    
-    
+
+    dataset_dir = '/mnt/workspace/.cache/modelscope/datasets'  # YOUR PATH TO `lmms-lab` directory
+    local_dir = f'{dataset_dir}/{dataset_id}/{subset}/'
+
     if not os.path.exists(local_dir):
-        logger.error(f'The video files of this lmms-lab/LLaVA-Video-178K dataset are separately zipped, therefore you need to'
+        logger.error(
+            'The video files of this lmms-lab/LLaVA-Video-178K dataset are separately zipped, therefore you need to'
             ' download the video files from HF or MS and extract the .tar.gz files. Then, please write the path to the'
-            ' `lmms-lab` directory (with extracted video files in lmms-lab/LLaVA-Video-178K) in the preprocess_llava_video_178k()'
-            ' in swift/llm/utils/dataset.py.')
+            ' `lmms-lab` directory (with extracted video files in lmms-lab/LLaVA-Video-178K) in the'
+            ' preprocess_llava_video_178k() in swift/llm/utils/dataset.py.')
         raise FileNotFoundError('Please download and extract the video files first. See details in the log.')
-    def _process(d):    # after this process, the data will undergo _post_preprocess() of ConversationsPreprocessor
+
+    def _process(d):  # after this process, the data will undergo _post_preprocess() of ConversationsPreprocessor
         file_path = os.path.join(local_dir, f"{d['video']}")
         if not os.path.exists(file_path):
             return {'id': None, 'conversations': None, 'data_source': None, 'video': None}
@@ -998,10 +1000,14 @@ def get_llava_video_178k_dataset(dataset_id: str,
 register_dataset(
     DatasetName.llava_video_178k,
     'lmms-lab/LLaVA-Video-178K', [
-        '0_30_s_academic_v0_1', '0_30_s_youtube_v0_1',
-        '1_2_m_academic_v0_1', '1_2_m_youtube_v0_1', 
-        '2_3_m_academic_v0_1', '2_3_m_youtube_v0_1', 
-        '30_60_s_academic_v0_1', '30_60_s_youtube_v0_1',
+        '0_30_s_academic_v0_1',
+        '0_30_s_youtube_v0_1',
+        '1_2_m_academic_v0_1',
+        '1_2_m_youtube_v0_1',
+        '2_3_m_academic_v0_1',
+        '2_3_m_youtube_v0_1',
+        '30_60_s_academic_v0_1',
+        '30_60_s_youtube_v0_1',
     ],
     ConversationsPreprocessor(
         user_role='human',
@@ -1015,6 +1021,7 @@ register_dataset(
     get_llava_video_178k_dataset,
     split=['caption', 'open_ended', 'multi_choice'],
     hf_dataset_id='lmms-lab/LLaVA-Video-178K',
+    huge_dataset=True,
     tags=['chat', 'multi-modal', 'video'])
 
 
