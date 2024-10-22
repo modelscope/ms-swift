@@ -6,7 +6,7 @@ from transformers import AutoConfig, AutoTokenizer
 from swift.llm import TemplateType
 from ..constant import LLMModelType, MLLMModelType
 from ..register import (Model, ModelGroup, TemplateGroup, get_model_tokenizer_multimodal,
-                       get_model_tokenizer_with_flash_attn, register_model)
+                        get_model_tokenizer_with_flash_attn, register_model)
 
 
 def get_model_tokenizer_llama2(model_dir: str,

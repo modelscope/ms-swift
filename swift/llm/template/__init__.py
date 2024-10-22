@@ -7,9 +7,9 @@ allowing the directory to be independently runnable.
 2. Delete the `base.py` file and rename `_base.py` to `base.py`.
 """
 
+from . import template
 from .agent import get_tools_prompt, split_action_action_input
 from .base import Template, TemplateInputs
 from .constant import TemplateType
 from .register import TEMPLATE_MAPPING, get_template, register_template
 from .utils import Word
-from . import template

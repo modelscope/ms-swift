@@ -8,8 +8,8 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import torch
 import transformers
 from packaging import version
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
-                          PreTrainedModel, PreTrainedTokenizerBase)
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
@@ -354,6 +354,7 @@ def get_model_tokenizer(
 
         # generation_config
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
+        # TODO:model.llm.generation_config: deepseek-vl
         if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
             model.generation_config = GenerationConfig.from_pretrained(model_dir)
         # fix llama2 warning

@@ -1,2 +1,1 @@
-from . import qwen
-from . import llama
+from . import llama, qwen

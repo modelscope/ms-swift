@@ -3,6 +3,7 @@ import itertools
 import os
 import shutil
 from abc import ABC
+from dataclasses import dataclass, field
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -14,15 +15,11 @@ from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
 from numpy.random import RandomState
 from pandas import DataFrame
-from transformers.utils import strtobool
-from .register import Dataset
 
-from swift.hub.hub import HFHub, MSHub
-from swift.llm.dataset.preprocess import RowPreprocessor
-from swift.utils import get_logger, get_seed
-from swift.utils.io_utils import download_files
-from swift.utils.torch_utils import safe_ddp_context
-from swift.utils.utils import _safe_split
+from swift.hub import HFHub, MSHub, default_hub
+from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
+from .preprocess import RowPreprocessor
+from .register import Dataset, register_dataset_info
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -32,7 +29,7 @@ PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 
 
-class _DatasetLoader:
+class DatasetLoader:
 
     @classmethod
     def dataset_get_function(cls,
@@ -221,80 +218,10 @@ class _DatasetLoader:
                 local_fpath = os.path.join(local_dir, remote_fpath)
                 if not force_download and os.path.exists(local_fpath):
                     continue
-                download_files(url, temp_fpath, cookies)
+                download_ms_file(url, temp_fpath, cookies)
                 shutil.copy2(temp_fpath, local_fpath)
 
         return local_dir
-
-    @staticmethod
-    def _create_dataset_name_mapping():
-        dataset_name_mapping = {}
-        for dataset_name, v in DATASET_MAPPING.items():
-            dataset: Dataset = v['dataset']
-            if len(dataset.dataset_path) > 0:
-                dataset_name_mapping[tuple(dataset.dataset_path)] = dataset_name
-            else:
-                if dataset.ms_dataset_id is not None:
-                    k = f'MS::{dataset.ms_dataset_id}'
-                    assert k not in dataset_name_mapping
-                    dataset_name_mapping[k] = dataset_name
-                if dataset.hf_dataset_id is not None:
-                    k = f'HF::{dataset.ms_dataset_id}'
-                    assert k not in dataset_name_mapping
-                    dataset_name_mapping[k] = dataset_name
-        return dataset_name_mapping
-
-    @staticmethod
-    def _convert_to_dataset_names(datasets: List[Union[str, Dataset]]) -> List[str]:
-        # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_name mapping
-        dataset_name_mapping = _DatasetLoader._create_dataset_name_mapping()
-
-        # Convert dataset_id to dataset_name.
-        for k_name, container in zip(['dataset_id_or_path', 'hf_dataset_id'], [ms_dataset_mapping, hf_dataset_mapping]):
-            for k, v in DATASET_MAPPING.items():
-                if v.get(k_name) is None or not v.get('is_main', True):
-                    continue
-                if v[k_name] not in container:
-                    container[v[k_name]] = []
-                container[v[k_name]].append(k)
-
-        res_dataset = []
-        dataset_list = []
-        # Add dataset_id or dataset_path to dataset_list, and add dataset_name to res_dataset.
-        for d in dataset_name_list:
-            use_hf, d_name = parse_dataset_name(d)[:2]
-            if d_name in DATASET_MAPPING:
-                res_dataset.append(d)
-            else:
-                dataset_list.append((d, use_hf, d_name))
-
-        extra_dataset = []
-        for d, use_hf, d_id_or_path in dataset_list:
-            dataset_mapping = hf_dataset_mapping if use_hf else ms_dataset_mapping
-            if d_id_or_path in dataset_mapping:
-                # Add the dataset_name corresponding to the dataset_id to res_dataset.
-                for d_name in dataset_mapping[d_id_or_path]:
-                    res_dataset.append(d.replace(d_id_or_path, d_name))
-            else:
-                # This dataset needs to be registered.
-                extra_dataset.append((d, use_hf, d_id_or_path))
-
-        for i, (d, use_hf, d_id_or_path) in enumerate(extra_dataset):
-            d_info = {}
-            d_name = f'_{i}'
-            if os.path.isfile(d_id_or_path):
-                d_info['dataset_path'] = d_id_or_path
-            else:
-                if d_id_or_path.startswith('/'):
-                    raise ValueError(f"path: '{d_id_or_path}' not found")
-                if use_hf:
-                    d_info['hf_dataset_id'] = d_id_or_path
-                else:
-                    d_info['dataset_id'] = d_id_or_path
-            from swift.llm.dataset.register import register_single_dataset
-            register_single_dataset(d_name, d_info)
-            res_dataset.append(d.replace(d_id_or_path, d_name))
-        return res_dataset
 
     @classmethod
     def preprocess_self_cognition_dataset(
@@ -517,67 +444,204 @@ class LocalDatasetLoader(DatasetLoader):
         return concatenate_datasets(dataset_list) if not streaming else interleave_datasets(dataset_list)
 
 
-def parse_dataset_name(dataset_name: str) -> Tuple[bool, str, List[str], int]:
-    """Parse the dataset name from the command line
+@dataclass
+class DatasetSyntax:
+    dataset: str
+    use_hf: Optional[bool] = None
+    subsets: List[str] = field(default_factory=list)
+    dataset_sample: Optional[int] = None
 
-    Args:
-        dataset_name: The dataset name
+    def __post_init__(self):
+        if self.use_hf is None:
+            self.use_hf = use_hf_hub()
+        if self.dataset in DATASET_MAPPING:
+            self.dataset_type = 'name'
+        elif os.path.isfile(self.dataset) or self.dataset.startswith('/'):
+            self.dataset_type = 'path'
+            assert os.path.isfile(self.dataset)
+        elif self.use_hf:
+            self.dataset_type = 'hf_repo'
+        else:
+            self.dataset_type = 'ms_repo'
 
-    Returns:
-        Dataset infos, including:
-        1. use hf or not
-        2. dataset name
-        3. subset list
-        4. dataset sample number
-    """
-    # HF::dataset_name:subset1/subset2/subset3#dataset_sample
-    use_hf, other = _safe_split(dataset_name, '::', False)
-    if use_hf is None:
-        use_hf = strtobool(os.environ.get('USE_HF', 'False'))
-    elif isinstance(use_hf, str):
-        use_hf = {'hf': 1, 'ms': 0}[use_hf.lower()]
-    if os.path.isfile(other):
-        part1, dataset_sample = other, None
-    else:
-        part1, dataset_sample = _safe_split(other, '#', True, 'right')
-    if os.path.isfile(part1):
-        dataset_name, subsets = part1, None
-    else:
-        dataset_name, subsets = _safe_split(part1, ':', True)
+    @classmethod
+    def parse_dataset_syntax(cls, dataset: str) -> 'DatasetSyntax':
+        """Parse the dataset from the command line"""
+        # HF::dataset_name:subset1/subset2/subset3#dataset_sample
+        use_hf, other = DatasetLoader._safe_split(dataset, '::', False)
+        if os.path.isfile(other):
+            part1, dataset_sample = other, None
+        else:
+            part1, dataset_sample = DatasetLoader._safe_split(other, '#', True, 'right')
+        if os.path.isfile(part1):
+            dataset, subsets = part1, None
+        else:
+            dataset, subsets = DatasetLoader._safe_split(part1, ':', True)
 
-    if subsets is not None:
-        subset_list = subsets.split('/')
-        subset_list = [subset.strip() for subset in subset_list]
-    else:
-        subset_list = None
-    if dataset_sample is None:
-        dataset_sample = -1
-    else:
-        dataset_sample = int(dataset_sample)
-    return tuple(t.strip() if isinstance(t, str) else t for t in [use_hf, dataset_name, subset_list, dataset_sample])
+        dataset_name = dataset.strip()
+        if use_hf is not None:
+            use_hf = {'ms': False, 'hf': True}[use_hf.strip().lower()]
+        if subsets is not None:
+            subsets = [subset.strip() for subset in subsets.split('/')]
+        if dataset_sample is not None:
+            dataset_sample = int(dataset_sample)
+        return cls(dataset_name, use_hf, subsets, dataset_sample)
+
+    def to_dict(self):
+        # Convert to a format that can be parsed by register_dataset_info.
+        assert self.dataset_type != 'name'
+        res = {}
+        mapping = {'path': 'dataset_path', 'hf_repo': 'hf_dataset_id', 'ms_repo': 'ms_dataset_id'}
+        key = mapping[self.dataset_type]
+        res[key] = self.dataset
+        return res
 
 
-def dataset_name_exists(dataset_list: List[str], dataset_name: str) -> List[int]:
-    """Check whether dataset name exists
+class DatasetNameMapping:
+    # dataset_id/path -> dataset_name
+    def __init__(self):
+        self._init_mapping()
 
-    Args:
-        dataset_list: The dataset list
-        dataset_name: The dataset name
+    def _init_mapping(self) -> None:
+        dataset_name_mapping = {}
+        for dataset_name, v in DATASET_MAPPING.items():
+            dataset: Dataset = v['dataset']
+            if len(dataset.dataset_path) > 0:
+                dataset_name_mapping[self._encode_key(dataset.dataset_path, 'path')] = dataset_name
+            else:
+                if dataset.ms_dataset_id is not None:
+                    k = self._encode_key(dataset.ms_dataset_id, 'ms_repo')
+                    assert k not in dataset_name_mapping
+                    dataset_name_mapping[k] = dataset_name
+                if dataset.hf_dataset_id is not None:
+                    k = self._encode_key(dataset.ms_dataset_id, 'hf_repo')
+                    assert k not in dataset_name_mapping
+                    dataset_name_mapping[k] = dataset_name
+        self.mapping = dataset_name_mapping
 
-    Returns:
-        TODO
-    """
-    dataset_name = parse_dataset_name(dataset_name)[1]
-    cache_name_list = [parse_dataset_name(dataset)[1] for dataset in dataset_list]
-    res = []
-    for i, cache_name in enumerate(cache_name_list):
-        if cache_name == dataset_name:
-            res.append(i)
-    return res
+    def _encode_key(self, d_id_or_path: Union[str, List[str]], dataset_type: Literal['hf_repo', 'ms_repo', 'path']):
+        assert dataset_type != 'name'
+        if dataset_type == 'hf_repo':
+            return f'HF::{d_id_or_path}'
+        elif dataset_type == 'ms_repo':
+            return f'MS::{d_id_or_path}'
+        else:
+            if isinstance(d_id_or_path, str):
+                return (d_id_or_path, )
+            else:
+                return tuple(d_id_or_path)
+
+    def map_to_name(self, dataset_info: DatasetSyntax) -> Optional[str]:
+        key = self._encode_key(dataset_info.dataset, dataset_info.dataset_type)
+        return self.mapping.get(key)
+
+
+class DatasetLoader:
+
+    def __init__(
+            self,
+            split_dataset_ratio: float = 0.,
+            dataset_seed: Union[int, RandomState] = 42,
+            use_hf: Optional[bool] = None,
+            load_from_cache_file: bool = False,
+            num_proc: int = 1,
+            force_redownload: bool = False,
+            *,
+            # self-cognition
+            model_name: Union[Tuple[str, str], List[str], None] = None,
+            model_author: Union[Tuple[str, str], List[str], None] = None,
+            # streaming
+            streaming: bool = False,
+            streaming_val_size: int = 0,
+            streaming_buffer_size: int = 16384):
+        if isinstance(dataset_seed, int):
+            dataset_seed = RandomState(dataset_seed)
+
+        self.split_dataset_ratio = split_dataset_ratio
+        self.dataset_seed: RandomState = dataset_seed
+        self.use_hf = use_hf
+        self.load_from_cache_file = load_from_cache_file
+        self.num_proc = num_proc
+        self.force_redownload = force_redownload
+
+        self.model_name = model_name
+        self.model_author = model_author
+
+        self.streaming = streaming
+        self.streaming_val_size = streaming_val_size
+        self.streaming_buffer_size = streaming_buffer_size
+
+    def load(self, dataset: str) -> Tuple[HfDataset, Optional[HfDataset]]:
+        pass
+
+    @staticmethod
+    def _safe_split(s: str,
+                    sep: str,
+                    use_0: bool,
+                    split_mode: Literal['left', 'right'] = 'left') -> Tuple[Optional[str], Optional[str]]:
+        """
+        use_0: When the length of the part is 1, is it considered as part0 or part1.
+        split_mode: use split or rsplit
+        """
+        if s is None or len(s) == 0:
+            return None, None
+        if split_mode == 'left':
+            part = s.split(sep, 1)
+        else:
+            part = s.rsplit(sep, 1)
+        if len(part) == 1:
+            if use_0:
+                part = part[0], None
+            else:
+                part = None, part[0]
+        else:
+            assert len(part) == 2
+        return part
+
+    @staticmethod
+    def _parse_datasets(datasets: List[Union[str, Dataset]]) -> List[str]:
+        # ms_dataset_id/hf_dataset_id/dataset_path -> dataset_name mapping
+        dataset_name_mapping = DatasetNameMapping()
+
+        # register_dataset
+        res_datasets: List[str] = []  # dataset_names
+        register_idx = 0
+        dataset_info = {}
+        for dataset in datasets:
+            d_info = DatasetSyntax.parse_dataset_syntax(dataset)
+            if d_info.dataset_type == 'name':
+                res_datasets.append(d_info.dataset)
+            else:
+                # dataset_path/dataset_id
+                dataset_name = dataset_name_mapping.map_to_name(d_info)
+                res_datasets.append(dataset.replace(d_info.dataset, dataset_name))
+                if dataset_name is None:
+                    # This dataset needs to be registered.
+                    dataset_info[f'_{register_idx}'] = d_info.to_dict()
+                    register_idx += 1
+        register_dataset_info(dataset_info)
+
+        return res_datasets
+
+    def load_datasets(self, datasets: List[Union[str, Dataset]]) -> Tuple[HfDataset, Optional[HfDataset]]:
+        datasets: List[str] = self._parse_datasets(datasets)
+        train_datasets = []
+        val_datasets = []
+        for dataset in datasets:
+            train_dataset, val_dataset = self.load(dataset)
+            train_datasets.append(train_dataset)
+            val_datasets.append(val_dataset)
+
+        gather_function = interleave_datasets if self.streaming else concatenate_datasets
+        if len(train_datasets) > 1:
+            train_datasets = gather_function(train_datasets)
+        if len(val_datasets) > 1:
+            val_datasets = gather_function(val_datasets)
+        return train_datasets, val_datasets
 
 
 def load_datasets(
-        datasets: List[Union[str, Dataset]],  # dataset_name/dataset_path/dataset_id/Dataset
+        datasets: List[Union[str, Dataset]],
         split_dataset_ratio: float = 0.,
         dataset_seed: Union[int, RandomState] = 42,
         *,
@@ -606,78 +670,16 @@ def load_datasets(
     """
     if not isinstance(datasets, (list, tuple)):
         datasets = [datasets]
-    train_datasets: List[DATASET_TYPE] = []
-    val_datasets: List[DATASET_TYPE] = []
-
-    # dataset_id_or_path -> dataset_name
-    datasets = _DatasetLoader._convert_to_dataset_names(datasets)
-    for dataset_name in datasets:
-        use_hf, dataset_name, subsets, dataset_sample = parse_dataset_name(dataset_name)
-        dataset_info = DATASET_MAPPING[dataset_name]
-        if subsets is None:
-            subsets = dataset_info['subsets']
-        if dataset_sample == -1:
-            dataset_sample = dataset_info.get('dataset_sample', -1)
-        if isinstance(dataset_seed, int):
-            random_state = RandomState(dataset_seed)
-        else:
-            random_state = dataset_seed
-
-        get_function = dataset_info['get_function'] or DatasetLoader.dataset_get_function
-        is_local = dataset_info.get('is_local', False)
-        dataset_id_or_path = dataset_info['dataset_id_or_path']
-        remove_useless_columns = dataset_info.get('remove_useless_columns', True)
-
-        if not is_local:
-            dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
-            if not dataset_id_or_path:
-                use_hf = True
-            if use_hf:
-                dataset_id_or_path = dataset_info['hf_dataset_id']
-                dataset_str = dataset_str_f.format(hub='HuggingFace', dataset_id=dataset_id_or_path)
-            else:
-                dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id_or_path)
-            logger.info(dataset_str)
-            assert dataset_id_or_path is not None, (f'dataset_name: {dataset_name}, use_hf: {use_hf}, '
-                                                    f'dataset_id_or_path: {dataset_id_or_path}.')
-        dataset = get_function(
-            dataset_id_or_path,
-            subsets,
-            dataset_info['preprocess_func'],
-            dataset_info['split'],
-            dataset_sample,
-            random_state=random_state,
-            split_dataset_ratio=split_dataset_ratio,
-            remove_useless_columns=remove_useless_columns,
-            use_hf=use_hf,
-            revision=dataset_info.get('revision'),
-            **kwargs)
-
-        if dataset_name == 'self-cognition':
-            assert model_name is not None and model_author is not None
-            dataset = DatasetLoader.preprocess_self_cognition_dataset(dataset, model_name, model_author)
-
-        train_d: HfDataset
-        if isinstance(dataset, (list, tuple)):
-            train_d, val_d = dataset
-        else:
-            train_d, val_d = dataset, None
-
-        assert train_d is not None or val_d is not None
-        if train_d is not None:
-            train_dataset_list.append(train_d)
-        if val_d is not None:
-            val_dataset_list.append(val_d)
-
-    if len(train_dataset_list) > 1:
-        train_dataset = concatenate_datasets(train_dataset_list) if not streaming else interleave_datasets(
-            train_dataset_list)
-    else:
-        train_dataset = train_dataset_list[0] if train_dataset_list else None
-
-    if len(val_dataset_list) > 1:
-        val_dataset = concatenate_datasets(val_dataset_list) if not streaming else interleave_datasets(val_dataset_list)
-    else:
-        val_dataset = val_dataset_list[0] if val_dataset_list else None
-
-    return train_dataset, val_dataset
+    dataset_loader = DatasetLoader(
+        split_dataset_ratio,
+        dataset_seed,
+        use_hf,
+        load_from_cache_file,
+        num_proc,
+        force_redownload,
+        model_name=model_name,
+        model_author=model_author,
+        streaming=streaming,
+        streaming_val_size=streaming_val_size,
+        streaming_buffer_size=streaming_buffer_size)
+    return dataset_loader.load_datasets(datasets)

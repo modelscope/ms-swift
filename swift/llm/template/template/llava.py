@@ -6,11 +6,11 @@ from packaging import version
 
 from ..base import Template
 from ..constant import TemplateType
-from .llama import Llama3Template, Llama3TemplateMixin
-from .qwen import QwenTemplateMixin
 from ..register import register_template
 from ..utils import Context, findall
 from ..vision_utils import load_video_llava
+from .llama import Llama3Template, Llama3TemplateMixin
+from .qwen import QwenTemplateMixin
 
 
 class LlavaHfTemplate(Template):

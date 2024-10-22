@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Union
 
 import json
 import requests
+from modelscope.hub.api import ModelScopeConfig
 from tqdm import tqdm
 
 from .logger import get_logger
@@ -11,7 +12,9 @@ from .utils import check_json_format
 logger = get_logger()
 
 
-def download_files(url: str, local_path: str, cookies) -> None:
+def download_ms_file(url: str, local_path: str, cookies=None) -> None:
+    if cookies is None:
+        cookies = ModelScopeConfig.get_cookies()
     resp = requests.get(url, cookies=cookies, stream=True)
     with open(local_path, 'wb') as f:
         for data in tqdm(resp.iter_lines()):
