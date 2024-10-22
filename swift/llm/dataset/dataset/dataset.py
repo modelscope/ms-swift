@@ -19,7 +19,7 @@ from swift.llm.dataset.preprocess import (AlpacaPreprocessor, ClsPreprocessor, C
                                           ConversationsPreprocessor, ListPreprocessor, PreprocessFunc,
                                           RenameColumnsPreprocessor, RowPreprocessor, TextGenerationPreprocessor)
 from swift.utils import get_logger
-from .loader import DatasetLoader, HubDatasetLoader
+from .loader import DatasetLoader
 from .media import MediaResource
 from .register import register_dataset
 

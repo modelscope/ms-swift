@@ -10,7 +10,6 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.utils import get_logger
-from .loader import DATASET_MAPPING
 from .preprocess import ConversationsPreprocessor, RenameColumnsPreprocessor, SmartPreprocessor
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -18,16 +17,20 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 
+DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
+
 
 @dataclass
 class SubsetDataset:
     subset_name: str = 'default'
-    # If the dataset_name does not specify subsets, this parameter determines whether the dataset is used.
-    is_weak_subset: bool = False
+
     # Higher priority. If set to None, the attributes of the Dataset will be used.
     split: Optional[List[str]] = None
     columns_mapping: Optional[Dict[str, Any]] = None
     preprocess_func: Optional[PreprocessFunc] = None
+
+    # If the dataset_name does not specify subsets, this parameter determines whether the dataset is used.
+    is_weak_subset: bool = False
 
 
 @dataclass
@@ -76,12 +79,15 @@ def register_dataset(dataset_name: str,
     Returns:
         The dataset instance.
     """
+    from .loader import DatasetLoader
     if not exist_ok and dataset_name in DATASET_MAPPING:
         raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
     if function_kwargs is None:
         function_kwargs = {}
 
     dataset_info = {'dataset': dataset, **kwargs}
+    if load_function is None:
+        load_function = DatasetLoader.load
     if len(function_kwargs) > 0:
         load_function = partial(load_function, **function_kwargs)
     dataset_info['load_function'] = load_function
@@ -112,13 +118,14 @@ def _register_d_info(dataset_name: str, d_info: Dict[str, Any], *, base_dir: Opt
 
     columns_mapping = d_info.get('columns', {})
     if 'dataset_path' in d_info:
-        dataset_path = d_info.get('dataset_path')
+        dataset_path = d_info['dataset_path']
         if isinstance(dataset_path, str):
             dataset_path = [dataset_path]
         for i, path in enumerate(dataset_path):
             if base_dir is not None and not os.path.isabs(path):
                 dataset_path[i] = os.path.join(base_dir, dataset_path[i])
             dataset_path[i] = os.path.abspath(os.path.expanduser(dataset_path[i]))
+
         register_dataset(
             dataset_name,
             Dataset(dataset_path=dataset_path, columns_mapping=columns_mapping, preprocess_func=preprocess_func))
@@ -167,5 +174,3 @@ def register_dataset_info(dataset_info: Union[str, Dict[str, Any], None] = None)
         _register_d_info(dataset_name, d_info, base_dir=base_dir)
     logger.info(f'Successfully registered `{log_msg}`')
 
-
-register_dataset_info()

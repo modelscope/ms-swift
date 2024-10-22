@@ -4,16 +4,15 @@ import os
 import datasets.fingerprint
 
 from swift.utils.torch_utils import _find_local_mac
-from .dataset import DatasetName, standard_keys
-from .loader import (DATASET_MAPPING, DatasetLoader, HubDatasetLoader, LocalDatasetLoader, dataset_name_exists,
-                     load_dataset, parse_dataset_name)
+from .loader import load_dataset
 from .media import MediaResource
 from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                          TextGenerationPreprocessor, multimodal_keys, multimodal_tags)
-from .register import register_dataset, register_dataset_info
+from .register import register_dataset, register_dataset_info, DATASET_MAPPING
 from .utils import (ConstantLengthDataset, LazyLLMDataset, LLMDataset, LLMIterableDataset, dataset_map, print_example,
                     sort_by_max_length, stat_dataset)
+from . import dataset
 
 
 def _update_fingerprint_mac(*args, **kwargs):
@@ -29,3 +28,4 @@ def _update_fingerprint_mac(*args, **kwargs):
 datasets.fingerprint._update_fingerprint = datasets.fingerprint.update_fingerprint
 datasets.fingerprint.update_fingerprint = _update_fingerprint_mac
 datasets.arrow_dataset.update_fingerprint = _update_fingerprint_mac
+register_dataset_info()
