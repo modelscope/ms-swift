@@ -241,11 +241,6 @@
         "hf_dataset_id": "BelleGroup/train_0.5M_CN",
         "tags": ["common", "zh", "quality"]
     },
-    "belle-generated-chat-0.4M": {
-        "ms_dataset_id": "AI-ModelScope/generated_chat_0.4M",
-        "hf_dataset_id": "BelleGroup/generated_chat_0.4M",
-        "tags": ["common", "zh"]
-    },
     "duet": {
         "ms_dataset_id": "AI-ModelScope/Duet-v0.5",
         "hf_dataset_id": "G-reen/Duet-v0.5",
@@ -254,11 +249,6 @@
             "rewritten_answer": "response"
         },
         "tags": ["CoT", "en"]
-    },
-    "belle-math-0.25M": {
-        "ms_dataset_id": "AI-ModelScope/school_math_0.25M",
-        "hf_dataset_id": "BelleGroup/school_math_0.25M",
-        "tags": ["math", "zh"]
     },
     "codealpaca-20k": {
         "ms_dataset_id": "AI-ModelScope/CodeAlpaca-20k",
@@ -502,12 +492,6 @@
         "tags": ["chat", "character-dialogue"],
         "hf_dataset_id": "BelleGroup/generated_chat_0.4M"
     },
-    "wikipedia-zh": {
-        "ms_dataset_id": "AI-ModelScope/wikipedia-cn-20230720-filtered",
-        "columns": {"completion": "response"},
-        "tags": ["text-generation", "general", "pretrained"],
-        "hf_dataset_id": "pleisto/wikipedia-cn-20230720-filtered"
-    },
     "open-platypus-en": {
         "ms_dataset_id": "AI-ModelScope/Open-Platypus",
         "tags": ["chat", "math", "quality"],
@@ -515,7 +499,7 @@
     },
     "open-orca": {
         "ms_dataset_id": "AI-ModelScope/OpenOrca",
-        "subset": ["default", "3_5M"],
+        "subsets": ["default", "3_5M"],
         "columns": {"question": "query"},
         "tags": ["chat", "multilingual", "general"],
         "help": ["`default` uses gpt4 for data cleaning."],
@@ -667,22 +651,21 @@
     },
     "medical-en": {
         "ms_dataset_id": "swift/medical_zh",
-        "subsets": ["en"],
-        "split": ["train", "val", "test"],
-        "columns": {
-            "input": "query",
-            "output": "response"
+        "subsets": [{
+            "subset_name": "en",
+            "columns": {
+                "input": "query",
+                "output": "response"
+            }
         },
-        "tags": ["chat", "medical"]
-    },
-    "medical-zh": {
-        "ms_dataset_id": "swift/medical_zh",
-        "subsets": ["zh"],
+        {
+            "subset_name": "zh",
+            "columns": {
+                "instruction": "query",
+                "output": "response"
+            }
+        }],
         "split": ["train", "val", "test"],
-        "columns": {
-            "instruction": "query",
-            "output": "response"
-        },
         "tags": ["chat", "medical"]
     },
     "self-cognition": {

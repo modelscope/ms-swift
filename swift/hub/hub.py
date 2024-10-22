@@ -238,12 +238,11 @@ class MSHub(HubOperation):
         split: str,
         streaming: bool = False,
         revision: Optional[str] = None,
-        force_redownload: bool = False,
+        download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
         token: Optional[str] = None,
     ):
         from modelscope import MsDataset
         cls.try_login(token)
-        download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         if revision is None or revision == 'main':
             revision = 'master'
         # noinspection PyTypeChecker
@@ -376,10 +375,9 @@ class HFHub(HubOperation):
         split: str,
         streaming: bool = False,
         revision: Optional[str] = None,
-        force_redownload: bool = False,
+        download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     ):
         from datasets import load_dataset
-        download_mode = 'force_redownload' if force_redownload else 'reuse_dataset_if_exists'
         if revision is None or revision == 'master':
             revision = 'main'
         return load_dataset(
