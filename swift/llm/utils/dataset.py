@@ -184,6 +184,7 @@ class DatasetName:
     video_chatgpt = 'video-chatgpt'
     egoschema = 'egoschema'
     llava_video_178k = 'llava-video-178k'
+    moviechat_1k_test = 'moviechat-1k-test'
 
     # rlhf
     hh_rlhf = 'hh-rlhf'
@@ -1022,6 +1023,59 @@ register_dataset(
     split=['caption', 'open_ended', 'multi_choice'],
     hf_dataset_id='lmms-lab/LLaVA-Video-178K',
     huge_dataset=True,
+    tags=['chat', 'multi-modal', 'video'])
+
+
+def _preprocess_moviechat_1k_test(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    mp4_set = [f'{i}.mp4' for i in range(1, 10)] + \
+              [f'{i}.mp4' for i in range(201, 240)] + \
+              [f'AWA-{i}.mp4' for i in range(1, 10)] + \
+              [f'AWB-{i}.mp4' for i in range(1, 16)] + \
+              [f'AWC-{i}.mp4' for i in range(1, 11)] + \
+              [f'AWD-{i}.mp4' for i in range(1, 8)] + \
+              [f'AWE-{i}.mp4' for i in range(1, 7)] + \
+              [f'AWG-{i}.mp4' for i in range(1, 12)] + \
+              [f'AWH-{i}.mp4' for i in range(1, 8)] + \
+              [f'BWA-{i}.mp4' for i in range(1, 7)] + \
+              [f'BWB-{i}.mp4' for i in range(1, 7)] + \
+              [f'BWD-{i}.mp4' for i in range(1, 6)] + \
+              [f'BWE-{i}.mp4' for i in range(1, 6)] + \
+              [f'BWG-{i}.mp4' for i in range(1, 6)] + \
+              [f'BWH-{i}.mp4' for i in range(1, 6)] + \
+              [f'TFS-{i}.mp4' for i in range(1, 13)] + \
+              [f'UWA-{i}.mp4' for i in range(1, 5)] + ['UWA-6.mp4']
+    for file in mp4_set:
+        url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
+        local_dir = MediaCache.download(url, 'moviechat_1k_test', is_not_compressed_file=True)
+
+    def _process(batch):  # bsz==1
+        file_path = os.path.join(local_dir, f"{batch['info'][0]['video_path']}")
+        if not os.path.exists(file_path):
+            return {'res': [{'query': None, 'response': None, 'video': None}]}
+        res = []
+        for qa in batch['global'][0]:
+            res.append({
+                'query': qa['question'],
+                'response': qa['answer'],
+                'video': file_path,
+            })
+        return {'res': res}
+
+    dict_list = dataset.map(_process, batched=True, batch_size=1, remove_columns=dataset.column_names)['res']
+    import pandas as pd
+    from modelscope import MsDataset
+    hf_dataset = HfDataset.from_pandas(pd.DataFrame(dict_list)).filter(lambda row: row['video'] is not None)
+    return hf_dataset
+
+
+register_dataset(
+    DatasetName.moviechat_1k_test,
+    'AI-ModelScope/MovieChat-1K-test',
+    None,
+    _preprocess_moviechat_1k_test,
+    get_dataset_from_repo,
+    split=['test'],
+    hf_dataset_id='Enxin/MovieChat-1K-test',
     tags=['chat', 'multi-modal', 'video'])
 
 
