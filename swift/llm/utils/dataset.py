@@ -1046,31 +1046,32 @@ def _preprocess_moviechat_1k_test(dataset: DATASET_TYPE) -> DATASET_TYPE:
               [f'UWA-{i}.mp4' for i in range(1, 5)] + ['UWA-6.mp4']
     for file in mp4_set:
         url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
-        local_dir = MediaCache.download(url, f'moviechat_1k_test', download_file_not_folder=True)
+        local_dir = MediaCache.download(url, 'moviechat_1k_test', download_file_not_folder=True)
 
-    def _process(batch):    # bsz==1
+    def _process(batch):  # bsz==1
         file_path = os.path.join(local_dir, f"{batch['info'][0]['video_path']}")
         if not os.path.exists(file_path):
-            return {"res": [{'query': None, 'response': None, 'video': None}]}
+            return {'res': [{'query': None, 'response': None, 'video': None}]}
         res = []
-        for qa in batch["global"][0]:
-            res.append( {
+        for qa in batch['global'][0]:
+            res.append({
                 'query': qa['question'],
                 'response': qa['answer'],
                 'video': file_path,
-            } )
-        return {"res": res}
+            })
+        return {'res': res}
 
     dict_list = dataset.map(_process, batched=True, batch_size=1, remove_columns=dataset.column_names)['res']
     import pandas as pd
     from modelscope import MsDataset
     hf_dataset = HfDataset.from_pandas(pd.DataFrame(dict_list)).filter(lambda row: row['video'] is not None)
     return hf_dataset
-    
+
 
 register_dataset(
     DatasetName.moviechat_1k_test,
-    'AI-ModelScope/MovieChat-1K-test', None,
+    'AI-ModelScope/MovieChat-1K-test',
+    None,
     _preprocess_moviechat_1k_test,
     get_dataset_from_repo,
     split=['test'],
