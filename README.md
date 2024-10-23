@@ -55,6 +55,7 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.10.22: Support for training and deploying emu3-chat. Experience it using `swift infer --model_type emu3-chat`.
 - 2024.10.22: Support for training and deploying molmo series models. Experience it using `swift infer --model_type molmo-7b-d`.
 - 2024.10.09: Support for reward modeling for LLM and MLLM, as well as PPO training for LLM. Refer to the [documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md).
 - 2024.10.09: Support for training and deploying ovis1.6-gemma2 series models. Experience it using `swift infer --model_type ovis1_6-gemma2-9b`.
@@ -647,6 +648,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
 | Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | English       | 9B      | chat model       |
 | Molmo              | [Molmo series models](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | English       | 1B-72B      | chat model       |
+| Emu3-Chat              | [Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)                | English       | 8B      | chat model       |
 
 #### Diffusion Models
 

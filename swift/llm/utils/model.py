@@ -600,6 +600,8 @@ class ModelType:
     molmo_7b_o = 'molmo-7b-o'
     molmo_7b_d = 'molmo-7b-d'
     molmo_72b = 'molmo-72b'
+    # emu3-chat
+    emu3_chat = 'emu3-chat'
     # mamba
     mamba_130m = 'mamba-130m'
     mamba_370m = 'mamba-370m'
@@ -668,6 +670,7 @@ class LoRATM(NamedTuple):
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     deepseek_janus = 'deepseek_janus'
+    emu3_chat = 'emu3_chat'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -1401,6 +1404,56 @@ def get_model_tokenizer_molmo(model_dir: str,
 
         model.model.forward = _forward
         model.model.forward_origin = forward_origin
+
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.emu3_chat,
+    'BAAI/Emu3-Chat',
+    LoRATM.emu3_chat,
+    TemplateType.emu3_chat,
+    support_flash_attn=True,
+    support_gradient_checkpointing=True,
+    eos_token='<|extra_204|>',
+    requires=['transformers>=4.44.0'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='BAAI/Emu3-Chat')
+def get_model_tokenizer_emu3_chat(model_dir: str,
+                                  torch_dtype: torch.dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    # flash attention
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        model_config._attn_implementation = 'flash_attention_2'
+    elif use_flash_attn is False:
+        model_config._attn_implementation = 'eager'
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+
+    # download and load vision tokenizer
+    from transformers import AutoImageProcessor
+    use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+    if use_hf:
+        from huggingface_hub import snapshot_download as hf_snapshot_download
+        vq_model = hf_snapshot_download('BAAI/Emu3-VisionTokenizer')
+    else:
+        vq_model = snapshot_download('BAAI/Emu3-VisionTokenizer')
+    image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
+    image_tokenizer = AutoModel.from_pretrained(vq_model, device_map=model_kwargs['device_map'], trust_remote_code=True)
+    image_tokenizer.requires_grad_(False)
+
+    # load processor
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = git_clone_github('https://github.com/baaivision/Emu3.git')
+    sys.path.append(os.path.join(local_repo_path))
+    from emu3.mllm.processing_emu3 import Emu3Processor
+    processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
+    tokenizer.processor = processor
 
     return model, tokenizer
 
@@ -7130,6 +7183,7 @@ def get_additional_saved_files(model_type: str) -> List[str]:
         'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py'],
         'molmoe': ['modeling_molmoe.py'],
         'molmo': ['modeling_molmo.py'],
+        'emu3-chat': ['modeling_emu3.py']
     }
     for key, files_list in files_mapping.items():
         if key in model_type:

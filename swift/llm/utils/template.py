@@ -147,6 +147,7 @@ class TemplateType:
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     deepseek_janus = 'deepseek-janus'
+    emu3_chat = 'emu3-chat'
     # compatibility. (Deprecated)
     default_generation_bos = 'default-generation-bos'
     yi = 'yi'
@@ -3174,6 +3175,56 @@ class MolmoTemplate(Template):
 
 
 register_template(TemplateType.molmo, MolmoTemplate(), lazy_tokenize=True, use_model=True)
+
+
+class Emu3ChatTemplate(Template):
+    system = 'You are a helpful assistant.'
+    image_placeholder = ['<|image token|>']
+
+    def __init__(self):
+        Template.__init__(self, [['bos_token_id'], '{{SYSTEM}}'], [' User: {{QUERY}}. Assistant:'], [['eos_token_id']],
+                          [['eos_token_id']], self.system)
+
+    def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        inputs, _ = super()._encode(example)
+        if len(inputs) == 0:
+            return inputs, {}
+        # image
+        raw_image = example.get('images', None)
+        if raw_image:
+            inputs['_data'] = {'raw_image': raw_image, 'input_ids': inputs['input_ids'], 'labels': inputs['labels']}
+
+        return inputs, {}
+
+    def _post_encode(self, model, data: Any) -> Dict[str, Any]:
+        raw_images = data['raw_image']
+        input_ids = data['input_ids']
+        labels = data['labels']
+        image_tokens = self.tokenizer.processor.tokenize_image(raw_images)
+        image_prompts = []
+        idxs = _findall(input_ids, self.tokenizer.encode(self.image_placeholder))
+        # Create image prompts
+        for i in range(len(raw_images)):
+            h, w = image_tokens[i].shape
+            imgstr = self.tokenizer.processor.to_imgstr(image_tokens[i])
+            image_prompt = (
+                self.tokenizer.boi_token + self.tokenizer.processor.prefix_template.format(H=h, W=w)
+                + self.tokenizer.img_token + imgstr + self.tokenizer.eol_token + self.tokenizer.eof_token
+                + self.tokenizer.eoi_token)
+            image_prompts.append(self.tokenizer.encode(image_prompt))
+        added_tokens_len = 0
+        # Insert image tokens into input_ids
+        for idx, img_tokens in zip(idxs, image_prompts):
+            input_ids = input_ids[:idx + added_tokens_len] + img_tokens + input_ids[idx + added_tokens_len + 1:]
+            if labels is not None:
+                labels = labels[:idx + added_tokens_len] + [-100] * len(img_tokens) + labels[idx + added_tokens_len
+                                                                                             + 1:]
+            added_tokens_len += len(img_tokens) - 1
+
+        return {'input_ids': input_ids, 'labels': labels}
+
+
+register_template(TemplateType.emu3_chat, Emu3ChatTemplate(), lazy_tokenize=True, use_model=True)
 
 
 class PaliGemmaTemplate(Template):
