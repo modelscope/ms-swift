@@ -2,7 +2,7 @@ import os
 import tempfile
 from functools import partial
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import CommitInfo, api, future_compatible

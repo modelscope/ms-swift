@@ -18,7 +18,7 @@ from pandas import DataFrame
 
 from swift.hub import HFHub, MSHub, default_hub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
-from .preprocess import RowPreprocessor
+from .preprocess import get_dataset_features
 from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset_info
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -116,14 +116,13 @@ class DatasetNameMapping:
         key = self._encode_key(dataset_info.dataset, dataset_info.dataset_type)
         return self.mapping.get(key)
 
+
+class DatasetLoader:
+
     def _remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
         standard_keys = {'messages', 'rejected_response', 'images', 'objects', 'videos', 'audios', 'tools', 'label'}
+        features = get_dataset_features(dataset)
         k_list = []
-        if isinstance(dataset, HfIterableDataset) and dataset.features is None:
-            features = next(iter(dataset)).keys()
-        else:
-            features = dataset.features.keys()
-
         for k in features:
             if k in standard_keys:
                 k_list.append(k)
@@ -167,7 +166,7 @@ class DatasetNameMapping:
                 hub = HFHub
                 retry = 1
             else:
-                hub = MsHub
+                hub = MSHub
                 retry = 3
             with safe_ddp_context():
                 while True:
@@ -294,7 +293,7 @@ class DatasetNameMapping:
         dataset: str,
         *,
         split_dataset_ratio: float = 0.,
-        dataset_seed: Optional[RandomState] = None,
+        random_state: Optional[RandomState] = None,
         load_from_cache_file: bool = False,
         num_proc: int = 1,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
@@ -389,11 +388,12 @@ class DatasetNameMapping:
             else:
                 # dataset_path/dataset_id
                 dataset_name = dataset_name_mapping.map_to_name(d_info)
-                res_datasets.append(dataset.replace(d_info.dataset, dataset_name))
                 if dataset_name is None:
                     # This dataset needs to be registered.
-                    dataset_info[f'_{register_idx}'] = d_info.to_dict()
+                    dataset_name = f'_{register_idx}'
                     register_idx += 1
+                    dataset_info[dataset_name] = d_info.to_dict()
+                res_datasets.append(dataset.replace(d_info.dataset, dataset_name))
         register_dataset_info(dataset_info)
 
         return res_datasets
@@ -454,7 +454,7 @@ def load_dataset(
             load_function = DatasetLoader.load
         kwargs = {
             'dataset_syntax': d_info,
-            'dataset_meta': DATASET_MAPPING[dataset_name]['dataset'],
+            'dataset_meta': DATASET_MAPPING[dataset_name]['dataset_meta'],
         }
         train_dataset, val_dataset = load_function(dataset, **load_kwargs, **kwargs)
         train_datasets.append(train_dataset)

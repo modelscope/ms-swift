@@ -1,14 +1,16 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import ast
+from contextlib import contextmanager
 from copy import copy
-from typing import Any, Callable, Dict, List, Literal, Optional, Union
+from multiprocessing import shared_memory
+from typing import Any, Callable, Counter, Dict, List, Literal, Optional, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 
-from swift.llm.utils import Messages
+from swift.llm import Messages, history_to_messages
 from swift.utils import get_logger
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -76,27 +78,108 @@ multimodal_keys = {
 }
 
 
-class RowPreprocessor(GroundingMixin):
+def get_dataset_features(dataset: DATASET_TYPE) -> List[str]:
+    if isinstance(dataset, HfIterableDataset) and dataset.features is None:
+        features = next(iter(dataset)).keys()
+    else:
+        features = dataset.features.keys()
+    return list(features)
+
+
+class RowPreprocessor:
+
+    def __init__(self, columns_mapping: Optional[Dict[str, str]] = None) -> None:
+        self.row_keys = ['messages', 'images', 'audios', 'videos', 'objects', 'tools']
+        self._row_keys_mapping = {k: i for i, k in enumerate(self.row_keys)}
+        self.columns_mapping = columns_mapping or {}
+        self._shared_shm_name = None
+
+    def empty_row(self) -> Dict[str, Any]:
+        return {k: None for k in self.row_keys}
+
+    def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def filter(self, row: Dict[str, Any]) -> bool:
+        return bool(row['messages'])
+
+    def _row_map(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        shm = shared_memory.SharedMemory(name=self._shared_shm_name)
+        column_state = np.ndarray((len(self.row_keys), ), dtype=np.bool_, buffer=shm.buf)
+        try:
+            row = self.preprocess(row)
+            for k, v in row.items():
+                k_i: int = self._row_keys_mapping[k]
+                column_state[k_i] = True
+        except:
+            row = self.empty_row()
+        return row
+
+    @contextmanager
+    def _shared_column_state(self):
+        """Used to remove unnecessary columns, this function is compatible with multi-processing."""
+        self._shm = shared_memory.SharedMemory(create=True, size=len(self.row_keys))
+        self._shared_shm_name = self._shm.name
+        column_state = np.ndarray((len(self.row_keys), ), dtype=np.bool_, buffer=self._shm.buf)
+        column_state[:] = False
+        try:
+            yield column_state
+        finally:
+            # clear resources
+            self._shm.close()
+            self._shm.unlink()
+            self._shm = None
+            self._shared_shm_name = None
+
+    def _remove_unused_columns(self, dataset, column_state):
+        features = get_dataset_features(dataset)
+        remove_keys = []
+        for k in features:
+            k_i: int = self._row_keys_mapping.get(k)
+            if k_i is None or not column_state[k_i]:
+                remove_keys.append(k)
+        dataset = dataset.remove_columns(remove_keys)
+
+    def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
+        features = set(get_dataset_features(dataset))
+        safe_columns_mapping = {k: v for k, v in self.columns_mapping.items() if k in features}
+        if not safe_columns_mapping:
+            return dataset
+        return dataset.rename_columns(safe_columns_mapping)
+
+    def __call__(self,
+                 dataset: DATASET_TYPE,
+                 *,
+                 num_proc: int = 1,
+                 load_from_cache_file: bool = False,
+                 strict: bool = False) -> DATASET_TYPE:
+        dataset = self._safe_rename_columns(dataset)
+        with self._shared_column_state() as column_state:
+            try:
+                dataset = dataset.map(self._row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+                dataset = dataset.filter(self.filter, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+                self._remove_unused_columns(dataset, column_state)
+            except NotImplementedError:
+                pass
+        return dataset
+
+
+class ExtraRowPreprocessor(GroundingMixin):
     """
     This class owns the data processing scenario.
     """
 
-    _mapping_kwargs = {
-        'load_from_cache_file': False,
-        'num_proc': 8,
-    }
-
     has_tool: bool = False
-    column_mapping: Dict[str, str] = {}
-    modals: List[str] = []
+    columns_mapping: Dict[str, str] = {}
+    modals: List[str] = []  # image/video/audio
     modal_tags: List[str] = {}
     modal_keys: List[str] = {}
 
     def __init__(self, **kwargs):
         if 'has_tool' in kwargs:
             self.has_tool = kwargs.pop('has_tool')
-        if 'column_mapping' in kwargs:
-            self.column_mapping = kwargs.pop('column_mapping')
+        if 'columns_mapping' in kwargs:
+            self.columns_mapping = kwargs.pop('columns_mapping')
         if 'modals' in kwargs:
             self.modals = kwargs.pop('modals')
         if 'modal_tags' in kwargs:
@@ -195,21 +278,13 @@ class RowPreprocessor(GroundingMixin):
             row[multimodal_keys[_modal]] = None
         return row
 
-    def map(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        """Map row, preprocess it and turn query/response to messages"""
-        row.update(self.preprocess(row))
-        if self.modals:
-            row = self.prepare_multi_modal(row)
-        self.query_to_message(row)
-        return row
-
     def filter(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Filter unwanted row, by default `messages` must exist"""
         return row.get('messages')
 
-    def rename_columns(self, dataset: DATASET_TYPE, column_mapping: Dict[str, str]) -> DATASET_TYPE:
+    def rename_columns(self, dataset: DATASET_TYPE, columns_mapping: Dict[str, str]) -> DATASET_TYPE:
         """Rename columns"""
-        return dataset.rename_columns(column_mapping)
+        return dataset.rename_columns(columns_mapping)
 
     def prepare_multi_modal(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare multi-modal.
@@ -245,19 +320,16 @@ class RowPreprocessor(GroundingMixin):
                     row[modal_key] = medias
         return row
 
-    def prepare_map_kwargs(self, dataset: DATASET_TYPE, **kwargs):
-        """Prepare kwargs for mapping, IterableDataset does not support default _mapping_kwargs"""
-        _kwargs = {}
-        if not isinstance(dataset, HfIterableDataset):
-            _kwargs.update(self._mapping_kwargs)
-        _kwargs.update(kwargs)
-        return _kwargs
-
     def prepare_downloading(self, dataset: DATASET_TYPE) -> None:
         """Override this method to prepare extra resources downloading"""
         pass
 
-    def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
+    def __call__(self,
+                 dataset: DATASET_TYPE,
+                 *,
+                 num_proc: int = 1,
+                 load_from_cache_file: bool = False,
+                 strict: bool = False) -> DATASET_TYPE:
         """Preprocess a dataset.
         Args:
             dataset: The dataset to be mapped and filtered.
@@ -268,22 +340,22 @@ class RowPreprocessor(GroundingMixin):
         """
         maybe_multi_modal_keys = ['image', 'images', 'audio', 'audios', 'video', 'videos']
         maybe_multi_modal = any([key in dataset.features for key in maybe_multi_modal_keys])
-        kwargs = self.prepare_map_kwargs(dataset, **kwargs)
         self.prepare_downloading(dataset)
 
-        dataset = dataset.map(self.map, **kwargs)
-        dataset = dataset.filter(self.filter, **kwargs)
-
-        column_mapping = copy(self.column_mapping)
+        columns_mapping = copy(self.columns_mapping)
         # Replace un-standard media keys to standard keys
         for idx, _modal in enumerate(self.modals):
             modal_key = self.modal_keys[_modal]
             standard_key = multimodal_keys[_modal]
             if standard_key not in dataset.features:
-                column_mapping[modal_key] = standard_key
+                columns_mapping[modal_key] = standard_key
 
-        if column_mapping:
-            dataset = self.rename_columns(dataset, column_mapping)
+        if columns_mapping:
+            dataset = self.rename_columns(dataset, columns_mapping)
+
+        dataset = dataset.map(self.preprocess, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+        dataset = dataset.filter(self.filter, **kwargs)
+
         all_keys = list(multimodal_keys.values())
         if (maybe_multi_modal and not self.modals) or (maybe_multi_modal
                                                        and not any([key in dataset.features for key in all_keys])):
@@ -293,64 +365,73 @@ class RowPreprocessor(GroundingMixin):
         return dataset
 
 
-class SwiftPreprocessor(RowPreprocessor):
+class ResponsePreprocessor(RowPreprocessor):
+    """Dataset compatible with older versions of ms-swift"""
+
+    def __init__(self, columns_mapping: Optional[Dict[str, str]] = None) -> None:
+        system_keys = ['system', 'system_prompt']
+        query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
+        response_keys = ['response', 'answer', 'output', 'targets', 'answer_key', 'text', 'completion', 'content']
+        self.row_mapping = {}
+        for key in system_keys:
+            self.row_mapping[key] = 'system'
+        for key in query_keys:
+            self.row_mapping[key] = 'query'
+        for key in response_keys:
+            self.row_mapping[key] = 'response'
+        super().__init__(columns_mapping=columns_mapping)
+
+    @staticmethod
+    def row_keys_map(row: Dict[str, Any]) -> Dict[str, Any]:
+        # If there are multiple mappings to the same keys, then delete them.
+        row_mapping = {k: v for k, v in self.row_mapping.items() if k in row}
+        counter = Counter(row_mapping.values())
+
+        for k, new_k in row_mapping.items():
+            if counter[new_k] > 1:
+                continue
+            row[new_k] = row.pop(k)
+
+        return row
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        output = {}
-        if 'history' in row:
-            history = row['history']
-            if isinstance(history, str):
-                history = ast.literal_eval(history)
-                output['history'] = history
-        return output
+        row = self.row_keys_map(row)
+        response = row['response']
+        history = row.get('history') or []
+        history += [row.get('query'), response]
+
+        return row.update(history_to_messages(history, row.get('system')))
 
 
-class AlpacaPreprocessor(RowPreprocessor):
-    concat_inst_inp = None
+class AlpacaPreprocessor(ResponsePreprocessor):
 
-    def __init__(self, *, concat_inst_inp: Optional[Callable[[str, str], str]] = None, **kwargs):
+    def __init__(self, *, concat_inst_input: Union[Callable[[str, str], str]] = '\n', **kwargs):
         """Alpaca format preprocessor
 
         Args:
-            concat_inst_inp: The concat sep between instruction and input
+            concat_inst_input: The concat sep between instruction and input
         """
-        self.concat_inst_inp = concat_inst_inp
+        self.concat_inst_input = concat_inst_input
         super().__init__(**kwargs)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        instruction = row['instruction']
-        input = row.get('input', None)
-        output = row['output']
-        history = row.get('history', [])
-        system = row.get('system', None)
-        tools = row.get('tools', None)
-        if output is None:
-            return self.empty_row()
-        if not input or not instruction:
-            query = (instruction or '') + (input or '')
-        elif self.concat_inst_inp:
-            if isinstance(self.concat_inst_inp, str):
-                query = instruction + self.concat_inst_inp + input
-            else:
-                query = self.concat_inst_inp(instruction, input)
+        instruction = row.pop('instruction', None)
+        input_ = row.pop('input', None)
+        output = row.pop('output', None)
+        if output is not None:
+            row['response'] = output
+
+        if instruction is None and input_ is None:
+            query = None
         else:
-            query = f'{instruction}\n{input}'
-
-        messages = []
-        if system:
-            messages.append({'role': 'system', 'content': system})
-        for h in history:
-            messages.append({'role': 'user', 'content': h[0]})
-            messages.append({'role': 'assistant', 'content': h[1]})
-        messages.append({'role': 'user', 'content': query})
-        messages.append({'role': 'assistant', 'content': output})
-
-        row = {
-            'messages': messages,
-        }
-        if tools:
-            row['tools'] = tools
-        return row
+            instruction = instruction or ''
+            input_ = input_ or ''
+            if isinstance(self.concat_inst_input, str):
+                query = instruction + self.concat_inst_input + input_
+            else:
+                query = self.concat_inst_input(instruction, input_)
+            row['query'] = query
+        return super().preprocess(row)
 
 
 def _default_repair_conversations(s: Union[str, Any]) -> Any:
@@ -359,31 +440,32 @@ def _default_repair_conversations(s: Union[str, Any]) -> Any:
     return s
 
 
-class ConversationsPreprocessor(RowPreprocessor):
+class MessagesPreprocessor(RowPreprocessor):
 
-    def __init__(self,
-                 *,
-                 user_role: str = 'user',
-                 assistant_role: str = 'assistant',
-                 system_role: str = 'system',
-                 conversations_key: str = 'conversations',
-                 from_key: str = 'from',
-                 value_key: str = 'value',
-                 tool_role: str = 'tool',
-                 repair_conversations: Callable[[Union[str, List[Dict[str, str]]]],
-                                                Optional[List[Dict[str, str]]]] = _default_repair_conversations,
-                 error_strategy: Literal['delete', 'raise'] = 'raise',
-                 **kwargs):
+    def __init__(
+            self,
+            *,
+            role_key: str = 'auto',  # 'role' or 'from'
+            content_key: str = 'auto',  # 'content' or 'value'
+            user_role: str = 'auto',  # 'user', 'human'
+            assistant_role: str = 'auto',  # 'assistant', 'gpt', 'bot', ''
+            system_role: str = 'system',
+            tool_role: str = 'tool',
+            # 'conversation', 'conversations' -> 'messages'
+            columns_mapping: Union[Dict[str, str], str, None] = 'auto',
+            repair_conversations: Callable[[Union[str, List[Dict[str, str]]]],
+                                           Optional[List[Dict[str, str]]]] = _default_repair_conversations,
+            error_strategy: Literal['delete', 'raise'] = 'raise',
+            **kwargs):
+        self.role_key = role_key
+        self.content_key = content_key
         self.user_role = user_role
         self.assistant_role = assistant_role
         self.system_role = system_role
-        self.conversations_key = conversations_key
-        self.from_key = from_key
-        self.value_key = value_key
         self.tool_role = tool_role
         self.repair_conversations = repair_conversations
         self.error_strategy = error_strategy
-        super().__init__(**kwargs)
+        super().__init__(columns_mapping, **kwargs)
 
     def query_to_message(self, row: Dict[str, Any]):
         return row
@@ -397,21 +479,21 @@ class ConversationsPreprocessor(RowPreprocessor):
 
             messages = []
             system_message = None
-            if conversations[0][self.from_key] == self.system_role:
+            if conversations[0][self.role_key] == self.system_role:
                 system_message = conversations.pop(0)
 
             if system_message:
-                messages.append({'role': 'system', 'content': system_message[self.value_key]})
+                messages.append({'role': 'system', 'content': system_message[self.content_key]})
             for idx, c in enumerate(conversations):
                 if idx % 2 == 0:
-                    assert c[self.from_key] in [self.user_role, self.tool_role]
+                    assert c[self.role_key] in [self.user_role, self.tool_role]
                     messages.append({
-                        'role': 'user' if c[self.from_key] == self.user_role else 'tool',
-                        'content': c[self.value_key]
+                        'role': 'user' if c[self.role_key] == self.user_role else 'tool',
+                        'content': c[self.content_key]
                     })
                 else:
-                    assert c[self.from_key] == self.assistant_role
-                    messages.append({'role': 'assistant', 'content': c[self.value_key]})
+                    assert c[self.role_key] == self.assistant_role
+                    messages.append({'role': 'assistant', 'content': c[self.content_key]})
 
             row = {
                 'messages': messages,
@@ -428,25 +510,23 @@ class ConversationsPreprocessor(RowPreprocessor):
                 return self.empty_row()
 
 
-class ListPreprocessor(RowPreprocessor):
+class SharegptPreprocessor(RowPreprocessor):
 
     def __init__(self,
                  *,
                  user_key: str = 'user',
-                 tool_key: str = 'tool',
-                 system_key: str = 'system',
                  assistant_key: str = 'assistant',
-                 conversations_key: str = 'conversations',
+                 system_key: str = 'system',
+                 tool_key: str = 'tool',
                  inner_key: str = None,
                  repair_conversations: Callable[[Union[str, Dict[str, str]]],
                                                 Optional[Dict[str, str]]] = _default_repair_conversations,
                  error_strategy: Literal['delete', 'raise'] = 'raise',
                  **kwargs):
         self.user_key = user_key
-        self.tool_key = tool_key
-        self.system_key = system_key
         self.assistant_key = assistant_key
-        self.conversations_key = conversations_key
+        self.system_key = system_key
+        self.tool_key = tool_key
         self.inner_key = inner_key
         self.repair_conversations = repair_conversations
         self.error_strategy = error_strategy
@@ -495,7 +575,12 @@ class ComposePreprocessor:
     def __init__(self, preprocessor_list: List[PreprocessFunc]) -> None:
         self.preprocessor_list = preprocessor_list
 
-    def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
+    def __call__(self,
+                 dataset: DATASET_TYPE,
+                 *,
+                 num_proc: int = 1,
+                 load_from_cache_file: bool = False,
+                 strict: bool = False) -> DATASET_TYPE:
         for preprocessor in self.preprocessor_list:
             dataset = preprocessor(dataset, **kwargs)
         return dataset
@@ -522,7 +607,12 @@ class RenameColumnsPreprocessor:
         old_messages.extend(messages)
         return {'messages': old_messages}
 
-    def __call__(self, dataset: DATASET_TYPE, **kwargs) -> DATASET_TYPE:
+    def __call__(self,
+                 dataset: DATASET_TYPE,
+                 *,
+                 num_proc: int = 1,
+                 load_from_cache_file: bool = False,
+                 strict: bool = False) -> DATASET_TYPE:
         for old_name, new_name in self.rename_mapping.items():
             if old_name in dataset.features:
                 dataset = dataset.rename_column(old_name, new_name)
@@ -537,29 +627,27 @@ class SmartPreprocessor:
         self.preprocessor_mapping = {
             'swift': {
                 'required': ['response'],
-                'preprocessor': SwiftPreprocessor()
+                'preprocessor': ResponsePreprocessor()
             },
             'alpaca': {
-                'required': ['instruction', 'output'],
+                'required': ['instruction', 'input'],
                 'preprocessor': AlpacaPreprocessor()
             },
             'conversations': {  # qwen
                 'required': ['conversations'],
-                'preprocessor': ConversationsPreprocessor()
+                'preprocessor': MessagesPreprocessor()
             },
             'chatml': {
                 'required': ['messages'],
-                'preprocessor':
-                ConversationsPreprocessor(conversations_key='messages', from_key='role', value_key='content')
+                'preprocessor': MessagesPreprocessor()
             },
             'sharegpt': {
                 'required': ['conversation'],
-                'preprocessor':
-                ListPreprocessor(conversations_key='conversation', user_key='human', assistant_key='assistant')
+                'preprocessor': SharegptPreprocessor(user_key='human', assistant_key='assistant')
             },
             'pretrain': {
                 'required': ['text'],
-                'preprocessor': RenameColumnsPreprocessor({
+                'preprocessor': RowPreprocessor(columns_mapping={
                     'prompt': 'query',
                     'text': 'response'
                 })
@@ -567,18 +655,20 @@ class SmartPreprocessor:
         }
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> PreprocessFunc:
-        if isinstance(dataset, HfIterableDataset) and dataset.features is None:
-            keys = set(next(iter(dataset)).keys())
-        else:
-            keys = set(dataset.features.keys())
+        features = set(get_dataset_features(dataset))
         required_keys_mapping = {k: v['required'] for k, v in self.preprocessor_mapping.items()}
         for k, required_keys in required_keys_mapping.items():
-            if len(set(required_keys) - keys) == 0:
+            if len(set(required_keys) - features) == 0:
                 return self.preprocessor_mapping[k]['preprocessor']
         raise ValueError(f'dataset.features.keys(): {dataset.features.keys()} '
                          f'required_keys_mapping: {required_keys_mapping}')
 
-    def __call__(self, dataset: HfDataset, **kwargs) -> HfDataset:
+    def __call__(self,
+                 dataset: DATASET_TYPE,
+                 *,
+                 num_proc: int = 1,
+                 load_from_cache_file: bool = False,
+                 strict: bool = False) -> DATASET_TYPE:
         preprocessor = self._get_preprocessor(dataset)
         return preprocessor(dataset, **kwargs)
 
@@ -624,7 +714,12 @@ Output:"""
         self.task_name = task_name
         self.is_pair_seq = is_pair_seq
 
-    def __call__(self, dataset: HfDataset) -> HfDataset:
+    def __call__(self,
+                 dataset: DATASET_TYPE,
+                 *,
+                 num_proc: int = 1,
+                 load_from_cache_file: bool = False,
+                 strict: bool = False) -> DATASET_TYPE:
         query = []
         response = []
         for d in tqdm(dataset):

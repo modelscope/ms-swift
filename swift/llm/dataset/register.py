@@ -10,7 +10,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.utils import get_logger
-from .preprocess import ConversationsPreprocessor, RenameColumnsPreprocessor, SmartPreprocessor
+from .preprocess import MessagesPreprocessor, SmartPreprocessor
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -106,8 +106,11 @@ def register_dataset(dataset_name: str,
 
 def _preprocess_d_info(d_info: Dict[str, Any]) -> Dict[str, Any]:
     d_info = deepcopy(d_info)
-    if 'conversations' in d_info:
-        preprocess_func = ConversationsPreprocessor(**d_info.pop('conversations'))
+
+    # TODO
+    d_info.pop('conversations', None)
+    if 'messages' in d_info:
+        preprocess_func = MessagesPreprocessor(**d_info.pop('messages'))
         d_info['preprocess_func'] = preprocess_func
 
     if 'columns' in d_info:

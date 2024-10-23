@@ -16,8 +16,8 @@ from tqdm.auto import tqdm
 from transformers.utils import strtobool
 
 from swift.llm.dataset.preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor,
-                                          ConversationsPreprocessor, ListPreprocessor, PreprocessFunc,
-                                          RenameColumnsPreprocessor, RowPreprocessor, TextGenerationPreprocessor)
+                                          ConversationsPreprocessor, PreprocessFunc, RenameColumnsPreprocessor,
+                                          RowPreprocessor, SharegptPreprocessor, TextGenerationPreprocessor)
 from swift.utils import get_logger
 from .loader import DatasetLoader
 from .media import MediaResource
@@ -195,7 +195,7 @@ register_dataset(
     DatasetName.alpaca_zh,
     'AI-ModelScope/alpaca-gpt4-data-zh',
     None,
-    AlpacaPreprocessor(concat_inst_inp=_concat_inst_inp_alpaca_zh),
+    AlpacaPreprocessor(concat_inst_input=_concat_inst_inp_alpaca_zh),
     HubDatasetLoader.dataset_get_function,
     tags=['chat', 'general', '🔥'],
     hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh')
@@ -1194,7 +1194,7 @@ register_dataset(
 register_dataset(
     DatasetName.lnqa,
     'swift/lnqa', [],
-    preprocess_func=ListPreprocessor(query_key='question', response_key='answer', media_type='image'),
+    preprocess_func=SharegptPreprocessor(query_key='question', response_key='answer', media_type='image'),
     get_function=HubDatasetLoader.dataset_get_function,
     split=['train', 'validation'],
     hf_dataset_id='vikhyatk/lnqa',
@@ -1461,7 +1461,7 @@ register_dataset(
 register_dataset(
     DatasetName.midefics,
     'swift/MideficsDataset', [],
-    ListPreprocessor(
+    SharegptPreprocessor(
         conversations_key='conversation',
         query_key='question',
         response_key='answer',
@@ -1822,7 +1822,7 @@ register_dataset(
 register_dataset(
     DatasetName.sharegpt,
     'swift/sharegpt', ['common-zh', 'computer-zh', 'unknow-zh', 'common-en', 'computer-en'],
-    ListPreprocessor(user_key='human', assistant_key='assistant'),
+    SharegptPreprocessor(user_key='human', assistant_key='assistant'),
     HubDatasetLoader.dataset_get_function,
     tags=['chat', 'general', 'multi-round'])
 

@@ -15,8 +15,8 @@ if TYPE_CHECKING:
                            WebuiArguments, AppUIArguments)
     from .template import TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template
     from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory
-    from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, ConversationsPreprocessor,
-                          ListPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
+    from .dataset import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, MessagesPreprocessor,
+                          SharegptPreprocessor, PreprocessFunc, RenameColumnsPreprocessor, SmartPreprocessor,
                           TextGenerationPreprocessor, DatasetName, DatasetLoader, HubDatasetLoader, LocalDatasetLoader,
                           dataset_name_exists, parse_dataset_name, DATASET_MAPPING, MediaResource, register_dataset,
                           register_local_dataset, register_dataset_info_file, register_single_dataset, dataset_map,
@@ -45,8 +45,8 @@ else:
         'template': ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template'],
         'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory'],
         'dataset': [
-            'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'ConversationsPreprocessor',
-            'ListPreprocessor', 'PreprocessFunc', 'RenameColumnsPreprocessor', 'SmartPreprocessor',
+            'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor',
+            'SharegptPreprocessor', 'PreprocessFunc', 'RenameColumnsPreprocessor', 'SmartPreprocessor',
             'TextGenerationPreprocessor', 'DatasetName', 'DatasetLoader', 'HubDatasetLoader', 'LocalDatasetLoader',
             'dataset_name_exists', 'parse_dataset_name', 'DATASET_MAPPING', 'MediaResource', 'register_dataset',
             'register_local_dataset', 'register_dataset_info_file', 'register_single_dataset', 'dataset_map',

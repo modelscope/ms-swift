@@ -50,6 +50,7 @@ class GLM4VTemplate(GLMTemplate):
             input_ids = (input_ids[:idx] + placeholder_id + input_ids[idx + 1:])
             if labels is not None:
                 labels = (labels[:idx] + [-100] * len(placeholder_id) + labels[idx + 1:])
+            # TODO: history_to_messages
             messages = history_to_messages(example.get('history') or [], example['query'], example.get('system'))
             messages[0]['image'] = image
             inputs2: Dict[str, Any] = self.tokenizer.apply_chat_template(messages, return_dict=True)
