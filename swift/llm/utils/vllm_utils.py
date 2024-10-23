@@ -41,26 +41,25 @@ def _patch_auto_tokenizer(tokenizer):
 
 
 def get_vllm_engine(
-    model_type: str,
-    torch_dtype: Optional[torch.dtype] = None,
-    *,
-    model_id_or_path: Optional[str] = None,
-    revision: Optional[str] = None,
-    gpu_memory_utilization: float = 0.9,
-    tensor_parallel_size: int = 1,
-    max_num_seqs: int = 256,
-    max_model_len: Optional[int] = None,
-    disable_custom_all_reduce: bool = True,  # Default values different from vllm
-    enforce_eager: bool = False,
-    limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
-    engine_kwargs: Optional[Dict[str, Any]] = None,
-    use_async: bool = False,
-    # lora
-    enable_lora: bool = False,
-    max_loras: int = 1,
-    max_lora_rank: int = 16,
-    **kwargs,
-) -> LLMEngine:
+        model_type: str,
+        torch_dtype: Optional[torch.dtype] = None,
+        *,
+        model_id_or_path: Optional[str] = None,
+        revision: Optional[str] = None,
+        gpu_memory_utilization: float = 0.9,
+        tensor_parallel_size: int = 1,
+        max_num_seqs: int = 256,
+        max_model_len: Optional[int] = None,
+        disable_custom_all_reduce: bool = True,  # Default values different from vllm
+        enforce_eager: bool = False,
+        limit_mm_per_prompt: Optional[Dict[str, Any]] = None,
+        engine_kwargs: Optional[Dict[str, Any]] = None,
+        use_async: bool = False,
+        # lora
+        enable_lora: bool = False,
+        max_loras: int = 1,
+        max_lora_rank: int = 16,
+        **kwargs) -> LLMEngine:
     model_dir = kwargs.pop('model_dir', None)  # compat with swift<1.7
     tokenizer = get_model_tokenizer(
         model_type,
@@ -68,18 +67,12 @@ def get_vllm_engine(
         model_id_or_path=model_id_or_path,
         model_dir=model_dir,
         revision=revision,
-        download_model=True,
-    )[1]
+        download_model=True)[1]
     model_dir = tokenizer.model_dir
 
     if engine_kwargs is None:
         engine_kwargs = {}
-    dtype_mapping = {
-        torch.float16: 'float16',
-        torch.bfloat16: 'bfloat16',
-        torch.float32: 'float32',
-        None: 'auto',
-    }
+    dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32', None: 'auto'}
     dtype = dtype_mapping[torch_dtype]
     disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
 
@@ -97,13 +90,13 @@ def get_vllm_engine(
         engine_kwargs['max_loras'] = max_loras
         engine_kwargs['max_lora_rank'] = max_lora_rank
     else:
-        assert (not enable_lora), 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
+        assert not enable_lora, 'The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.'
 
     if 'limit_mm_per_prompt' in parameters and limit_mm_per_prompt:
         engine_kwargs['limit_mm_per_prompt'] = limit_mm_per_prompt
     else:
-        assert (not limit_mm_per_prompt
-                ), 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.'
+        assert not limit_mm_per_prompt, (
+            'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
     engine_args = engine_args_cls(
         model=model_dir,
@@ -116,12 +109,9 @@ def get_vllm_engine(
         disable_log_stats=disable_log_stats,
         disable_custom_all_reduce=disable_custom_all_reduce,
         enforce_eager=enforce_eager,
-        **engine_kwargs,
-    )
+        **engine_kwargs)
     try:
-        from vllm.model_executor.parallel_utils.parallel_state import (
-            destroy_model_parallel, )
-
+        from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
         destroy_model_parallel()
     except ImportError:
         pass
@@ -210,15 +200,15 @@ if version.parse(vllm.__version__) < version.parse('0.5.5'):
         def __init__(
             self,
             max_tokens: int = 64,  # max_tokens
-            temperature: float = 1.0,
+            temperature: float = 1.,
             top_k: int = 50,  # -1: all
-            top_p: float = 1.0,
-            repetition_penalty: float = 1.0,
+            top_p: float = 1.,
+            repetition_penalty: float = 1.,
             *,
             n: int = 1,
             logprobs: Optional[int] = None,
             seed: Optional[int] = None,
-            length_penalty: float = 1.0,
+            length_penalty: float = 1.,
             stop: Optional[List[str]] = None,
             skip_special_tokens: bool = False,
             **kwargs,
@@ -254,14 +244,14 @@ else:
 
     class VllmGenerationConfig(_VllmGenerationConfigMixin, SamplingParams):
         max_tokens: int = 64
-        temperature: float = 1.0
+        temperature: float = 1.
         top_k: int = 50  # -1: all
-        top_p: float = 1.0
-        repetition_penalty: float = 1.0
+        top_p: float = 1.
+        repetition_penalty: float = 1.
         n: int = 1
         logprobs: Optional[int] = None
         seed: Optional[int] = None
-        length_penalty: float = 1.0
+        length_penalty: float = 1.
         stop: Optional[List[str]] = None
         skip_special_tokens: bool = False
 
@@ -270,24 +260,12 @@ else:
                 self.top_k = -1
             if self.stop is None:
                 self.stop = []
-            if self.repetition_penalty is None:
-                self.repetition_penalty = 1.0
-            if self.top_p is None:
-                self.top_p = 1.0
-            if self.top_k is None:
-                self.top_k = -1
             self._temperature = self.temperature
             super().__post_init__()
 
 
-def add_vllm_request(
-    llm_engine: Union[LLMEngine, AsyncLLMEngine],
-    inputs: Dict[str, Any],
-    *,
-    request_id: str,
-    generation_config: VllmGenerationConfig,
-    **kwargs,
-):
+def add_vllm_request(llm_engine: Union[LLMEngine, AsyncLLMEngine], inputs: Dict[str, Any], *, request_id: str,
+                     generation_config: VllmGenerationConfig, **kwargs):
     input_ids = inputs['input_ids']
     if version.parse(vllm.__version__) >= version.parse('0.4.3'):
         llm_inputs = {'prompt_token_ids': input_ids}
@@ -296,12 +274,11 @@ def add_vllm_request(
             meida_data = inputs.get(key) or []
             if meida_data:
                 if version.parse(vllm.__version__) < version.parse('0.6'):
-                    assert (
-                        len(meida_data) == 1
-                    ), f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0'
+                    assert len(meida_data) == 1, (
+                        f'The current version of vllm only supports single {key}. Please upgrade to vllm >= 0.6.0')
                     mm_data = {key.rstrip('s'): meida_data[0]}
                 else:
-                    mm_data = {key.rstrip('s'): (meida_data[0] if len(meida_data) == 1 else meida_data)}
+                    mm_data = {key.rstrip('s'): meida_data[0] if len(meida_data) == 1 else meida_data}
         if mm_data:
             llm_inputs['multi_modal_data'] = mm_data
         if llm_engine.__class__.__name__ == 'LLMEngine':
@@ -316,26 +293,24 @@ def add_vllm_request(
     return result_generator
 
 
-def _prepare_vllm_request(
-    llm_engine: LLMEngine,
-    template: Template,
-    request_list: List[Dict[str, Any]],
-    *,
-    generation_config: VllmGenerationConfig,
-    generation_info: Dict[str, Any],
-    lora_request: Optional['LoRARequest'] = None,
-    use_tqdm: bool = False,
-    **kwargs,
-) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
+def _prepare_vllm_request(llm_engine: LLMEngine,
+                          template: Template,
+                          request_list: List[Dict[str, Any]],
+                          *,
+                          generation_config: VllmGenerationConfig,
+                          generation_info: Dict[str, Any],
+                          lora_request: Optional['LoRARequest'] = None,
+                          use_tqdm: bool = False,
+                          **kwargs) -> Tuple[List[Optional[Dict[str, Any]]], List[Tuple[bool, int]]]:
     for key in ['num_prompt_tokens', 'num_generated_tokens', 'num_samples']:
         if key not in generation_info:
             generation_info[key] = 0
 
     template.model = llm_engine
     tokenizer = template.tokenizer
-    if (tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop):
+    if tokenizer.eos_token is not None and tokenizer.eos_token not in generation_config.stop:
         generation_config.stop.append(tokenizer.eos_token)
-    if (isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop):
+    if isinstance(template.suffix[-1], str) and template.suffix[-1] not in generation_config.stop:
         generation_config.stop.append(template.suffix[-1])
     if isinstance(template.suffix[-1], list):
         token_str = tokenizer.decode(template.suffix[-1])
@@ -347,8 +322,8 @@ def _prepare_vllm_request(
     if 'lora_request' in parameters:
         add_request_kwargs['lora_request'] = lora_request
     else:
-        assert (lora_request is
-                None), 'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.'
+        assert lora_request is None, (
+            'The current version of VLLM does not support `lora_request`. Please upgrade VLLM.')
 
     resp_list: List[Optional[Dict[str, Any]]] = [None] * len(request_list)
     agent_state = []
@@ -363,7 +338,7 @@ def _prepare_vllm_request(
     def _prepare_inputs(request: Dict[str, Any]) -> Dict[str, Any]:
         history = request.get('history') or []
         # agent support
-        is_observation = (history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False)
+        is_observation = history[-1][-1].endswith('Observation:') if history and history[-1][-1] else False
         act_length = None
         if is_observation:
             history[-1][-1] = history[-1][-1] + request['query']
@@ -392,28 +367,22 @@ def _prepare_vllm_request(
         generation_info['num_prompt_tokens'] += len(inputs['input_ids'])
         generation_info['num_samples'] += 1
         add_vllm_request(
-            llm_engine,
-            inputs,
-            request_id=str(i),
-            generation_config=generation_config,
-            **add_request_kwargs,
-        )
+            llm_engine, inputs, request_id=str(i), generation_config=generation_config, **add_request_kwargs)
     return resp_list, agent_state
 
 
 @torch.inference_mode()
 def inference_stream_vllm(
-    llm_engine: LLMEngine,
-    template: Template,
-    request_list: List[Dict[str, Any]],
-    *,
-    generation_config: Optional[VllmGenerationConfig] = None,
-    generation_info: Optional[Dict[str, Any]] = None,
-    lora_request: Optional['LoRARequest'] = None,
-    use_tqdm: bool = False,
-    flush_steps: Optional[int] = None,  # Ensuring efficiency
-    **kwargs,
-) -> Iterator[List[Dict[str, Any]]]:
+        llm_engine: LLMEngine,
+        template: Template,
+        request_list: List[Dict[str, Any]],
+        *,
+        generation_config: Optional[VllmGenerationConfig] = None,
+        generation_info: Optional[Dict[str, Any]] = None,
+        lora_request: Optional['LoRARequest'] = None,
+        use_tqdm: bool = False,
+        flush_steps: Optional[int] = None,  # Ensuring efficiency
+        **kwargs) -> Iterator[List[Dict[str, Any]]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system', 'images'.
@@ -425,7 +394,7 @@ def inference_stream_vllm(
         return
     start_runtime = time.perf_counter()
     if generation_config is None:
-        generation_config = (getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -442,8 +411,7 @@ def inference_stream_vllm(
         generation_info=generation_info,
         lora_request=lora_request,
         use_tqdm=use_tqdm,
-        **kwargs,
-    )
+        **kwargs)
 
     n_finished = 0
     n_steps = 0
@@ -476,7 +444,7 @@ def inference_stream_vllm(
                 history[-1][-1] = history[-1][-1][:agent_state[i][1]] + safe_response
 
             n_gen_tokens = sum(len(_output.token_ids) for _output in output.outputs)
-            generation_info['num_generated_tokens'] += (n_gen_tokens - num_generated_tokens[i])
+            generation_info['num_generated_tokens'] += n_gen_tokens - num_generated_tokens[i]
             num_generated_tokens[i] = n_gen_tokens
 
             resp_list[i] = {'response': safe_response, 'history': history}
@@ -496,21 +464,19 @@ def inference_stream_vllm(
 
 
 @torch.inference_mode()
-def inference_vllm(
-    llm_engine: LLMEngine,
-    template: Template,
-    request_list: List[Dict[str, Any]],
-    *,
-    generation_config: Optional[VllmGenerationConfig] = None,
-    generation_info: Optional[Dict[str, Any]] = None,
-    max_batch_size: Optional[int] = None,
-    lora_request: Optional['LoRARequest'] = None,
-    use_tqdm: bool = False,
-    verbose: bool = False,
-    prompt_prefix: str = '[PROMPT]',
-    output_prefix: str = '[OUTPUT]',
-    **kwargs,
-) -> List[Dict[str, Any]]:
+def inference_vllm(llm_engine: LLMEngine,
+                   template: Template,
+                   request_list: List[Dict[str, Any]],
+                   *,
+                   generation_config: Optional[VllmGenerationConfig] = None,
+                   generation_info: Optional[Dict[str, Any]] = None,
+                   max_batch_size: Optional[int] = None,
+                   lora_request: Optional['LoRARequest'] = None,
+                   use_tqdm: bool = False,
+                   verbose: bool = False,
+                   prompt_prefix: str = '[PROMPT]',
+                   output_prefix: str = '[OUTPUT]',
+                   **kwargs) -> List[Dict[str, Any]]:
     """
     request_list: e.g. [{'query': 'hello!'}].
         The keys that can be included are: 'query', 'history', 'system', 'images'.
@@ -548,8 +514,7 @@ def inference_vllm(
                 verbose=verbose,
                 prompt_prefix=prompt_prefix,
                 output_prefix=output_prefix,
-                **kwargs,
-            )
+                **kwargs)
             i += max_batch_size
         runtime = time.perf_counter() - runtime
         generation_info['runtime'] = runtime
@@ -558,7 +523,7 @@ def inference_vllm(
         return resp_list
 
     if generation_config is None:
-        generation_config = (getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig())
+        generation_config = getattr(llm_engine, 'generation_config', None) or VllmGenerationConfig()
     assert isinstance(generation_config, VllmGenerationConfig)
     request_list = deepcopy(request_list)
     generation_config = deepcopy(generation_config)
@@ -572,17 +537,12 @@ def inference_vllm(
         generation_info=generation_info,
         lora_request=lora_request,
         use_tqdm=use_tqdm,
-        **kwargs,
-    )
+        **kwargs)
 
     tokenizer = template.tokenizer
     if use_tqdm:
         assert verbose is False
-    prog_bar = tqdm(
-        total=generation_info['num_samples'] - old_num_samples,
-        dynamic_ncols=True,
-        disable=not use_tqdm,
-    )
+    prog_bar = tqdm(total=generation_info['num_samples'] - old_num_samples, dynamic_ncols=True, disable=not use_tqdm)
     outputs = []
     while llm_engine.has_unfinished_requests():
         step_outputs = llm_engine.step()
@@ -610,10 +570,7 @@ def inference_vllm(
         if logprobs is not None:
             resp_list[i]['logprobs'] = logprobs
         if verbose:
-            print(
-                f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}',
-                end='',
-            )
+            print(f'{prompt_prefix}{tokenizer.decode(output.prompt_token_ids, False)}{output_prefix}', end='')
             print(tokenizer.decode(output.outputs[0].token_ids, False))
     runtime = time.perf_counter() - runtime
     generation_info['runtime'] = runtime
@@ -646,8 +603,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         model_id_or_path=model_id_or_path,
         enable_lora=args.vllm_enable_lora,
         max_loras=max(len(args.lora_modules), 1),
-        max_lora_rank=args.vllm_max_lora_rank,
-    )
+        max_lora_rank=args.vllm_max_lora_rank)
     setattr(llm_engine.generation_config, 'max_tokens', args.max_new_tokens)
     for k in ['temperature', 'do_sample', 'top_k', 'top_p', 'repetition_penalty']:
         val = getattr(args, k, None)
@@ -663,7 +619,7 @@ def prepare_vllm_engine_template(args: InferArguments, use_async: bool = False) 
         args.max_length,
         args.truncation_strategy,
         model=llm_engine,
-        tools_prompt=args.tools_prompt,
-    )
-    logger.info(f'system: {template.default_system}')
+        tools_prompt=args.tools_prompt)
+    args.system = template.default_system
+    logger.info(f'system: {args.system}')
     return llm_engine, template

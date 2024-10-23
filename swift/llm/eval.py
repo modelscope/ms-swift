@@ -113,6 +113,11 @@ class EvalModel(CustomModel):
             max_new_tokens = infer_cfg.pop('max_new_tokens', None)
             if max_new_tokens is not None:
                 infer_cfg['max_tokens'] = max_new_tokens
+            defaults = {'repetition_penalty': 1.0, 'top_p': 1.0, 'top_k': -1}
+            # 使用默认值覆盖 None 值
+            for key, default_value in defaults.items():
+                if infer_cfg.get(key) is None:
+                    infer_cfg[key] = default_value
             generation_config = VllmGenerationConfig(**infer_cfg)
 
             request_list = [{'query': prompt} for prompt in prompts]
