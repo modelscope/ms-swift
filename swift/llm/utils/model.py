@@ -1322,6 +1322,18 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
     from transformers import GenerationMixin
     model.generate = MethodType(GenerationMixin.generate, model)
 
+    if model and hasattr(model, '_old_forward'):  # device_map
+        device = model.lm_head.weight.device
+        forward_origin = model._old_forward
+
+        def _forward(*args, **kwargs):
+            if 'append_last_valid_logits' in kwargs:
+                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
+            return forward_origin(*args, **kwargs)
+
+        model._old_forward = _forward
+        model.forward_origin = forward_origin
+
     return model, tokenizer
 
 
@@ -1374,8 +1386,21 @@ def get_model_tokenizer_molmo(model_dir: str,
                               **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
+    model_cls._no_split_modules = ['MolmoSequentialBlock']
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
     tokenizer.processor = processor
+    if model:
+        device = next(model.model.transformer.ff_out.parameters()).device
+        forward_origin = model.model.forward
+
+        def _forward(*args, **kwargs):
+            if 'append_last_valid_logits' in kwargs:
+                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
+            return forward_origin(*args, **kwargs)
+
+        model.model.forward = _forward
+        model.model.forward_origin = forward_origin
 
     return model, tokenizer
 
