@@ -3182,22 +3182,17 @@ class Emu3ChatTemplate(Template):
     image_placeholder = ['<|image token|>']
 
     def __init__(self):
-        Template.__init__(self, [], [' User: {{QUERY}}. Assistant:'], ['<|extra_204|>'], ['<|extra_204|>'], self.system,
-                          ['{{SYSTEM}}'])
+        Template.__init__(self, [['bos_token_id'], '{{SYSTEM}}'], [' User: {{QUERY}}. Assistant:'], [['eos_token_id']],
+                          [['eos_token_id']], self.system)
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = super()._encode(example)
         if len(inputs) == 0:
             return inputs, {}
-        inputs['input_ids'] = [self.tokenizer.bos_token_id] + inputs['input_ids']
-        # labels
-        labels = inputs['labels']
-        if labels:
-            labels = [-100] + labels
         # image
         raw_image = example.get('images', None)
         if raw_image:
-            inputs['_data'] = {'raw_image': raw_image, 'input_ids': inputs['input_ids'], 'labels': labels}
+            inputs['_data'] = {'raw_image': raw_image, 'input_ids': inputs['input_ids'], 'labels': inputs['labels']}
 
         return inputs, {}
 
