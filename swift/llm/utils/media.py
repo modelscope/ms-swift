@@ -151,9 +151,7 @@ class MediaCache:
         with safe_ddp_context():
             with FileLock(file_path):
                 return MediaCache._safe_download(
-                    media_type=media_type_or_url,
-                    media_name=local_alias,
-                    is_not_compressed_file=is_not_compressed_file)
+                    media_type=media_type_or_url, media_name=local_alias, is_not_compressed_file=is_not_compressed_file)
 
     @staticmethod
     def _safe_download(media_type, media_name=None, is_not_compressed_file=False):
