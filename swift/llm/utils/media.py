@@ -129,7 +129,7 @@ class MediaCache:
         return f'{MediaCache.URL_PREFIX}{media_type}.{extension}'
 
     @staticmethod
-    def download(media_type_or_url: str, local_alias: Optional[str] = None):
+    def download(media_type_or_url: str, local_alias: Optional[str] = None, download_file_not_folder=False):
         """Download and extract a resource from a http link.
 
         Args:
@@ -150,7 +150,8 @@ class MediaCache:
         os.makedirs(MediaCache.lock_dir, exist_ok=True)
         with safe_ddp_context():
             with FileLock(file_path):
-                return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias)
+                return MediaCache._safe_download(media_type=media_type_or_url, media_name=local_alias,
+                download_file_not_folder=download_file_not_folder)
 
     @staticmethod
     def _safe_download(media_type, media_name=None):
@@ -160,8 +161,17 @@ class MediaCache:
 
         from datasets.download.download_manager import DownloadManager, DownloadConfig
         final_folder = os.path.join(MediaCache.cache_dir, media_name)
-        if os.path.exists(final_folder):
-            return final_folder
+        
+        if download_file_not_folder:
+            filename = media_type.split('/')[-1] 
+            final_path = os.path.join(final_folder, filename)
+            if os.path.exists(final_path):  # if the download thing is a file but not folder, 
+                return final_folder         # check whether the file exists
+            if not os.path.exists(final_folder): 
+                os.makedirs(final_folder)   # and make sure final_folder exists to contain it 
+        else:
+            if os.path.exists(final_folder):
+                return final_folder
 
         logger.info('# #################Resource downloading#################')
         logger.info('Downloading necessary resources...')
@@ -172,7 +182,12 @@ class MediaCache:
         logger.info('Now begin.')
         local_dirs = DownloadManager(download_config=DownloadConfig(
             cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
-        shutil.move(str(local_dirs), final_folder)
+        
+        if download_file_not_folder:
+            shutil.move(str(local_dirs), final_path)
+        else:
+            shutil.move(str(local_dirs), final_folder)
+
         logger.info('# #################Resource downloading finished#################')
         return final_folder
 
