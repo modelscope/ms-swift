@@ -56,6 +56,7 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.10.22: 支持molmo系列模型的训练到部署. 使用`swift infer --model_type molmo-7b-d`进行体验.
 - 2024.10.09: 支持 llm 和 mllm 的 reward modeling 训练, 支持 llm 的 PPO 训练. 参考[文档](docs/source/LLM/人类偏好对齐训练文档.md)
 - 2024.10.09: 支持ovis1.6-gemma2的训练到部署. 使用`swift infer --model_type ovis1_6-gemma2-9b`进行体验.
 - 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
