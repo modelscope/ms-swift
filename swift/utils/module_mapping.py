@@ -317,6 +317,8 @@ DEEPSPEED_JANUS = MultiModelKeys(
     connector='aligner',
     generator=['gen_vision_model', 'gen_aligner', 'gen_head', 'gen_embed'])
 
+EMU3_CHAT_KEYS = MultiModelKeys(language_model='model', )
+
 MODEL_KEYS_MAPPING = OrderedDict([
     # MLLM here
     ('qwen_audio', QWEN_AUDIO_KEYS),
@@ -342,6 +344,7 @@ MODEL_KEYS_MAPPING = OrderedDict([
     ('ovis1_6', OVIS1_6),
     ('molmo', MOLMO_KEYS),
     ('deepseek_janus', DEEPSPEED_JANUS),
+    ('emu3_chat', EMU3_CHAT_KEYS),
     # LLM begins here
     ('llama', LLAMA_KEYS),
     ('mistral', LLAMA_KEYS),
