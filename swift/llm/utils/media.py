@@ -129,7 +129,7 @@ class MediaCache:
         return f'{MediaCache.URL_PREFIX}{media_type}.{extension}'
 
     @staticmethod
-    def download(media_type_or_url: str, local_alias: Optional[str] = None, download_file_not_folder=False):
+    def download(media_type_or_url: str, local_alias: Optional[str] = None, is_not_compressed_file=False):
         """Download and extract a resource from a http link.
 
         Args:
@@ -153,10 +153,10 @@ class MediaCache:
                 return MediaCache._safe_download(
                     media_type=media_type_or_url,
                     media_name=local_alias,
-                    download_file_not_folder=download_file_not_folder)
+                    is_not_compressed_file=is_not_compressed_file)
 
     @staticmethod
-    def _safe_download(media_type, media_name=None, download_file_not_folder=False):
+    def _safe_download(media_type, media_name=None, is_not_compressed_file=False):
         media_name = media_name or media_type
         if media_type in MediaCache.media_type_urls:
             media_type = MediaCache.get_url(media_type)
@@ -164,7 +164,7 @@ class MediaCache:
         from datasets.download.download_manager import DownloadManager, DownloadConfig
         final_folder = os.path.join(MediaCache.cache_dir, media_name)
 
-        if download_file_not_folder:
+        if is_not_compressed_file:
             filename = media_type.split('/')[-1]
             final_path = os.path.join(final_folder, filename)
             if os.path.exists(final_path):  # if the download thing is a file but not folder,
@@ -185,7 +185,7 @@ class MediaCache:
         local_dirs = DownloadManager(download_config=DownloadConfig(
             cache_dir=MediaCache.cache_dir)).download_and_extract(media_type)
 
-        if download_file_not_folder:
+        if is_not_compressed_file:
             shutil.move(str(local_dirs), final_path)
         else:
             shutil.move(str(local_dirs), final_folder)

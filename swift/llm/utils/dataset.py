@@ -1046,7 +1046,7 @@ def _preprocess_moviechat_1k_test(dataset: DATASET_TYPE) -> DATASET_TYPE:
               [f'UWA-{i}.mp4' for i in range(1, 5)] + ['UWA-6.mp4']
     for file in mp4_set:
         url = f'https://modelscope.cn/datasets/AI-ModelScope/MovieChat-1K-test/resolve/master/videos/{file}'
-        local_dir = MediaCache.download(url, 'moviechat_1k_test', download_file_not_folder=True)
+        local_dir = MediaCache.download(url, 'moviechat_1k_test', is_not_compressed_file=True)
 
     def _process(batch):  # bsz==1
         file_path = os.path.join(local_dir, f"{batch['info'][0]['video_path']}")
