@@ -7,9 +7,8 @@ from swift.utils.torch_utils import _find_local_mac
 from . import dataset
 from .loader import load_dataset
 from .media import MediaResource
-from .preprocess import (AlpacaPreprocessor, ClsPreprocessor, ComposePreprocessor, MessagesPreprocessor, PreprocessFunc,
-                         RenameColumnsPreprocessor, SharegptPreprocessor, SmartPreprocessor, TextGenerationPreprocessor,
-                         multimodal_keys, multimodal_tags)
+from .preprocess import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
+                         RowPreprocessor)
 from .register import DATASET_MAPPING, register_dataset, register_dataset_info
 from .utils import (ConstantLengthDataset, LazyLLMDataset, LLMDataset, LLMIterableDataset, dataset_map, print_example,
                     sort_by_max_length, stat_dataset)

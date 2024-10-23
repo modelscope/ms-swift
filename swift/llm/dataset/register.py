@@ -10,7 +10,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.utils import get_logger
-from .preprocess import MessagesPreprocessor, SmartPreprocessor
+from .preprocess import AutoPreprocessor, MessagesPreprocessor
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -55,7 +55,7 @@ class DatasetMeta:
     split: List[str] = field(default_factory=lambda: ['train'])
     # First perform column mapping, then proceed with the preprocess_func.
     columns_mapping: Dict[str, Any] = field(default_factory=dict)
-    preprocess_func: PreprocessFunc = field(default_factory=lambda: SmartPreprocessor())
+    preprocess_func: PreprocessFunc = field(default_factory=lambda: AutoPreprocessor())
     remove_useless_columns: bool = True
 
     tags: List[str] = field(default_factory=list)
