@@ -2,8 +2,9 @@
 import ast
 from contextlib import contextmanager
 from copy import copy
+from functools import partial
 from multiprocessing import shared_memory
-from typing import Any, Callable, Counter, Dict, List, Literal, Optional, Union
+from typing import Any, Callable, Counter, Dict, List, Literal, Optional, Set, Union
 
 import numpy as np
 from datasets import Dataset as HfDataset
@@ -78,87 +79,114 @@ multimodal_keys = {
 }
 
 
-def get_dataset_features(dataset: DATASET_TYPE) -> List[str]:
+def get_dataset_features(dataset: DATASET_TYPE) -> Set[str]:
     if isinstance(dataset, HfIterableDataset) and dataset.features is None:
         features = next(iter(dataset)).keys()
     else:
         features = dataset.features.keys()
-    return list(features)
+    return set(features)
+
+
+standard_keys = ['messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', 'objects']
+
+
+def remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
+    features = get_dataset_features(dataset)
+    k_list = [k for k in features if k in standard_keys]
+    if len(k_list) != len(features):
+        dataset = dataset.select_columns(k_list)
+    return dataset
 
 
 class RowPreprocessor:
 
     def __init__(self, columns_mapping: Optional[Dict[str, str]] = None) -> None:
-        self.row_keys = ['messages', 'images', 'audios', 'videos', 'objects', 'tools']
-        self._row_keys_mapping = {k: i for i, k in enumerate(self.row_keys)}
         self.columns_mapping = columns_mapping or {}
         self._shared_shm_name = None
+        self._column_state = None
 
     def empty_row(self) -> Dict[str, Any]:
-        return {k: None for k in self.row_keys}
+        return {k: None for k in standard_keys}
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
     def filter(self, row: Dict[str, Any]) -> bool:
-        return bool(row['messages'])
+        return row['messages'] is not None
 
-    def _row_map(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        shm = shared_memory.SharedMemory(name=self._shared_shm_name)
-        column_state = np.ndarray((len(self.row_keys), ), dtype=np.bool_, buffer=shm.buf)
+    def _row_map(self, row: Dict[str, Any], strict: bool) -> Dict[str, Any]:
+        if self._shared_shm_name is not None:
+            shm = shared_memory.SharedMemory(name=self._shared_shm_name)
+            column_state = np.ndarray((len(standard_keys), ), dtype=np.bool_, buffer=shm.buf)
+        else:
+            column_state = self._column_state
+
         try:
             row = self.preprocess(row)
-            for k, v in row.items():
-                k_i: int = self._row_keys_mapping[k]
-                column_state[k_i] = True
-        except:
+            if row is None:
+                row = self.empty_row()
+            elif column_state is not None:
+                for i, k in enumerate(standard_keys):
+                    if k in row:
+                        column_state[i] = True
+        except Exception:
+            if strict:
+                raise
             row = self.empty_row()
         return row
 
     @contextmanager
-    def _shared_column_state(self):
+    def _shared_column_state(self, num_proc: int):
         """Used to remove unnecessary columns, this function is compatible with multi-processing."""
-        self._shm = shared_memory.SharedMemory(create=True, size=len(self.row_keys))
-        self._shared_shm_name = self._shm.name
-        column_state = np.ndarray((len(self.row_keys), ), dtype=np.bool_, buffer=self._shm.buf)
+        if num_proc == 1:
+            self._column_state = np.zeros((len(standard_keys), ), dtype=np.bool_)
+            yield self._column_state
+            self._column_state = None
+            return
+
+        shm = shared_memory.SharedMemory(create=True, size=len(standard_keys))
+        self._shared_shm_name = shm.name
+        column_state = np.ndarray((len(standard_keys), ), dtype=np.bool_, buffer=shm.buf)
         column_state[:] = False
         try:
             yield column_state
         finally:
             # clear resources
-            self._shm.close()
-            self._shm.unlink()
-            self._shm = None
+            shm.close()
+            shm.unlink()
             self._shared_shm_name = None
 
-    def _remove_unused_columns(self, dataset, column_state):
+    def _filter_columns(self, dataset: HfDataset, column_state: np.ndarray) -> HfDataset:
         features = get_dataset_features(dataset)
         remove_keys = []
-        for k in features:
-            k_i: int = self._row_keys_mapping.get(k)
-            if k_i is None or not column_state[k_i]:
+        for i, k in enumerate(standard_keys):
+            if k in features and not column_state[i]:
                 remove_keys.append(k)
         dataset = dataset.remove_columns(remove_keys)
+        return dataset
 
     def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
-        features = set(get_dataset_features(dataset))
+        features = get_dataset_features(dataset)
         safe_columns_mapping = {k: v for k, v in self.columns_mapping.items() if k in features}
-        if not safe_columns_mapping:
-            return dataset
-        return dataset.rename_columns(safe_columns_mapping)
+        if safe_columns_mapping:
+            dataset = dataset.rename_columns(safe_columns_mapping)
+        return dataset
 
-    def __call__(self,
-                 dataset: DATASET_TYPE,
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = False,
-                 strict: bool = False) -> DATASET_TYPE:
+    def __call__(
+        self,
+        dataset: DATASET_TYPE,
+        *,
+        num_proc: int = 1,
+        strict: bool = True,
+        load_from_cache_file: bool = False,
+    ) -> DATASET_TYPE:
         dataset = self._safe_rename_columns(dataset)
-        with self._shared_column_state() as column_state:
+        with self._shared_column_state(num_proc) as column_state:
             try:
-                dataset = dataset.map(self._row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+                _row_map = partial(self._row_map, strict=strict)
+                dataset = dataset.map(_row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
                 dataset = dataset.filter(self.filter, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
-                self._remove_unused_columns(dataset, column_state)
+                dataset = self._filter_columns(dataset, column_state)
             except NotImplementedError:
                 pass
         return dataset
@@ -324,12 +352,14 @@ class ExtraRowPreprocessor(GroundingMixin):
         """Override this method to prepare extra resources downloading"""
         pass
 
-    def __call__(self,
-                 dataset: DATASET_TYPE,
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = False,
-                 strict: bool = False) -> DATASET_TYPE:
+    def __call__(
+        self,
+        dataset: DATASET_TYPE,
+        *,
+        num_proc: int = 1,
+        strict: bool = True,
+        load_from_cache_file: bool = False,
+    ) -> DATASET_TYPE:
         """Preprocess a dataset.
         Args:
             dataset: The dataset to be mapped and filtered.
@@ -382,9 +412,9 @@ class ResponsePreprocessor(RowPreprocessor):
         super().__init__(columns_mapping=columns_mapping)
 
     @staticmethod
-    def row_keys_map(row: Dict[str, Any]) -> Dict[str, Any]:
+    def row_keys_map(row: Dict[str, Any], row_mapping: Dict[str, str]) -> Dict[str, Any]:
         # If there are multiple mappings to the same keys, then delete them.
-        row_mapping = {k: v for k, v in self.row_mapping.items() if k in row}
+        row_mapping = {k: v for k, v in row_mapping.items() if k in row}
         counter = Counter(row_mapping.values())
 
         for k, new_k in row_mapping.items():
@@ -395,12 +425,15 @@ class ResponsePreprocessor(RowPreprocessor):
         return row
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        row = self.row_keys_map(row)
-        response = row['response']
-        history = row.get('history') or []
-        history += [row.get('query'), response]
+        row = self.row_keys_map(row, self.row_mapping)
+        response = row.pop('response')
+        history = row.pop('history', None) or []
+        query = row.pop('query', None)
+        system = row.pop('system', None)
+        history.append([query, response])
 
-        return row.update(history_to_messages(history, row.get('system')))
+        row.update({'messages': history_to_messages(history, system)})
+        return row
 
 
 class AlpacaPreprocessor(ResponsePreprocessor):
@@ -575,12 +608,14 @@ class ComposePreprocessor:
     def __init__(self, preprocessor_list: List[PreprocessFunc]) -> None:
         self.preprocessor_list = preprocessor_list
 
-    def __call__(self,
-                 dataset: DATASET_TYPE,
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = False,
-                 strict: bool = False) -> DATASET_TYPE:
+    def __call__(
+        self,
+        dataset: DATASET_TYPE,
+        *,
+        num_proc: int = 1,
+        strict: bool = True,
+        load_from_cache_file: bool = False,
+    ) -> DATASET_TYPE:
         for preprocessor in self.preprocessor_list:
             dataset = preprocessor(dataset, **kwargs)
         return dataset
@@ -607,12 +642,14 @@ class RenameColumnsPreprocessor:
         old_messages.extend(messages)
         return {'messages': old_messages}
 
-    def __call__(self,
-                 dataset: DATASET_TYPE,
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = False,
-                 strict: bool = False) -> DATASET_TYPE:
+    def __call__(
+        self,
+        dataset: DATASET_TYPE,
+        *,
+        num_proc: int = 1,
+        strict: bool = True,
+        load_from_cache_file: bool = False,
+    ) -> DATASET_TYPE:
         for old_name, new_name in self.rename_mapping.items():
             if old_name in dataset.features:
                 dataset = dataset.rename_column(old_name, new_name)
@@ -655,7 +692,7 @@ class SmartPreprocessor:
         }
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> PreprocessFunc:
-        features = set(get_dataset_features(dataset))
+        features = get_dataset_features(dataset)
         required_keys_mapping = {k: v['required'] for k, v in self.preprocessor_mapping.items()}
         for k, required_keys in required_keys_mapping.items():
             if len(set(required_keys) - features) == 0:
@@ -663,14 +700,16 @@ class SmartPreprocessor:
         raise ValueError(f'dataset.features.keys(): {dataset.features.keys()} '
                          f'required_keys_mapping: {required_keys_mapping}')
 
-    def __call__(self,
-                 dataset: DATASET_TYPE,
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = False,
-                 strict: bool = False) -> DATASET_TYPE:
+    def __call__(
+        self,
+        dataset: DATASET_TYPE,
+        *,
+        num_proc: int = 1,
+        strict: bool = True,
+        load_from_cache_file: bool = False,
+    ) -> DATASET_TYPE:
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, **kwargs)
+        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
 
 
 class TextGenerationPreprocessor(RowPreprocessor):
@@ -714,12 +753,14 @@ Output:"""
         self.task_name = task_name
         self.is_pair_seq = is_pair_seq
 
-    def __call__(self,
-                 dataset: DATASET_TYPE,
-                 *,
-                 num_proc: int = 1,
-                 load_from_cache_file: bool = False,
-                 strict: bool = False) -> DATASET_TYPE:
+    def __call__(
+        self,
+        dataset: DATASET_TYPE,
+        *,
+        num_proc: int = 1,
+        strict: bool = True,
+        load_from_cache_file: bool = False,
+    ) -> DATASET_TYPE:
         query = []
         response = []
         for d in tqdm(dataset):
