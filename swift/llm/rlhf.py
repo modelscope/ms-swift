@@ -22,6 +22,8 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     if args.rlhf_type == 'ppo':
         from copy import deepcopy
         reward_model_args, value_model_args = deepcopy(args), deepcopy(args)
+        reward_model_args.target_modules = ['q_proj', 'k_proj', 'v_proj']
+        value_model_args.target_modules = ['q_proj', 'k_proj', 'v_proj']
         args_to_modified = ['model_id_or_path', 'model_type', 'model_revision']
         for model_args in [reward_model_args, value_model_args]:
             for arg in args_to_modified:

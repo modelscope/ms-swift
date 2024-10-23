@@ -77,7 +77,7 @@ try:
         pass
 
     @dataclass
-    class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
+    class PPOConfig(SwiftArgumentsMixin, HfSeq2SeqTrainingArguments, HfPPOConfig):
         pass
 
 except ImportError:
