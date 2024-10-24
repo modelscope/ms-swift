@@ -37,8 +37,7 @@ class DeployApp(InferPipeline):
         self.app.post('/v1/completions')(self.create_completion)
 
     def __init__(self, args: Union[List[str], DeployArguments, None] = None) -> None:
-        self.args = self.parse_args(args)  # for annotation
-        super().__init__(self.args)
+        super().__init__(args)
         self.infer_states = InferStats()
         self.app = FastAPI(lifespan=self.lifespan)
         self._register_app()
@@ -114,3 +113,7 @@ class DeployApp(InferPipeline):
         args = self.args
         uvicorn.run(
             self.app, host=args.host, port=args.port, ssl_keyfile=args.ssl_keyfile, ssl_certfile=args.ssl_certfile)
+
+
+def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
+    DeployApp(args).main()

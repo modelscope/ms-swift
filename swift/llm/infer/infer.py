@@ -341,3 +341,7 @@ class InferPipeline(Pipeline):
             if result_path is not None:
                 append_to_jsonl(result_path, result_list)
         return result_list
+
+
+def infer_main(args: Union[List[str], InferArguments, None] = None) -> List[Dict[str, Any]]:
+    return InferPipeline(args).main()
