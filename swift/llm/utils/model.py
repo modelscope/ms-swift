@@ -625,6 +625,9 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
+    # aya
+    aya_expanse_8b = 'aya-expanse-8b'
+    aya_expanse_32b = 'aya-expanse-32b'
     # codestral
     codestral_22b = 'codestral-22b'
     # florence
@@ -950,6 +953,24 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     support_vllm=True,
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
+@register_model(
+    ModelType.aya_expanse_8b,
+    'AI-ModelScope/aya-expanse-8b',
+    LoRATM.llama,
+    TemplateType.aya,
+    requires=['transformers>=4.44.0'],
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='CohereForAI/aya-expanse-8b')
+@register_model(
+    ModelType.aya_expanse_32b,
+    'AI-ModelScope/aya-expanse-32b',
+    LoRATM.llama,
+    TemplateType.aya,
+    requires=['transformers>=4.44.0'],
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='CohereForAI/aya-expanse-32b')
 @register_model(
     ModelType.telechat2_115b,
     'TeleAI/TeleChat2-115B',
