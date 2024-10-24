@@ -42,11 +42,9 @@ class RowPreprocessor:
 
     def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None) -> None:
         self.columns_mapping = columns_mapping or {}
-        self._shared_shm_name = None
-        self._column_state = None
 
     def empty_row(self) -> Dict[str, Any]:
-        return {k: None for k in standard_keys}
+        return {'messages': None}
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
@@ -55,57 +53,16 @@ class RowPreprocessor:
         return row['messages'] is not None
 
     def _row_map(self, row: Dict[str, Any], strict: bool) -> Dict[str, Any]:
-        if self._shared_shm_name is not None:
-            shm = shared_memory.SharedMemory(name=self._shared_shm_name)
-            column_state = np.ndarray((len(standard_keys), ), dtype=np.bool_, buffer=shm.buf)
-        else:
-            column_state = self._column_state
-
+        row = None
         try:
             row = self.preprocess(row)
-            if row is None:
-                row = self.empty_row()
-            elif column_state is not None:
-                for i, k in enumerate(standard_keys):
-                    if k in row:
-                        column_state[i] = True
-        except Exception:
+        except Exception as e:
             if strict:
                 raise
-            logger.error(f'There are errors in the dataset, the data will be deleted. row: {row}')
+            logger.error(f'There are errors in the dataset, the data will be deleted. error: {e}')
+        if row is None:
             row = self.empty_row()
         return row
-
-    @contextmanager
-    def _shared_column_state(self, num_proc: int):
-        """Used to remove unnecessary columns, this function is compatible with multi-processing."""
-        if num_proc == 1:
-            self._column_state = np.zeros((len(standard_keys), ), dtype=np.bool_)
-            yield self._column_state
-            self._column_state = None
-            return
-
-        shm = shared_memory.SharedMemory(create=True, size=len(standard_keys))
-        self._shared_shm_name = shm.name
-        column_state = np.ndarray((len(standard_keys), ), dtype=np.bool_, buffer=shm.buf)
-        column_state[:] = False
-        try:
-            yield column_state
-        finally:
-            # clear resources
-            shm.close()
-            shm.unlink()
-            self._shared_shm_name = None
-
-    @staticmethod
-    def _filter_columns(dataset: HfDataset, column_state: np.ndarray) -> HfDataset:
-        features = get_dataset_features(dataset)
-        remove_keys = []
-        for i, k in enumerate(standard_keys):
-            if k in features and not column_state[i]:
-                remove_keys.append(k)
-        dataset = dataset.remove_columns(remove_keys)
-        return dataset
 
     def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
         features = get_dataset_features(dataset)
@@ -123,14 +80,12 @@ class RowPreprocessor:
         load_from_cache_file: bool = False,
     ) -> DATASET_TYPE:
         dataset = self._safe_rename_columns(dataset)
-        with self._shared_column_state(num_proc) as column_state:
-            try:
-                _row_map = partial(self._row_map, strict=strict)
-                dataset = dataset.map(_row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
-                dataset = dataset.filter(self.filter, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
-                dataset = self._filter_columns(dataset, column_state)
-            except NotImplementedError:
-                pass
+        try:
+            _row_map = partial(self._row_map, strict=strict)
+            dataset = dataset.map(_row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+            dataset = dataset.filter(self.filter, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+        except NotImplementedError:
+            pass
         return dataset
 
 

@@ -268,8 +268,8 @@ class DatasetLoader:
         n_repeat_sample = dataset_sample // len(dataset)
         n_random_sample = dataset_sample % len(dataset)
         if n_repeat_sample >= 1 and n_random_sample >= 1:
-            logger.info(f'dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, '
-                        'repeated sampling will be performed')
+            logger.warning(f'dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, '
+                           'repeated sampling will be performed.')
         idx = np.tile(range(len(dataset)), n_repeat_sample)
         if n_random_sample >= 1:
             idx_random = random_state.permutation(len(dataset))[:n_random_sample]
