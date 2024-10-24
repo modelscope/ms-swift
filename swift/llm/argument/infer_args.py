@@ -6,7 +6,7 @@ from typing import Any, List, Literal, Optional, Tuple
 import json
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, multimodal_keys
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
 from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger, is_lmdeploy_available, is_merge_kit_available, is_vllm_available
 from .base_args import BaseArguments
@@ -166,11 +166,6 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         if self.num_beams != 1 or not template_info.get('stream', True):
             self.stream = False
             logger.info('Setting args.stream: False')
-        self.infer_media_type = template_info.get('infer_media_type', 'none')
-        if self.infer_media_type == 'none' and self.is_multimodal:
-            self.infer_media_type = 'interleave'
-        self.media_type = template_info.get('media_type', 'image')
-        self.media_key = multimodal_keys.get(self.media_type, 'images')
 
     def prepare_merge_device_map(self):
         if self.merge_device_map is None:

@@ -72,7 +72,6 @@ class InferPipeline(Pipeline):
         except AttributeError:
             return getattr(self.infer_engine, name)
 
-
     def get_infer_engine(self) -> InferEngine:
         args = self.args
         kwargs = {

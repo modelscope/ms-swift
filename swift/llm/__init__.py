@@ -6,9 +6,9 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
-    from .infer import (deploy_main, infer_main, merge_lora_main, merge_lora, VllmEngine, InferRequest, RequestConfig,
-                        InferStats, LmdeployEngine, PtEngine)
-    from .export import export_main
+    from .infer import (VllmEngine, InferRequest, RequestConfig, InferStats, LmdeployEngine, PtEngine, InferPipeline,
+                        DeployApp)
+    from .export import export_main, merge_lora
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
@@ -29,10 +29,10 @@ else:
         'app_ui': ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
         'rlhf': ['rlhf_main'],
         'infer': [
-            'deploy_main', 'merge_lora', 'infer_main', 'merge_lora_main', 'VllmEngine', 'InferRequest', 'RequestConfig',
-            'InferStats', 'LmdeployEngine', 'PtEngine'
+            'deploy_main', 'VllmEngine', 'InferRequest', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine',
+            'InferPipeline', 'DeployApp'
         ],
-        'export': ['export_main'],
+        'export': ['export_main', 'merge_lora'],
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [

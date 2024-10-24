@@ -139,6 +139,3 @@ def merge_lora(args: InferArguments,
     args.train_type = 'full'
     args.ckpt_dir = merged_lora_path
     return merged_lora_path
-
-
-merge_lora_main = get_main(InferArguments, merge_lora)

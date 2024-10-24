@@ -65,19 +65,21 @@ class Template:
     output_prompt_answer = False  # for encoder-decoder & kto
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
-    def __init__(self,
-                 prefix: Prompt,
-                 prompt: Prompt,
-                 chat_sep: Optional[Prompt],
-                 suffix: Prompt,
-                 default_system: Optional[str] = None,
-                 system_prefix: Optional[Prompt] = None,
-                 tool_prompt: Optional[Prompt] = None,
-                 *,
-                 stop_words: Optional[List[Word]] = None,
-                 placeholder_tokens: Union[int, str, None] = None,
-                 auto_add_bos: bool = False,
-                 skip_prompt: bool = True) -> None:
+    def __init__(
+            self,
+            prefix: Prompt,
+            prompt: Prompt,
+            chat_sep: Optional[Prompt],
+            suffix: Prompt,
+            default_system: Optional[str] = None,
+            system_prefix: Optional[Prompt] = None,
+            tool_prompt: Optional[Prompt] = None,
+            *,
+            default_tools_prompt: str = 'react_en',  # TODO:check
+            stop_words: Optional[List[Word]] = None,
+            placeholder_tokens: Union[int, str, None] = None,
+            auto_add_bos: bool = False,
+            skip_prompt: bool = True) -> None:
         # check
         if default_system is None:
             default_system = ''
@@ -110,6 +112,7 @@ class Template:
         self.default_system = default_system
         self.tool_prompt = tool_prompt if tool_prompt is not None else prompt  # default as user
 
+        self.default_tools_prompt = default_tools_prompt
         self.stop_words = stop_words
         self.placeholder_tokens = placeholder_tokens
         self.auto_add_bos = auto_add_bos
@@ -144,7 +147,7 @@ class Template:
         if system is None:
             system = ''
         if system:
-            assert self.support_system, (f'The template does not support `system`, template_type: {self.template_type}')
+            assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
         return system
 
     def _init_template(self,
@@ -155,7 +158,7 @@ class Template:
                        truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
                        loss_scale: Optional[str] = None,
                        max_pixels: int = -1,
-                       tools_prompt: str = 'react_en') -> None:
+                       tools_prompt: Optional[str] = None) -> None:
         """
         default_system: Override the default_system in the template.
         max_length: Max length of the sequence
@@ -185,7 +188,7 @@ class Template:
         self.max_pixels = max_pixels
         self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
         self.task: Literal['train', 'pt_infer', 'vllm_infer', 'lmdeploy_infer'] = 'pt_infer'
-        self.tools_prompt = tools_prompt
+        self.tools_prompt = tools_prompt or self.default_tools_prompt
 
     def _preprocess_inputs(
         self,

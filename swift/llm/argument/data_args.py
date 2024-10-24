@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
 
-from swift.llm import DATASET_MAPPING, TEMPLATE_MAPPING, register_dataset_info_file
+from swift.llm import DATASET_MAPPING, TEMPLATE_MAPPING, register_dataset_info
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -45,7 +45,7 @@ class DataArguments:
         """register custom dataset_info.json to datasets"""
         if self.custom_dataset_info is None:
             return
-        register_dataset_info_file(self.custom_dataset_info)
+        register_dataset_info(self.custom_dataset_info)
 
     def __post_init__(self: Union['SftArguments', 'InferArguments']):
         if self.dataset_seed is None:

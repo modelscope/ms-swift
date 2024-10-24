@@ -2,8 +2,9 @@ import os
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Callable, List, Optional, Type, TypeVar, Union
-from .argument import BaseArguments
+
 from swift.utils import get_logger, parse_args, seed_everything
+from .argument import BaseArguments
 
 logger = get_logger()
 
