@@ -120,6 +120,36 @@ class DatasetNameMapping:
 class DatasetLoader:
 
     @staticmethod
+    def download_dataset(dataset_id: str, files: List[str], force_download: bool = False) -> str:
+        """Download dataset from repo manually
+        Args:
+            dataset_id: The dataset id of ModelScope
+            files: Which files to download
+            force_download: Force download or not
+        Returns:
+            The dataset dir
+        """
+        assert isinstance(files, list)
+        url = f'http://www.modelscope.cn/api/v1/datasets/{dataset_id}/repo?Revision=master&FilePath={{fpath}}'
+        cache_dir = os.path.join(MS_CACHE_HOME, 'datasets', dataset_id, 'master')
+        local_dir = os.path.join(cache_dir, 'raw')
+        tmp_dir = os.path.join(cache_dir, 'tmp')
+        os.makedirs(local_dir, exist_ok=True)
+        os.makedirs(tmp_dir, exist_ok=True)
+        cookies = ModelScopeConfig.get_cookies()
+        with TemporaryDirectory(dir=tmp_dir) as temp_dir:
+            for remote_fpath in files:
+                url = url.format(fpath=remote_fpath)
+                temp_fpath = os.path.join(temp_dir, remote_fpath)
+                local_fpath = os.path.join(local_dir, remote_fpath)
+                if not force_download and os.path.exists(local_fpath):
+                    continue
+                download_ms_file(url, temp_fpath, cookies)
+                shutil.copy2(temp_fpath, local_fpath)
+
+        return local_dir
+
+    @staticmethod
     def _concat_datasets(datasets: List[HfDataset], streaming: bool) -> Optional[HfDataset]:
         if len(datasets) == 0:
             return
@@ -128,18 +158,32 @@ class DatasetLoader:
         return interleave_datasets(datasets) if streaming else concatenate_datasets(datasets)
 
     @staticmethod
-    def _load_local_dataset(
-            dataset_path: str,
-            *,
-            columns_mapping: Dict[str, Any],
-            preprocess_func: PreprocessFunc,
-            remove_useless_columns: bool,
-            #
-            num_proc: int,
-            strict: bool,
-            streaming: bool,
-            **kwargs) -> HfDataset:
-        pass
+    def _load_local_dataset(dataset_meta: DatasetMeta,
+                            *,
+                            num_proc: int = 1,
+                            strict: bool = True,
+                            load_from_cache_file: bool = False,
+                            streaming: bool = False) -> HfDataset:
+        dataset_path = dataset_meta.dataset_path
+
+        if dataset_path.endswith('.csv'):
+            dataset = HfDataset.from_csv(dataset_path, na_filter=False)
+        elif dataset_path.endswith('.jsonl') or dataset_path.endswith('.json'):
+            dataset = HfDataset.from_json(dataset_path)
+        elif dataset_path.endswith('.txt'):
+            dataset = HfDataset.from_text(dataset_path)
+        elif dataset_path.endswith('.parquet'):
+            dataset = HfDataset.from_parquet(dataset_path)
+        else:
+            raise ValueError('The custom dataset only supports csv, jsonl, json, txt, parquet format.')
+        if streaming:
+            dataset = dataset.to_iterable_dataset()
+
+        dataset = dataset_meta.preprocess_func(
+            dataset, num_proc=num_proc, strict=strict, load_from_cache_file=load_from_cache_file)
+        if dataset_meta.remove_useless_columns:
+            dataset = remove_useless_columns(dataset)
+        return dataset
 
     @staticmethod
     def _load_repo_dataset(
@@ -156,12 +200,11 @@ class DatasetLoader:
     ) -> HfDataset:
         datasets = []
         for split in subset.split:
+            retry = 3
             if use_hf:
                 hub = HFHub
-                retry = 1
             else:
                 hub = MSHub
-                retry = 3
             with safe_ddp_context():
                 while True:
                     try:
@@ -305,12 +348,17 @@ class DatasetLoader:
         dataset_syntax: Optional[DatasetSyntax] = None,
         dataset_meta: Optional[DatasetMeta] = None,
     ) -> Tuple[HfDataset, Optional[HfDataset]]:
-        dataset_name = dataset_syntax.dataset
-        subsets = DatasetLoader._select_subsets(dataset_syntax.subsets, dataset_meta)
 
         if dataset_meta.dataset_path:
-            dataset = DatasetLoader._load_local_dataset(dataset_meta.dataset_path)
+            dataset = DatasetLoader._load_local_dataset(
+                dataset_meta=dataset_meta,
+                num_proc=num_proc,
+                strict=strict,
+                load_from_cache_file=load_from_cache_file,
+                streaming=streaming,
+            )
         else:
+            subsets = DatasetLoader._select_subsets(dataset_syntax.subsets, dataset_meta)
             dataset_str_f = 'Downloading the dataset from {hub}, dataset_id: {dataset_id}'
             if dataset_syntax.use_hf:
                 dataset_id = dataset_meta.hf_dataset_id
@@ -321,7 +369,7 @@ class DatasetLoader:
                 revision = dataset_meta.ms_revision
                 dataset_str = dataset_str_f.format(hub='ModelScope', dataset_id=dataset_id)
             logger.info(dataset_str)
-            assert dataset_id is not None, (f'dataset_name: {dataset_name}, use_hf: {dataset_syntax.use_hf}, '
+            assert dataset_id is not None, (f'dataset_name: {dataset_syntax.dataset}, use_hf: {dataset_syntax.use_hf}, '
                                             f'dataset_id: {dataset_id}.')
             datasets = []
             for subset in subsets:

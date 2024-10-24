@@ -26,7 +26,6 @@ class SubsetDataset:
 
     # Higher priority. If set to None, the attributes of the Dataset will be used.
     split: Optional[List[str]] = None
-    columns_mapping: Optional[Dict[str, Any]] = None
     preprocess_func: Optional[PreprocessFunc] = None
     remove_useless_columns: Optional[bool] = None
 
@@ -35,7 +34,7 @@ class SubsetDataset:
 
     def set_default(self, dataset_meta: 'DatasetMeta') -> 'SubsetDataset':
         subset_dataset = deepcopy(self)
-        for k in ['split', 'columns_mapping', 'preprocess_func', 'remove_useless_columns']:
+        for k in ['split', 'preprocess_func', 'remove_useless_columns']:
             v = getattr(subset_dataset, k)
             if v is None:
                 setattr(subset_dataset, k, deepcopy(getattr(dataset_meta, k)))
@@ -54,7 +53,6 @@ class DatasetMeta:
     # Applicable to all subsets.
     split: List[str] = field(default_factory=lambda: ['train'])
     # First perform column mapping, then proceed with the preprocess_func.
-    columns_mapping: Dict[str, Any] = field(default_factory=dict)
     preprocess_func: PreprocessFunc = field(default_factory=lambda: AutoPreprocessor())
     remove_useless_columns: bool = True
 
@@ -104,17 +102,17 @@ def register_dataset(dataset_name: str,
     DATASET_MAPPING[dataset_name] = dataset_info
 
 
-def _preprocess_d_info(d_info: Dict[str, Any]) -> Dict[str, Any]:
+def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) -> Dict[str, Any]:
     d_info = deepcopy(d_info)
 
-    # TODO
-    d_info.pop('conversations', None)
-    if 'messages' in d_info:
-        preprocess_func = MessagesPreprocessor(**d_info.pop('messages'))
-        d_info['preprocess_func'] = preprocess_func
-
+    columns_mapping = None
     if 'columns' in d_info:
-        d_info['columns_mapping'] = d_info.pop('columns')
+        columns_mapping = d_info.pop('columns')
+
+    if 'messages' in d_info:
+        d_info['preprocess_func'] = MessagesPreprocessor(**d_info.pop('messages'), columns_mapping=columns_mapping)
+    else:
+        d_info['preprocess_func'] = AutoPreprocessor(columns_mapping=columns_mapping)
 
     if 'dataset_path' in d_info:
         dataset_path = d_info.pop('dataset_path')
@@ -143,7 +141,7 @@ def _register_d_info(dataset_name: str, d_info: Dict[str, Any], *, base_dir: Opt
         dataset_name: The dataset name
         d_info: The dataset info
     """
-    d_info = _preprocess_d_info(d_info)
+    d_info = _preprocess_d_info(d_info, base_dir=base_dir)
     register_dataset(dataset_name, DatasetMeta(**d_info))
 
 
@@ -157,24 +155,23 @@ def register_dataset_info(dataset_info: Union[str, Dict[str, Any], None] = None)
     # dataset_info_path: path, json or None
     if dataset_info is None:
         dataset_info = os.path.join(__file__, '..', '..', 'data', 'dataset_info.json')
+    assert isinstance(dataset_info, (str, dict))
     base_dir = None
+    log_msg = None
     if isinstance(dataset_info, str):
-        dataset_info = os.path.abspath(os.path.expanduser(dataset_info))
-        if os.path.isfile(dataset_info):
-            log_msg = dataset_info
-            base_dir = os.path.dirname(dataset_info)
-            with open(dataset_info, 'r') as f:
+        dataset_path = os.path.abspath(os.path.expanduser(dataset_info))
+        if os.path.isfile(dataset_path):
+            log_msg = dataset_path
+            base_dir = os.path.dirname(dataset_path)
+            with open(dataset_path, 'r') as f:
                 dataset_info = json.load(f)
         else:
-            # json
-            dataset_info = json.loads(dataset_info)
-            log_msg = list(dataset_info.keys())
-    elif isinstance(dataset_info, dict):
-        log_msg = list(dataset_info.keys())
-    else:
-        raise ValueError(f'dataset_info: {dataset_info}')
+            dataset_info = json.loads(dataset_info)  # json
     if len(dataset_info) == 0:
         return
     for dataset_name, d_info in dataset_info.items():
         _register_d_info(dataset_name, d_info, base_dir=base_dir)
+
+    if log_msg is None:
+        log_msg = dataset_info if len(dataset_info) < 5 else list(dataset_info.keys())
     logger.info(f'Successfully registered `{log_msg}`')

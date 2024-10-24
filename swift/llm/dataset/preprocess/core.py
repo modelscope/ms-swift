@@ -40,7 +40,7 @@ def remove_useless_columns(dataset: DATASET_TYPE) -> DATASET_TYPE:
 
 class RowPreprocessor:
 
-    def __init__(self, columns_mapping: Optional[Dict[str, str]] = None) -> None:
+    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None) -> None:
         self.columns_mapping = columns_mapping or {}
         self._shared_shm_name = None
         self._column_state = None
@@ -72,6 +72,7 @@ class RowPreprocessor:
         except Exception:
             if strict:
                 raise
+            logger.error(f'There are errors in the dataset, the data will be deleted. row: {row}')
             row = self.empty_row()
         return row
 
@@ -136,7 +137,7 @@ class RowPreprocessor:
 class ResponsePreprocessor(RowPreprocessor):
     """Dataset compatible with older versions of ms-swift"""
 
-    def __init__(self, columns_mapping: Optional[Dict[str, str]] = None) -> None:
+    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None) -> None:
         system_keys = ['system', 'system_prompt']
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question']
         response_keys = ['response', 'answer', 'output', 'targets', 'answer_key', 'text', 'completion', 'content']
@@ -260,8 +261,9 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert user_message['role'] in {'user', 'tool'}, f'user_message: {user_message}'
-        assert assistant_message['role'] in {'assistant'}, f'assistant_message: {assistant_message}'
+        assert user_message['role'] in {'user', 'tool'} and 'content' in user_message, f'user_message: {user_message}'
+        assert assistant_message['role'] in {'assistant'} and 'content' in assistant_message, (
+            f'assistant_message: {assistant_message}')
 
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
         self._to_std_key(messages, 'user', self.user_roles)
@@ -299,7 +301,7 @@ class MessagesPreprocessor(RowPreprocessor):
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:
         for message in messages:
             for key in optional_keys:
-                if key in messages:
+                if key in message:
                     message[std_key] = message.pop(key)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -307,7 +309,7 @@ class MessagesPreprocessor(RowPreprocessor):
         if self.inner_key is not None:
             messages = messages[self.inner_key]
         messages: Optional[List[Dict[str, str]]] = self.repair_messages(messages)
-        if messages:
+        if not messages:
             return
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)
@@ -322,14 +324,17 @@ class MessagesPreprocessor(RowPreprocessor):
 
 class AutoPreprocessor:
 
+    def __init__(self, *, columns_mapping: Optional[Dict[str, str]] = None) -> None:
+        self.columns_mapping = columns_mapping
+
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
         features = get_dataset_features(dataset)
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
-                return MessagesPreprocessor()
+                return MessagesPreprocessor(columns_mapping=self.columns_mapping)
         if 'instruction' in features and 'input' in features:
-            return AlpacaPreprocessor()
-        return ResponsePreprocessor()
+            return AlpacaPreprocessor(columns_mapping=self.columns_mapping)
+        return ResponsePreprocessor(columns_mapping=self.columns_mapping)
 
     def __call__(
         self,

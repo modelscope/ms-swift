@@ -134,27 +134,11 @@
     },
     "classical-chinese-translate": {
         "ms_dataset_id": "swift/classical_chinese_translate",
-        "conversations": {
-            "user_role": "user",
-            "assistant_role": "assistant",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "tags": ["chat", "play-ground"]
     },
     "tagengo-gpt4": {
         "ms_dataset_id": "swift/tagengo-gpt4",
         "hf_dataset_id": "lightblue/tagengo-gpt4",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "tags": ["chat", "multi-lingual", "quality"]
     },
     "fineweb": {
@@ -178,15 +162,6 @@
     "llava-med-zh-instruct": {
         "ms_dataset_id": "swift/llava-med-zh-instruct-60k",
         "hf_dataset_id": "BUAADreamer/llava-med-zh-instruct-60k",
-        "conversations": {
-            "user_role": "user",
-            "assistant_role": "assistant",
-            "conversations_key": "messages",
-            "from_key": "role",
-            "value_key": "content",
-            "error_strategy": "delete",
-            "modals": ["image"]
-        },
         "tags": ["zh", "medical", "vqa", "multi-modal"]
     },
     "chart-qa": {
@@ -213,14 +188,6 @@
     "belle-train-3.5M-CN": {
         "ms_dataset_id": "swift/train_3.5M_CN",
         "hf_dataset_id": "BelleGroup/train_3.5M_CN",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "assistant",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "tags": ["common", "zh", "quality"],
         "huge_dataset": true
     },
@@ -268,28 +235,12 @@
     "ultrachat-200k": {
         "ms_dataset_id": "swift/ultrachat_200k",
         "hf_dataset_id": "HuggingFaceH4/ultrachat_200k",
-        "conversations": {
-            "user_role": "user",
-            "assistant_role": "assistant",
-            "conversations_key": "messages",
-            "from_key": "role",
-            "value_key": "content",
-            "error_strategy": "delete"
-        },
         "split": ["train_sft"],
         "tags": ["chat", "en", "quality"]
     },
     "evol-instruct-v2": {
         "ms_dataset_id": "AI-ModelScope/WizardLM_evol_instruct_V2_196k",
         "hf_dataset_id": "WizardLM/WizardLM_evol_instruct_V2_196k",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "tags": ["chat", "en"]
     },
     "cosmopedia": {
@@ -346,13 +297,8 @@
     "gen-qa": {
         "ms_dataset_id": "swift/GenQA",
         "hf_dataset_id": "tomg-group-umd/GenQA",
-        "conversations": {
-            "user_role": "user",
-            "assistant_role": "assistant",
-            "conversations_key": "text",
-            "from_key": "role",
-            "value_key": "content",
-            "error_strategy": "delete"
+        "columns": {
+            "text": "messages"
         },
         "split": ["code", "dialog", "general", "math", "mmlu", "multiple_choice", "writing", "academic", "task"],
         "tags": ["qa", "quality", "multi-task"],
@@ -361,14 +307,6 @@
     "infinity-instruct": {
         "ms_dataset_id": "swift/Infinity-Instruct",
         "hf_dataset_id": "BAAI/Infinity-Instruct",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "tags": ["qa", "quality", "multi-task"],
         "huge_dataset": true
     },
@@ -508,14 +446,6 @@
     "slim-orca": {
         "ms_dataset_id": "swift/SlimOrca",
         "hf_dataset_id": "Open-Orca/SlimOrca",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "tags": ["quality", "en"]
     },
     "slim-pajama-627b": {
@@ -536,27 +466,11 @@
     "no-robots": {
         "ms_dataset_id": "swift/no_robots",
         "hf_dataset_id": "HuggingFaceH4/no_robots",
-        "conversations": {
-            "user_role": "user",
-            "assistant_role": "assistant",
-            "conversations_key": "messages",
-            "from_key": "role",
-            "value_key": "content",
-            "error_strategy": "delete"
-        },
         "tags": ["multi-task", "quality", "human-annotated"]
     },
     "open-hermes": {
         "ms_dataset_id": "swift/OpenHermes-2.5",
         "hf_dataset_id": "teknium/OpenHermes-2.5",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "huge_dataset": true,
         "tags": ["cot", "en", "quality"]
     },
@@ -603,49 +517,27 @@
     },
     "ms-agent": {
         "ms_dataset_id": "iic/ms_agent",
-        "conversations": {
-            "error_strategy": "delete"
-        },
         "tags": ["chat", "agent", "multi-round", "🔥"]
     },
     "msagent-pro": {
         "ms_dataset_id": "iic/MSAgent-Pro",
-        "conversations": {
-            "error_strategy": "delete"
-        },
         "tags": ["chat", "agent", "multi-round", "🔥"]
     },
     "codefuse-python-en": {
         "ms_dataset_id": "codefuse-ai/CodeExercise-Python-27k",
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "bot",
-            "conversations_key": "chat_rounds",
-            "from_key": "role",
-            "value_key": "content",
-            "error_strategy": "delete"
+        "columns": {
+            "chat_rounds": "messages"
         },
         "tags": ["chat", "coding", "🔥"]
     },
     "sharegpt-gpt4": {
         "ms_dataset_id": "AI-ModelScope/sharegpt_gpt4",
         "subsets": ["default", "V3_format", "zh_38K_format"],
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "error_strategy": "delete"
-        },
         "tags": ["chat", "multilingual", "general", "multi-round", "gpt4", "🔥"],
         "help": "`default` uses gpt4 for data cleaning."
     },
     "disc-med-sft-zh": {
         "ms_dataset_id": "AI-ModelScope/DISC-Med-SFT",
-        "conversations": {
-            "conversations_key": "conversation",
-            "from_key": "role",
-            "value_key": "content",
-            "error_strategy": "delete"
-        },
         "tags": ["chat", "medical", "🔥"],
         "hf_dataset_id": "Flmc/DISC-Med-SFT"
     },
@@ -692,40 +584,16 @@
     "qwen2-pro-filtered": {
         "ms_dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-300K-Filtered",
         "tags": ["chat", "sft", "🔥"],
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "hf_dataset_id": "Magpie-Align/Magpie-Qwen2-Pro-300K-Filtered"
     },
     "qwen2-pro-zh": {
         "ms_dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-200K-Chinese",
         "tags": ["chat", "sft", "🔥", "zh"],
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "hf_dataset_id": "Magpie-Align/Magpie-Qwen2-Pro-200K-Chinese"
     },
     "qwen2-pro-en": {
         "ms_dataset_id": "AI-ModelScope/Magpie-Qwen2-Pro-200K-English",
         "tags": ["chat", "sft", "🔥", "en"],
-        "conversations": {
-            "user_role": "human",
-            "assistant_role": "gpt",
-            "conversations_key": "conversations",
-            "from_key": "from",
-            "value_key": "value",
-            "error_strategy": "delete"
-        },
         "hf_dataset_id": "Magpie-Align/Magpie-Qwen2-Pro-200K-English"
     }
 }
