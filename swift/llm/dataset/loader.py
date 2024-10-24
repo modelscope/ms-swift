@@ -11,11 +11,11 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import concatenate_datasets, interleave_datasets
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
-from numpy.random import RandomState
 
 from swift.hub import HFHub, MSHub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
 from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
+from .utils import sample_dataset
 
 logger = get_logger()
 
@@ -247,38 +247,11 @@ class DatasetLoader:
         return subsets
 
     @staticmethod
-    def sample_dataset(dataset: HfDataset,
-                       dataset_sample: int,
-                       random_state: Optional[RandomState] = None) -> HfDataset:
-        """Sample dataset by a dataset_sample number
-        Args:
-            dataset: The dataset instance, iterable dataset is not supported
-            dataset_sample: The sample number
-            random_state: The random state
-        Returns:
-            The sampled dataset
-        """
-        if random_state is None:
-            random_state = RandomState()
-
-        n_repeat_sample = dataset_sample // len(dataset)
-        n_random_sample = dataset_sample % len(dataset)
-        if n_repeat_sample >= 1 and n_random_sample >= 1:
-            logger.warning(f'dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, '
-                           'repeated sampling will be performed.')
-        idx = np.tile(range(len(dataset)), n_repeat_sample)
-        if n_random_sample >= 1:
-            idx_random = random_state.permutation(len(dataset))[:n_random_sample]
-            idx = np.concatenate([idx, idx_random])
-        dataset = dataset.select(idx)
-        return dataset
-
-    @staticmethod
     def post_preprocess(
         train_dataset: DATASET_TYPE,
         dataset_sample: Optional[int] = None,
         split_dataset_ratio: float = 0.,
-        random_state: Optional[RandomState] = None,
+        random_state: Optional[np.random.RandomState] = None,
         streaming: bool = False,
         *,
         load_from_cache_file: bool = False,
@@ -305,7 +278,7 @@ class DatasetLoader:
                 val_sample = dataset_sample
                 assert val_sample <= len(
                     val_dataset), f'dataset_sample: {dataset_sample}, len(val_dataset): {len(val_dataset)}'
-                val_dataset = DatasetLoader.sample_dataset(val_dataset, val_sample, random_state)
+                val_dataset = sample_dataset(val_dataset, val_sample, random_state)
             else:
                 if split_dataset_ratio == 0:
                     train_sample = dataset_sample
@@ -319,7 +292,7 @@ class DatasetLoader:
                         test_size=val_sample, seed=get_seed(random_state),
                         load_from_cache_file=load_from_cache_file).values()
                 assert train_sample > 0
-                train_dataset = DatasetLoader.sample_dataset(train_dataset, train_sample, random_state)
+                train_dataset = sample_dataset(train_dataset, train_sample, random_state)
         return train_dataset, val_dataset
 
     @staticmethod
@@ -430,7 +403,7 @@ class DatasetLoader:
 def load_dataset(
         datasets: List[str],
         split_dataset_ratio: float = 0.,
-        dataset_seed: Union[int, RandomState] = 42,
+        dataset_seed: Union[int, np.random.RandomState] = 42,
         *,
         num_proc: int = 1,
         strict: bool = True,
@@ -458,7 +431,7 @@ def load_dataset(
     if isinstance(datasets, str):
         datasets = [datasets]
     if isinstance(dataset_seed, int):
-        dataset_seed = RandomState(dataset_seed)
+        dataset_seed = np.random.RandomState(dataset_seed)
     datasets: List[str] = DatasetLoader._parse_datasets(datasets)  # to dataset_names and register
     train_datasets = []
     val_datasets = []

@@ -4,19 +4,16 @@ import os
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
-from swift.llm import (
-    HfDataset, InferArguments, Messages, Pipeline, Template, get_template, load_dataset, merge_lora
-)
-from swift.tuners import Swift
-from swift.utils import append_to_jsonl, get_logger, get_main, read_multi_line, seed_everything
+from swift.llm import (HfDataset, InferArguments, Messages, Pipeline, Template, get_template, load_dataset, merge_lora,
+                       sample_dataset)
+from swift.utils import append_to_jsonl, get_logger
 from .infer_engine import InferEngine, InferRequest, RequestConfig
 
 logger = get_logger()
-
 
 
 @dataclass
@@ -43,12 +40,6 @@ class InferCliState:
         return InferCliState(self.system, deepcopy(self.messages), self.images.copy(), self.audios.copy(),
                              self.videos.copy(), self.multiline_mode, self.input_system)
 
-    def to_infer_request(self) -> InferRequest:
-        infer_state = self.copy()
-        if infer_state.system is not None:
-            infer_state.messages.insert(0, {'role': 'system', 'content': infer_state.system})
-        return InferRequest(infer_state.messages, infer_state.images, infer_state.audios, infer_state.videos)
-
     def add_query(self, query: str) -> None:
         self.messages.append({'role': 'user', 'content': query})
 
@@ -57,6 +48,8 @@ class InferCliState:
 
     def to_dict(self):
         infer_state = self.copy()
+        if infer_state.system is not None:
+            infer_state.messages.insert(0, {'role': 'system', 'content': infer_state.system})
         return {
             'messages': infer_state.messages,
             'images': infer_state.images,
@@ -65,15 +58,16 @@ class InferCliState:
         }
 
 
-class InferPipeline(Pipeline):
+class InferPipeline(Pipeline, InferEngine):
     args_class = InferArguments
 
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
-        self.args: InferArguments = self.parse_args(args)
+        self.args = self.parse_args(args)
         if args.merge_lora:
             merge_lora(args, device_map=args.merge_device_map)
-        self.infer_engine = self.get_infer_engine()
-        self.template = self.get_template(self.infer_engine.tokenizer)
+        self.template = self._get_template(self.tokenizer)
+        self.random_state = np.random.RandomState(args.dataset_seed)
+        super().__init__()
 
     def get_infer_engine(self) -> InferEngine:
         args = self.args
@@ -82,7 +76,6 @@ class InferPipeline(Pipeline):
             'model_type': args.model_type,
             'revision': args.model_revision,
             'torch_dtype': args.torch_dtype,
-            'use_hf': args.use_hf,
         }
         if args.infer_backend == 'pt':
             from .infer_engine import PtEngine
@@ -119,10 +112,25 @@ class InferPipeline(Pipeline):
 
         return infer_engine_cls(**kwargs)
 
-
-    def run(self) -> None:
+    def _get_template(self, tokenizer) -> Template:
         args = self.args
+        template = get_template(
+            args.template_type,
+            tokenizer,
+            args.system,
+            args.max_length,
+            truncation_strategy=args.truncation_strategy,
+            max_pixels=args.max_pixels,
+            tools_prompt=args.tools_prompt)
+        logger.info(f'default_system: {template.default_system}')
+        return template
 
+    def run(self) -> List[Dict[str, Any]]:
+        args = self.args
+        if args.dataset and args.split_dataset_ratio > 0 or args.val_dataset:
+            return self.infer_dataset()
+        else:
+            return self.infer_cli()
 
     @staticmethod
     def _input_mm_data(infer_state: InferCliState) -> None:
@@ -141,7 +149,8 @@ class InferPipeline(Pipeline):
             mm_val = getattr(infer_state, mm_key)
             mm_val.append(_input_mm_file(mm_type))
 
-    def _prepare_save_result(self, args: InferArguments) -> str:
+    def _prepare_save_result(self) -> str:
+        args = self.args
         if args.result_dir is not None:
             result_dir = args.result_dir
         else:
@@ -172,7 +181,7 @@ class InferPipeline(Pipeline):
     def _input_text(multiline_mode: bool, input_system: bool) -> str:
         if multiline_mode:
             addi_prompt = 'MS' if input_system else 'M'
-            text = InferEngine._input_multiline(f'<<<[{addi_prompt}] ')
+            text = InferPipeline._input_multiline(f'<<<[{addi_prompt}] ')
         else:
             addi_prompt = 'S' if input_system else ''
             text = input(f'<<<[{addi_prompt}] ')
@@ -206,8 +215,8 @@ class InferPipeline(Pipeline):
             return
         return query
 
-    @staticmethod
-    def _prepare_request_config(args: InferArguments) -> RequestConfig:
+    def _prepare_request_config(self) -> RequestConfig:
+        args = self.args
         temperature = args.temperature
         if not args.do_sample:
             temperature = 0
@@ -221,29 +230,30 @@ class InferPipeline(Pipeline):
             stream=args.stream,
             repetition_penalty=args.repetition_penalty)
 
-    def get_template(self, tokenizer) -> Template:
-        args = self.args
-        template = get_template(
-            args.template_type,
-            tokenizer,
-            args.system,
-            args.max_length,
-            truncation_strategy=args.truncation_strategy,
-            loss_scale=args.loss_scale_config,
-            max_pixels=args.max_pixels,
-            sequence_parallel_size=args.sequence_parallel_size,
-            tools_prompt=args.tools_prompt)
-        logger.info(f'default_system: {template.default_system}')
-        return template
+    def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> Tuple[str, Messages]:
+        messages = infer_request.messages
+        res_or_gen = self.infer(self.template, [infer_request], request_config, use_tqdm=False)
+        if request_config.stream:
+            response = ''
+            for res in res_or_gen:
+                delta = res[0].choices[0].delta
+                print(delta, end='', flush=True)
+                response += delta
+            print()
+        else:
+            response = res_or_gen[0].choices[0].message.content
+            print(response)
+        messages.append({'role': 'assistant', 'content': response})
+        return response, messages
 
-    def infer_cli(self, args: InferArguments) -> List[Dict[str, Any]]:
-        template = self.prepare_template(args)
+    def infer_cli(self) -> List[Dict[str, Any]]:
+        args = self.args
+        template = self.template
         result_path = None
         if args.save_result:
-            result_path = self._prepare_save_result(args)
-        request_config = self._prepare_request_config(args)
+            result_path = self._prepare_save_result()
+        request_config = self._prepare_request_config()
 
-        result = []
         logger.info('Input `exit` or `quit` to exit the conversation.')
         logger.info('Input `multi-line` to switch to multi-line input mode.')
         logger.info('Input `reset-system` to reset the system and clear the history.')
@@ -253,6 +263,7 @@ class InferPipeline(Pipeline):
             logger.info('The current template only supports single-round dialogues.')
 
         infer_state = InferCliState()
+        result_list = []
         while True:
             if not template.support_multi_round:
                 infer_state.clear()
@@ -264,39 +275,66 @@ class InferPipeline(Pipeline):
                 continue
             infer_state.add_query(query)
             self._input_mm_data(infer_state)
-            infer_request = infer_state.to_infer_request()
-            res_or_gen = self.infer(template, [infer_request], request_config, use_tqdm=False)
-            if request_config.stream:
-                response = ''
-                for res in res_or_gen:
-                    delta = res[0].choices[0].delta
-                    print(delta, end='', flush=True)
-                    response += delta
-                print()
-            else:
-                response = res_or_gen[0].choices[0].message.content
+            data = infer_state.to_dict()
+            response, messages = self.infer_single(InferRequest(**data), request_config)
             infer_state.add_response(response)
 
-            data = infer_state.to_dict()
-            result.append(data)
+            data['messages'] = messages
+            result_list.append(data)
             if result_path is not None:
                 append_to_jsonl(result_path, data, strict=False)
 
-        return result
+        return result_list
 
-    def prepare_dataset(self, args: InferArguments) -> HfDataset:
+    def prepare_val_dataset(self) -> HfDataset:
+        args = self.args
         load_dataset(args.val_dataset, args.split_dataset_ratio)
+        dataset_kwargs = {
+            'dataset_seed': args.dataset_seed,
+            'num_proc': args.num_proc,
+            'load_from_cache_file': args.load_from_cache_file,
+            'download_mode': args.download_mode,
+            'model_name': args.model_name,
+            'model_author': args.model_author,
+            'strict': False
+        }
         if len(args.val_dataset) > 0:
             _, val_dataset = load_dataset(args.val_dataset, 1.0, **dataset_kwargs)
         else:
-            _, val_dataset = load_dataset(args.dataset, args.dataset_test_ratio, **dataset_kwargs)
+            _, val_dataset = load_dataset(args.dataset, args.split_dataset_ratio, **dataset_kwargs)
+        assert val_dataset is not None
+        if args.val_dataset_sample is not None:
+            val_dataset = sample_dataset(val_dataset, args.val_dataset_sample, self.random_state)
+        return val_dataset
 
-    def infer_dataset(self, args: InferArguments):
-        template = self.prepare_template(args)
+    def infer_dataset(self) -> List[Dict[str, Any]]:
+        args = self.args
         result_path = None
         if args.save_result:
-            result_path = self._prepare_save_result(args)
-        request_config = self._prepare_request_config(args)
+            result_path = self._prepare_save_result()
+            logger.info(f'result_path: {result_path}')
+        request_config = self._prepare_request_config()
+        logger.info(f'request_config: {request_config}')
 
-
-
+        val_dataset = self.prepare_val_dataset()
+        logger.info(f'val_dataset: {val_dataset}')
+        result_list = []
+        if request_config.stream:
+            for data in val_dataset:
+                response, messages = self.infer_single(InferRequest(**data), request_config)
+                data['messages'] = messages
+                result_list.append(data)
+                if result_path is not None:
+                    append_to_jsonl(result_path, data)
+        else:
+            infer_requests = []
+            for data in val_dataset:
+                infer_requests.append(InferRequest(**data))
+            resp_list = self.infer(self.template, infer_requests, request_config, use_tqdm=True)
+            for data, resp in zip(val_dataset, resp_list):
+                response = resp.choices[0].message.content
+                data['messages'].append({'role': 'assistant', 'content': response})
+                result_list.append(data)
+            if result_path is not None:
+                append_to_jsonl(result_path, result_list)
+        return result_list

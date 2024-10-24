@@ -11,7 +11,7 @@ from .preprocess import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreproces
                          RowPreprocessor)
 from .register import DATASET_MAPPING, register_dataset, register_dataset_info
 from .utils import (ConstantLengthDataset, HfDataset, LazyLLMDataset, LLMDataset, LLMIterableDataset, dataset_map,
-                    print_example, sort_by_max_length, stat_dataset)
+                    print_example, sample_dataset, sort_by_max_length, stat_dataset)
 
 
 def _update_fingerprint_mac(*args, **kwargs):

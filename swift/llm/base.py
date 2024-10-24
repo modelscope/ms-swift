@@ -1,13 +1,14 @@
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Callable, List, Optional, Type, TypeVar, Union, Generic
+from typing import Callable, List, Optional, Type, TypeVar, Union
+
 from swift.utils import get_logger, parse_args, seed_everything
 
 logger = get_logger()
 
-
 T_Args = TypeVar('T_Args')
+
 
 class Pipeline(ABC):
     args_class = None
@@ -45,4 +46,3 @@ class Pipeline(ABC):
     @abstractmethod
     def run(self):
         pass
-

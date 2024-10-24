@@ -25,6 +25,33 @@ logger = get_logger()
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 
+def sample_dataset(dataset: HfDataset,
+                   dataset_sample: int,
+                   random_state: Optional[np.random.RandomState] = None) -> HfDataset:
+    """Sample dataset by a dataset_sample number
+    Args:
+        dataset: The dataset instance, iterable dataset is not supported
+        dataset_sample: The sample number
+        random_state: The random state
+    Returns:
+        The sampled dataset
+    """
+    if random_state is None:
+        random_state = np.random.RandomState()
+
+    n_repeat_sample = dataset_sample // len(dataset)
+    n_random_sample = dataset_sample % len(dataset)
+    if n_repeat_sample >= 1 and n_random_sample >= 1:
+        logger.warning(f'dataset_sample:{dataset_sample} is greater than len(dataset):{len(dataset)}, '
+                       'repeated sampling will be performed.')
+    idx = np.tile(range(len(dataset)), n_repeat_sample)
+    if n_random_sample >= 1:
+        idx_random = random_state.permutation(len(dataset))[:n_random_sample]
+        idx = np.concatenate([idx, idx_random])
+    dataset = dataset.select(idx)
+    return dataset
+
+
 class LLMDataset(Dataset):
     """This class wraps the Dataset class, to offer the ability of custom dataset tokenizing"""
 

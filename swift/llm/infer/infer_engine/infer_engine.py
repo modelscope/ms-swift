@@ -22,7 +22,6 @@ logger = get_logger()
 
 class InferEngine(BaseInferEngine):
 
-
     def _prepare_model_tokenizer(
             self,
             model_id_or_path: str,

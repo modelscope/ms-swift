@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
                           MediaResource, register_dataset, register_dataset_info, dataset_map, stat_dataset, LLMDataset,
                           LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_example, sort_by_max_length,
-                          standard_keys, load_dataset, DATASET_TYPE, HfDataset)
+                          standard_keys, load_dataset, DATASET_TYPE, HfDataset, sample_dataset)
     from .utils import (deep_getattr, to_device, Messages, History, decode_base64, history_to_messages,
                         messages_to_history, safe_tokenizer_decode)
     from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
@@ -45,7 +45,8 @@ else:
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DatasetName',
             'DATASET_MAPPING', 'MediaResource', 'register_dataset', 'register_dataset_info', 'dataset_map',
             'stat_dataset', 'LLMDataset', 'LLMIterableDataset', 'LazyLLMDataset', 'ConstantLengthDataset',
-            'print_example', 'sort_by_max_length', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'HfDataset'
+            'print_example', 'sort_by_max_length', 'standard_keys', 'load_dataset', 'DATASET_TYPE', 'HfDataset',
+            'sample_dataset'
         ],
         'utils': [
             'deep_getattr', 'to_device', 'History', 'Messages', 'decode_base64', 'history_to_messages',

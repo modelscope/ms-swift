@@ -25,10 +25,11 @@ def get_template(
         max_length: Optional[int] = None,
         *,
         truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-        loss_scale: str = 'default',
         max_pixels: int = -1,  # h * w
-        sequence_parallel_size: int = 1,
-        tools_prompt: str = 'react_en') -> 'Template':
+        tools_prompt: str = 'react_en',
+        # train
+        loss_scale: str = 'default',
+        sequence_parallel_size: int = 1) -> 'Template':
     template_info = TEMPLATE_MAPPING[template_type]
     # To ensure that obtaining the same template_type multiple times does not interfere with each other.
     template = deepcopy(template_info['template'])
