@@ -1,3 +1,15 @@
+from copy import copy
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+
+from swift.llm import DATASET_TYPE, Messages
+from swift.utils import get_logger
+from .core import ResponsePreprocessor, RowPreprocessor
+
+logger = get_logger()
+
+
 class GroundingMixin:
     """This class offers prompts to the grounding task"""
     task_type: Optional[str] = None
@@ -261,64 +273,63 @@ class ExtraRowPreprocessor(RowPreprocessor, GroundingMixin):
         return dataset
 
 
-class TextGenerationPreprocessor(RowPreprocessor):
+class TextGenerationPreprocessor(ResponsePreprocessor):
 
-    def __init__(self, *, prompt: str, query_key: str = 'query', response_key: str = 'response', **kwargs) -> None:
+    def __init__(self,
+                 *,
+                 prompt: str,
+                 query_tag: str = '{{QUERY}}',
+                 columns_mapping: Optional[Dict[str, str]] = None,
+                 remove_useless_columns: bool = True) -> None:
+        self.query_tag = query_tag
         self.prompt = prompt
-        self.query_key = query_key
-        self.response_key = response_key
-        super().__init__(**kwargs)
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
 
     def preprocess(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        query = self.prompt.format(query=row[self.query_key])
-        response = row[self.response_key]
-        messages = [{
-            'role': 'user',
-            'content': query,
-        }, {
-            'role': 'assistant',
-            'content': response,
-        }]
-        row = {
-            'messages': messages,
-        }
+        row = super().preprocess(row)
+        messages = row['messages']
+        query_message = messages[-2]
+        query_message['content'] = self.prompt.replace(self.query_tag, query_message['content'])
         return row
 
 
-class ClsPreprocessor:
-    # TODO
+class ClsPreprocessor(ResponsePreprocessor):
 
-    def __init__(self, labels: List[str], task_name: str, is_pair_seq: bool = False) -> None:
+    def __init__(self,
+                 labels: List[str],
+                 *,
+                 task: str,
+                 is_pair_seq: bool = False,
+                 columns_mapping: Optional[Dict[str, str]] = None,
+                 remove_useless_columns: bool = True) -> None:
         self.labels = labels
+        self.task = task
+        self.is_pair_seq = is_pair_seq
+
         category = ', '.join(labels)
+        self.sentence2_key = 'sentence2'
+        self.label_key = 'label'
         if is_pair_seq:
+            self.sentence_key = 'sentence1'
             inputs = 'Sentence1: {sentence1}\nSentence2: {sentence2}'
         else:
+            self.sentence_key = 'sentence'
             inputs = 'Sentence: {sentence}'
-        self.prompt = f"""Task: {task_name}
+        self.prompt = f"""Task: {task}
 {inputs}
 Category: {category}
 Output:"""
-        self.task_name = task_name
-        self.is_pair_seq = is_pair_seq
+        super().__init__(columns_mapping=columns_mapping, remove_useless_columns=remove_useless_columns)
 
-    def __call__(
-        self,
-        dataset: DATASET_TYPE,
-        *,
-        num_proc: int = 1,
-        strict: bool = True,
-        load_from_cache_file: bool = False,
-    ) -> DATASET_TYPE:
-        query = []
-        response = []
-        for d in tqdm(dataset):
-            if d['label'] is None:  # ignore dataset error
-                continue
-            if self.is_pair_seq:
-                q = self.prompt.format(sentence1=d['sentence1'], sentence2=d['sentence2'])
-            else:
-                q = self.prompt.format(sentence=d['sentence'])
-            query.append(q)
-            response.append(self.labels[int(d['label'])])
-        return HfDataset.from_dict({'query': query, 'response': response})
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        label = row.pop(self.label_key, None)
+        if label is None:
+            return
+
+        if self.is_pair_seq:
+            query = self.prompt.format(sentence1=row.pop(self.sentence_key), sentence2=row.pop(self.sentence2_key))
+        else:
+            query = self.prompt.format(sentence=row.pop(self.sentence_key))
+        row['query'] = query
+        row['response'] = self.labels[int(label)]
+        return super().preprocess(row)

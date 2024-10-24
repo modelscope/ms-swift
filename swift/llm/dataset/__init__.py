@@ -5,7 +5,7 @@ import datasets.fingerprint
 
 from swift.utils.torch_utils import _find_local_mac
 from . import dataset
-from .loader import load_dataset
+from .loader import DATASET_TYPE, load_dataset
 from .media import MediaResource
 from .preprocess import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                          RowPreprocessor)

@@ -14,7 +14,8 @@ from .preprocess import AutoPreprocessor, MessagesPreprocessor
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
+PreprocessFunc = Callable[..., DATASET_TYPE]
+LoadFunction = Callable[..., DATASET_TYPE]
 logger = get_logger()
 
 DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
@@ -22,7 +23,10 @@ DATASET_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 @dataclass
 class SubsetDataset:
-    subset_name: str = 'default'
+    # `Name` is used for matching subsets of the dataset, and `subset` refers to the subset_name on the hub.
+    name: str = 'default'
+    # If set to None, then subset is set to subset_name.
+    subset: Optional[str] = None
 
     # Higher priority. If set to None, the attributes of the Dataset will be used.
     split: Optional[List[str]] = None
@@ -31,6 +35,10 @@ class SubsetDataset:
 
     # If the dataset_name does not specify subsets, this parameter determines whether the dataset is used.
     is_weak_subset: bool = False
+
+    def __post_init__(self):
+        if self.subset is None:
+            self.subset = self.name
 
     def set_default(self, dataset_meta: 'DatasetMeta') -> 'SubsetDataset':
         subset_dataset = deepcopy(self)
@@ -49,7 +57,7 @@ class DatasetMeta:
     ms_revision: Optional[str] = None
     hf_revision: Optional[str] = None
 
-    subsets: List[SubsetDataset] = field(default_factory=lambda: [SubsetDataset()])
+    subsets: List[Union[SubsetDataset, str]] = field(default_factory=lambda: [SubsetDataset()])
     # Applicable to all subsets.
     split: List[str] = field(default_factory=lambda: ['train'])
     # First perform column mapping, then proceed with the preprocess_func.
@@ -60,8 +68,10 @@ class DatasetMeta:
     help: Optional[str] = None
     huge_dataset: bool = False
 
-
-LoadFunction = Callable[..., Tuple[DATASET_TYPE, Optional[DATASET_TYPE]]]
+    def __post_init__(self):
+        for i, subset in enumerate(self.subsets):
+            if isinstance(subset, str):
+                self.subsets[i] = SubsetDataset(name=subset)
 
 
 def register_dataset(dataset_name: str,
@@ -124,13 +134,10 @@ def _preprocess_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None
 
     if 'subsets' in d_info:
         subsets = d_info.pop('subsets')
-        new_subsets = []
-        for subset in subsets:
-            if isinstance(subset, str):
-                new_subsets.append(SubsetDataset(subset_name=subset))
-            elif isinstance(subset, dict):
-                new_subsets.append(SubsetDataset(**_preprocess_d_info(subset)))
-        d_info['subsets'] = new_subsets
+        for i, subset in enumerate(subsets):
+            if isinstance(subset, dict):
+                subsets[i] = SubsetDataset(**_preprocess_d_info(subset))
+        d_info['subsets'] = subsets
     return d_info
 
 
