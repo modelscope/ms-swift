@@ -5,7 +5,7 @@ import numpy as np
 
 from swift.llm import Messages
 from swift.utils import get_logger
-from .core import ResponsePreprocessor, RowPreprocessor, DATASET_TYPE
+from .core import DATASET_TYPE, ResponsePreprocessor, RowPreprocessor
 
 logger = get_logger()
 

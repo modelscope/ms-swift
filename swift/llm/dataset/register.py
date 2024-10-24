@@ -6,11 +6,9 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json
-from datasets import Dataset as HfDataset
-from datasets import IterableDataset as HfIterableDataset
 
 from swift.utils import get_logger
-from .preprocess import AutoPreprocessor, MessagesPreprocessor, DATASET_TYPE
+from .preprocess import DATASET_TYPE, AutoPreprocessor, MessagesPreprocessor
 
 PreprocessFunc = Callable[..., DATASET_TYPE]
 LoadFunction = Callable[..., DATASET_TYPE]

@@ -15,8 +15,7 @@ from numpy.random import RandomState
 
 from swift.hub import HFHub, MSHub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
-from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset_info, DATASET_TYPE
-
+from .register import DATASET_MAPPING, DATASET_TYPE, DatasetMeta, SubsetDataset, register_dataset_info
 
 logger = get_logger()
 

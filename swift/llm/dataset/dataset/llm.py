@@ -99,10 +99,10 @@ register_dataset(
         tags=['chat', 'general', 'multi-round', '🔥']))
 
 
-def _repair_agent_messages(messages: str, use_mini: bool) -> Optional[List[Dict[str, str]]]:
+def _repair_agent_messages(messages: List[Dict[str, str]], use_mini: bool) -> Optional[List[Dict[str, str]]]:
     if use_mini:
         pattern = r'\d\. {"plugin_name": "(.+?)"'
-        if  messages[0]['from'] != 'system':
+        if messages[0]['from'] != 'system':
             return
         system = messages[0]['value']
         find_list = re.findall(pattern, system)
@@ -157,7 +157,6 @@ class FireflyPreprocessor(ResponsePreprocessor):
         if row['kind'] not in FireflyPreprocessor._firefly_kind_list:
             return
         return super().preprocess(row)
-
 
 
 register_dataset(
