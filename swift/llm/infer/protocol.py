@@ -2,9 +2,9 @@
 import time
 import uuid
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from http import HTTPStatus
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import json
 from fastapi.responses import JSONResponse
@@ -19,16 +19,9 @@ def random_uuid() -> str:
     return str(uuid.uuid4().hex)
 
 
-def create_error_response(status_code: Union[int, str, HTTPStatus], message: str) -> JSONResponse:
-    status_code = int(status_code)
-    return JSONResponse({'message': message, 'object': 'error'}, status_code)
-
-
 @dataclass
 class Model:
     id: str  # model_type
-    is_chat: bool = True  # chat model or generation model
-    is_multimodal: bool = False
 
     object: str = 'model'
     created: int = field(default_factory=lambda: int(time.time()))
@@ -57,7 +50,7 @@ class RequestConfig:
 
     n: int = 1
     seed: Optional[int] = None
-    stop: Optional[List[str]] = None
+    stop: List[str] = field(default_factory=list)
     stream: bool = False
     logprobs: bool = False
     top_logprobs: Optional[int] = None
@@ -73,12 +66,9 @@ class RequestConfig:
     top_k: Optional[int] = None
     repetition_penalty: Optional[float] = None
 
-
-@dataclass
-class MultiModalRequestMixin:
-    images: List[str] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
-    videos: List[str] = field(default_factory=list)
+    def __post_init__(self):
+        if self.stop is None:
+            self.stop = []
 
 
 @dataclass
@@ -110,13 +100,26 @@ class ChatCompletionRequestMixin:
 
 
 @dataclass
-class CompletionRequest(MultiModalRequestMixin, RequestConfig, CompletionRequestMixin):
-    pass
+class CompletionRequest(RequestConfig, CompletionRequestMixin):
+
+    def to_chat_request(self) -> 'ChatCompletionRequest':
+        cmpl_request = asdict(self)
+        prompt = cmpl_request.pop('prompt')
+        cmpl_request['messages'] = [{'role': 'user', 'content': prompt}]
+        return ChatCompletionRequest(**cmpl_request)
 
 
 @dataclass
-class ChatCompletionRequest(MultiModalRequestMixin, RequestConfig, ChatCompletionRequestMixin):
-    pass
+class ChatCompletionRequest(RequestConfig, ChatCompletionRequestMixin):
+
+    def parse(self) -> Tuple['InferRequest', 'RequestConfig']:
+        data = asdict(self)
+        res = []
+        for cls_type in [InferRequest, RequestConfig]:
+            parameters = set(f.name for f in fields(cls_type))
+            _data = {k: v for k, v in data.items() if k in parameters}
+            res.append(cls_type(**_data))
+        return tuple(res)
 
 
 @dataclass

@@ -2,23 +2,22 @@ import os
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Callable, List, Optional, Type, TypeVar, Union
-
+from .argument import BaseArguments
 from swift.utils import get_logger, parse_args, seed_everything
 
 logger = get_logger()
 
-T_Args = TypeVar('T_Args')
+T_Args = TypeVar('T_Args', bound=BaseArguments)
 
 
 class Pipeline(ABC):
     args_class = None
 
     def parse_args(self, args: Union[List[str], T_Args, None] = None) -> T_Args:
+        if isinstance(args, BaseArguments):
+            return args
         assert self.args_class is not None
-        if isinstance(args, (list, tuple)) or args is None:
-            args, remaining_argv = parse_args(self.args_class, args)
-        else:
-            remaining_argv = []
+        args, remaining_argv = parse_args(self.args_class, args)
         if len(remaining_argv) > 0:
             if getattr(args, 'ignore_args_error', False):
                 logger.warning(f'remaining_argv: {remaining_argv}')

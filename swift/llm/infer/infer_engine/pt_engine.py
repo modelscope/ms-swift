@@ -13,10 +13,10 @@ from swift.llm import Template, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
+from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
+                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
+                        random_uuid)
 from .infer_engine import InferEngine
-from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
-                       random_uuid)
 from .utils import InferStreamer, InferTools, LogitsStreamer, StopWordsCriteria, TokensIteratorStreamer
 
 logger = get_logger()

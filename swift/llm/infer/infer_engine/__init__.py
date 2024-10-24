@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from .pt_engine import PtEngine
     from .infer_engine import InferEngine
     from .base import BaseInferEngine
-    from .protocol import InferRequest, RequestConfig
     from .utils import InferStats
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
@@ -19,7 +18,6 @@ else:
         'pt_engine': ['PtEngine'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
-        'protocol': ['InferRequest', 'RequestConfig'],
         'utils': ['InferStats']
     }
 

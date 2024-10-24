@@ -13,9 +13,9 @@ from swift.llm import get_model_tokenizer, get_template, load_dataset
 from swift.llm.template import Template, split_action_action_input
 from swift.plugin import Metric
 from swift.utils import get_logger
+from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
+                        InferRequest, RequestConfig, UsageInfo)
 from .base import BaseInferEngine
-from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,
-                       InferRequest, RequestConfig, UsageInfo)
 
 logger = get_logger()
 
@@ -123,11 +123,6 @@ class InferEngine(BaseInferEngine):
         )
 
     @staticmethod
-    def _update_metrics_wrapper(gen, metrics: Optional[List[Metric]] = None):
-        for res in gen:
-            yield InferEngine._update_metrics(res, metrics)
-
-    @staticmethod
     def _update_metrics(result, metrics: Optional[List[Metric]] = None):
         result_origin = result
         if not isinstance(result, (list, tuple)):
@@ -154,7 +149,12 @@ class InferEngine(BaseInferEngine):
         if use_tqdm is None:
             use_tqdm = not request_config.stream
         if request_config.stream:
-            return self._update_metrics_wrapper(self.__infer_stream(tasks, True, use_tqdm), metrics)
+
+            def _gen_wrapper():
+                for res in self.__infer_stream(tasks, True, use_tqdm), metrics:
+                    yield InferEngine._update_metrics(res, metrics)
+
+            return _gen_wrapper()
         else:
             return self._update_metrics(self.__infer_full(tasks, use_tqdm), metrics)
 

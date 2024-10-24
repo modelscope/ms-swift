@@ -247,7 +247,7 @@ class DatasetLoader:
         return subsets
 
     @staticmethod
-    def post_preprocess(
+    def post_process(
         train_dataset: DATASET_TYPE,
         dataset_sample: Optional[int] = None,
         split_dataset_ratio: float = 0.,
@@ -454,7 +454,7 @@ def load_dataset(
         dataset_syntax = d_info
         dataset_meta = DATASET_MAPPING[dataset_name]['dataset_meta']
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
-        train_dataset, val_dataset = DatasetLoader.post_preprocess(
+        train_dataset, val_dataset = DatasetLoader.post_process(
             train_dataset,
             dataset_syntax.dataset_sample,
             split_dataset_ratio,

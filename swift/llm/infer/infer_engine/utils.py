@@ -10,7 +10,6 @@ from transformers.generation.streamers import BaseStreamer
 
 from swift.llm import Template, Word
 from swift.plugin import Metric
-from .infer_engine import InferEngine
 
 
 class InferTools:

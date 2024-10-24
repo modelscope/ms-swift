@@ -11,7 +11,8 @@ import numpy as np
 from swift.llm import (HfDataset, InferArguments, Messages, Pipeline, Template, get_template, load_dataset, merge_lora,
                        sample_dataset)
 from swift.utils import append_to_jsonl, get_logger
-from .infer_engine import InferEngine, InferRequest, RequestConfig
+from .infer_engine import InferEngine
+from .protocol import InferRequest, RequestConfig
 
 logger = get_logger()
 
@@ -36,10 +37,6 @@ class InferCliState:
         self.audios = []
         self.videos = []
 
-    def copy(self):
-        return InferCliState(self.system, deepcopy(self.messages), self.images.copy(), self.audios.copy(),
-                             self.videos.copy(), self.multiline_mode, self.input_system)
-
     def add_query(self, query: str) -> None:
         self.messages.append({'role': 'user', 'content': query})
 
@@ -47,7 +44,7 @@ class InferCliState:
         self.messages.append({'role': 'assistant', 'content': response})
 
     def to_dict(self):
-        infer_state = self.copy()
+        infer_state = deepcopy(self)
         if infer_state.system is not None:
             infer_state.messages.insert(0, {'role': 'system', 'content': infer_state.system})
         return {
@@ -58,16 +55,23 @@ class InferCliState:
         }
 
 
-class InferPipeline(Pipeline, InferEngine):
+class InferPipeline(Pipeline):
     args_class = InferArguments
 
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
-        self.args = self.parse_args(args)
+        self.args: InferArguments = self.parse_args(args)
         if args.merge_lora:
             merge_lora(args, device_map=args.merge_device_map)
+        self.infer_engine = self.get_infer_engine()
         self.template = self._get_template(self.tokenizer)
         self.random_state = np.random.RandomState(args.dataset_seed)
-        super().__init__()
+
+    def __getattr__(self, name: str):
+        try:
+            return super().__getattr__(name)  # TODO:check
+        except AttributeError:
+            return getattr(self.infer_engine, name)
+
 
     def get_infer_engine(self) -> InferEngine:
         args = self.args

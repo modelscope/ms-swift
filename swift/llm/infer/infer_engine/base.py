@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, Iterator, List, Optional, Union
 
-from .protocol import ChatCompletionResponse, ChatCompletionStreamResponse
+from ..protocol import ChatCompletionResponse, ChatCompletionStreamResponse
 
 
 class BaseInferEngine(ABC):
