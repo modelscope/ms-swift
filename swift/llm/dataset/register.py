@@ -10,9 +10,7 @@ from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 
 from swift.utils import get_logger
-from .preprocess import AutoPreprocessor, MessagesPreprocessor
-
-DATASET_TYPE = Union[HfDataset, HfIterableDataset]
+from .preprocess import AutoPreprocessor, MessagesPreprocessor, DATASET_TYPE
 
 PreprocessFunc = Callable[..., DATASET_TYPE]
 LoadFunction = Callable[..., DATASET_TYPE]

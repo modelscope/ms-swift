@@ -102,20 +102,12 @@ register_dataset(
 def _repair_agent_messages(messages: str, use_mini: bool) -> Optional[List[Dict[str, str]]]:
     if use_mini:
         pattern = r'\d\. {"plugin_name": "(.+?)"'
-    else:
-        pattern = r'\d\. {"(?:plugin_)?name": "(.+?)"'
-
-    idx = messages.find(r"'from': 'user")
-    if idx == -1:
-        return
-    # remove dirty data
-    find_list = re.findall(pattern, messages[:idx])
-    if len(set(find_list)) <= 1:
-        return
-    if isinstance(messages, str):
-        messages = ast.literal_eval(messages)
-    if len(messages) == 1:
-        return
+        if  messages[0]['from'] != 'system':
+            return
+        system = messages[0]['value']
+        find_list = re.findall(pattern, system)
+        if len(set(find_list)) <= 1:
+            return
     return messages
 
 
@@ -125,15 +117,13 @@ register_dataset(
         ms_dataset_id='damo/MSAgent-Bench',
         subsets=[
             SubsetDataset(
-                preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=False),
-                                                     )),
+                preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=False))),
             SubsetDataset(
                 name='mini',
                 subset='default',
-                preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=True), ),
+                preprocess_func=MessagesPreprocessor(repair_messages=partial(_repair_agent_messages, use_mini=True)),
                 is_weak_subset=True)
         ],
-        split=['train', 'validation'],
         tags=['chat', 'agent', 'multi-round']))
 
 advertise_gen_prompt = """Task: Generating advertisements based on keywords.
@@ -150,7 +140,6 @@ register_dataset(
                 'content': 'query',
                 'summary': 'response'
             }),
-        split=['train', 'validation'],
         tags=['text-generation', '🔥'],
     ))
 
@@ -170,27 +159,15 @@ class FireflyPreprocessor(ResponsePreprocessor):
         return super().preprocess(row)
 
 
-def load_firefly_zh_dataset(dataset_syntax: DatasetSyntax, dataset_meta: DatasetMeta, **kwargs) -> HfDataset:
-    file = 'firefly-train-1.1M.jsonl'
-    preprocess_func = FireflyPreprocessor()
-    dataset_dir = DatasetLoader.download_ms_dataset(dataset_meta.ms_dataset_id, [file])
-    fpath = os.path.join(dataset_dir, file)
-    with open(fpath, 'r', encoding='utf-8') as f:
-        text = f.read()
-        text = text.replace('}{', '},{')
-        text = f'[{text}]'
-        dataset = json.loads(text)
-    return preprocess_func(dataset, **kwargs)
-
 
 register_dataset(
     LLMDatasetName.firefly_zh,
     DatasetMeta(
         ms_dataset_id='AI-ModelScope/firefly-train-1.1M',
         hf_dataset_id='YeungNLP/firefly-train-1.1M',
+        preprocess_func=FireflyPreprocessor(),
         tags=['chat', 'general'],
     ),
-    load_function=load_firefly_zh_dataset,
 )
 
 register_dataset(
@@ -202,7 +179,6 @@ register_dataset(
         preprocess_func=ClsPreprocessor(['neutral', 'entailment', 'contradiction'],
                                         task='Natural Language Inference',
                                         is_pair_seq=True),
-        split=['train', 'validation'],
         tags=['text-generation', 'classification'],
     ))
 
@@ -211,5 +187,4 @@ register_dataset(
     DatasetMeta(
         ms_dataset_id='DAMO_NLP/jd',
         preprocess_func=ClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False),
-        split=['train', 'validation'],
         tags=['text-generation', 'classification', '🔥']))

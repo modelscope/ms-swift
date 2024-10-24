@@ -544,14 +544,14 @@
     "medical-en": {
         "ms_dataset_id": "swift/medical_zh",
         "subsets": [{
-            "subset_name": "en",
+            "name": "en",
             "columns": {
                 "input": "query",
                 "output": "response"
             }
         },
         {
-            "subset_name": "zh",
+            "name": "zh",
             "columns": {
                 "instruction": "query",
                 "output": "response"

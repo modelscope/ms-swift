@@ -36,14 +36,14 @@ class RowPreprocessor:
         self.columns_mapping = columns_mapping or {}
         self.remove_useless_columns = remove_useless_columns
 
-    def empty_row(self) -> Dict[str, Any]:
-        return {'messages': None}
+    def _empty_row(self) -> Dict[str, Any]:
+        return {'messages': [{'role': '', 'content': ''}]}
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
-    def filter(self, row: Dict[str, Any]) -> bool:
-        return row['messages'] is not None
+    def _filter(self, row: Dict[str, Any]) -> bool:
+        return row['messages'] and row['messages'][0].get('role')
 
     def prepare_dataset(self, dataset: HfDataset) -> HfDataset:
         return dataset
@@ -57,7 +57,7 @@ class RowPreprocessor:
                 raise
             logger.error(f'There are errors in the dataset, the data will be deleted. error: {e}')
         if row is None:
-            row = self.empty_row()
+            row = self._empty_row()
         return row
 
     def _safe_rename_columns(self, dataset: HfDataset) -> HfDataset:
@@ -88,7 +88,7 @@ class RowPreprocessor:
         try:
             _row_map = partial(self._row_map, strict=strict)
             dataset = dataset.map(_row_map, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
-            dataset = dataset.filter(self.filter, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
+            dataset = dataset.filter(self._filter, num_proc=num_proc, load_from_cache_file=load_from_cache_file)
         except NotImplementedError:
             pass
         return self._remove_useless_columns(dataset)
@@ -228,9 +228,12 @@ class MessagesPreprocessor(RowPreprocessor):
 
     @staticmethod
     def check_message(user_message: Dict[str, str], assistant_message: Dict[str, str]) -> None:
-        assert user_message['role'] in {'user', 'tool'} and 'content' in user_message, f'user_message: {user_message}'
-        assert assistant_message['role'] in {'assistant'} and 'content' in assistant_message, (
-            f'assistant_message: {assistant_message}')
+        assert (
+            len(user_message) == 2 and user_message['role'] in {'user', 'tool'} and 'content' in user_message
+        ), f'user_message: {user_message}'
+        assert (
+            len(assistant_message) == 2  and assistant_message['role'] in {'assistant'} and 'content' in assistant_message
+        ), f'assistant_message: {assistant_message}'
 
     def sharegpt_to_messages(self, messages: List[Dict[str, str]], system: Optional[str]) -> List[Dict[str, str]]:
         self._to_std_key(messages, 'user', self.user_roles)

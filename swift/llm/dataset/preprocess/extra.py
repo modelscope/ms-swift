@@ -3,9 +3,9 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from swift.llm import DATASET_TYPE, Messages
+from swift.llm import Messages
 from swift.utils import get_logger
-from .core import ResponsePreprocessor, RowPreprocessor
+from .core import ResponsePreprocessor, RowPreprocessor, DATASET_TYPE
 
 logger = get_logger()
 

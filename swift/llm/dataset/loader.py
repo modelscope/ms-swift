@@ -15,12 +15,9 @@ from numpy.random import RandomState
 
 from swift.hub import HFHub, MSHub
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context, use_hf_hub
-from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset_info
+from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset_info, DATASET_TYPE
 
-DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
-SubsetSplit = Union[str, Tuple[str, str], List[str]]
-PreprocessFunc = Callable[[DATASET_TYPE], DATASET_TYPE]
 logger = get_logger()
 
 
@@ -241,6 +238,8 @@ class DatasetLoader:
         if not subsets:
             if len(subset_names) <= 1:
                 subsets = subset_names
+            elif 'default' in subset_names:
+                subsets = ['default']
             else:
                 raise ValueError(f'Please provide subsets. available subsets: {subset_names}')
         elif len(subsets) == 1 and subsets[0] == 'all' and 'all' not in subset_names:
@@ -414,7 +413,7 @@ class DatasetLoader:
         for dataset in datasets:
             d_info = DatasetSyntax.parse(dataset)
             if d_info.dataset_type == 'name':
-                res_datasets.append(d_info.dataset)
+                res_datasets.append(dataset)
             else:
                 # dataset_path/dataset_id
                 dataset_name = to_dataset_name_mapping.map_to_name(d_info)
