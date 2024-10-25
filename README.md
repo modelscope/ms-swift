@@ -55,6 +55,9 @@ You can contact us and communicate with us by adding our group:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 🎉 News
+- 2024.10.24: Support for training and deploying aya-expanse series models. Experience it using `swift infer --model_type aya-expanse-32b`.
+- 2024.10.22: Support for training and deploying emu3-chat. Experience it using `swift infer --model_type emu3-chat`.
+- 2024.10.22: Support for training and deploying molmo series models. Experience it using `swift infer --model_type molmo-7b-d`.
 - 2024.10.09: Support for reward modeling for LLM and MLLM, as well as PPO training for LLM. Refer to the [documentation](docs/source_en/LLM/Human-Preference-Alignment-Training-Documentation.md).
 - 2024.10.09: Support for training and deploying ovis1.6-gemma2 series models. Experience it using `swift infer --model_type ovis1_6-gemma2-9b`.
 - 2024.09.26: Support for training and deploying llama3.2-vision series models. Experience it using `swift infer --model_type llama3_2-11b-vision-instruct`.
@@ -613,6 +616,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | dbrx                                                                                            | [databricks](https://github.com/databricks/dbrx)                                                                                               | English            | 132B                                      | base model<br>chat model                                          |
 | mengzi3                                                                                         | [Langboat](https://github.com/Langboat/Mengzi3)                                                                                                | Chinese<br>English | 13B                                       | base model                                                        |
 | c4ai-command-r                                                                                  | [c4ai](https://cohere.com/command)                                                                                                             | Multilingual       | 35B-104B                                  | chat model                                                        |
+| aya-expanse                                                                                  | [aya](https://cohere.com/research/aya)                                                                                                             | Multilingual       | 8B-32B                                  | chat model                                                        |
 | WizardLM2                                                                                       | [WizardLM2 series models](https://github.com/nlpxucan/WizardLM)                                                                                | English            | 7B-8x22B<br>including quantized versions  | chat model<br>MoE model                                           |
 | Atom                                                                                            | [Atom](https://github.com/LlamaFamily/Llama-Chinese)                                                                                           | Chinese            | 7B                                        | base model<br>chat model                                          |
 | Chinese-LLaMA-Alpaca-2                                                                          | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2)                                                                      | Chinese            | 1.3B-13B                                  | base model<br>chat model<br>long text model                       |
@@ -646,6 +650,7 @@ The complete list of supported models and datasets can be found at [Supported Mo
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | English       | 8B      | chat model       |
 | Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | English       | 9B      | chat model       |
 | Molmo              | [Molmo series models](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | English       | 1B-72B      | chat model       |
+| Emu3-Chat              | [Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)                | English       | 8B      | chat model       |
 
 #### Diffusion Models
 

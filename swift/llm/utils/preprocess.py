@@ -24,7 +24,7 @@ logger = get_logger()
 
 def _reduce_columns(cls: type) -> type:
     # Remove unnecessary columns from the output dataset.
-    if getattr(cls, '_patching', False):
+    if getattr(cls, '_patching', False) or dataset_enable_cache:
         return cls
 
     call_func = cls.__call__

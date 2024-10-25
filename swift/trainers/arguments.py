@@ -80,7 +80,7 @@ try:
     class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
         pass
 
-except ImportError:
+except (ImportError, RuntimeError):
     DPOConfig = None
     CPOConfig = None
     ORPOConfig = None

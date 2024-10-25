@@ -22,7 +22,6 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import is_torch_bf16_gpu_available, strtobool
 from transformers.utils.versions import require_version
-from trl import AutoModelForCausalLMWithValueHead
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
@@ -600,6 +599,8 @@ class ModelType:
     molmo_7b_o = 'molmo-7b-o'
     molmo_7b_d = 'molmo-7b-d'
     molmo_72b = 'molmo-72b'
+    # emu3-chat
+    emu3_chat = 'emu3-chat'
     # mamba
     mamba_130m = 'mamba-130m'
     mamba_370m = 'mamba-370m'
@@ -623,6 +624,9 @@ class ModelType:
     # c4ai
     c4ai_command_r_v01 = 'c4ai-command-r-v01'
     c4ai_command_r_plus = 'c4ai-command-r-plus'
+    # aya
+    aya_expanse_8b = 'aya-expanse-8b'
+    aya_expanse_32b = 'aya-expanse-32b'
     # codestral
     codestral_22b = 'codestral-22b'
     # florence
@@ -668,6 +672,7 @@ class LoRATM(NamedTuple):
     ovis1_6 = 'ovis1_6'
     molmo = 'molmo'
     deepseek_janus = 'deepseek_janus'
+    emu3_chat = 'emu3_chat'
     # default lora target modules for nlp llms.
     minicpm3 = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
     baichuan = ['W_pack']
@@ -948,6 +953,24 @@ def _check_gptq_model(bits: int, model_config, model_kwargs: Dict[str, Any]) -> 
     support_flash_attn=True,
     hf_model_id='CohereForAI/c4ai-command-r-plus')
 @register_model(
+    ModelType.aya_expanse_8b,
+    'AI-ModelScope/aya-expanse-8b',
+    LoRATM.llama,
+    TemplateType.aya,
+    requires=['transformers>=4.44.0'],
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='CohereForAI/aya-expanse-8b')
+@register_model(
+    ModelType.aya_expanse_32b,
+    'AI-ModelScope/aya-expanse-32b',
+    LoRATM.llama,
+    TemplateType.aya,
+    requires=['transformers>=4.44.0'],
+    support_vllm=True,
+    support_flash_attn=True,
+    hf_model_id='CohereForAI/aya-expanse-32b')
+@register_model(
     ModelType.telechat2_115b,
     'TeleAI/TeleChat2-115B',
     LoRATM.telechat,
@@ -1039,6 +1062,12 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+
+            # fix not save modeling_xxx.py (transformers 4.45)
+            # https://github.com/huggingface/transformers/issues/24737
+            has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
+            if has_remote_code and model._auto_class is None:
+                model._auto_class = automodel_class.__name__
         model.is_gptq = is_gptq
         model.is_awq = is_awq
         model.is_aqlm = is_aqlm
@@ -1322,6 +1351,18 @@ def get_model_tokenizer_molmoe_1b(model_dir: str,
     from transformers import GenerationMixin
     model.generate = MethodType(GenerationMixin.generate, model)
 
+    if model and hasattr(model, '_old_forward'):  # device_map
+        device = model.lm_head.weight.device
+        forward_origin = model._old_forward
+
+        def _forward(*args, **kwargs):
+            if 'append_last_valid_logits' in kwargs:
+                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
+            return forward_origin(*args, **kwargs)
+
+        model._old_forward = _forward
+        model.forward_origin = forward_origin
+
     return model, tokenizer
 
 
@@ -1374,7 +1415,70 @@ def get_model_tokenizer_molmo(model_dir: str,
                               **kwargs):
     from transformers import AutoProcessor
     processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+    model_cls = get_class_from_dynamic_module('modeling_molmo.MolmoForCausalLM', model_dir)
+    model_cls._no_split_modules = ['MolmoSequentialBlock']
     model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    tokenizer.processor = processor
+    if model:
+        device = next(model.model.transformer.ff_out.parameters()).device
+        forward_origin = model.model.forward
+
+        def _forward(*args, **kwargs):
+            if 'append_last_valid_logits' in kwargs:
+                kwargs['append_last_valid_logits'] = kwargs['append_last_valid_logits'].to(device)
+            return forward_origin(*args, **kwargs)
+
+        model.model.forward = _forward
+        model.model.forward_origin = forward_origin
+
+    return model, tokenizer
+
+
+@register_model(
+    ModelType.emu3_chat,
+    'BAAI/Emu3-Chat',
+    LoRATM.emu3_chat,
+    TemplateType.emu3_chat,
+    support_flash_attn=True,
+    support_gradient_checkpointing=True,
+    eos_token='<|extra_204|>',
+    requires=['transformers>=4.44.0'],
+    tags=['multi-modal', 'vision'],
+    hf_model_id='BAAI/Emu3-Chat')
+def get_model_tokenizer_emu3_chat(model_dir: str,
+                                  torch_dtype: torch.dtype,
+                                  model_kwargs: Dict[str, Any],
+                                  load_model: bool = True,
+                                  **kwargs):
+    model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+    # flash attention
+    use_flash_attn = kwargs.pop('use_flash_attn', False)
+    if use_flash_attn:
+        model_config._attn_implementation = 'flash_attention_2'
+    elif use_flash_attn is False:
+        model_config._attn_implementation = 'eager'
+    model, tokenizer = get_model_tokenizer_from_repo(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+
+    # download and load vision tokenizer
+    from transformers import AutoImageProcessor
+    use_hf = strtobool(os.environ.get('USE_HF', 'False'))
+    if use_hf:
+        from huggingface_hub import snapshot_download as hf_snapshot_download
+        vq_model = hf_snapshot_download('BAAI/Emu3-VisionTokenizer')
+    else:
+        vq_model = snapshot_download('BAAI/Emu3-VisionTokenizer')
+    image_processor = AutoImageProcessor.from_pretrained(vq_model, trust_remote_code=True)
+    image_tokenizer = AutoModel.from_pretrained(vq_model, device_map=model_kwargs['device_map'], trust_remote_code=True)
+    image_tokenizer.requires_grad_(False)
+
+    # load processor
+    if 'local_repo_path' in kwargs:
+        local_repo_path = kwargs['local_repo_path']
+    else:
+        local_repo_path = git_clone_github('https://github.com/baaivision/Emu3.git')
+    sys.path.append(os.path.join(local_repo_path))
+    from emu3.mllm.processing_emu3 import Emu3Processor
+    processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)
     tokenizer.processor = processor
 
     return model, tokenizer
@@ -7102,9 +7206,6 @@ def get_additional_saved_files(model_type: str) -> List[str]:
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
         'yi-vl': ['vit'],
-        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py'],
-        'molmoe': ['modeling_molmoe.py'],
-        'molmo': ['modeling_molmo.py'],
     }
     for key, files_list in files_mapping.items():
         if key in model_type:
@@ -7123,7 +7224,8 @@ def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, No
     return res
 
 
-def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
+def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
+    from trl import AutoModelForCausalLMWithValueHead
     lm_head_namings = ['lm_head', 'embed_out']
     if not any(hasattr(model, attribute) for attribute in lm_head_namings):
         setattr(model, 'lm_head', None)  # avoid ValueError

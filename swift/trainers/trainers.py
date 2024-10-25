@@ -141,7 +141,7 @@ class Seq2SeqTrainer(PushToMsHubMixin, SwiftMixin, HfSeq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
-    def compute_loss(self, model, inputs, return_outputs=None):
+    def compute_loss(self, model, inputs, return_outputs=None, **kwargs):
         if not hasattr(self, '_custom_metrics'):
             self._custom_metrics = {}
 

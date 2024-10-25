@@ -480,6 +480,5 @@ def prepare_lmdeploy_engine_template(args: InferArguments) -> Tuple[Union[AsyncE
         args.truncation_strategy,
         model=lmdeploy_engine,
         tools_prompt=args.tools_prompt)
-    args.system = template.default_system
-    logger.info(f'system: {args.system}')
+    logger.info(f'system: {template.default_system}')
     return lmdeploy_engine, template

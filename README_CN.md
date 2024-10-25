@@ -56,6 +56,9 @@ SWIFT具有丰富全面的文档，请查看我们的文档网站:
 
 
 ## 🎉 新闻
+- 2024.09.26: 支持aya-expanse系列模型的训练到部署. 使用`swift infer --model_type aya-expanse-32b`进行体验.
+- 2024.10.23: 支持emu3-chat的训练到部署. 使用`swift infer --model_type emu3-chat`进行体验.
+- 2024.10.22: 支持molmo系列模型的训练到部署. 使用`swift infer --model_type molmo-7b-d`进行体验.
 - 2024.10.09: 支持 llm 和 mllm 的 reward modeling 训练, 支持 llm 的 PPO 训练. 参考[文档](docs/source/LLM/人类偏好对齐训练文档.md)
 - 2024.10.09: 支持ovis1.6-gemma2的训练到部署. 使用`swift infer --model_type ovis1_6-gemma2-9b`进行体验.
 - 2024.09.26: 支持llama3.2-vision系列模型的训练到部署. 使用`swift infer --model_type llama3_2-11b-vision-instruct`进行体验.
@@ -606,6 +609,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | dbrx                                                                                            | [databricks](https://github.com/databricks/dbrx)                          | 英文       | 132B                | base模型<br>chat模型                          |
 | mengzi3                                                                                         | [Langboat](https://github.com/Langboat/Mengzi3)                           | 中文<br>英文 | 13B                 | base模型                                    |
 | c4ai-command-r                                                                                  | [c4ai](https://cohere.com/command)                                        | 多语种      | 35B-104B            | chat模型                                    |
+| aya-expanse                                                                                  | [aya](https://cohere.com/research/aya)                                        | 多语种      | 8B-32B            | chat模型                                    |
 | WizardLM2                                                                                       | [WizardLM2系列模型](https://github.com/nlpxucan/WizardLM)                     | 多语种      | 7B-8x22B<br>包含量化版本  | chat模型<br>MoE模型                           |
 | Atom                                                                                            | [Atom](https://github.com/LlamaFamily/Llama-Chinese)                      | 中文       | 7B                  | base模型<br>chat模型                          |
 | Chinese-LLaMA-Alpaca-2                                                                          | [Chinese-LLaMA-Alpaca-2](https://github.com/ymcui/Chinese-LLaMA-Alpaca-2) | 中文       | 1.3B-13B            | base模型<br>chat模型<br>长文本模型                 |
@@ -639,7 +643,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 | Llama3.1-Omni              | [LLaMA-Omni](https://github.com/ictnlp/LLaMA-Omni)                | 英文       | 8B      | chat模型       |
 | Ovis              | [Ovis](https://github.com/AIDC-AI/Ovis)                | 英文       | 9B      | chat模型       |
 | Molmo              | [Molmo系列模型](https://huggingface.co/collections/allenai/molmo-66f379e6fe3b8ef090a8ca19)                | 英文       | 1B-72B      | chat模型       |
-
+| Emu3-Chat              | [Emu3-Chat](https://huggingface.co/BAAI/Emu3-Chat)                | 英文       | 8B      | chat 模型       |
 
 #### 扩散模型
 
