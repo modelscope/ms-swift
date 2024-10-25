@@ -22,7 +22,6 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import is_torch_bf16_gpu_available, strtobool
 from transformers.utils.versions import require_version
-from trl import AutoModelForCausalLMWithValueHead
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
@@ -1063,6 +1062,12 @@ def get_model_tokenizer_from_repo(model_dir: str,
             with context:
                 model = automodel_class.from_pretrained(
                     model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
+
+            # fix not save modeling_xxx.py (transformers 4.45)
+            # https://github.com/huggingface/transformers/issues/24737
+            has_remote_code = hasattr(model_config, 'auto_map') and automodel_class.__name__ in model_config.auto_map
+            if has_remote_code and model._auto_class is None:
+                model._auto_class = automodel_class.__name__
         model.is_gptq = is_gptq
         model.is_awq = is_awq
         model.is_aqlm = is_aqlm
@@ -7201,10 +7206,6 @@ def get_additional_saved_files(model_type: str) -> List[str]:
         'qwen-vl': ['SimSun.ttf'],
         'qwen-audio': ['mel_filters.npz'],
         'yi-vl': ['vit'],
-        'minicpm-v-v2_6-chat': ['modeling_navit_siglip.py'],
-        'molmoe': ['modeling_molmoe.py'],
-        'molmo': ['modeling_molmo.py'],
-        'emu3-chat': ['modeling_emu3.py']
     }
     for key, files_list in files_mapping.items():
         if key in model_type:
@@ -7223,7 +7224,8 @@ def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, No
     return res
 
 
-def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
+def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
+    from trl import AutoModelForCausalLMWithValueHead
     lm_head_namings = ['lm_head', 'embed_out']
     if not any(hasattr(model, attribute) for attribute in lm_head_namings):
         setattr(model, 'lm_head', None)  # avoid ValueError
