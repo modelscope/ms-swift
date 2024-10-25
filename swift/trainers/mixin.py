@@ -44,7 +44,7 @@ from .utils import can_return_loss, find_labels, get_function, is_instance_of_ms
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
-except RuntimeError:
+except (ImportError, RuntimeError):
     AutoModelForCausalLMWithValueHead = None
 
 logger = get_logger()
