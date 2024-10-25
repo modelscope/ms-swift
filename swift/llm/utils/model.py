@@ -22,7 +22,6 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils import is_torch_bf16_gpu_available, strtobool
 from transformers.utils.versions import require_version
-from trl import AutoModelForCausalLMWithValueHead
 
 from swift import get_logger
 from swift.utils import get_dist_setting, safe_ddp_context, subprocess_run, use_torchacc
@@ -7204,7 +7203,8 @@ def get_default_lora_target_modules(model_type: str) -> Union[List[str], str, No
     return res
 
 
-def get_model_with_value_head(model) -> AutoModelForCausalLMWithValueHead:
+def get_model_with_value_head(model) -> 'AutoModelForCausalLMWithValueHead':
+    from trl import AutoModelForCausalLMWithValueHead
     lm_head_namings = ['lm_head', 'embed_out']
     if not any(hasattr(model, attribute) for attribute in lm_head_namings):
         setattr(model, 'lm_head', None)  # avoid ValueError
