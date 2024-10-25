@@ -3,6 +3,7 @@ import inspect
 import math
 import os
 import platform
+import accelerate
 import sys
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
@@ -1199,6 +1200,9 @@ class SftArguments(ArgumentsBase):
         metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if hasattr(self, 'rlhf_type') and self.rlhf_type == 'ppo':
             metric_for_best_model = None
+        
+        if version.parse('1.0') <= version.parse(accelerate.__version__) < version.parse('1.1'):
+            self.dataset_seed = None
 
         training_args = training_args_cls(
             output_dir=self.output_dir,
