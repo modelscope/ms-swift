@@ -24,7 +24,7 @@ class SubsetDataset:
     # If set to None, then subset is set to subset_name.
     subset: Optional[str] = None
 
-    # Higher priority. If set to None, the attributes of the Dataset will be used.
+    # Higher priority. If set to None, the attributes of the DatasetMeta will be used.
     split: Optional[List[str]] = None
     preprocess_func: Optional[PreprocessFunc] = None
     remove_useless_columns: Optional[bool] = None
@@ -99,12 +99,11 @@ def register_dataset(dataset_name: str,
     if function_kwargs is None:
         function_kwargs = {}
 
-    dataset_info = {'dataset_meta': dataset_meta, **kwargs}
     if load_function is None:
         load_function = DatasetLoader.load
     if len(function_kwargs) > 0:
         load_function = partial(load_function, **function_kwargs)
-    dataset_info['load_function'] = load_function
+    dataset_info = {'dataset_meta': dataset_meta, 'load_function': load_function, **kwargs}
     DATASET_MAPPING[dataset_name] = dataset_info
 
 

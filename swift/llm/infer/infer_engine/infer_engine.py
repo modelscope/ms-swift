@@ -48,15 +48,7 @@ class InferEngine(BaseInferEngine):
         self.config = config
         self.tokenizer = tokenizer
         self.model = model
-        self.torch_dtype = config.torch_dtype
-
-        self.model_type = config.model_type
-        self.model_dir = config.model_dir
-        self.is_multimodal = config.is_multimodal
-        self.is_moe = config.is_moe
-        self.chat_template = config.chat_template
-        self.generation_template = config.generation_template
-        self.max_model_len = config.max_model_len
+        self.model_info = config.model_info
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []

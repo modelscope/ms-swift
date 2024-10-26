@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 from contextlib import contextmanager
 from functools import partial, wraps
@@ -94,24 +95,26 @@ class Template(_Template):
             deepspeed.initialize = _deepspeed_initialize
 
     def _init_template(
-            self,
-            tokenizer: PreTrainedTokenizerBase,
-            default_system: Optional[str] = None,
-            max_length: Optional[int] = None,
-            *,
-            truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
-            loss_scale: str = 'default',
-            max_pixels: int = -1,
-            sequence_parallel_size: int = 1,  # only for train
-            tools_prompt: str = 'react_en') -> None:
+        self,
+        tokenizer: PreTrainedTokenizerBase,
+        default_system: Optional[str] = None,
+        max_length: Optional[int] = None,
+        *,
+        truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left',
+        max_pixels: int = -1,
+        tools_prompt: str = 'react_en',
+        # only for train
+        loss_scale: str = 'default',
+        sequence_parallel_size: int = 1,
+    ) -> None:
         self.sequence_parallel_size = sequence_parallel_size
         return super()._init_template(
             tokenizer,
             default_system,
             max_length,
             truncation_strategy=truncation_strategy,
-            loss_scale=loss_scale,
             max_pixels=max_pixels,
+            loss_scale=loss_scale,
             tools_prompt=tools_prompt)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,

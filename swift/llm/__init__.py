@@ -5,16 +5,16 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
-    from .app_ui import gradio_chat_demo, gradio_generation_demo, app_ui_main
-    from .infer import (VllmEngine, InferRequest, RequestConfig, InferStats, LmdeployEngine, PtEngine, 
-                        infer_main, deploy_main)
+    from .infer import (VllmEngine, InferRequest, RequestConfig, InferStats, LmdeployEngine, PtEngine, infer_main,
+                        deploy_main)
     from .export import export_main, merge_lora
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebuiArguments, AppUIArguments)
     from .template import TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template
-    from .model import MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory
+    from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
+                        ModelInfo, ModelMeta)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
                           MediaResource, register_dataset, register_dataset_info, dataset_map, stat_dataset, LLMDataset,
                           LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_example, sort_by_max_length,
@@ -26,11 +26,16 @@ if TYPE_CHECKING:
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
-        'app_ui': ['gradio_chat_demo', 'gradio_generation_demo', 'app_ui_main'],
         'rlhf': ['rlhf_main'],
         'infer': [
-            'deploy_main', 'VllmEngine', 'InferRequest', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine',
-            'infer_main', 
+            'deploy_main',
+            'VllmEngine',
+            'InferRequest',
+            'RequestConfig',
+            'InferStats',
+            'LmdeployEngine',
+            'PtEngine',
+            'infer_main',
         ],
         'export': ['export_main', 'merge_lora'],
         'eval': ['eval_main'],
@@ -40,7 +45,10 @@ else:
             'RLHFArguments', 'AppUIArguments'
         ],
         'template': ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template'],
-        'model': ['MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory'],
+        'model': [
+            'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
+            'ModelInfo', 'ModelMeta'
+        ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DatasetName',
             'DATASET_MAPPING', 'MediaResource', 'register_dataset', 'register_dataset_info', 'dataset_map',

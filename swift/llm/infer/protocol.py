@@ -46,25 +46,22 @@ class RequestConfig:
     max_tokens: Optional[int] = None  # None: max_model_len - num_tokens
     # None: use deploy_args
     temperature: Optional[float] = None
+    top_k: Optional[int] = None
     top_p: Optional[float] = None
-
-    n: int = 1
-    seed: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    num_beams: Optional[int] = None
     stop: List[str] = field(default_factory=list)
+
+    seed: Optional[int] = None
     stream: bool = False
     logprobs: bool = False
     top_logprobs: Optional[int] = None
 
+    n: int = 1
     best_of: Optional[int] = None
     presence_penalty: float = 0.
     frequency_penalty: float = 0.
     length_penalty: float = 1.
-
-    # additional
-    # None: use deploy_args
-    num_beams: Optional[int] = None
-    top_k: Optional[int] = None
-    repetition_penalty: Optional[float] = None
 
     def __post_init__(self):
         if self.stop is None:

@@ -155,7 +155,7 @@ class Template:
                        default_system: Optional[str] = None,
                        max_length: Optional[int] = None,
                        *,
-                       truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
+                       truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left',
                        loss_scale: Optional[str] = None,
                        max_pixels: int = -1,
                        tools_prompt: Optional[str] = None) -> None:

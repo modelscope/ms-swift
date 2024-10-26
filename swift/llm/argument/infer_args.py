@@ -41,47 +41,11 @@ class LmdeployArguments:
 
 
 @dataclass
-class MergeArguments:
-    merge_lora: bool = False
-    merge_device_map: Optional[str] = None
-    use_merge_kit: bool = False
-    instruct_model_id_or_path: Optional[str] = None
-    instruct_model_revision: Optional[str] = None
-
-    def __post_init__(self):
-        if self.use_merge_kit:
-            assert is_merge_kit_available(), ('please install mergekit by pip install '
-                                              'git+https://github.com/arcee-ai/mergekit.git')
-            logger.info('Important: You are using mergekit, please remember '
-                        'the LoRA should be trained against the base model,'
-                        'and pass its instruct model by --instruct_model xxx when merging')
-            assert self.instruct_model_id_or_path, 'Please pass in the instruct model'
-
-            self.merge_yaml = ('models:'
-                               '  - model: {merged_model}'
-                               '    parameters:'
-                               '      weight: 1'
-                               '  }'
-                               '  - model: {instruct_model}'
-                               '    parameters:'
-                               '      weight: 1'
-                               '  }'
-                               'merge_method: ties'
-                               'base_model: {base_model}'
-                               'parameters:'
-                               '  normalize: true'
-                               '  int8_mask: true'
-                               'dtype: bfloat16')
-
-
-@dataclass
 class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArguments):
     infer_backend: Literal['auto', 'vllm', 'pt', 'lmdeploy'] = 'auto'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
     result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
 
-    load_args_from_ckpt_dir: bool = True
-    load_dataset_config: bool = False
     eval_human: Optional[bool] = None
     show_dataset_sample: int = -1
     save_result: bool = True

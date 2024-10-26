@@ -22,9 +22,11 @@ logger = get_logger()
 @dataclass
 class ModelInfo:
     model_type: str
+    model_dir: str
     torch_dtype: torch.dtype
+    max_model_len: int
     quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None] = None
-    bits: int = 0
+    quant_bits: int = 0
 
 
 class HfConfigFactory:
@@ -36,7 +38,7 @@ class HfConfigFactory:
             torch_dtype = HfConfigFactory.get_config_attr(config, key)
             if torch_dtype is not None:
                 break
-        torch_dtype = HfConfigFactory._to_torch_dtype(torch_dtype)
+        torch_dtype = HfConfigFactory.to_torch_dtype(torch_dtype)
         if torch_dtype is None:
             torch_dtype = quant_info.get('torch_dtype')
         return torch_dtype
@@ -50,13 +52,11 @@ class HfConfigFactory:
                                  f'Please explicitly provide the model_type. Available model_types: {model_types}')
             model_type = model_types[0]
 
-        quant_info = HfConfigFactory._get_quant_info(config)
+        quant_info = HfConfigFactory._get_quant_info(config) or {}
         torch_dtype = HfConfigFactory._get_torch_dtype(config, quant_info)
-        res = ModelInfo(model_type, torch_dtype)
-        if quant_info is not None:
-            res.quant_method = quant_info['quant_method']
-            res.bits = quant_info['bits']
-
+        max_model_len = HfConfigFactory.get_max_model_len(config)
+        res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
+                        quant_info.get('quant_bits'))
         return res
 
     @staticmethod
@@ -120,7 +120,9 @@ class HfConfigFactory:
         config.hidden_size = value
 
     @staticmethod
-    def _to_torch_dtype(torch_dtype: Union[str, torch.dtype]) -> torch.dtype:
+    def to_torch_dtype(torch_dtype: Union[str, torch.dtype, None]) -> Optional[torch.dtype]:
+        if torch_dtype is None:
+            return None
         if isinstance(torch_dtype, str):
             torch_dtype = eval(f'torch.{torch_dtype}')
         return torch_dtype
@@ -137,19 +139,19 @@ class HfConfigFactory:
         if quant_method in {'gptq', 'awq', 'aqlm'}:
             res['quant_method'] = quant_method
             res['torch_dtype'] = torch.float16
-            bits = quantization_config.get('bits')
-            if bits is not None:
-                res['bits'] = bits
+            quant_bits = quantization_config.get('bits')
+            if quant_bits is not None:
+                res['quant_bits'] = quant_bits
         elif quant_method == 'bitsandbytes':
             res['quant_method'] = 'bnb'
             load_in_4bit = quantization_config.get('load_in_4bit')
             load_in_8bit = quantization_config.get('load_in_8bit')
             bnb_4bit_compute_dtype = quantization_config.get('bnb_4bit_compute_dtype')
             if load_in_4bit:
-                res['bits'] = 4
+                res['quant_bits'] = 4
             elif load_in_8bit:
-                res['bits'] = 8
-            res['torch_dtype'] = HfConfigFactory._to_torch_dtype(bnb_4bit_compute_dtype)
+                res['quant_bits'] = 8
+            res['torch_dtype'] = HfConfigFactory.to_torch_dtype(bnb_4bit_compute_dtype)
         return res or None
 
     @staticmethod
@@ -224,11 +226,10 @@ class AttnImpl:
     flash_attn = 'flash_attn'
     sdpa = 'sdpa'
     eager = 'eager'
-    auto = 'auto'  # sdpa or eager
 
     @staticmethod
     def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
-        if attn_impl in {'auto', None}:
+        if attn_impl is None:
             return auto_value
         return attn_impl == AttnImpl.flash_attn
 
@@ -237,7 +238,6 @@ class AttnImpl:
 
         use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl, auto_value)
         if use_flash_attn is None:
-            # attn_impl in {'auto', None}
             return
         from swift.llm import HfConfigFactory
         if version.parse(transformers.__version__) >= version.parse('4.36'):

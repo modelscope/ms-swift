@@ -12,11 +12,11 @@ logger = get_logger()
 
 
 def use_hf_hub():
-    return strtobool(os.environ.get('USE_HF', 'False'))
+    return strtobool(os.environ.get('USE_HF', '0'))
 
 
 def is_deepspeed_enabled():
-    return strtobool(os.environ.get('ACCELERATE_USE_DEEPSPEED', 'False'))
+    return strtobool(os.environ.get('ACCELERATE_USE_DEEPSPEED', '0'))
 
 
 def use_torchacc() -> bool:

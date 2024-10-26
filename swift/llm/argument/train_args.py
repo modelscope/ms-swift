@@ -212,8 +212,10 @@ class TorchAccArguments:
 @dataclass
 class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArguments, MegatronArguments,
                    TorchAccArguments):
+    freeze_vit: bool = True
+    freeze_aligner: bool = True
+    freeze_llm: bool = False
     freeze_parameters: List[str] = field(default_factory=list)
-    freeze_vit: bool = False
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
 
@@ -221,20 +223,14 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
     resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
     check_model_is_latest: bool = True
-
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(LOSS_MAPPING.keys())}'})
-    loss_scale: str = 'default'
 
     # dataset
-    preprocess_num_proc: int = 1
     packing: bool = False
     lazy_tokenize: Optional[bool] = None
-    streaming: bool = False
-    streaming_val_size: int = 0
-    streaming_buffer_size: int = 16384
-    sequence_parallel_size: int = 1
 
-    # other
+    # extra
+    acc_strategy: Literal['token', 'sentence'] = 'token'
     test_oom_error: bool = field(
         default=False,
         metadata={
@@ -242,8 +238,6 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
             'If set to True, the train_dataset will be sorted in descending order based on max_length, '
             'enabling faster detection of OOM (Out of Memory) errors.'
         })
-    acc_strategy: Literal['token', 'sentence'] = 'token'
-    gpu_memory_fraction: Optional[float] = None
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)

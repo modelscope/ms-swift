@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 from typing import Any, Dict, Type
 
 import torch
@@ -116,7 +117,7 @@ def get_model_tokenizer_glm4(model_dir: str,
                              load_model: bool = True,
                              **kwargs):
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl', 'auto'))
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
     return get_model_tokenizer_chatglm(
         model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
 

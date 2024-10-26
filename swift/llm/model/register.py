@@ -6,15 +6,15 @@ from types import MethodType
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+import torch.utils.checkpoint
 import transformers
 from packaging import version
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PreTrainedModel,
-                          PreTrainedTokenizerBase)
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer, GenerationConfig, PretrainedConfig,
+                          PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
-from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger, is_ddp_plus_mp, is_dist, is_unsloth_available, use_torchacc
 from .utils import AttnImpl, HfConfigFactory, safe_snapshot_download
 
@@ -37,88 +37,90 @@ class Model:
 
 
 @dataclass
-class TemplateGroup:
-    chat_template: str
-    # llm: TemplateType.default_generation, mllm: None
-    generation_template: Optional[str] = None
-
-
-@dataclass
 class ModelGroup:
     models: List[Model]
     tags: List[str] = field(default_factory=list)
 
 
+@dataclass
+class ModelMeta:
+    # Used to automatically infer the model_type from config.json.
+    architectures: Union[List[str], str]
+    # Used to list the model_ids from huggingface/modelscope,
+    # which participate in the automatic inference of the model_type.
+    model_groups: Union[List[ModelGroup], ModelGroup]
+    template: str
+    is_moe: bool = False
+    is_multimodal: bool = False
+
+    # Usually specifies the version limits of transformers.
+    requires: List[str] = field(default_factory=list)
+    # File patterns to ignore when downloading the model.
+    ignore_file_pattern: List[str] = field(default_factory=list)
+    # Additional files that need to be saved for full parameter training/merge-lora.
+    additional_saved_files: List[str] = field(default_factory=list)
+
+    support_gradient_checkpointing: bool = True
+    support_flash_attn: bool = False
+    support_vllm: bool = False
+    support_lmdeploy: bool = False
+
+    tags: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if isinstance(self.architectures, str):
+            self.architectures = [self.architectures]
+        if not isinstance(self.model_groups, (list, tuple)):
+            self.model_groups = [self.model_groups]
+
+    def check_requires(self):
+        # TODO: error to warning
+        for require in self.requires:
+            require_version(require)
+
+    def check_flash_attn(self, attn_impl: Optional[str]) -> None:
+        if attn_impl is None:
+            return
+        if attn_impl == AttnImpl.flash_attn and not self.support_flash_attn:
+            logger.warning(f'attn_impl: {attn_impl}, but support_flash_attn: {self.support_flash_attn}')
+
+    def check_infer_backend(self, infer_backend: str) -> None:
+        if infer_backend == 'vllm' and not self.support_vllm:
+            logger.warning(f'infer_backend: {infer_backend}, but support_vllm: {self.support_vllm}')
+        elif infer_backend == 'lmdeploy' and not self.support_lmdeploy:
+            logger.warning(f'infer_backend: {infer_backend}, but support_lmdeploy: {self.support_lmdeploy}')
+
+    def check_gradient_checkpointing(self, gradient_checkpoint: bool) -> None:
+        if gradient_checkpoint and not self.support_gradient_checkpointing:
+            logger.warning(f'gradient_checkpoint: {gradient_checkpoint}, but support_gradient_checkpointing: '
+                           f'{self.support_gradient_checkpointing}')
+
+
 # [TODO:eos_token -> template]
 def register_model(model_type: str,
-                   architectures: str,
-                   model_groups: Union[ModelGroup, List[ModelGroup]],
-                   template: TemplateGroup,
+                   model_meta: ModelMeta,
                    get_function: GetModelTokenizerFunction,
                    *,
-                   requires: Optional[List[str]] = None,
-                   ignore_file_pattern: Optional[List[str]] = None,
-                   additional_saved_files: Optional[List[str]] = None,
-                   is_moe: bool = False,
-                   support_flash_attn: bool = False,
-                   support_vllm: bool = False,
-                   support_lmdeploy: bool = False,
-                   support_gradient_checkpointing: bool = True,
                    function_kwargs: Optional[Dict[str, Any]] = None,
                    exist_ok: bool = False,
                    **kwargs) -> None:
     """
     model_type: The unique ID for the model type. Models with the same model_type share
         the same architectures, template, get_function, etc.
-    architectures: Used to automatically infer the model_type from config.json.
-    model_groups: Used to list the model_ids from huggingface/modelscope,
-        which participate in the automatic inference of the model_type.
-    template: chat_template & generation_template. This will be determined based on
-        whether the `swift pt` command is used to start.
     get_function: A function to obtain the model and tokenizer based on model_dir.
-
-    requires: Usually specifies the version limits of transformers.
-    ignore_file_pattern: File patterns to ignore when downloading the model.
-    additional_saved_files: Additional files that need to be saved for full parameter training/merge-lora.
-    is_multimodal: Whether it is a multimodal model.
-    is_moe: Whether it is a moe model.
-    support_flash_attn: Whether it supports flash attention.
-    support_vllm: Whether it supports vllm inference acceleration.
-    support_lmdeploy: Whether it supports lmdeploy inference acceleration.
     """
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
     from .constant import MLLMModelType
-    is_multimodal = True if model_type in MLLMModelType.__dict__ else False
-    if is_multimodal and template.generation_template is None:
-        template.generation_template = TemplateType.default_generation
-    if requires is None:
-        requires = []
-    if additional_saved_files is None:
-        additional_saved_files = []
-    if not isinstance(model_groups, (list, tuple)):
-        model_groups = [model_groups]
+    if not model_meta.is_multimodal:
+        assert model_type not in MLLMModelType.__dict__
+
     if function_kwargs is None:
         function_kwargs = {}
-    model_info = {
-        'architectures': architectures,
-        'model_groups': model_groups,
-        'template': template,
-        'requires': requires,
-        'ignore_file_pattern': ignore_file_pattern,
-        'additional_saved_files': additional_saved_files,
-        'support_flash_attn': support_flash_attn,
-        'support_vllm': support_vllm,
-        'support_lmdeploy': support_lmdeploy,
-        'support_gradient_checkpointing': support_gradient_checkpointing,
-        'is_multimodal': is_multimodal,
-        'is_moe': is_moe,
-        **kwargs
-    }
 
     if len(function_kwargs) > 0:
         get_function = partial(get_function, **function_kwargs)
-    model_info['get_function'] = get_function
+    model_info = {'model_meta': model_meta, 'get_function': get_function, **kwargs}
     MODEL_MAPPING[model_type] = model_info
     return
 
@@ -138,27 +140,22 @@ def load_by_unsloth(model_dir, torch_dtype, max_seq_length: Optional[int] = None
 
 
 def get_model_tokenizer_from_local(model_dir: str,
-                                   torch_dtype: Optional[torch.dtype],
+                                   model_config: PretrainedConfig,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
-                                   model_config=None,
                                    tokenizer=None,
                                    automodel_class=AutoModelForCausalLM,
+                                   quant_method: Optional[str] = None,
+                                   quant_bits: Optional[int] = 0,
+                                   is_training: bool = False,
                                    **kwargs):
     """Load the model and tokenizer from the local model_dir."""
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    HfConfigFactory.compat_zero3(model_config)
 
-    if torch_dtype is not None:
-        model_config.torch_dtype = torch_dtype
-    rope_scaling = kwargs.get('rope_scaling', None)
-    if rope_scaling is not None:
-        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
-
+    torch_dtype = model_config.torch_dtype
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
+    model = None
     if load_model:
         if kwargs.get('use_unsloth', False):
             unsloth_kwargs = kwargs.get('unsloth_kwargs') or {}
@@ -168,25 +165,20 @@ def get_model_tokenizer_from_local(model_dir: str,
             logger.info(f'model_kwargs: {model_kwargs}')
             model = automodel_class.from_pretrained(
                 model_dir, config=model_config, torch_dtype=torch_dtype, trust_remote_code=True, **model_kwargs)
-        model.quant_method = kwargs.get('quant_method')  # TODO: check bnb
-        model.quant_bits = kwargs.get('bits')
-        model.is_training = kwargs.get('is_training', False)
-    else:
-        model = None
+        model.quant_method = quant_method  # TODO: check bnb
+        model.quant_bits = quant_bits
+        model.is_training = is_training
+
     return model, tokenizer
 
 
 def get_model_tokenizer_with_flash_attn(model_dir: str,
-                                        torch_dtype: torch.dtype,
+                                        model_config: PretrainedConfig,
                                         model_kwargs: Dict[str, Any],
                                         load_model: bool = True,
-                                        model_config=None,
                                         **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl', 'auto'))
-    return get_model_tokenizer_from_local(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    AttnImpl.update_attn_impl(model_config, kwargs.get('attn_impl'))
+    return get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
 
 
 def get_model_tokenizer_multimodal(model_dir: str, *args, **kwargs):
@@ -261,6 +253,19 @@ def get_default_device_map():
         return 'auto'
 
 
+def _check_torch_dtype(torch_dtype: torch.dtype):
+    if is_torch_cuda_available() or is_torch_npu_available():
+
+        if torch_dtype == torch.bfloat16:
+            support_bf16 = is_torch_bf16_gpu_available()
+            if not support_bf16:
+                logger.warning(f'torch_dtype: {torch_dtype}, but support_bf16: {support_bf16}.')
+    else:
+        # cpu
+        if torch_dtype == torch.float16:
+            logger.warning(f'torch_dtype: {torch_dtype}. The CPU does not support matrix multiplication with FP16.')
+
+
 def get_default_torch_dtype(torch_dtype: torch.dtype):
     # torch_dtype: torch_dtype in config.json
     if is_torch_cuda_available() or is_torch_npu_available():
@@ -283,11 +288,14 @@ def get_model_tokenizer(
         model_kwargs: Optional[Dict[str, Any]] = None,
         load_model: bool = True,
         *,
+        model_type: Optional[str] = None,
+        is_training: bool = False,
+        attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
         use_hf: Optional[bool] = None,
         revision: Optional[str] = None,
-        model_type: Optional[str] = None,
-        attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto',
-        download_model: Optional[bool] = None) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
+        download_model: Optional[bool] = None,
+        **kwargs  #
+) -> Tuple[Optional[PreTrainedModel], PreTrainedTokenizerBase]:
     """
     model_id_or_path: The path to the model or the model_id from modelscope/huggingface (controlled by `use_hf`).
     torch_dtype: If you pass `None`, it will retrieve the torch_dtype from the config.json file.
@@ -297,7 +305,7 @@ def get_model_tokenizer(
     model_type: If it is not possible to uniquely determine the model_type from the architecture in config.json,
         it needs to be provided.
     attn_impl: If set to 'flash_attn': It will automatically convert names based on the model.
-        If set to 'auto': It will be automatically selected between sdpa and eager.
+        If set to None : It will be automatically selected between sdpa and eager.
     download_model: Whether to download the model weights. If `None`, it will be selected based on load_model.
     """
 
@@ -312,6 +320,7 @@ def get_model_tokenizer(
         model_kwargs['device_map'] = None
     elif 'device_map' not in model_kwargs:
         model_kwargs['device_map'] = get_default_device_map()
+
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     model_info = HfConfigFactory.get_model_info(model_config, model_dir)
     if model_type is None:
@@ -320,36 +329,31 @@ def get_model_tokenizer(
     if torch_dtype is None:
         torch_dtype = get_default_torch_dtype(model_info.torch_dtype)
         logger.info(f'Setting torch_dtype: {torch_dtype}')
-    kwargs = {'model_config': model_config}
+    _check_torch_dtype(torch_dtype)
+    model_config.torch_dtype = torch_dtype
+    HfConfigFactory.compat_zero3(model_config)
+    rope_scaling = kwargs.get('rope_scaling')
+    if rope_scaling is not None:  # TODO: dict?
+        HfConfigFactory.set_config_attr(model_config, 'rope_scaling', rope_scaling)
+
     if model_info.quant_method is not None:
         kwargs['quant_method'] = model_info.quant_method
-        kwargs['bits'] = model_info.bits
-    kwargs.update({'model_type': model_type, 'attn_impl': attn_impl})
+        kwargs['quant_bits'] = model_info.quant_bits
+    kwargs.update({'is_training': is_training, 'model_type': model_type, 'attn_impl': attn_impl})
 
-    model_info = MODEL_MAPPING[model_type]
-    requires = model_info['requires']
-    for require in requires:
-        require_version(require)
-    get_function = model_info.get('get_function', get_model_tokenizer_from_local)
-    model, tokenizer = get_function(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    model_meta = get_model_meta(model_type)
+    model_meta.check_requires()
+    model_meta.check_flash_attn(attn_impl)
 
+    get_function = MODEL_MAPPING[model_type]['get_function']
+    model, tokenizer = get_function(model_dir, model_config, model_kwargs, load_model, **kwargs)
+
+    model_config.model_info = model_info
+    model_config.model_meta = model_meta
     tokenizer.config = model_config
-    is_multimodal = model_info['is_multimodal']
-    is_moe = model_info['is_moe']
-    template = model_info['template']
-    chat_template, generation_template = template.chat_template, template.generation_template
-    max_model_len = HfConfigFactory.get_max_model_len(model_config)
-
-    model_config.model_type = model_type
-    model_config.model_dir = model_dir
-    model_config.is_multimodal = is_multimodal
-    model_config.is_moe = is_moe
-    model_config.chat_template = chat_template
-    model_config.generation_template = generation_template
-    model_config.max_model_len = max_model_len
 
     if model is not None:
-        fix_gradient_checkpointing_warning(is_moe)
+        fix_gradient_checkpointing_warning(model_meta.is_moe)
         fix_transformers_upgrade(model)
 
         # generation_config
@@ -389,8 +393,5 @@ def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
     return ARCH_MAPPING
 
 
-class ModelInfoReader:
-    # info
-    @staticmethod
-    def get_default_template_type(model_type: str) -> Optional[str]:
-        return MODEL_MAPPING[model_type].get('template')
+def get_model_meta(model_type: str) -> ModelMeta:
+    return MODEL_MAPPING[model_type]['model_meta']
