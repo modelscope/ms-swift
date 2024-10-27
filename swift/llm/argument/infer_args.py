@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import datetime as dt
 import os
 from dataclasses import dataclass, field
 from typing import Any, List, Literal, Optional, Tuple
@@ -6,10 +7,11 @@ from typing import Any, List, Literal, Optional, Tuple
 import json
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo
 from swift.tuners import swift_to_peft_format
-from swift.utils import get_logger, is_lmdeploy_available, is_merge_kit_available, is_vllm_available
+from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments
+from .merge_args import MergeArguments
 from .tuner_args import adapters_can_be_merged
 
 logger = get_logger()
@@ -42,18 +44,40 @@ class LmdeployArguments:
 
 @dataclass
 class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArguments):
-    infer_backend: Literal['auto', 'vllm', 'pt', 'lmdeploy'] = 'auto'
+    infer_backend: Literal['vllm', 'pt', 'lmdeploy', None] = None
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
-    result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
 
-    eval_human: Optional[bool] = None
-    show_dataset_sample: int = -1
+    val_dataset_sample: int = -1
+    result_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/infer_result'})
     save_result: bool = True
 
     # other
-    stream: bool = True
-    verbose: Optional[bool] = None
-    overwrite_generation_config: bool = False
+    stream: Optional[bool] = None
+
+    def _init_result_dir(self, model_info: ModelInfo) -> None:
+        self.result_path = None
+        if not self.save_result:
+            return
+
+        if self.result_dir is None:
+            if self.ckpt_dir is None:
+                result_dir = model_info.model_dir
+            else:
+                result_dir = self.ckpt_dir
+            result_dir = os.path.join(result_dir, 'infer_result')
+        else:
+            result_dir = self.result_dir
+        result_dir = os.path.abspath(os.path.expanduser(result_dir))
+        os.makedirs(result_dir, exist_ok=True)
+        self.result_dir = result_dir
+        time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
+        self.result_path = os.path.join(result_dir, f'{time}.jsonl')
+        logger.info(f'args.result_path: {self.result_path}')
+
+    def _init_stream(self):
+        self.eval_dataset = bool(self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
+        if self.stream is None:
+            self.stream = not self.eval_dataset
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
@@ -168,17 +192,3 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         else:
             use_dora = True
         return lora_request_list, use_dora
-
-
-@dataclass
-class DeployArguments(InferArguments):
-    host: str = '0.0.0.0'
-    port: int = 8000
-    api_key: Optional[str] = None
-    ssl_keyfile: Optional[str] = None
-    ssl_certfile: Optional[str] = None
-
-    owned_by: str = 'swift'
-    served_model_name: Optional[str] = None
-    verbose: bool = True  # Whether to log request_info
-    log_interval: int = 10  # Interval for printing global statistics

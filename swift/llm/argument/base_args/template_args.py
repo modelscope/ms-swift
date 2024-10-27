@@ -1,9 +1,8 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 from dataclasses import dataclass, field
+from typing import List, Literal, Optional
 
 from swift.llm import TEMPLATE_MAPPING
-from typing import List, Optional, Literal, Union
-
 from swift.utils import get_logger
 
 logger = get_logger()

@@ -1,6 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import datetime as dt
-import os
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -8,8 +6,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
-from swift.llm import (HfDataset, InferArguments, Messages, Pipeline, Template, get_template, load_dataset, merge_lora,
-                       sample_dataset)
+from swift.llm import (HfDataset, InferArguments, Messages, SwiftPipeline, Template, get_template, load_dataset,
+                       merge_lora, sample_dataset)
 from swift.utils import append_to_jsonl, get_logger
 from .infer_engine import InferEngine
 from .protocol import InferRequest, RequestConfig
@@ -55,7 +53,7 @@ class InferCliState:
         }
 
 
-class InferPipeline(Pipeline):
+class SwiftInfer(SwiftPipeline):
     args_class = InferArguments
 
     def __init__(self, args: Union[List[str], InferArguments, None] = None) -> None:
@@ -129,8 +127,7 @@ class InferPipeline(Pipeline):
         return template
 
     def run(self) -> List[Dict[str, Any]]:
-        args = self.args
-        if args.dataset and args.split_dataset_ratio > 0 or args.val_dataset:
+        if self.args.eval_dataset:
             return self.infer_dataset()
         else:
             return self.infer_cli()
@@ -152,21 +149,6 @@ class InferPipeline(Pipeline):
             mm_val = getattr(infer_state, mm_key)
             mm_val.append(_input_mm_file(mm_type))
 
-    def _prepare_save_result(self) -> str:
-        args = self.args
-        if args.result_dir is not None:
-            result_dir = args.result_dir
-        else:
-            if args.ckpt_dir is not None:
-                result_dir = args.ckpt_dir
-            else:
-                result_dir = self.model_dir
-            result_dir = os.path.join(result_dir, 'infer_result')
-        result_dir = os.path.abspath(os.path.expanduser(result_dir))
-        os.makedirs(result_dir, exist_ok=True)
-        time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-        return os.path.join(result_dir, f'{time}.jsonl')
-
     @staticmethod
     def _input_multiline(prompt: str) -> str:
         query = ''
@@ -184,7 +166,7 @@ class InferPipeline(Pipeline):
     def _input_text(multiline_mode: bool, input_system: bool) -> str:
         if multiline_mode:
             addi_prompt = 'MS' if input_system else 'M'
-            text = InferPipeline._input_multiline(f'<<<[{addi_prompt}] ')
+            text = SwiftInfer._input_multiline(f'<<<[{addi_prompt}] ')
         else:
             addi_prompt = 'S' if input_system else ''
             text = input(f'<<<[{addi_prompt}] ')
@@ -233,6 +215,7 @@ class InferPipeline(Pipeline):
             stream=args.stream,
             repetition_penalty=args.repetition_penalty)
 
+    @staticmethod
     def infer_single(self, infer_request: InferRequest, request_config: RequestConfig) -> Tuple[str, Messages]:
         messages = infer_request.messages
         res_or_gen = self.infer(self.template, [infer_request], request_config, use_tqdm=False)
@@ -289,7 +272,7 @@ class InferPipeline(Pipeline):
 
         return result_list
 
-    def prepare_val_dataset(self) -> HfDataset:
+    def _prepare_val_dataset(self) -> HfDataset:
         args = self.args
         load_dataset(args.val_dataset, args.split_dataset_ratio)
         dataset_kwargs = {
@@ -312,14 +295,10 @@ class InferPipeline(Pipeline):
 
     def infer_dataset(self) -> List[Dict[str, Any]]:
         args = self.args
-        result_path = None
-        if args.save_result:
-            result_path = self._prepare_save_result()
-            logger.info(f'result_path: {result_path}')
         request_config = self._prepare_request_config()
         logger.info(f'request_config: {request_config}')
 
-        val_dataset = self.prepare_val_dataset()
+        val_dataset = self._prepare_val_dataset()
         logger.info(f'val_dataset: {val_dataset}')
         result_list = []
         if request_config.stream:
@@ -327,8 +306,8 @@ class InferPipeline(Pipeline):
                 response, messages = self.infer_single(InferRequest(**data), request_config)
                 data['messages'] = messages
                 result_list.append(data)
-                if result_path is not None:
-                    append_to_jsonl(result_path, data)
+                if args.result_path is not None:
+                    append_to_jsonl(args.result_path, data)
         else:
             infer_requests = []
             for data in val_dataset:
@@ -338,10 +317,10 @@ class InferPipeline(Pipeline):
                 response = resp.choices[0].message.content
                 data['messages'].append({'role': 'assistant', 'content': response})
                 result_list.append(data)
-            if result_path is not None:
-                append_to_jsonl(result_path, result_list)
+            if args.result_path is not None:
+                append_to_jsonl(args.result_path, result_list)
         return result_list
 
 
 def infer_main(args: Union[List[str], InferArguments, None] = None) -> List[Dict[str, Any]]:
-    return InferPipeline(args).main()
+    return SwiftInfer(args).main()

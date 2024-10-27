@@ -56,4 +56,3 @@ class DataArguments:
             logger.info(f'Using val_dataset, setting split_dataset_ratio: {self.split_dataset_ratio}')
         self._init_custom_register()
         self._init_custom_dataset_info()
-

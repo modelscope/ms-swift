@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
-                           WebuiArguments, AppUIArguments)
+                           WebUIArguments, AppUIArguments)
     from .template import TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta)
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from .utils import (deep_getattr, to_device, Messages, History, decode_base64, history_to_messages,
                         messages_to_history, safe_tokenizer_decode)
     from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
-    from .base import Pipeline
+    from .base import SwiftPipeline
 else:
     _extra_objects = {k: v for k, v in globals().items() if not k.startswith('_')}
     _import_structure = {
@@ -41,7 +41,7 @@ else:
         'eval': ['eval_main'],
         'train': ['sft_main', 'pt_main', 'rlhf_main'],
         'argument': [
-            'EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebuiArguments', 'DeployArguments',
+            'EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
             'RLHFArguments', 'AppUIArguments'
         ],
         'template': ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template'],
@@ -61,7 +61,7 @@ else:
             'messages_to_history', 'safe_tokenizer_decode'
         ],
         'module_mapping': ['MODEL_KEYS_MAPPING', 'MultiModelKeys'],
-        'base': ['Pipeline']
+        'base': ['SwiftPipeline']
     }
 
     import sys

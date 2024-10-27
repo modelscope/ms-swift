@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Optional
 from dataclasses import dataclass
+from typing import Optional
+
 from swift.utils import get_logger, is_merge_kit_available
 
 logger = get_logger()

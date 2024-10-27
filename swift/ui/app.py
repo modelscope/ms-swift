@@ -4,7 +4,7 @@ import gradio as gr
 from packaging import version
 from transformers.utils import strtobool
 
-from swift.llm.utils import WebuiArguments
+from swift.llm import WebUIArguments
 from swift.ui.llm_eval.llm_eval import LLMEval
 from swift.ui.llm_export.llm_export import LLMExport
 from swift.ui.llm_infer.llm_infer import LLMInfer
@@ -40,7 +40,7 @@ else:
     is_shared_ui = False
 
 
-def run_ui(arguments: WebuiArguments):
+def run_ui(arguments: WebUIArguments):
     lang = os.environ.get('SWIFT_UI_LANG') or arguments.lang
     share_env = os.environ.get('WEBUI_SHARE')
     share = strtobool(share_env) if share_env else arguments.share
@@ -78,4 +78,4 @@ def run_ui(arguments: WebuiArguments):
     app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 
-webui_main = get_main(WebuiArguments, run_ui)
+webui_main = get_main(WebUIArguments, run_ui)

@@ -1,9 +1,12 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
-from typing import Literal, Optional
-import torch
 from dataclasses import dataclass, field
+from typing import Literal, Optional
+
+import torch
+
 from swift.llm import HfConfigFactory
+
 
 @dataclass
 class QuantizeArguments:

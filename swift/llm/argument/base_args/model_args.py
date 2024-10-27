@@ -11,6 +11,7 @@ from swift.utils import get_dist_setting, get_logger
 
 logger = get_logger()
 
+
 @dataclass
 class ModelArguments:
     model: Optional[str] = None  # model id or model path

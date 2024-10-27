@@ -6,20 +6,19 @@ from typing import Literal, Optional
 import torch.distributed as dist
 
 from swift.utils import get_logger, is_dist
-from .infer_args import InferArguments
+from .base_args import BaseArguments
+from .merge_args import MergeArguments
 from .tuner_args import adapters_can_be_merged
 
 logger = get_logger()
 
 
 @dataclass
-class ExportArguments(InferArguments):
+class ExportArguments(BaseArguments, MergeArguments):
     to_peft_format: bool = False
-    # awq: 4; gptq: 2, 3, 4, 8
-    quant_bits: int = 0  # e.g. 4
-    quant_method: Literal['awq', 'gptq', 'bnb'] = 'awq'
+    # awq/gptq
     quant_n_samples: int = 256
-    quant_seqlen: Optional[int] = None
+    quant_seqlen: Optional[int] = None  # default: self.max_length
     quant_device_map: Optional[str] = None  # e.g. 'cpu', 'auto'
     quant_output_dir: Optional[str] = None
     quant_batch_size: int = 1

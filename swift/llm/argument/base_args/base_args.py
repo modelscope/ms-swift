@@ -1,12 +1,15 @@
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import List, Optional, Union
 
 import json
 
 from swift.utils import get_logger
-from .data_args import DataArguments, TemplateArguments
-from .model_args import GenerationArguments, ModelArguments, QuantizeArguments
+from .data_args import DataArguments
+from .generation_args import GenerationArguments
+from .model_args import ModelArguments
+from .quant_args import QuantizeArguments
+from .template_args import TemplateArguments
 
 logger = get_logger()
 
@@ -14,14 +17,22 @@ logger = get_logger()
 @dataclass
 class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, GenerationArguments, DataArguments):
     seed: int = 42
-
-    ignore_args_error: bool = False  # True: notebook compatibility
+    load_args: bool = True
+    load_dataset_config: bool = False
     save_safetensors: bool = True
     # None: use env var `MODELSCOPE_API_TOKEN`
     hub_token: Optional[str] = field(
         default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
 
-    def __init__(self: Union['SftArguments', 'InferArguments']):
+    # extra
+    gpu_memory_fraction: Optional[float] = None
+    ignore_args_error: bool = False  # True: notebook compatibility
+
+    def __init__(self):
+        if self.load_args:
+            self._load_args()
+        else:
+            self._save_args()
         ModelArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
@@ -31,19 +42,6 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
         from swift.hub import default_hub
         if default_hub.try_login(self.hub_token):
             logger.info('hub login successful!')
-
-    def parse_to_dict(self, key: str) -> None:
-        """Convert a JSON string or JSON file into a dict"""
-        value = getattr(self, key)
-        if value is None:
-            value = {}
-        elif isinstance(value, str):
-            if os.path.exists(value):  # local path
-                with open(value, 'r') as f:
-                    value = json.load(f)
-            else:  # json str
-                value = json.loads(value)
-        setattr(self, key, value)
 
     @staticmethod
     def check_path_validity(path: Union[str, List[str]], check_path_exist: bool = False) -> Union[str, List[str]]:
@@ -86,58 +84,33 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
             value = self.check_path_validity(value, k in check_exist_path)
             setattr(self, k, value)
 
-    def load_from_ckpt_dir(self: Union['SftArguments', 'InferArguments']) -> None:
+    def _load_args(self) -> None:
         """Load specific attributes from sft_args.json"""
         from swift.llm import SftArguments, ExportArguments, InferArguments
         if isinstance(self, SftArguments):
             ckpt_dir = self.resume_from_checkpoint
         else:
             ckpt_dir = self.ckpt_dir
+        if ckpt_dir is None:
+            return
         # Determine the imported JSON file.
-        sft_args_path = os.path.join(ckpt_dir, 'sft_args.json')
-        export_args_path = os.path.join(ckpt_dir, 'export_args.json')  # for megatron
-        from_sft_args = os.path.exists(sft_args_path)
-        if from_sft_args:
-            args_path = sft_args_path
-        elif os.path.exists(export_args_path):
-            args_path = export_args_path
-        else:
-            logger.warning(f'{sft_args_path} not found')
+        args_path = os.path.join(ckpt_dir, 'args.json')
+        if not os.path.exists(args_path):
+            logger.warning(f'{args_path} not found')
             return
         with open(args_path, 'r', encoding='utf-8') as f:
             old_args = json.load(f)
-        # Determine the keys that need to be imported.
-        imported_keys = [
-            'model_type', 'model_revision', 'template_type', 'dtype', 'quant_method', 'quantization_bit',
-            'bnb_4bit_comp_dtype', 'bnb_4bit_quant_type', 'bnb_4bit_use_double_quant', 'model_id_or_path',
-            'custom_register_path', 'custom_dataset_info'
-        ]
-        if (isinstance(self, SftArguments) and self.train_backend == 'megatron'
-                or isinstance(self, ExportArguments) and self.to_hf is True):
-            # megatron
-            imported_keys += ['tp', 'pp']
-        if isinstance(self, InferArguments):
-            imported_keys += ['sft_type', 'rope_scaling', 'system']
-            if getattr(self, 'load_dataset_config', False) and from_sft_args:
-                imported_keys += [
-                    'dataset', 'val_dataset', 'dataset_seed', 'split_dataset_ratio', 'check_dataset_strategy',
-                    'self_cognition_sample', 'model_name', 'model_author', 'train_dataset_sample', 'val_dataset_sample'
-                ]
         # read settings
-        for key in imported_keys:
-            if not hasattr(self, key):
-                continue
-            old_value = old_args.get(key)
-            if old_value is None:
+        all_keys = list(f.name for f in fields(self.__class__))
+        data_keys = list(f.name for f in fields(DataArguments))
+        for key in all_keys:
+            if not self.load_dataset_config and key in data_keys:
                 continue
             value = getattr(self, key)
-            if key in {'dataset', 'val_dataset'} and len(value) > 0:
-                continue
-            if key in {
-                    'system', 'quant_method', 'model_id_or_path', 'custom_register_path', 'custom_dataset_info',
-                    'dataset_seed'
-            } and value is not None:
-                continue
-            if key in {'template_type', 'dtype'} and value != 'auto':
-                continue
-            setattr(self, key, old_value)
+            old_value = old_args.get(key)  # value in checkpoint
+            if old_value and not value:
+                # TODO: check;  system=''
+                setattr(self, key, old_value)
+
+    def _save_args(self) -> None:
+        pass

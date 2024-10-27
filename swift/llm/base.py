@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -11,8 +12,11 @@ logger = get_logger()
 T_Args = TypeVar('T_Args', bound=BaseArguments)
 
 
-class Pipeline(ABC):
+class SwiftPipeline(ABC):
     args_class = None
+
+    def __init__(self, args: BaseArguments):
+        self.args = self.parse_args(args)
 
     def parse_args(self, args: Union[List[str], T_Args, None] = None) -> T_Args:
         if isinstance(args, BaseArguments):
@@ -28,8 +32,8 @@ class Pipeline(ABC):
 
     @staticmethod
     def _compat_dsw_gradio(args) -> None:
-        from swift.llm import AppUIArguments, WebuiArguments
-        if (isinstance(args, (AppUIArguments, WebuiArguments)) and 'JUPYTER_NAME' in os.environ
+        from swift.llm import AppUIArguments, WebUIArguments
+        if (isinstance(args, (AppUIArguments, WebUIArguments)) and 'JUPYTER_NAME' in os.environ
                 and 'dsw-' in os.environ['JUPYTER_NAME'] and 'GRADIO_ROOT_PATH' not in os.environ):
             os.environ['GRADIO_ROOT_PATH'] = f"/{os.environ['JUPYTER_NAME']}/proxy/{args.port}"
 

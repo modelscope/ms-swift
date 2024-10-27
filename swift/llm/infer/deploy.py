@@ -1,34 +1,25 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import asyncio
-import inspect
-import logging
-import re
-import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from http import HTTPStatus
 from threading import Thread
 from typing import Any, Dict, List, Optional, Union
 
 import json
-import torch
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from modelscope import GenerationConfig
-from packaging import version
-from peft import PeftModel
 
 from swift.llm import TEMPLATE_MAPPING, DeployArguments, Template, merge_lora
 from swift.utils import get_logger
-from .infer import InferPipeline
+from .infer import SwiftInfer
 from .infer_engine import InferStats
 from .protocol import ChatCompletionRequest, CompletionRequest, Model, ModelList
 
 logger = get_logger()
 
 
-class DeployApp(InferPipeline):
+class SwiftDeploy(SwiftInfer):
     args_class = DeployArguments
 
     def _register_app(self):
@@ -116,4 +107,4 @@ class DeployApp(InferPipeline):
 
 
 def deploy_main(args: Union[List[str], DeployArguments, None] = None) -> None:
-    DeployApp(args).main()
+    SwiftDeploy(args).main()
