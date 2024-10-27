@@ -44,6 +44,7 @@ class ModelGroup:
 
 @dataclass
 class ModelMeta:
+    model_type: str
     # Used to automatically infer the model_type from config.json.
     architectures: Union[List[str], str]
     # Used to list the model_ids from huggingface/modelscope,
@@ -97,8 +98,7 @@ class ModelMeta:
 
 
 # [TODO:eos_token -> template]
-def register_model(model_type: str,
-                   model_meta: ModelMeta,
+def register_model(model_meta: ModelMeta,
                    get_function: GetModelTokenizerFunction,
                    *,
                    function_kwargs: Optional[Dict[str, Any]] = None,
@@ -109,6 +109,7 @@ def register_model(model_type: str,
         the same architectures, template, get_function, etc.
     get_function: A function to obtain the model and tokenizer based on model_dir.
     """
+    model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
         raise ValueError(f'The `{model_type}` has already been registered in the MODEL_MAPPING.')
     from .constant import MLLMModelType

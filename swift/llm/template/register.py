@@ -10,7 +10,8 @@ from .base import Template
 TEMPLATE_MAPPING: Dict[str, Dict[str, Any]] = {}
 
 
-def register_template(template_type: str, template: Template, *, exist_ok: bool = False, **kwargs) -> None:
+def register_template(template: Template, *, exist_ok: bool = False, **kwargs) -> None:
+    template_type = template.template_type
     if not exist_ok and template_type in TEMPLATE_MAPPING:
         raise ValueError(f'The `{template_type}` has already been registered in the TEMPLATE_MAPPING.')
     template.template_type = template_type

@@ -21,8 +21,8 @@ def _concat_inst_inp_alpaca_zh(inst: str, inp: str) -> str:
 
 
 register_dataset(
-    LLMDatasetName.alpaca_zh,
     DatasetMeta(
+        LLMDatasetName.alpaca_zh,
         ms_dataset_id='AI-ModelScope/alpaca-gpt4-data-zh',
         hf_dataset_id='llm-wizard/alpaca-gpt4-data-zh',
         preprocess_func=AlpacaPreprocessor(concat_inst_input=_concat_inst_inp_alpaca_zh),
@@ -42,8 +42,8 @@ class LongAlpacaPreprocessor(AlpacaPreprocessor):
 
 
 register_dataset(
-    LLMDatasetName.long_alpaca_12k,
     DatasetMeta(
+        LLMDatasetName.long_alpaca_12k,
         ms_dataset_id='AI-ModelScope/LongAlpaca-12k',
         hf_dataset_id='Yukang/LongAlpaca-12k',
         preprocess_func=LongAlpacaPreprocessor(),
@@ -68,8 +68,8 @@ class RuozhibaPreprocessor(RowPreprocessor):
 
 
 register_dataset(
-    LLMDatasetName.ruozhiba,
     DatasetMeta(
+        LLMDatasetName.ruozhiba,
         ms_dataset_id='AI-ModelScope/ruozhiba',
         subsets=['post-annual', 'title-good', 'title-norm'],
         preprocess_func=RuozhibaPreprocessor(),
@@ -92,8 +92,8 @@ def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:
 
 
 register_dataset(
-    LLMDatasetName.ms_bench,
     DatasetMeta(
+        LLMDatasetName.ms_bench,
         ms_dataset_id='iic/ms_bench',
         preprocess_func=MessagesPreprocessor(repair_messages=_repair_ms_bench),
         tags=['chat', 'general', 'multi-round', '🔥']))
@@ -112,8 +112,8 @@ def _repair_agent_messages(messages: List[Dict[str, str]], use_mini: bool) -> Op
 
 
 register_dataset(
-    LLMDatasetName.damo_agent_zh,
     DatasetMeta(
+        LLMDatasetName.damo_agent_zh,
         ms_dataset_id='damo/MSAgent-Bench',
         subsets=[
             SubsetDataset(
@@ -131,8 +131,8 @@ Keywords: {{QUERY}}
 Advertisements:"""
 
 register_dataset(
-    LLMDatasetName.advertise_gen_zh,
     DatasetMeta(
+        LLMDatasetName.advertise_gen_zh,
         ms_dataset_id='lvjianjin/AdvertiseGen',
         hf_dataset_id='shibing624/AdvertiseGen',
         preprocess_func=TextGenerationPreprocessor(
@@ -160,18 +160,17 @@ class FireflyPreprocessor(ResponsePreprocessor):
 
 
 register_dataset(
-    LLMDatasetName.firefly_zh,
     DatasetMeta(
+        LLMDatasetName.firefly_zh,
         ms_dataset_id='AI-ModelScope/firefly-train-1.1M',
         hf_dataset_id='YeungNLP/firefly-train-1.1M',
         preprocess_func=FireflyPreprocessor(),
         tags=['chat', 'general'],
-    ),
-)
+    ), )
 
 register_dataset(
-    LLMDatasetName.cmnli_zh,
     DatasetMeta(
+        LLMDatasetName.cmnli_zh,
         ms_dataset_id='modelscope/clue',
         hf_dataset_id='clue',
         subsets=['cmnli'],
@@ -182,8 +181,8 @@ register_dataset(
     ))
 
 register_dataset(
-    LLMDatasetName.jd_sentiment_zh,
     DatasetMeta(
+        LLMDatasetName.jd_sentiment_zh,
         ms_dataset_id='DAMO_NLP/jd',
         preprocess_func=ClsPreprocessor(['negative', 'positive'], task='Sentiment Classification', is_pair_seq=False),
         tags=['text-generation', 'classification', '🔥']))

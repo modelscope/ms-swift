@@ -82,17 +82,17 @@ def get_model_tokenizer_cogvlm2(*args, **kwargs):
     tags=['multi-modal', 'vision'],
     hf_model_id='xtuner/llava-llama-3-8b-v1_1-transformers')
 def get_model_tokenizer_llava_llama(model_dir: str,
-                                    torch_dtype: torch.dtype,
+                                    model_config: PretrainedConfig,
                                     model_kwargs: Dict[str, Any],
                                     load_model: bool = True,
                                     **kwargs):
     from transformers import LlavaForConditionalGeneration, LlavaConfig, AutoProcessor
 
-    model_config = LlavaConfig.from_pretrained(model_dir)
+    model_config = LlavaConfig.from_pretrained(model_dir)  # check
     processor = AutoProcessor.from_pretrained(model_dir)
     model, tokenizer = get_model_tokenizer_with_flash_attn(
         model_dir,
-        torch_dtype,
+        model_config,
         model_kwargs,
         load_model,
         model_config=model_config,

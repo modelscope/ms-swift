@@ -47,6 +47,7 @@ class SubsetDataset:
 
 @dataclass
 class DatasetMeta:
+    dataset_name: str
     ms_dataset_id: Optional[str] = None
     hf_dataset_id: Optional[str] = None
     dataset_path: Optional[str] = None
@@ -70,8 +71,7 @@ class DatasetMeta:
                 self.subsets[i] = SubsetDataset(name=subset)
 
 
-def register_dataset(dataset_name: str,
-                     dataset_meta: DatasetMeta,
+def register_dataset(dataset_meta: DatasetMeta,
                      load_function: Optional[LoadFunction] = None,
                      *,
                      function_kwargs: Optional[Dict[str, Any]] = None,
@@ -94,6 +94,7 @@ def register_dataset(dataset_name: str,
         The dataset instance.
     """
     from .loader import DatasetLoader
+    dataset_name = dataset_meta.dataset_name
     if not exist_ok and dataset_name in DATASET_MAPPING:
         raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
     if function_kwargs is None:
@@ -144,7 +145,7 @@ def _register_d_info(dataset_name: str, d_info: Dict[str, Any], *, base_dir: Opt
         d_info: The dataset info
     """
     d_info = _preprocess_d_info(d_info, base_dir=base_dir)
-    register_dataset(dataset_name, DatasetMeta(**d_info))
+    register_dataset(DatasetMeta(dataset_name, **d_info))
 
 
 def register_dataset_info(dataset_info: Union[str, Dict[str, Any], None] = None) -> None:

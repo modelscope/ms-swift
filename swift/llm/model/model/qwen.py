@@ -1,16 +1,16 @@
 from typing import Any, Dict, List, Optional, Type
 
 import torch
-from transformers import AutoConfig, BitsAndBytesConfig, PreTrainedTokenizerBase
+from transformers import BitsAndBytesConfig, PretrainedConfig, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from swift.llm import TemplateType
+from swift.llm import ModelMeta, TemplateType
 from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, TemplateGroup, get_model_tokenizer_from_local,
-                        get_model_tokenizer_multimodal, get_model_tokenizer_with_flash_attn, register_model)
+from ..register import (Model, ModelGroup, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
+                        get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl
 
 logger = get_logger()
@@ -18,26 +18,22 @@ dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: '
 
 
 def get_model_tokenizer_qwen(model_dir: str,
-                             torch_dtype: torch.dtype,
+                             model_config: PretrainedConfig,
                              model_kwargs: Dict[str, Any],
                              load_model: bool = True,
-                             model_config=None,
                              **kwargs):
-    if model_config is None:
-        model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
-    if torch_dtype is not None:
-        k_true = dtype_mapping[torch_dtype]
+    if model_config.torch_dtype is not None:
+        k_true = dtype_mapping[model_config.torch_dtype]
         for k in dtype_mapping.values():
             setattr(model_config, k, k == k_true)
 
     quantization_config = model_kwargs.get('quantization_config')
     if not isinstance(quantization_config, BitsAndBytesConfig):
         # not bnb quant
-        torch_dtype = None
+        model_config.torch_dtype = None
     use_flash_attn = AttnImpl.to_use_flash_attn(kwargs.pop('attn_impl', None), 'auto')
     model_config.use_flash_attn = use_flash_attn
-    model, tokenizer = get_model_tokenizer_from_local(
-        model_dir, torch_dtype, model_kwargs, load_model, model_config=model_config, **kwargs)
+    model, tokenizer = get_model_tokenizer_from_local(model_dir, model_config, model_kwargs, load_model, **kwargs)
     try:
         # fix mp+ddp bug
         model.transformer.registered_causal_mask = model.transformer.registered_causal_mask.cuda()
@@ -48,68 +44,69 @@ def get_model_tokenizer_qwen(model_dir: str,
 
 
 register_model(
-    LLMModelType.qwen,
-    'QWenLMHeadModel',
-    [
-        # qwen
-        ModelGroup([
-            # base
-            Model('qwen/Qwen-1_8B', 'Qwen/Qwen-1_8B'),
-            Model('qwen/Qwen-7B', 'Qwen/Qwen-7B'),
-            Model('qwen/Qwen-14B', 'Qwen/Qwen-14B'),
-            Model('qwen/Qwen-72B', 'Qwen/Qwen-72B'),
-            # chat
-            Model('qwen/Qwen-1_8B-Chat', 'Qwen/Qwen-1_8B-Chat'),
-            Model('qwen/Qwen-7B-Chat', 'Qwen/Qwen-7B-Chat'),
-            Model('qwen/Qwen-14B-Chat', 'Qwen/Qwen-14B-Chat'),
-            Model('qwen/Qwen-72B-Chat', 'Qwen/Qwen-72B-Chat'),
-            # gptq-int4
-            Model('qwen/Qwen-1_8B-Chat-Int4', 'Qwen/Qwen-1_8B-Chat-Int4'),
-            Model('qwen/Qwen-7B-Chat-Int4', 'Qwen/Qwen-7B-Chat-Int4'),
-            Model('qwen/Qwen-14B-Chat-Int4', 'Qwen/Qwen-14B-Chat-Int4'),
-            Model('qwen/Qwen-72B-Chat-Int4', 'Qwen/Qwen-72B-Chat-Int4'),
-            # gptq-int8
-            Model('qwen/Qwen-1_8B-Chat-Int8', 'Qwen/Qwen-1_8B-Chat-Int8'),
-            Model('qwen/Qwen-7B-Chat-Int8', 'Qwen/Qwen-7B-Chat-Int8'),
-            Model('qwen/Qwen-14B-Chat-Int8', 'Qwen/Qwen-14B-Chat-Int8'),
-            Model('qwen/Qwen-72B-Chat-Int8', 'Qwen/Qwen-72B-Chat-Int8'),
-        ]),
-        # tongyi-finance
-        ModelGroup([
-            Model('TongyiFinance/Tongyi-Finance-14B'),
-            Model('TongyiFinance/Tongyi-Finance-14B-Chat', 'jxy/Tongyi-Finance-14B-Chat'),
-            Model('TongyiFinance/Tongyi-Finance-14B-Chat-Int4', 'jxy/Tongyi-Finance-14B-Chat-Int4'),
+    ModelMeta(
+        LLMModelType.qwen,
+        'QWenLMHeadModel',
+        [
+            # qwen
+            ModelGroup([
+                # base
+                Model('qwen/Qwen-1_8B', 'Qwen/Qwen-1_8B'),
+                Model('qwen/Qwen-7B', 'Qwen/Qwen-7B'),
+                Model('qwen/Qwen-14B', 'Qwen/Qwen-14B'),
+                Model('qwen/Qwen-72B', 'Qwen/Qwen-72B'),
+                # chat
+                Model('qwen/Qwen-1_8B-Chat', 'Qwen/Qwen-1_8B-Chat'),
+                Model('qwen/Qwen-7B-Chat', 'Qwen/Qwen-7B-Chat'),
+                Model('qwen/Qwen-14B-Chat', 'Qwen/Qwen-14B-Chat'),
+                Model('qwen/Qwen-72B-Chat', 'Qwen/Qwen-72B-Chat'),
+                # gptq-int4
+                Model('qwen/Qwen-1_8B-Chat-Int4', 'Qwen/Qwen-1_8B-Chat-Int4'),
+                Model('qwen/Qwen-7B-Chat-Int4', 'Qwen/Qwen-7B-Chat-Int4'),
+                Model('qwen/Qwen-14B-Chat-Int4', 'Qwen/Qwen-14B-Chat-Int4'),
+                Model('qwen/Qwen-72B-Chat-Int4', 'Qwen/Qwen-72B-Chat-Int4'),
+                # gptq-int8
+                Model('qwen/Qwen-1_8B-Chat-Int8', 'Qwen/Qwen-1_8B-Chat-Int8'),
+                Model('qwen/Qwen-7B-Chat-Int8', 'Qwen/Qwen-7B-Chat-Int8'),
+                Model('qwen/Qwen-14B-Chat-Int8', 'Qwen/Qwen-14B-Chat-Int8'),
+                Model('qwen/Qwen-72B-Chat-Int8', 'Qwen/Qwen-72B-Chat-Int8'),
+            ]),
+            # tongyi-finance
+            ModelGroup([
+                Model('TongyiFinance/Tongyi-Finance-14B'),
+                Model('TongyiFinance/Tongyi-Finance-14B-Chat', 'jxy/Tongyi-Finance-14B-Chat'),
+                Model('TongyiFinance/Tongyi-Finance-14B-Chat-Int4', 'jxy/Tongyi-Finance-14B-Chat-Int4'),
+            ],
+                       tags=['financial']),
         ],
-                   tags=['financial']),
-    ],
-    TemplateGroup(TemplateType.qwen),
-    get_model_tokenizer_qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True)
+        TemplateType.qwen,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True),
+    get_model_tokenizer_qwen)
 
 register_model(
-    LLMModelType.codefuse_qwen,
-    'QWenLMHeadModel',
-    [ModelGroup([
-        Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
-    ], tags=['coding'])],
-    TemplateGroup(TemplateType.codefuse),
-    get_model_tokenizer_qwen,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True)
+    ModelMeta(
+        LLMModelType.codefuse_qwen,
+        'QWenLMHeadModel',
+        [ModelGroup([
+            Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
+        ], tags=['coding'])],
+        TemplateType.codefuse,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True), get_model_tokenizer_qwen)
 
 register_model(
-    LLMModelType.modelscope_agent,
-    'QWenLMHeadModel', [ModelGroup([
-        Model('iic/ModelScope-Agent-7B'),
-        Model('iic/ModelScope-Agent-14B'),
-    ])],
-    TemplateGroup(TemplateType.modelscope_agent),
-    get_model_tokenizer_qwen,
-    support_flash_attn=True,
-    support_vllm=False)
+    ModelMeta(
+        LLMModelType.modelscope_agent,
+        'QWenLMHeadModel', [ModelGroup([
+            Model('iic/ModelScope-Agent-7B'),
+            Model('iic/ModelScope-Agent-14B'),
+        ])],
+        TemplateType.modelscope_agent,
+        support_flash_attn=True,
+        support_vllm=False), get_model_tokenizer_qwen)
 
 
 def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> str:
@@ -131,7 +128,7 @@ def fix_qwen_inplace_bug(model) -> None:
 
 
 def get_model_tokenizer_qwen_audio(model_dir: str,
-                                   torch_dtype: torch.dtype,
+                                   model_config: PretrainedConfig,
                                    model_kwargs: Dict[str, Any],
                                    load_model: bool = True,
                                    **kwargs):
@@ -143,7 +140,7 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
     tokenizer_cls._old_decode = tokenizer_cls._decode
     tokenizer_cls._decode = _qwen_vl_audio_decode
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_config, model_kwargs, load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
 
@@ -151,18 +148,20 @@ def get_model_tokenizer_qwen_audio(model_dir: str,
 
 
 register_model(
-    MLLMModelType.qwen_audio,
-    'QWenLMHeadModel', [
-        ModelGroup([
-            Model('qwen/Qwen-Audio', 'Qwen/Qwen-Audio'),
-            Model('qwen/Qwen-Audio-Chat', 'Qwen/Qwen-Audio-Chat'),
+    ModelMeta(
+        MLLMModelType.qwen_audio,
+        'QWenLMHeadModel', [
+            ModelGroup([
+                Model('qwen/Qwen-Audio', 'Qwen/Qwen-Audio'),
+                Model('qwen/Qwen-Audio-Chat', 'Qwen/Qwen-Audio-Chat'),
+            ],
+                       tags=['audio'])
         ],
-                   tags=['audio'])
-    ],
-    TemplateGroup(TemplateType.qwen_audio, TemplateType.qwen_audio_generation),
+        TemplateType.qwen_audio,
+        support_flash_attn=True,
+        additional_saved_files=['mel_filters.npz']),
     get_model_tokenizer_qwen_audio,
-    support_flash_attn=True,
-    additional_saved_files=['mel_filters.npz'])
+)
 
 
 def _qwen_vl_visual_block_forward(
@@ -182,7 +181,7 @@ def _qwen_vl_visual_block_forward(
 
 
 def get_model_tokenizer_qwen_vl(model_dir: str,
-                                torch_dtype: torch.dtype,
+                                model_config: PretrainedConfig,
                                 model_kwargs: Dict[str, Any],
                                 load_model: bool = True,
                                 **kwargs):
@@ -214,7 +213,7 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
         visual_block_cls.forward = _qwen_vl_visual_block_forward
 
     kwargs['tokenizer'] = tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
-    model, tokenizer = get_model_tokenizer_qwen(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_qwen(model_dir, model_config, model_kwargs, load_model, **kwargs)
     if model is not None:
         fix_qwen_inplace_bug(model)
         # fix device_map is 4
@@ -227,234 +226,242 @@ def get_model_tokenizer_qwen_vl(model_dir: str,
 
 
 register_model(
-    MLLMModelType.qwen_vl,
-    'QWenLMHeadModel', [
-        ModelGroup([
-            Model('qwen/Qwen-VL', 'Qwen/Qwen-VL'),
-            Model('qwen/Qwen-VL-Chat', 'Qwen/Qwen-VL-Chat'),
-            Model('qwen/Qwen-VL-Chat-Int4', 'Qwen/Qwen-VL-Chat-Int4'),
+    ModelMeta(
+        MLLMModelType.qwen_vl,
+        'QWenLMHeadModel', [
+            ModelGroup([
+                Model('qwen/Qwen-VL', 'Qwen/Qwen-VL'),
+                Model('qwen/Qwen-VL-Chat', 'Qwen/Qwen-VL-Chat'),
+                Model('qwen/Qwen-VL-Chat-Int4', 'Qwen/Qwen-VL-Chat-Int4'),
+            ],
+                       tags=['vision'])
         ],
-                   tags=['vision'])
-    ],
-    TemplateGroup(TemplateType.qwen_vl, TemplateType.qwen_vl_generation),
+        TemplateType.qwen_vl,
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        additional_saved_files=['SimSun.ttf']),
     get_model_tokenizer_qwen_vl,
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    additional_saved_files=['SimSun.ttf'])
+)
 
 register_model(
-    LLMModelType.qwen2,
-    'Qwen2ForCausalLM',
-    [
-        # qwen1.5
-        ModelGroup([
-            # base
-            Model('qwen/Qwen1.5-0.5B', 'Qwen/Qwen1.5-0.5B'),
-            Model('qwen/Qwen1.5-1.8B', 'Qwen/Qwen1.5-1.8B'),
-            Model('qwen/Qwen1.5-4B', 'Qwen/Qwen1.5-4B'),
-            Model('qwen/Qwen1.5-7B', 'Qwen/Qwen1.5-7B'),
-            Model('qwen/Qwen1.5-14B', 'Qwen/Qwen1.5-14B'),
-            Model('qwen/Qwen1.5-32B', 'Qwen/Qwen1.5-32B'),
-            Model('qwen/Qwen1.5-72B', 'Qwen/Qwen1.5-72B'),
-            Model('qwen/Qwen1.5-110B', 'Qwen/Qwen1.5-110B'),
-            # chat
-            Model('qwen/Qwen1.5-0.5B-Chat', 'Qwen/Qwen1.5-0.5B-Chat'),
-            Model('qwen/Qwen1.5-1.8B-Chat', 'Qwen/Qwen1.5-1.8B-Chat'),
-            Model('qwen/Qwen1.5-4B-Chat', 'Qwen/Qwen1.5-4B-Chat'),
-            Model('qwen/Qwen1.5-7B-Chat', 'Qwen/Qwen1.5-7B-Chat'),
-            Model('qwen/Qwen1.5-14B-Chat', 'Qwen/Qwen1.5-14B-Chat'),
-            Model('qwen/Qwen1.5-32B-Chat', 'Qwen/Qwen1.5-32B-Chat'),
-            Model('qwen/Qwen1.5-72B-Chat', 'Qwen/Qwen1.5-72B-Chat'),
-            Model('qwen/Qwen1.5-110B-Chat', 'Qwen/Qwen1.5-110B-Chat'),
-            # gptq-int4
-            Model('qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4'),
-            Model('qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4'),
-            Model('qwen/Qwen1.5-4B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-4B-Chat-GPTQ-Int4'),
-            Model('qwen/Qwen1.5-7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-7B-Chat-GPTQ-Int4'),
-            Model('qwen/Qwen1.5-14B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-14B-Chat-GPTQ-Int4'),
-            Model('qwen/Qwen1.5-32B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-32B-Chat-GPTQ-Int4'),
-            Model('qwen/Qwen1.5-72B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-72B-Chat-GPTQ-Int4'),
-            Model('qwen/Qwen1.5-110B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-110B-Chat-GPTQ-Int4'),
-            # gptq-int8
-            Model('qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8'),
-            Model('qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8'),
-            Model('qwen/Qwen1.5-4B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-4B-Chat-GPTQ-Int8'),
-            Model('qwen/Qwen1.5-7B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-7B-Chat-GPTQ-Int8'),
-            Model('qwen/Qwen1.5-14B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-14B-Chat-GPTQ-Int8'),
-            Model('qwen/Qwen1.5-72B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-72B-Chat-GPTQ-Int8'),
-            # awq-int4
-            Model('qwen/Qwen1.5-0.5B-Chat-AWQ', 'Qwen/Qwen1.5-0.5B-Chat-AWQ'),
-            Model('qwen/Qwen1.5-1.8B-Chat-AWQ', 'Qwen/Qwen1.5-1.8B-Chat-AWQ'),
-            Model('qwen/Qwen1.5-4B-Chat-AWQ', 'Qwen/Qwen1.5-4B-Chat-AWQ'),
-            Model('qwen/Qwen1.5-7B-Chat-AWQ', 'Qwen/Qwen1.5-7B-Chat-AWQ'),
-            Model('qwen/Qwen1.5-14B-Chat-AWQ', 'Qwen/Qwen1.5-14B-Chat-AWQ'),
-            Model('qwen/Qwen1.5-32B-Chat-AWQ', 'Qwen/Qwen1.5-32B-Chat-AWQ'),
-            Model('qwen/Qwen1.5-72B-Chat-AWQ', 'Qwen/Qwen1.5-72B-Chat-AWQ'),
-            Model('qwen/Qwen1.5-110B-Chat-AWQ', 'Qwen/Qwen1.5-110B-Chat-AWQ'),
-        ]),
-        # code-qwen1.5
-        ModelGroup([
-            Model('qwen/CodeQwen1.5-7B', 'Qwen/CodeQwen1.5-7B'),
-            Model('qwen/CodeQwen1.5-7B-Chat', 'Qwen/CodeQwen1.5-7B-Chat'),
-            Model('qwen/CodeQwen1.5-7B-Chat-AWQ', 'Qwen/CodeQwen1.5-7B-Chat-AWQ'),
+    ModelMeta(
+        LLMModelType.qwen2,
+        'Qwen2ForCausalLM',
+        [
+            # qwen1.5
+            ModelGroup([
+                # base
+                Model('qwen/Qwen1.5-0.5B', 'Qwen/Qwen1.5-0.5B'),
+                Model('qwen/Qwen1.5-1.8B', 'Qwen/Qwen1.5-1.8B'),
+                Model('qwen/Qwen1.5-4B', 'Qwen/Qwen1.5-4B'),
+                Model('qwen/Qwen1.5-7B', 'Qwen/Qwen1.5-7B'),
+                Model('qwen/Qwen1.5-14B', 'Qwen/Qwen1.5-14B'),
+                Model('qwen/Qwen1.5-32B', 'Qwen/Qwen1.5-32B'),
+                Model('qwen/Qwen1.5-72B', 'Qwen/Qwen1.5-72B'),
+                Model('qwen/Qwen1.5-110B', 'Qwen/Qwen1.5-110B'),
+                # chat
+                Model('qwen/Qwen1.5-0.5B-Chat', 'Qwen/Qwen1.5-0.5B-Chat'),
+                Model('qwen/Qwen1.5-1.8B-Chat', 'Qwen/Qwen1.5-1.8B-Chat'),
+                Model('qwen/Qwen1.5-4B-Chat', 'Qwen/Qwen1.5-4B-Chat'),
+                Model('qwen/Qwen1.5-7B-Chat', 'Qwen/Qwen1.5-7B-Chat'),
+                Model('qwen/Qwen1.5-14B-Chat', 'Qwen/Qwen1.5-14B-Chat'),
+                Model('qwen/Qwen1.5-32B-Chat', 'Qwen/Qwen1.5-32B-Chat'),
+                Model('qwen/Qwen1.5-72B-Chat', 'Qwen/Qwen1.5-72B-Chat'),
+                Model('qwen/Qwen1.5-110B-Chat', 'Qwen/Qwen1.5-110B-Chat'),
+                # gptq-int4
+                Model('qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4'),
+                Model('qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int4'),
+                Model('qwen/Qwen1.5-4B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-4B-Chat-GPTQ-Int4'),
+                Model('qwen/Qwen1.5-7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-7B-Chat-GPTQ-Int4'),
+                Model('qwen/Qwen1.5-14B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-14B-Chat-GPTQ-Int4'),
+                Model('qwen/Qwen1.5-32B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-32B-Chat-GPTQ-Int4'),
+                Model('qwen/Qwen1.5-72B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-72B-Chat-GPTQ-Int4'),
+                Model('qwen/Qwen1.5-110B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-110B-Chat-GPTQ-Int4'),
+                # gptq-int8
+                Model('qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int8'),
+                Model('qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-1.8B-Chat-GPTQ-Int8'),
+                Model('qwen/Qwen1.5-4B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-4B-Chat-GPTQ-Int8'),
+                Model('qwen/Qwen1.5-7B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-7B-Chat-GPTQ-Int8'),
+                Model('qwen/Qwen1.5-14B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-14B-Chat-GPTQ-Int8'),
+                Model('qwen/Qwen1.5-72B-Chat-GPTQ-Int8', 'Qwen/Qwen1.5-72B-Chat-GPTQ-Int8'),
+                # awq-int4
+                Model('qwen/Qwen1.5-0.5B-Chat-AWQ', 'Qwen/Qwen1.5-0.5B-Chat-AWQ'),
+                Model('qwen/Qwen1.5-1.8B-Chat-AWQ', 'Qwen/Qwen1.5-1.8B-Chat-AWQ'),
+                Model('qwen/Qwen1.5-4B-Chat-AWQ', 'Qwen/Qwen1.5-4B-Chat-AWQ'),
+                Model('qwen/Qwen1.5-7B-Chat-AWQ', 'Qwen/Qwen1.5-7B-Chat-AWQ'),
+                Model('qwen/Qwen1.5-14B-Chat-AWQ', 'Qwen/Qwen1.5-14B-Chat-AWQ'),
+                Model('qwen/Qwen1.5-32B-Chat-AWQ', 'Qwen/Qwen1.5-32B-Chat-AWQ'),
+                Model('qwen/Qwen1.5-72B-Chat-AWQ', 'Qwen/Qwen1.5-72B-Chat-AWQ'),
+                Model('qwen/Qwen1.5-110B-Chat-AWQ', 'Qwen/Qwen1.5-110B-Chat-AWQ'),
+            ]),
+            # code-qwen1.5
+            ModelGroup([
+                Model('qwen/CodeQwen1.5-7B', 'Qwen/CodeQwen1.5-7B'),
+                Model('qwen/CodeQwen1.5-7B-Chat', 'Qwen/CodeQwen1.5-7B-Chat'),
+                Model('qwen/CodeQwen1.5-7B-Chat-AWQ', 'Qwen/CodeQwen1.5-7B-Chat-AWQ'),
+            ],
+                       tags=['coding']),
+            # qwen2
+            ModelGroup([
+                # base
+                Model('qwen/Qwen2-0.5B', 'Qwen/Qwen2-0.5B'),
+                Model('qwen/Qwen2-1.5B', 'Qwen/Qwen2-1.5B'),
+                Model('qwen/Qwen2-7B', 'Qwen/Qwen2-7B'),
+                Model('qwen/Qwen2-72B', 'Qwen/Qwen2-72B'),
+                # instruct
+                Model('qwen/Qwen2-0.5B-Instruct', 'Qwen/Qwen2-0.5B-Instruct'),
+                Model('qwen/Qwen2-1.5B-Instruct', 'Qwen/Qwen2-1.5B-Instruct'),
+                Model('qwen/Qwen2-7B-Instruct', 'Qwen/Qwen2-7B-Instruct'),
+                Model('qwen/Qwen2-72B-Instruct', 'Qwen/Qwen2-72B-Instruct'),
+                # gptq-int4
+                Model('qwen/Qwen2-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-0.5B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-7B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-72B-Instruct-GPTQ-Int4'),
+                # gptq-int8
+                Model('qwen/Qwen2-0.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-0.5B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2-1.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-1.5B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-7B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-72B-Instruct-GPTQ-Int8'),
+                # awq-int4
+                Model('qwen/Qwen2-0.5B-Instruct-AWQ', 'Qwen/Qwen2-0.5B-Instruct-AWQ'),
+                Model('qwen/Qwen2-1.5B-Instruct-AWQ', 'Qwen/Qwen2-1.5B-Instruct-AWQ'),
+                Model('qwen/Qwen2-7B-Instruct-AWQ', 'Qwen/Qwen2-7B-Instruct-AWQ'),
+                Model('qwen/Qwen2-72B-Instruct-AWQ', 'Qwen/Qwen2-72B-Instruct-AWQ'),
+            ]),
+            # qwen2-math
+            ModelGroup(
+                [
+                    # base
+                    Model('qwen/Qwen2-Math-1.5B', 'Qwen/Qwen2-Math-1.5B'),
+                    Model('qwen/Qwen2-Math-7B', 'Qwen/Qwen2-Math-7B'),
+                    Model('qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
+                    # instruct
+                    Model('qwen/Qwen2-Math-1.5B-Instruct', 'Qwen/Qwen2-Math-1.5B-Instruct'),
+                    Model('qwen/Qwen2-Math-7B-Instruct', 'Qwen/Qwen2-Math-7B-Instruct'),
+                    Model('qwen/Qwen2-Math-72B-Instruct', 'Qwen/Qwen2-Math-72B-Instruct'),
+                ],
+                tags=['math']),
         ],
-                   tags=['coding']),
-        # qwen2
-        ModelGroup([
-            # base
-            Model('qwen/Qwen2-0.5B', 'Qwen/Qwen2-0.5B'),
-            Model('qwen/Qwen2-1.5B', 'Qwen/Qwen2-1.5B'),
-            Model('qwen/Qwen2-7B', 'Qwen/Qwen2-7B'),
-            Model('qwen/Qwen2-72B', 'Qwen/Qwen2-72B'),
-            # instruct
-            Model('qwen/Qwen2-0.5B-Instruct', 'Qwen/Qwen2-0.5B-Instruct'),
-            Model('qwen/Qwen2-1.5B-Instruct', 'Qwen/Qwen2-1.5B-Instruct'),
-            Model('qwen/Qwen2-7B-Instruct', 'Qwen/Qwen2-7B-Instruct'),
-            Model('qwen/Qwen2-72B-Instruct', 'Qwen/Qwen2-72B-Instruct'),
-            # gptq-int4
-            Model('qwen/Qwen2-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-0.5B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-1.5B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-7B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-72B-Instruct-GPTQ-Int4'),
-            # gptq-int8
-            Model('qwen/Qwen2-0.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-0.5B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2-1.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-1.5B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-7B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-72B-Instruct-GPTQ-Int8'),
-            # awq-int4
-            Model('qwen/Qwen2-0.5B-Instruct-AWQ', 'Qwen/Qwen2-0.5B-Instruct-AWQ'),
-            Model('qwen/Qwen2-1.5B-Instruct-AWQ', 'Qwen/Qwen2-1.5B-Instruct-AWQ'),
-            Model('qwen/Qwen2-7B-Instruct-AWQ', 'Qwen/Qwen2-7B-Instruct-AWQ'),
-            Model('qwen/Qwen2-72B-Instruct-AWQ', 'Qwen/Qwen2-72B-Instruct-AWQ'),
-        ]),
-        # qwen2-math
-        ModelGroup(
-            [
-                # base
-                Model('qwen/Qwen2-Math-1.5B', 'Qwen/Qwen2-Math-1.5B'),
-                Model('qwen/Qwen2-Math-7B', 'Qwen/Qwen2-Math-7B'),
-                Model('qwen/Qwen2-Math-72B', 'Qwen/Qwen2-Math-72B'),
-                # instruct
-                Model('qwen/Qwen2-Math-1.5B-Instruct', 'Qwen/Qwen2-Math-1.5B-Instruct'),
-                Model('qwen/Qwen2-Math-7B-Instruct', 'Qwen/Qwen2-Math-7B-Instruct'),
-                Model('qwen/Qwen2-Math-72B-Instruct', 'Qwen/Qwen2-Math-72B-Instruct'),
-            ],
-            tags=['math']),
-    ],
-    TemplateGroup(TemplateType.qwen),
+        TemplateType.qwen,
+        requires=['transformers>=4.37'],
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True,
+        support_megatron=True),
     get_model_tokenizer_with_flash_attn,
-    requires=['transformers>=4.37'],
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True,
-    support_megatron=True)
+)
 
 register_model(
-    LLMModelType.qwen2_moe,
-    'Qwen2MoeForCausalLM',
-    [
-        # qwen1.5-moe
-        ModelGroup([
-            Model('qwen/Qwen1.5-MoE-A2.7B', 'Qwen/Qwen1.5-MoE-A2.7B'),
-            Model('qwen/Qwen1.5-MoE-A2.7B-Chat', 'Qwen/Qwen1.5-MoE-A2.7B-Chat'),
-            Model('qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4'),
-        ]),
-        ModelGroup([
-            Model('qwen/Qwen2-57B-A14B', 'Qwen/Qwen2-57B-A14B'),
-            Model('Qwen/Qwen2-57B-A14B-Instruct', 'Qwen/Qwen2-57B-A14B-Instruct'),
-            Model('qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4'),
-        ])
-    ],
-    TemplateGroup(TemplateType.qwen),
+    ModelMeta(
+        LLMModelType.qwen2_moe,
+        'Qwen2MoeForCausalLM',
+        [
+            # qwen1.5-moe
+            ModelGroup([
+                Model('qwen/Qwen1.5-MoE-A2.7B', 'Qwen/Qwen1.5-MoE-A2.7B'),
+                Model('qwen/Qwen1.5-MoE-A2.7B-Chat', 'Qwen/Qwen1.5-MoE-A2.7B-Chat'),
+                Model('qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4', 'Qwen/Qwen1.5-MoE-A2.7B-Chat-GPTQ-Int4'),
+            ]),
+            ModelGroup([
+                Model('qwen/Qwen2-57B-A14B', 'Qwen/Qwen2-57B-A14B'),
+                Model('Qwen/Qwen2-57B-A14B-Instruct', 'Qwen/Qwen2-57B-A14B-Instruct'),
+                Model('qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-57B-A14B-Instruct-GPTQ-Int4'),
+            ])
+        ],
+        TemplateType.qwen,
+        requires=['transformers>=4.40'],
+        is_moe=True,
+        support_flash_attn=True,
+        support_vllm=True),
     get_model_tokenizer_with_flash_attn,
-    requires=['transformers>=4.40'],
-    is_moe=True,
-    support_flash_attn=True,
-    support_vllm=True)
+)
 
 register_model(
-    LLMModelType.qwen2_5,
-    'Qwen2ForCausalLM',
-    [
-        # qwen2.5
-        ModelGroup([
-            # base
-            Model('qwen/Qwen2.5-0.5B', 'Qwen/Qwen2.5-0.5B'),
-            Model('qwen/Qwen2.5-1.5B', 'Qwen/Qwen2.5-1.5B'),
-            Model('qwen/Qwen2.5-3B', 'Qwen/Qwen2.5-3B'),
-            Model('qwen/Qwen2.5-7B', 'Qwen/Qwen2.5-7B'),
-            Model('qwen/Qwen2.5-14B', 'Qwen/Qwen2.5-14B'),
-            Model('qwen/Qwen2.5-32B', 'Qwen/Qwen2.5-32B'),
-            Model('qwen/Qwen2.5-72B', 'Qwen/Qwen2.5-72B'),
-            # instruct
-            Model('qwen/Qwen2.5-0.5B-Instruct', 'Qwen/Qwen2.5-0.5B-Instruct'),
-            Model('qwen/Qwen2.5-1.5B-Instruct', 'Qwen/Qwen2.5-1.5B-Instruct'),
-            Model('qwen/Qwen2.5-3B-Instruct', 'Qwen/Qwen2.5-3B-Instruct'),
-            Model('qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-7B-Instruct'),
-            Model('qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-14B-Instruct'),
-            Model('qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-32B-Instruct'),
-            Model('qwen/Qwen2.5-72B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'),
-            # gptq-int4
-            Model('qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2.5-3B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2.5-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2.5-14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2.5-32B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int4'),
-            Model('qwen/Qwen2.5-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4'),
-            # gptq-int8
-            Model('qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2.5-3B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2.5-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2.5-14B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2.5-32B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int8'),
-            Model('qwen/Qwen2.5-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8'),
-            # awq-int4
-            Model('qwen/Qwen2.5-0.5B-Instruct-AWQ', 'Qwen/Qwen2.5-0.5B-Instruct-AWQ'),
-            Model('qwen/Qwen2.5-1.5B-Instruct-AWQ', 'Qwen/Qwen2.5-1.5B-Instruct-AWQ'),
-            Model('qwen/Qwen2.5-3B-Instruct-AWQ', 'Qwen/Qwen2.5-3B-Instruct-AWQ'),
-            Model('qwen/Qwen2.5-7B-Instruct-AWQ', 'Qwen/Qwen2.5-7B-Instruct-AWQ'),
-            Model('qwen/Qwen2.5-14B-Instruct-AWQ', 'Qwen/Qwen2.5-14B-Instruct-AWQ'),
-            Model('qwen/Qwen2.5-32B-Instruct-AWQ', 'Qwen/Qwen2.5-32B-Instruct-AWQ'),
-            Model('qwen/Qwen2.5-72B-Instruct-AWQ', 'Qwen/Qwen2.5-72B-Instruct-AWQ'),
-        ]),
-        # qwen2.5-math
-        ModelGroup(
-            [
+    ModelMeta(
+        LLMModelType.qwen2_5,
+        'Qwen2ForCausalLM',
+        [
+            # qwen2.5
+            ModelGroup([
                 # base
-                Model('qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
-                Model('qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
-                Model('qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
+                Model('qwen/Qwen2.5-0.5B', 'Qwen/Qwen2.5-0.5B'),
+                Model('qwen/Qwen2.5-1.5B', 'Qwen/Qwen2.5-1.5B'),
+                Model('qwen/Qwen2.5-3B', 'Qwen/Qwen2.5-3B'),
+                Model('qwen/Qwen2.5-7B', 'Qwen/Qwen2.5-7B'),
+                Model('qwen/Qwen2.5-14B', 'Qwen/Qwen2.5-14B'),
+                Model('qwen/Qwen2.5-32B', 'Qwen/Qwen2.5-32B'),
+                Model('qwen/Qwen2.5-72B', 'Qwen/Qwen2.5-72B'),
                 # instruct
-                Model('qwen/Qwen2.5-Math-1.5B-Instruct', 'Qwen/Qwen2.5-Math-1.5B-Instruct'),
-                Model('qwen/Qwen2.5-Math-7B-Instruct', 'Qwen/Qwen2.5-Math-7B-Instruct'),
-                Model('qwen/Qwen2.5-Math-72B-Instruct', 'Qwen/Qwen2.5-Math-72B-Instruct'),
-            ],
-            tags=['math']),
-        # qwen2.5-coder
-        ModelGroup(
-            [
-                # base
-                Model('qwen/Qwen2.5-Coder-1.5B', 'Qwen/Qwen2.5-Coder-1.5B'),
-                Model('qwen/Qwen2.5-Coder-7B', 'Qwen/Qwen2.5-Coder-7B'),
-                # instruct
-                Model('qwen/Qwen2.5-Coder-1.5B-Instruct', 'Qwen/Qwen2.5-Coder-1.5B-Instruct'),
-                Model('qwen/Qwen2.5-Coder-7B-Instruct', 'Qwen/Qwen2.5-Coder-7B-Instruct'),
-            ],
-            tags=['coding'])
-    ],
-    TemplateGroup(TemplateType.qwen2_5),
+                Model('qwen/Qwen2.5-0.5B-Instruct', 'Qwen/Qwen2.5-0.5B-Instruct'),
+                Model('qwen/Qwen2.5-1.5B-Instruct', 'Qwen/Qwen2.5-1.5B-Instruct'),
+                Model('qwen/Qwen2.5-3B-Instruct', 'Qwen/Qwen2.5-3B-Instruct'),
+                Model('qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-7B-Instruct'),
+                Model('qwen/Qwen2.5-14B-Instruct', 'Qwen/Qwen2.5-14B-Instruct'),
+                Model('qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-32B-Instruct'),
+                Model('qwen/Qwen2.5-72B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'),
+                # gptq-int4
+                Model('qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2.5-3B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2.5-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2.5-14B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2.5-32B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int4'),
+                Model('qwen/Qwen2.5-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4'),
+                # gptq-int8
+                Model('qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-1.5B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2.5-3B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-3B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2.5-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-7B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2.5-14B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2.5-32B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-32B-Instruct-GPTQ-Int8'),
+                Model('qwen/Qwen2.5-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2.5-72B-Instruct-GPTQ-Int8'),
+                # awq-int4
+                Model('qwen/Qwen2.5-0.5B-Instruct-AWQ', 'Qwen/Qwen2.5-0.5B-Instruct-AWQ'),
+                Model('qwen/Qwen2.5-1.5B-Instruct-AWQ', 'Qwen/Qwen2.5-1.5B-Instruct-AWQ'),
+                Model('qwen/Qwen2.5-3B-Instruct-AWQ', 'Qwen/Qwen2.5-3B-Instruct-AWQ'),
+                Model('qwen/Qwen2.5-7B-Instruct-AWQ', 'Qwen/Qwen2.5-7B-Instruct-AWQ'),
+                Model('qwen/Qwen2.5-14B-Instruct-AWQ', 'Qwen/Qwen2.5-14B-Instruct-AWQ'),
+                Model('qwen/Qwen2.5-32B-Instruct-AWQ', 'Qwen/Qwen2.5-32B-Instruct-AWQ'),
+                Model('qwen/Qwen2.5-72B-Instruct-AWQ', 'Qwen/Qwen2.5-72B-Instruct-AWQ'),
+            ]),
+            # qwen2.5-math
+            ModelGroup(
+                [
+                    # base
+                    Model('qwen/Qwen2.5-Math-1.5B', 'Qwen/Qwen2.5-Math-1.5B'),
+                    Model('qwen/Qwen2.5-Math-7B', 'Qwen/Qwen2.5-Math-7B'),
+                    Model('qwen/Qwen2.5-Math-72B', 'Qwen/Qwen2.5-Math-72B'),
+                    # instruct
+                    Model('qwen/Qwen2.5-Math-1.5B-Instruct', 'Qwen/Qwen2.5-Math-1.5B-Instruct'),
+                    Model('qwen/Qwen2.5-Math-7B-Instruct', 'Qwen/Qwen2.5-Math-7B-Instruct'),
+                    Model('qwen/Qwen2.5-Math-72B-Instruct', 'Qwen/Qwen2.5-Math-72B-Instruct'),
+                ],
+                tags=['math']),
+            # qwen2.5-coder
+            ModelGroup(
+                [
+                    # base
+                    Model('qwen/Qwen2.5-Coder-1.5B', 'Qwen/Qwen2.5-Coder-1.5B'),
+                    Model('qwen/Qwen2.5-Coder-7B', 'Qwen/Qwen2.5-Coder-7B'),
+                    # instruct
+                    Model('qwen/Qwen2.5-Coder-1.5B-Instruct', 'Qwen/Qwen2.5-Coder-1.5B-Instruct'),
+                    Model('qwen/Qwen2.5-Coder-7B-Instruct', 'Qwen/Qwen2.5-Coder-7B-Instruct'),
+                ],
+                tags=['coding'])
+        ],
+        TemplateType.qwen2_5,
+        requires=['transformers>=4.37'],
+        support_flash_attn=True,
+        support_vllm=True,
+        support_lmdeploy=True),
     get_model_tokenizer_with_flash_attn,
-    requires=['transformers>=4.37'],
-    support_flash_attn=True,
-    support_vllm=True,
-    support_lmdeploy=True)
+)
 
 
 def get_model_tokenizer_qwen2_vl(model_dir: str,
-                                 torch_dtype: torch.dtype,
+                                 model_config: PretrainedConfig,
                                  model_kwargs: Dict[str, Any],
                                  load_model: bool = True,
                                  **kwargs):
@@ -477,7 +484,7 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
 
     from transformers import Qwen2VLForConditionalGeneration
     kwargs['automodel_class'] = Qwen2VLForConditionalGeneration
-    model, tokenizer = get_model_tokenizer_multimodal(model_dir, torch_dtype, model_kwargs, load_model, **kwargs)
+    model, tokenizer = get_model_tokenizer_multimodal(model_dir, model_config, model_kwargs, load_model, **kwargs)
     if model is not None:
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.embed_tokens)
@@ -485,39 +492,41 @@ def get_model_tokenizer_qwen2_vl(model_dir: str,
 
 
 register_model(
-    MLLMModelType.qwen2_vl,
-    'Qwen2VLForConditionalGeneration',
-    [
-        ModelGroup(
-            [
-                # base
-                Model('qwen/Qwen2-VL-2B', 'Qwen/Qwen2-VL-2B'),
-                Model('qwen/Qwen2-VL-7B', 'Qwen/Qwen2-VL-7B'),
-                Model('qwen/Qwen2-VL-72B', 'Qwen/Qwen2-VL-72B'),
-                # chat
-                Model('qwen/Qwen2-VL-2B-Instruct', 'Qwen/Qwen2-VL-2B-Instruct'),
-                Model('qwen/Qwen2-VL-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct'),
-                Model('qwen/Qwen2-VL-72B-Instruct', 'Qwen/Qwen2-VL-72B-Instruct'),
-                # gptq-int4
-                Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4'),
-                Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4'),
-                Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4'),
-                # gptq-int8
-                Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8'),
-                Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8'),
-                Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8'),
-                # awq-int4
-                Model('qwen/Qwen2-VL-2B-Instruct-AWQ', 'Qwen/Qwen2-VL-2B-Instruct-AWQ'),
-                Model('qwen/Qwen2-VL-7B-Instruct-AWQ', 'Qwen/Qwen2-VL-7B-Instruct-AWQ'),
-                Model('qwen/Qwen2-VL-72B-Instruct-AWQ', 'Qwen/Qwen2-VL-72B-Instruct-AWQ'),
-            ],
-            tags=['vision', 'video']),
-    ],
-    TemplateGroup(TemplateType.qwen2_vl, TemplateType.qwen2_vl_generation),
+    ModelMeta(
+        MLLMModelType.qwen2_vl,
+        'Qwen2VLForConditionalGeneration',
+        [
+            ModelGroup(
+                [
+                    # base
+                    Model('qwen/Qwen2-VL-2B', 'Qwen/Qwen2-VL-2B'),
+                    Model('qwen/Qwen2-VL-7B', 'Qwen/Qwen2-VL-7B'),
+                    Model('qwen/Qwen2-VL-72B', 'Qwen/Qwen2-VL-72B'),
+                    # chat
+                    Model('qwen/Qwen2-VL-2B-Instruct', 'Qwen/Qwen2-VL-2B-Instruct'),
+                    Model('qwen/Qwen2-VL-7B-Instruct', 'Qwen/Qwen2-VL-7B-Instruct'),
+                    Model('qwen/Qwen2-VL-72B-Instruct', 'Qwen/Qwen2-VL-72B-Instruct'),
+                    # gptq-int4
+                    Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int4'),
+                    Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int4'),
+                    Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int4'),
+                    # gptq-int8
+                    Model('qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-2B-Instruct-GPTQ-Int8'),
+                    Model('qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-7B-Instruct-GPTQ-Int8'),
+                    Model('qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8', 'Qwen/Qwen2-VL-72B-Instruct-GPTQ-Int8'),
+                    # awq-int4
+                    Model('qwen/Qwen2-VL-2B-Instruct-AWQ', 'Qwen/Qwen2-VL-2B-Instruct-AWQ'),
+                    Model('qwen/Qwen2-VL-7B-Instruct-AWQ', 'Qwen/Qwen2-VL-7B-Instruct-AWQ'),
+                    Model('qwen/Qwen2-VL-72B-Instruct-AWQ', 'Qwen/Qwen2-VL-72B-Instruct-AWQ'),
+                ],
+                tags=['vision', 'video']),
+        ],
+        TemplateType.qwen2_vl,
+        requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
+        support_flash_attn=True,
+        support_vllm=True),
     get_model_tokenizer_qwen2_vl,
-    requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
-    support_flash_attn=True,
-    support_vllm=True)
+)
 
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
@@ -527,16 +536,18 @@ def get_model_tokenizer_qwen2_audio(*args, **kwargs):
 
 
 register_model(
-    MLLMModelType.qwen2_audio,
-    'Qwen2AudioForConditionalGeneration', [
-        ModelGroup([
-            Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
-            Model('qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
-            Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
+    ModelMeta(
+        MLLMModelType.qwen2_audio,
+        'Qwen2AudioForConditionalGeneration', [
+            ModelGroup([
+                Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
+                Model('qwen/Qwen2-Audio-7B-Instruct', 'Qwen/Qwen2-Audio-7B-Instruct'),
+                Model('qwen/Qwen2-Audio-7B', 'Qwen/Qwen2-Audio-7B'),
+            ],
+                       tags=['audio']),
         ],
-                   tags=['audio']),
-    ],
-    TemplateGroup(TemplateType.qwen2_audio, TemplateType.qwen2_audio_generation),
+        TemplateType.qwen2_audio,
+        requires=['transformers>=4.45.dev.0'],
+        support_flash_attn=True),
     get_model_tokenizer_qwen2_audio,
-    requires=['transformers>=4.45.dev.0'],
-    support_flash_attn=True)
+)
