@@ -1,5 +1,4 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import inspect
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field

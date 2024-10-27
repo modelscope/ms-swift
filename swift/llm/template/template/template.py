@@ -7,14 +7,14 @@ import torch
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.utils import get_logger, upper_bound
-from .base import Template
-from .constant import TemplateType
+from ..base import Template
+from ..constant import TemplateType
+from ..register import register_template
+from ..utils import Context, align_image_inputs, findall
+from ..vision_utils import (load_batch, load_image, load_video_cogvlm2, load_video_internvl,
+                            load_video_minicpmv_mplug_owl3, transform_image)
 from .llama import Llama3Template, Llama3TemplateMixin
 from .qwen import DEFAULT_SYSTEM, ChatmlTemplate, QwenTemplate, QwenTemplateMixin
-from .register import register_template
-from .utils import Context, align_image_inputs, findall
-from .vision_utils import (load_batch, load_image, load_video_cogvlm2, load_video_internvl,
-                           load_video_minicpmv_mplug_owl3, transform_image)
 
 logger = get_logger()
 

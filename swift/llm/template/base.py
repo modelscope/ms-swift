@@ -74,6 +74,7 @@ class Template:
 
     def __init__(
             self,
+            template_type: str,
             prefix: Prompt,
             prompt: Prompt,
             chat_sep: Optional[Prompt],
@@ -112,6 +113,7 @@ class Template:
             self.support_system = True
         self.support_multi_round = chat_sep is not None
 
+        self.template_type = template_type
         self.prefix = prefix
         self.system_prefix = system_prefix
         self.chat_sep = chat_sep

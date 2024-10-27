@@ -278,8 +278,7 @@ def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
 register_model(
     ModelMeta(
         MLLMModelType.llama3_2_vision,
-        'MllamaForConditionalGeneration',
-        [
+        'MllamaForConditionalGeneration', [
             ModelGroup([
                 Model('LLM-Research/Llama-3.2-11B-Vision', 'meta-llama/Llama-3.2-11B-Vision'),
                 Model('LLM-Research/Llama-3.2-90B-Vision', 'meta-llama/Llama-3.2-90B-Vision'),
@@ -293,6 +292,6 @@ register_model(
         ignore_file_pattern=['*.pth'],
         support_flash_attn=True,
         support_vllm=True,
-    ),
+        is_multimodal=True),
     get_model_tokenizer_llama3_2_vision,
 )

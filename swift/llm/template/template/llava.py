@@ -43,8 +43,8 @@ class Llava1_6Llama3Template(LlavaHfTemplate):
                      'You are able to understand the visual content that the user provides, ' \
                      'and assist the user with a variety of tasks using natural language.'
 
-    def __init__(self):
-        super().__init__(['<|begin_of_text|>'], [
+    def __init__(self, template_type: str):
+        super().__init__(template_type, ['<|begin_of_text|>'], [
             '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
             '<|start_header_id|>assistant<|end_header_id|>\n\n'
         ], ['<|eot_id|>'], ['<|eot_id|>'], None,
@@ -57,7 +57,7 @@ class Llava1_6Llama3Template(LlavaHfTemplate):
         return inputs, {}
 
 
-register_template(TemplateType.llava_next_llama3, Llava1_6Llama3Template(), use_model=True, lazy_tokenize=True)
+register_template(Llava1_6Llama3Template(TemplateType.llava_next_llama3), use_model=True, lazy_tokenize=True)
 
 
 class LlavaVideoTemplate(Template):
@@ -94,14 +94,14 @@ class LlavaVideoTemplate(Template):
 
 
 register_template(
-    TemplateType.llava_next_video,
-    LlavaVideoTemplate(['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['</s>']),
+    LlavaVideoTemplate(TemplateType.llava_next_video, ['<s>{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '],
+                       ['</s>']),
     use_model=True,
     lazy_tokenize=True)
 
 register_template(
-    TemplateType.llava_next_video_yi,
-    LlavaVideoTemplate(['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '], ['<|im_end|>']),
+    LlavaVideoTemplate(TemplateType.llava_next_video_yi, ['{{SYSTEM}} '], ['USER: {{QUERY}} ASSISTANT:'], [' '],
+                       ['<|im_end|>']),
     use_model=True,
     infer_media_type='round',
     lazy_tokenize=True)
@@ -109,11 +109,11 @@ register_template(
 
 class Llava1_5Template(LlavaHfTemplate):
 
-    def __init__(self):
-        super().__init__(['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
+    def __init__(self, template_type: str):
+        super().__init__(template_type, ['<s>'], ['USER: {{QUERY}}\nASSISTANT:'], ['</s>'], ['</s>'])
 
 
-register_template(TemplateType.llava1_5, Llava1_5Template(), use_model=True, lazy_tokenize=True)
+register_template(Llava1_5Template(TemplateType.llava1_5), use_model=True, lazy_tokenize=True)
 
 
 class LLavaTemplate(Template):
@@ -176,32 +176,35 @@ class Llava1_6Template(LlavaHfTemplate):
 
 class Llava1_6MistralTemplate(Llava1_6Template):
 
-    def __init__(self):
-        super().__init__(['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
-                         system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
+    def __init__(self, template_type: str):
+        super().__init__(
+            template_type, ['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s>'], ['</s>'],
+            system_prefix=['<<SYS>>\n{{system}}\n<</SYS>>\n\n'])
 
 
 class Llava1_6VicunaTemplate(Llava1_6Template):
     system = ('A chat between a curious human and an artificial intelligence assistant. '
               "The assistant gives helpful, detailed, and polite answers to the human's questions.")
 
-    def __init__(self):
-        super().__init__(['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
-                         self.system,
-                         system_prefix=['<s>{{SYSTEM}} '])
+    def __init__(self, template_type: str):
+        super().__init__(
+            template_type, ['<s>'], ['USER: {{QUERY}} ASSISTANT:'], ['</s>'], ['</s>'],
+            self.system,
+            system_prefix=['<s>{{SYSTEM}} '])
 
 
-register_template(TemplateType.llava_mistral, Llava1_6MistralTemplate(), use_model=True, lazy_tokenize=True)
+register_template(Llava1_6MistralTemplate(TemplateType.llava_mistral), use_model=True, lazy_tokenize=True)
 
-register_template(TemplateType.llava_vicuna, Llava1_6VicunaTemplate(), use_model=True, lazy_tokenize=True)
+register_template(Llava1_6VicunaTemplate(TemplateType.llava_vicuna), use_model=True, lazy_tokenize=True)
 
 
 class LLava1_6YiTemplate(Llava1_6Template):
 
-    def __init__(self):
-        super().__init__([], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
-                         ['<|im_end|>'],
-                         system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
+    def __init__(self, template_type: str):
+        super().__init__(
+            template_type, [], ['<|im_start|>user\n{{QUERY}}<|im_end|><|im_start|>assistant\n'], ['<|im_end|>'],
+            ['<|im_end|>'],
+            system_prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>'])
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index, example) -> List[Context]:
         if self._is_vllm:
@@ -210,21 +213,21 @@ class LLava1_6YiTemplate(Llava1_6Template):
             return super().replace_tag(media_type, index, example)
 
 
-register_template(TemplateType.llava_yi, LLava1_6YiTemplate(), use_model=True, lazy_tokenize=True)
+register_template(LLava1_6YiTemplate(TemplateType.llava_yi), use_model=True, lazy_tokenize=True)
 
 
 class Llama3LlavaNextHfTemplate(Llama3TemplateMixin, Llava1_6Template):
     pass
 
 
-register_template(TemplateType.llama3_llava_next_hf, Llama3LlavaNextHfTemplate(), use_model=True, lazy_tokenize=True)
+register_template(Llama3LlavaNextHfTemplate(TemplateType.llama3_llava_next_hf), use_model=True, lazy_tokenize=True)
 
 
 class LlavaQwenHfTemplate(QwenTemplateMixin, Llava1_6Template):
     pass
 
 
-register_template(TemplateType.llava_qwen_hf, LlavaQwenHfTemplate(), use_model=True, lazy_tokenize=True)
+register_template(LlavaQwenHfTemplate(TemplateType.llava_qwen_hf), use_model=True, lazy_tokenize=True)
 
 
 class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
@@ -261,7 +264,7 @@ class LlavaOneVisonTemplate(QwenTemplateMixin, Llava1_6Template):
         return inputs, {}
 
 
-register_template(TemplateType.llava_onevision_qwen, LlavaOneVisonTemplate(), use_model=True, lazy_tokenize=True)
+register_template(LlavaOneVisonTemplate(TemplateType.llava_onevision_qwen), use_model=True, lazy_tokenize=True)
 
 
 class LLavaLlamaTemplate(Llama3Template):
@@ -280,4 +283,4 @@ class LLavaLlamaTemplate(Llama3Template):
         return inputs, {}
 
 
-register_template(TemplateType.llava_llama_instruct, LLavaLlamaTemplate(), use_model=True, lazy_tokenize=True)
+register_template(LLavaLlamaTemplate(TemplateType.llava_llama_instruct), use_model=True, lazy_tokenize=True)

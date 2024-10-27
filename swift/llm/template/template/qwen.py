@@ -17,19 +17,20 @@ DEFAULT_SYSTEM = 'You are a helpful assistant.'
 # You can set the query as '' to serve as a template for pre-training.
 class DefaultGenerationTemplate(Template):
 
-    def __init__(self):
-        super().__init__([], ['{{QUERY}}'], None, [['eos_token_id']], auto_add_bos=True)
+    def __init__(self, template_type: str):
+        super().__init__(template_type, [], ['{{QUERY}}'], None, [['eos_token_id']], auto_add_bos=True)
 
 
-register_template(TemplateType.default_generation, DefaultGenerationTemplate(), is_generation=True)
+register_template(DefaultGenerationTemplate(TemplateType.default_generation), is_generation=True)
 
 
 class ChatmlTemplateMixin:
     system = None
 
-    def __init__(self, auto_add_bos: bool = True):
+    def __init__(self, template_type: str, auto_add_bos: bool = True):
         Template.__init__(
-            self, [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
+            self,
+            template_type, [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
             ['<|im_end|>'],
             self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
             auto_add_bos=auto_add_bos)
@@ -42,8 +43,8 @@ class ChatmlTemplate(ChatmlTemplateMixin, Template):
 class QwenTemplateMixin(ChatmlTemplateMixin):
     system = DEFAULT_SYSTEM
 
-    def __init__(self):
-        super().__init__(auto_add_bos=False)
+    def __init__(self, template_type: str):
+        super().__init__(template_type, auto_add_bos=False)
 
 
 class QwenTemplate(QwenTemplateMixin, Template):
@@ -54,9 +55,9 @@ class Qwen2_5Template(QwenTemplate):
     system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
 
 
-register_template(TemplateType.chatml, ChatmlTemplate())
-register_template(TemplateType.qwen, QwenTemplate())
-register_template(TemplateType.qwen2_5, Qwen2_5Template())
+register_template(ChatmlTemplate(TemplateType.chatml))
+register_template(QwenTemplate(TemplateType.qwen))
+register_template(Qwen2_5Template(TemplateType.qwen2_5))
 
 
 class _QwenVLTemplateMixin:
@@ -66,7 +67,7 @@ class _QwenVLTemplateMixin:
         if self._is_lmdeploy or self._is_vllm:
             return
         images = example.get('images') or []
-        from .utils import fetch_one
+        from ..utils import fetch_one
         assert not images or isinstance(fetch_one(images), str), 'QwenVL only supports datasets with images paths!'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -111,8 +112,8 @@ class QwenVLGenerationTemplate(_QwenVLTemplateMixin, DefaultGenerationTemplate):
     pass
 
 
-register_template(TemplateType.qwen_vl, QwenVLTemplate())
-register_template(TemplateType.qwen_vl_generation, QwenVLGenerationTemplate())
+register_template(QwenVLTemplate(TemplateType.qwen_vl))
+register_template(QwenVLGenerationTemplate(TemplateType.qwen_vl_generation))
 
 
 class _QwenAudioTemplateMixin:
@@ -162,9 +163,9 @@ class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemp
     pass
 
 
-register_template(TemplateType.qwen_audio, QwenAudioTemplate(), lazy_tokenize=True)
+register_template(QwenAudioTemplate(TemplateType.qwen_audio), lazy_tokenize=True)
 register_template(
-    TemplateType.qwen_audio_generation, QwenAudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+    QwenAudioGenerationTemplate(TemplateType.qwen_audio_generation), lazy_tokenize=True, is_generation=True)
 
 
 class _Qwen2AudioTemplateMixin:
@@ -212,10 +213,10 @@ class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTe
         return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
 
-register_template(TemplateType.qwen2_audio, Qwen2AudioTemplate(), lazy_tokenize=True)
+register_template(Qwen2AudioTemplate(TemplateType.qwen2_audio), lazy_tokenize=True)
 
 register_template(
-    TemplateType.qwen2_audio_generation, Qwen2AudioGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+    Qwen2AudioGenerationTemplate(TemplateType.qwen2_audio_generation), lazy_tokenize=True, is_generation=True)
 
 
 def _process_image_qwen(image):
@@ -363,6 +364,6 @@ class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate
     pass
 
 
-register_template(TemplateType.qwen2_vl, Qwen2VLTemplate(), lazy_tokenize=True)
+register_template(Qwen2VLTemplate(TemplateType.qwen2_vl), lazy_tokenize=True)
 
-register_template(TemplateType.qwen2_vl_generation, Qwen2VLGenerationTemplate(), lazy_tokenize=True, is_generation=True)
+register_template(Qwen2VLGenerationTemplate(TemplateType.qwen2_vl_generation), lazy_tokenize=True, is_generation=True)

@@ -23,8 +23,8 @@ class GLMTemplate(Template):
 
 class GLM4VTemplate(GLMTemplate):
 
-    def __init__(self):
-        super().__init__([], ['<|user|>\n{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
+    def __init__(self, template_type: str):
+        super().__init__(template_type, [], ['<|user|>\n{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
                          ['<|system|>\n{{SYSTEM}}'])
 
     def check_example(self, example):
@@ -59,42 +59,44 @@ class GLM4VTemplate(GLMTemplate):
         inputs['labels'] = labels
         return inputs, {}
 
-    def data_collator(self, batch: List[Dict[str, Any]], padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super().data_collator(batch, padding_to)
+    def data_collator(self,
+                      batch: List[Dict[str, Any]],
+                      *,
+                      padding_side: Optional[str] = None,
+                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_side=padding_side, padding_to=padding_to)
         images = [b['images'] for b in batch if 'images' in b]
         if images:
             res['images'] = torch.concat(images)
         return res
 
 
-register_template(TemplateType.glm4v, GLM4VTemplate(), infer_media_type='dialogue', lazy_tokenize=True, use_model=True)
+register_template(GLM4VTemplate(TemplateType.glm4v), infer_media_type='dialogue', lazy_tokenize=True, use_model=True)
 
 register_template(
-    TemplateType.chatglm2,
-    GLMTemplate(['{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'], [['eos_token_id']]))
+    GLMTemplate(TemplateType.chatglm2, ['{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
+                [['eos_token_id']]))
 
 register_template(
-    TemplateType.chatglm_generation, GLMTemplate([], ['{{QUERY}}'], None, [['eos_token_id']]), is_generation=True)
+    GLMTemplate(TemplateType.chatglm_generation, [], ['{{QUERY}}'], None, [['eos_token_id']]), is_generation=True)
 
 register_template(
-    TemplateType.chatglm3,
-    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None, ['<|system|>\n{{SYSTEM}}']))
+    GLMTemplate(TemplateType.chatglm3, [], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None,
+                ['<|system|>\n{{SYSTEM}}']))
 
 register_template(
-    TemplateType.chatglm4,
-    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'],
-                None, ['<|system|>\n{{SYSTEM}}'],
-                tools_prompt='glm4',
-                tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
+    GLMTemplate(
+        TemplateType.chatglm4, [], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'],
+        None, ['<|system|>\n{{SYSTEM}}'],
+        default_tools_prompt='glm4',
+        tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
 register_template(
-    TemplateType.codegeex4,
-    GLMTemplate([], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|endoftext|>'], codegeex4_system,
-                ['<|system|>\n{{SYSTEM}}']))
+    GLMTemplate(TemplateType.codegeex4, [], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|endoftext|>'],
+                codegeex4_system, ['<|system|>\n{{SYSTEM}}']))
 
 register_template(
-    TemplateType.longwriter_llama3,
-    Template(['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'], None,
+    Template(TemplateType.longwriter_llama3, ['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'], None,
              ['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
