@@ -133,7 +133,7 @@ class Template:
 
     def encode(
         self,
-        inputs: InferRequest,
+        inputs: Union[TemplateInputs, InferRequest, Dict[str, Any]],
     ) -> Dict[str, Any]:
         """The entrance method of Template!
 
@@ -141,10 +141,9 @@ class Template:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
         if isinstance(inputs, dict):
-            inputs = InferRequest(**inputs)
-
-        if isinstance(inputs, InferRequest):
-            inputs = InferRequest.to_template_inputs(inputs, tools_prompt=self.tools_prompt)
+            inputs = TemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
+        elif isinstance(inputs, InferRequest):
+            inputs = TemplateInputs.from_infer_request(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, TemplateInputs):
             inputs = inputs.copy()
 

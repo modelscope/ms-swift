@@ -9,8 +9,8 @@ import torch
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from swift.llm import get_model_tokenizer, get_template, load_dataset
-from swift.llm.template import Template, split_action_action_input
+from swift.llm import Template, TemplateInputs, get_model_tokenizer, get_template, load_dataset
+from swift.llm.template import split_action_action_input
 from swift.plugin import Metric
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse, Function,

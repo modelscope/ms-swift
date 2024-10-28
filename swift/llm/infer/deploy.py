@@ -97,8 +97,8 @@ class SwiftDeploy(SwiftInfer):
             return self._post_process(res_or_gen, return_cmpl_response)
 
     async def create_completion(self, request: CompletionRequest, raw_request: Request):
-        request = request.to_chat_request()
-        return await self.create_chat_completion(request, raw_request, return_cmpl_response=True)
+        chat_request = ChatCompletionRequest.from_cmpl_request(request)
+        return await self.create_chat_completion(chat_request, raw_request, return_cmpl_response=True)
 
     def run(self):
         args = self.args

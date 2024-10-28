@@ -12,7 +12,8 @@ if TYPE_CHECKING:
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebUIArguments, AppUIArguments)
-    from .template import TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template
+    from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
+                           TemplateInputs)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, get_model_meta)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
@@ -38,7 +39,8 @@ else:
             'EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
             'RLHFArguments', 'AppUIArguments'
         ],
-        'template': ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template'],
+        'template':
+        ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template', 'TemplateInputs'],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'get_model_meta'
