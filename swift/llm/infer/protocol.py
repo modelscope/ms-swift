@@ -327,7 +327,7 @@ class InferRequest:
             assert system is None
             if isinstance(tools, str):
                 tools = json.loads(tools)
-            system = get_tools_prompt(tools, tools_prompt)
+            system += get_tools_prompt(tools, tools_prompt)
 
         media_kwargs = InferRequest.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
