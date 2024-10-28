@@ -80,10 +80,10 @@ register_model(
                        tags=['financial']),
         ],
         TemplateType.qwen,
+        get_model_tokenizer_qwen,
         support_flash_attn=True,
         support_vllm=True,
-        support_lmdeploy=True),
-    get_model_tokenizer_qwen)
+        support_lmdeploy=True))
 
 register_model(
     ModelMeta(
@@ -93,9 +93,10 @@ register_model(
             Model('codefuse-ai/CodeFuse-QWen-14B', 'codefuse-ai/CodeFuse-QWen-14B'),
         ], tags=['coding'])],
         TemplateType.codefuse,
+        get_model_tokenizer_qwen,
         support_flash_attn=True,
         support_vllm=True,
-        support_lmdeploy=True), get_model_tokenizer_qwen)
+        support_lmdeploy=True))
 
 register_model(
     ModelMeta(
@@ -105,8 +106,9 @@ register_model(
             Model('iic/ModelScope-Agent-14B'),
         ])],
         TemplateType.modelscope_agent,
+        get_model_tokenizer_qwen,
         support_flash_attn=True,
-        support_vllm=False), get_model_tokenizer_qwen)
+        support_vllm=False))
 
 
 def _qwen_vl_audio_decode(self, *args, skip_special_tokens=False, **kwargs) -> str:
@@ -158,11 +160,10 @@ register_model(
                        tags=['audio'])
         ],
         TemplateType.qwen_audio,
+        get_model_tokenizer_qwen_audio,
         support_flash_attn=True,
         is_multimodal=True,
-        additional_saved_files=['mel_filters.npz']),
-    get_model_tokenizer_qwen_audio,
-)
+        additional_saved_files=['mel_filters.npz']))
 
 
 def _qwen_vl_visual_block_forward(
@@ -238,13 +239,12 @@ register_model(
                        tags=['vision'])
         ],
         TemplateType.qwen_vl,
+        get_model_tokenizer_qwen_vl,
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
         is_multimodal=True,
-        additional_saved_files=['SimSun.ttf']),
-    get_model_tokenizer_qwen_vl,
-)
+        additional_saved_files=['SimSun.ttf']), )
 
 register_model(
     ModelMeta(
@@ -347,13 +347,12 @@ register_model(
                 tags=['math']),
         ],
         TemplateType.qwen,
+        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.37'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-        support_megatron=True),
-    get_model_tokenizer_with_flash_attn,
-)
+        support_megatron=True))
 
 register_model(
     ModelMeta(
@@ -373,12 +372,11 @@ register_model(
             ])
         ],
         TemplateType.qwen,
+        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.40'],
         is_moe=True,
         support_flash_attn=True,
-        support_vllm=True),
-    get_model_tokenizer_with_flash_attn,
-)
+        support_vllm=True), )
 
 register_model(
     ModelMeta(
@@ -454,12 +452,11 @@ register_model(
                 tags=['coding'])
         ],
         TemplateType.qwen2_5,
+        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.37'],
         support_flash_attn=True,
         support_vllm=True,
-        support_lmdeploy=True),
-    get_model_tokenizer_with_flash_attn,
-)
+        support_lmdeploy=True), )
 
 
 def get_model_tokenizer_qwen2_vl(model_dir: str,
@@ -524,12 +521,11 @@ register_model(
                 tags=['vision', 'video']),
         ],
         TemplateType.qwen2_vl,
+        get_model_tokenizer_qwen2_vl,
         requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
         is_multimodal=True,
         support_flash_attn=True,
-        support_vllm=True),
-    get_model_tokenizer_qwen2_vl,
-)
+        support_vllm=True), )
 
 
 def get_model_tokenizer_qwen2_audio(*args, **kwargs):
@@ -550,8 +546,7 @@ register_model(
                        tags=['audio']),
         ],
         TemplateType.qwen2_audio,
+        get_model_tokenizer_qwen2_audio,
         requires=['transformers>=4.45.dev.0'],
         is_multimodal=True,
-        support_flash_attn=True),
-    get_model_tokenizer_qwen2_audio,
-)
+        support_flash_attn=True), )

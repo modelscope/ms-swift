@@ -36,10 +36,9 @@ register_model(
             Model('Shanghai_AI_Laboratory/internlm-chat-20b', 'internlm/internlm-chat-20b'),
         ]),
         TemplateType.internlm,
+        get_model_tokenizer_internlm_chat,
         support_vllm=True,
-        support_lmdeploy=True),
-    get_model_tokenizer_internlm_chat,
-)
+        support_lmdeploy=True), )
 
 
 def get_model_tokenizer_internlm2(model_dir: str,
@@ -97,12 +96,11 @@ register_model(
                        tags=['math'])
         ],
         TemplateType.internlm2,
+        get_model_tokenizer_internlm2,
         requires=['transformers>=4.38'],
         support_flash_attn=True,
         support_vllm=True,
-        support_lmdeploy=True),
-    get_model_tokenizer_internlm2,
-)
+        support_lmdeploy=True), )
 
 
 def get_model_tokenizer_internlm_xcomposer2(model_dir: str,

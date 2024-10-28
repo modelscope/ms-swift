@@ -166,7 +166,7 @@ register_dataset(
         hf_dataset_id='YeungNLP/firefly-train-1.1M',
         preprocess_func=FireflyPreprocessor(),
         tags=['chat', 'general'],
-    ), )
+    ))
 
 register_dataset(
     DatasetMeta(

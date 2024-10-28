@@ -2,9 +2,7 @@
 """The directory will be migrated to the modelscope repository.
 The `_utils.py` file will contain copies of functions related to swift,
 allowing the directory to be independently runnable.
-
-1. Copy the entire template directory to modelscope.
-2. Delete the `base.py` file and rename `_base.py` to `base.py`.
+Please copy the entire template directory to modelscope.
 """
 
 from . import template

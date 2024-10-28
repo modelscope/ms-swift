@@ -10,4 +10,3 @@ class WebUIArguments(InferArguments):
     port: int = 7860
     share: bool = False
     lang: str = 'zh'
-

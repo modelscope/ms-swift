@@ -2,7 +2,7 @@ import os
 from dataclasses import fields
 
 import gradio as gr
-from gradio import Tab, Accordion
+from gradio import Accordion, Tab
 from packaging import version
 from transformers.utils import strtobool
 
@@ -84,10 +84,12 @@ def run_ui(arguments: WebUIArguments):
     if version.parse(gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
         concurrent = {'concurrency_count': 5}
     if is_shared_ui:
-        app.load(LLMInfer.deploy_model, [LLMInfer.element('runtime_tab'),
-                                         [value for value in LLMInfer.elements().values() if
-                                          not isinstance(value, (Tab, Accordion))],
-                         LLMInfer.element('running_tasks'), LLMInfer.element('model_and_template')])
+        app.load(LLMInfer.deploy_model, [
+            LLMInfer.element('runtime_tab'),
+            [value for value in LLMInfer.elements().values() if not isinstance(value, (Tab, Accordion))],
+            LLMInfer.element('running_tasks'),
+            LLMInfer.element('model_and_template')
+        ])
     app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 

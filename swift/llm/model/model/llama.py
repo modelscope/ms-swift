@@ -57,13 +57,12 @@ register_model(
             ])
         ],
         TemplateType.llama,
+        get_model_tokenizer_llama2,
         ignore_file_pattern=[r'.+\.bin$'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-    ),
-    get_model_tokenizer_llama2,
-)
+    ), )
 
 register_model(
     ModelMeta(
@@ -95,12 +94,11 @@ register_model(
             ]),
         ],
         TemplateType.llama3,
+        get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-    ),
-    get_model_tokenizer_with_flash_attn,
-)
+    ), )
 
 register_model(
     ModelMeta(
@@ -147,14 +145,13 @@ register_model(
             ]),
         ],
         TemplateType.llama3,
+        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.43'],
         ignore_file_pattern=[r'.+\.pth$'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-    ),
-    get_model_tokenizer_with_flash_attn,
-)
+    ), )
 
 register_model(
     ModelMeta(
@@ -169,14 +166,13 @@ register_model(
             ])
         ],
         TemplateType.llama3_2,
+        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.45'],
         ignore_file_pattern=[r'.+\.pth$'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-    ),
-    get_model_tokenizer_with_flash_attn,
-)
+    ), )
 
 register_model(
     ModelMeta(
@@ -186,13 +182,12 @@ register_model(
             Model('ZhipuAI/LongWriter-llama3.1-8b', 'THUDM/LongWriter-llama3.1-8b'),
         ])],
         TemplateType.longwriter_llama3,
+        get_model_tokenizer_with_flash_attn,
         requires=['transformers>=4.43'],
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-    ),
-    get_model_tokenizer_with_flash_attn,
-)
+    ), )
 
 
 def get_model_tokenizer_yi(model_dir, *args, **kwargs):
@@ -242,12 +237,11 @@ register_model(
             ]),
         ],
         TemplateType.chatml,
+        get_model_tokenizer_yi,
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
-    ),
-    get_model_tokenizer_yi,
-)
+    ), )
 
 register_model(
     ModelMeta(
@@ -262,11 +256,10 @@ register_model(
                        tags=['coding'])
         ],
         TemplateType.yi_coder,
+        get_model_tokenizer_with_flash_attn,
         support_flash_attn=True,
         support_vllm=True,
-        support_lmdeploy=True),
-    get_model_tokenizer_with_flash_attn,
-)
+        support_lmdeploy=True), )
 
 
 def get_model_tokenizer_llama3_2_vision(*args, **kwargs):
@@ -288,10 +281,9 @@ register_model(
                        tags=['vision'])
         ],
         TemplateType.llama3_2_vision,
+        get_model_tokenizer_llama3_2_vision,
         requires=['transformers>=4.45'],
         ignore_file_pattern=['*.pth'],
         is_multimodal=True,
         support_flash_attn=True,
-        support_vllm=True),
-    get_model_tokenizer_llama3_2_vision,
-)
+        support_vllm=True), )

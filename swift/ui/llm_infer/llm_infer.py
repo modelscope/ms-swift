@@ -13,7 +13,7 @@ from gradio import Accordion, Tab
 from json import JSONDecodeError
 from modelscope import GenerationConfig, snapshot_download
 
-from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, RequestConfig)
+from swift.llm import TEMPLATE_MAPPING, DeployArguments, InferArguments, RequestConfig
 from swift.llm.infer.infer import SwiftInfer
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model

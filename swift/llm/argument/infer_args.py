@@ -53,20 +53,20 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
     # other
     stream: Optional[bool] = None
 
-    def _init_result_dir(self, model_info: ModelInfo) -> None:
+    def _init_result_dir(self) -> None:
         self.result_path = None
         if not self.save_result:
             return
 
         if self.result_dir is None:
             if self.ckpt_dir is None:
-                result_dir = model_info.model_dir
+                result_dir = self.model_info.model_dir
             else:
                 result_dir = self.ckpt_dir
             result_dir = os.path.join(result_dir, 'infer_result')
         else:
             result_dir = self.result_dir
-        result_dir = to_abspath(self.result_dir)
+        result_dir = to_abspath(result_dir)
         os.makedirs(result_dir, exist_ok=True)
         self.result_dir = result_dir
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -82,21 +82,18 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         BaseArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
 
-        self._init_ckpt_dir()
         self._init_result_dir()
         self._init_stream()
         self._init_eval_human()
         self.prepare_infer_backend()
 
     def _init_eval_human(self):
-        if self.eval_human is None:
-            if len(self.dataset) == 0 and len(self.val_dataset) == 0:
-                self.eval_human = True
-            else:
-                self.eval_human = False
-            logger.info(f'Setting args.eval_human: {self.eval_human}')
-        elif self.eval_human is False and len(self.dataset) == 0 and len(self.val_dataset) == 0:
-            raise ValueError('Please provide the dataset or set `--load_dataset_config true`.')
+        if len(self.dataset) == 0 and len(self.val_dataset) == 0:
+            eval_human = True
+        else:
+            eval_human = False
+        self.eval_human = eval_human
+        logger.info(f'Setting args.eval_human: {self.eval_human}')
 
     def prepare_infer_backend(self):
         model_info = MODEL_MAPPING.get(self.model_type, {})

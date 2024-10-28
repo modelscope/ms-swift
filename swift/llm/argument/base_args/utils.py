@@ -12,7 +12,7 @@ def to_abspath(path: Union[str, List[str], None], check_path_exist: bool = False
     Returns:
         Absolute path
     """
-    if to_abspath is None:
+    if path is None:
         return
     elif isinstance(path, str):
         # Remove user path prefix and convert to absolute path.

@@ -445,14 +445,11 @@ def load_dataset(
         'streaming': streaming,
     }
     for dataset in datasets:
-        d_info = DatasetSyntax.parse(dataset)
-        assert d_info.dataset_type == 'name'
-        dataset_name = d_info.dataset
-        load_function = DATASET_MAPPING[dataset_name]['load_function']
-        if load_function is None:
-            load_function = DatasetLoader.load
-        dataset_syntax = d_info
+        dataset_syntax = DatasetSyntax.parse(dataset)
+        assert dataset_syntax.dataset_type == 'name'
+        dataset_name = dataset_syntax.dataset
         dataset_meta = DATASET_MAPPING[dataset_name]['dataset_meta']
+        load_function = dataset_meta.load_function
         train_dataset = load_function(dataset_syntax, dataset_meta, **load_kwargs)
         train_dataset, val_dataset = DatasetLoader.post_process(
             train_dataset,

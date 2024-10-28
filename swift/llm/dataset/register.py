@@ -60,23 +60,22 @@ class DatasetMeta:
     # First perform column mapping, then proceed with the preprocess_func.
     preprocess_func: PreprocessFunc = field(default_factory=lambda: AutoPreprocessor())
     remove_useless_columns: bool = True
+    load_function: Optional[LoadFunction] = None
 
     tags: List[str] = field(default_factory=list)
     help: Optional[str] = None
     huge_dataset: bool = False
 
     def __post_init__(self):
+        from .loader import DatasetLoader
+        if self.load_function is None:
+            self.load_function = DatasetLoader.load
         for i, subset in enumerate(self.subsets):
             if isinstance(subset, str):
                 self.subsets[i] = SubsetDataset(name=subset)
 
 
-def register_dataset(dataset_meta: DatasetMeta,
-                     load_function: Optional[LoadFunction] = None,
-                     *,
-                     function_kwargs: Optional[Dict[str, Any]] = None,
-                     exist_ok: bool = False,
-                     **kwargs) -> None:
+def register_dataset(dataset_meta: DatasetMeta, *, exist_ok: bool = False, **kwargs) -> None:
     """Register dataset to the dataset mapping
 
     Args:
@@ -87,7 +86,6 @@ def register_dataset(dataset_meta: DatasetMeta,
         get_function: How to get this dataset, normally it's `get_dataset_from_repo`
         split: The dataset split
         hf_dataset_id: The hf dataset id
-        function_kwargs: Extra kwargs passed to `get_dataset_from_repo`
         exist_ok: If the dataset_name exists, whether to raise an error or just override the record, default `False`
         is_local: If is a local dataset
     Returns:
@@ -97,14 +95,8 @@ def register_dataset(dataset_meta: DatasetMeta,
     dataset_name = dataset_meta.dataset_name
     if not exist_ok and dataset_name in DATASET_MAPPING:
         raise ValueError(f'The `{dataset_name}` has already been registered in the DATASET_MAPPING.')
-    if function_kwargs is None:
-        function_kwargs = {}
 
-    if load_function is None:
-        load_function = DatasetLoader.load
-    if len(function_kwargs) > 0:
-        load_function = partial(load_function, **function_kwargs)
-    dataset_info = {'dataset_meta': dataset_meta, 'load_function': load_function, **kwargs}
+    dataset_info = {'dataset_meta': dataset_meta, **kwargs}
     DATASET_MAPPING[dataset_name] = dataset_info
 
 

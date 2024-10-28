@@ -51,6 +51,7 @@ class ModelMeta:
     # which participate in the automatic inference of the model_type.
     model_groups: Union[List[ModelGroup], ModelGroup]
     template: str
+    get_function: GetModelTokenizerFunction
     is_moe: bool = False
     is_multimodal: bool = False
 
@@ -99,16 +100,10 @@ class ModelMeta:
 
 
 # [TODO:eos_token -> template]
-def register_model(model_meta: ModelMeta,
-                   get_function: GetModelTokenizerFunction,
-                   *,
-                   function_kwargs: Optional[Dict[str, Any]] = None,
-                   exist_ok: bool = False,
-                   **kwargs) -> None:
+def register_model(model_meta: ModelMeta, *, exist_ok: bool = False, **kwargs) -> None:
     """
     model_type: The unique ID for the model type. Models with the same model_type share
         the same architectures, template, get_function, etc.
-    get_function: A function to obtain the model and tokenizer based on model_dir.
     """
     model_type = model_meta.model_type
     if not exist_ok and model_type in MODEL_MAPPING:
@@ -117,14 +112,8 @@ def register_model(model_meta: ModelMeta,
     if not model_meta.is_multimodal:
         assert model_type not in MLLMModelType.__dict__
 
-    if function_kwargs is None:
-        function_kwargs = {}
-
-    if len(function_kwargs) > 0:
-        get_function = partial(get_function, **function_kwargs)
-    model_info = {'model_meta': model_meta, 'get_function': get_function, **kwargs}
+    model_info = {'model_meta': model_meta, **kwargs}
     MODEL_MAPPING[model_type] = model_info
-    return
 
 
 def load_by_unsloth(model_dir, torch_dtype, max_seq_length: Optional[int] = None, load_in_4bit: bool = True):
@@ -347,7 +336,7 @@ def get_model_tokenizer(
     model_meta.check_requires()
     model_meta.check_flash_attn(attn_impl)
 
-    get_function = MODEL_MAPPING[model_type]['get_function']
+    get_function = model_meta.get_function
     model, tokenizer = get_function(model_dir, model_config, model_kwargs, load_model, **kwargs)
 
     model_config.model_info = model_info
