@@ -97,9 +97,9 @@ class SwiftInfer(SwiftPipeline):
                 'disable_custom_all_reduce': args.disable_custom_all_reduce,
                 'enforce_eager': args.enforce_eager,
                 'limit_mm_per_prompt': args.limit_mm_per_prompt,
-                'enable_lora': args.enable_lora,
-                'max_loras': args.max_loras,
-                'max_lora_rank': args.max_lora_rank
+                'enable_lora': args.vllm_enable_lora,
+                'max_loras': args.vllm_max_loras,
+                'max_lora_rank': args.vllm_max_lora_rank
             })
         else:
             from .infer_engine import LmdeployEngine
@@ -116,7 +116,7 @@ class SwiftInfer(SwiftPipeline):
     def _get_template(self, tokenizer) -> Template:
         args = self.args
         template = get_template(
-            args.template_type,
+            args.template,
             tokenizer,
             args.system,
             args.max_length,

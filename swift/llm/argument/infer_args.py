@@ -10,35 +10,12 @@ from transformers.utils.versions import require_version
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, PtLoRARequest, get_model_meta
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments, to_abspath
+from .lmdeploy_args import LmdeployArguments
 from .merge_args import MergeArguments
 from .tuner_args import adapters_can_be_merged
+from .vllm_args import VllmArguments
 
 logger = get_logger()
-
-
-@dataclass
-class VllmArguments:
-    # vllm
-    gpu_memory_utilization: float = 0.9
-    tensor_parallel_size: int = 1
-    max_num_seqs: int = 256
-    max_model_len: Optional[int] = None
-    disable_custom_all_reduce: bool = True  # Default values different from vllm
-    enforce_eager: bool = False
-    limit_mm_per_prompt: Optional[str] = None  # '{"image": 10, "video": 5}'
-    vllm_enable_lora: bool = False
-    vllm_max_lora_rank: int = 16
-    lora_modules: List[str] = field(default_factory=list)
-    max_logprobs: int = 20
-
-
-@dataclass
-class LmdeployArguments:
-    # lmdeploy
-    tp: int = 1
-    cache_max_entry_count: float = 0.8
-    quant_policy: int = 0  # e.g. 4, 8
-    vision_batch_size: int = 1  # max_batch_size in VisionConfig
 
 
 @dataclass
@@ -85,6 +62,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
+        VllmArguments.__post_init__(self)
 
         self._init_result_dir()
         self._init_stream()

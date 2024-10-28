@@ -313,7 +313,7 @@ class LLMInfer(BaseUI):
         gr.Info(cls.locale('load_alert', cls.lang)['value'])
         time.sleep(2)
         return gr.update(open=True), Runtime.refresh_tasks(log_file), [
-            deploy_args.model_type, deploy_args.template_type, deploy_args.train_type
+            deploy_args.model_type, deploy_args.template, deploy_args.train_type
         ]
 
     @classmethod

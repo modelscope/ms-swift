@@ -44,11 +44,14 @@ class InferEngine(BaseInferEngine):
             revision=revision,
             model_kwargs=model_kwargs,
             attn_impl=attn_impl)
-        config = tokenizer.config
-        self.config = config
         self.tokenizer = tokenizer
         self.model = model
-        self.model_info = config.model_info
+        model_info = tokenizer.model_info
+        self.model_info = model_info
+        self.model_dir = model_info.model_dir
+        self.config = model_info.config
+        self.max_model_len = model_info.max_model_len
+        self.torch_dtype = model_info.torch_dtype
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []

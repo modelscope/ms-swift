@@ -156,9 +156,11 @@ def get_template(
         sequence_parallel_size: int = 1) -> 'Template':
     template_info = TEMPLATE_MAPPING[template_type]
     # To ensure that obtaining the same template_type multiple times does not interfere with each other.
-    template = deepcopy(template_info['template'])
-    template._init_template(
+    template_meta = template_info['template_meta']
+    template_cls = template_meta['template_cls']
+    return template_cls(
         tokenizer,
+        template_meta,
         default_system,
         max_length,
         truncation_strategy=truncation_strategy,

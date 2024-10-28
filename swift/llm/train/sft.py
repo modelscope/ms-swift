@@ -81,7 +81,7 @@ def llm_sft_megatron(args: SftArguments) -> Dict[str, Any]:
 
     # Loading Dataset
     template: Template = get_template(
-        args.template_type, tokenizer, args.system, args.max_length, truncation_strategy=args.truncation_strategy)
+        args.template, tokenizer, args.system, args.max_length, truncation_strategy=args.truncation_strategy)
 
     train_dataset, val_dataset = _get_train_val_dataset(args)
     td0, tkwargs0 = template.encode(train_dataset[0])
@@ -277,7 +277,7 @@ def prepare_train_model_template(args, msg: Optional[Dict[str, Any]] = None):
         template_kwargs['sequence_parallel_size'] = args.sequence_parallel_size
     template_kwargs['rescale_image'] = args.rescale_image
     template: Template = get_template(
-        args.template_type,
+        args.template,
         tokenizer,
         args.system,
         args.max_length,
@@ -343,7 +343,7 @@ def prepare_dataset(args, template: Template, msg: Optional[Dict[str, Any]] = No
     elif not args.lazy_tokenize:
         if not args.streaming:
             if args.preprocess_num_proc > 1:
-                use_model = TEMPLATE_MAPPING[args.template_type].get('use_model', False)
+                use_model = TEMPLATE_MAPPING[args.template].get('use_model', False)
                 if use_model:
                     args.preprocess_num_proc = 1
                     logger.warning('The current Template does not support num_proc. '
@@ -487,12 +487,12 @@ def llm_sft(args: SftArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
 
-    is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
+    is_generation = TEMPLATE_MAPPING[args.template].get('is_generation', False)
     if is_generation and type(args) is SftArguments:
-        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. "
+        logger.warning(f"Please check if args.template: '{args.template}' is correct. "
                        'Currently, SFT is in progress, but the template is used for PT.')
     elif not is_generation and type(args) is PtArguments:
-        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct. "
+        logger.warning(f"Please check if args.template: '{args.template}' is correct. "
                        'Currently, PT is in progress, but the template is used for SFT.')
 
     if args.train_backend == 'megatron':

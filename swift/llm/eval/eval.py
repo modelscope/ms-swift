@@ -293,11 +293,11 @@ def eval_opencompass(args: EvalArguments) -> List[Dict[str, Any]]:
             model_type = 'default-lora' if args.train_type in ('lora',
                                                                'longlora') and not args.merge_lora else args.model_type
             from swift.llm.infer.deploy import is_generation_template
-            if is_generation_template(args.template_type):
+            if is_generation_template(args.template):
                 url = f'http://127.0.0.1:{port}/v1/completions'
             else:
                 url = f'http://127.0.0.1:{port}/v1/chat/completions'
-            is_chat = not is_generation_template(args.template_type)
+            is_chat = not is_generation_template(args.template)
         else:
             url = args.eval_url
             url = url.rstrip('/')

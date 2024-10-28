@@ -279,6 +279,7 @@ def get_default_torch_dtype(torch_dtype: torch.dtype):
 def get_model_tokenizer(
         model_id_or_path: str,
         torch_dtype: Optional[torch.dtype] = None,
+        device_map: Union[str, Dict[str, Any], None] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         load_model: bool = True,
         *,
@@ -310,10 +311,9 @@ def get_model_tokenizer(
     model_dir = safe_snapshot_download(
         model_id_or_path, revision=revision, download_model=download_model, use_hf=use_hf)
 
-    if use_torchacc():
-        model_kwargs['device_map'] = None
-    elif 'device_map' not in model_kwargs:
-        model_kwargs['device_map'] = get_default_device_map()
+    if not use_torchacc() and device_map is None:
+        device_map = get_default_device_map()
+    model_kwargs['device_map'] = device_map
 
     model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
     model_info = HfConfigFactory.get_model_info(model_config, model_dir)

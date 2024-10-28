@@ -14,9 +14,9 @@ def llm_rlhf(args: RLHFArguments) -> Dict[str, Any]:
     logger.info(f'args: {args}')
     seed_everything(args.seed)
 
-    is_generation = TEMPLATE_MAPPING[args.template_type].get('is_generation', False)
+    is_generation = TEMPLATE_MAPPING[args.template].get('is_generation', False)
     if is_generation:
-        logger.warning(f"Please check if args.template_type: '{args.template_type}' is correct.")
+        logger.warning(f"Please check if args.template: '{args.template}' is correct.")
 
     msg = {}
     model, ref_model, template, callbacks, optimizer_callback = prepare_train_model_template(args)
