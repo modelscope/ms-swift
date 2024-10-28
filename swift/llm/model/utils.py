@@ -25,8 +25,9 @@ class ModelInfo:
     model_dir: str
     torch_dtype: torch.dtype
     max_model_len: int
-    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None] = None
-    quant_bits: int = 0
+    quant_method: Literal['gptq', 'awq', 'bnb', 'aqlm', None]
+    quant_bits: int
+    config: PretrainedConfig
 
 
 class HfConfigFactory:
@@ -56,7 +57,7 @@ class HfConfigFactory:
         torch_dtype = HfConfigFactory._get_torch_dtype(config, quant_info)
         max_model_len = HfConfigFactory.get_max_model_len(config)
         res = ModelInfo(model_type, model_dir, torch_dtype, max_model_len, quant_info.get('quant_method'),
-                        quant_info.get('quant_bits'))
+                        quant_info.get('quant_bits'), config)
         return res
 
     @staticmethod

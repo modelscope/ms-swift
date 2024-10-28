@@ -42,24 +42,6 @@ class Template:
         auto_add_bos: By default, the bos_token is not added. The auto_add_bos option will determine
             whether to add it based on `tokenizer.encode('')`.
 
-    Examples:
-        chatml (with bos):
-            prefix: <s>
-            prompt: <|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n
-            chat_sep: <|im_end|>\n
-            suffix: <|im_end|>
-            system_prefix: <s><|im_start|>system\n{{SYSTEM}}<|im_end|>\n
-
-        <s><|im_start|>system  # prefix or system_prefix
-        {{SYSTEM}}<|im_end|>
-        <|im_start|>user  # prompt
-        {{QUERY}}<|im_end|>
-        <|im_start|>assistant
-        {{RESPONSE}}<|im_end|>  # chat_sep
-        <|im_start|>user  # prompt
-        {{QUERY}}<|im_end|>
-        <|im_start|>assistant
-        {{RESPONSE}}<|im_end|>  # suffix
     """
 
     special_tokens = ['<image>', '<video>', '<audio>', '<bbox>', '<ref-object>']
@@ -74,100 +56,15 @@ class Template:
 
     def __init__(
             self,
-            template_type: str,
-            prefix: Prompt,
-            prompt: Prompt,
-            chat_sep: Optional[Prompt],
-            suffix: Prompt,
-            default_system: Optional[str] = None,
-            system_prefix: Optional[Prompt] = None,
-            tool_prompt: Optional[Prompt] = None,
-            *,
-            default_tools_prompt: str = 'react_en',  # TODO:check
-            stop_words: Optional[List[Word]] = None,
-            placeholder_tokens: Union[int, str, None] = None,
-            auto_add_bos: bool = False,
-            skip_prompt: bool = True) -> None:
-        # check
-        if default_system is None:
-            default_system = ''
-        if stop_words is None:
-            stop_words = []
-        for x in [prefix, prompt, chat_sep, suffix, system_prefix]:
-            assert x is None or isinstance(x, list)
-
-        if self._has_system(prefix):
-            assert system_prefix is None, 'The prefix already contains {{SYSTEM}}.'
-            system_prefix = prefix
-            prefix = self._replace_system(prefix)
-        self.is_post_system = self._has_system(prompt)  # mistral_nemo
-        if self.is_post_system:
-            self.prompt = [context for context in prompt if '{{SYSTEM}}' not in context]
-            self.system_prompt = prompt
-        else:
-            self.prompt = prompt
-        if system_prefix is None and not self.is_post_system:
-            self.support_system = False
-            assert not default_system, 'The template does not support `system`.'
-        else:
-            self.support_system = True
-        self.support_multi_round = chat_sep is not None
-
-        self.template_type = template_type
-        self.prefix = prefix
-        self.system_prefix = system_prefix
-        self.chat_sep = chat_sep
-        self.suffix = suffix
-        self.default_system = default_system
-        self.tool_prompt = tool_prompt if tool_prompt is not None else prompt  # default as user
-
-        self.default_tools_prompt = default_tools_prompt
-        self.stop_words = stop_words
-        self.placeholder_tokens = placeholder_tokens
-        self.auto_add_bos = auto_add_bos
-        self.skip_prompt = skip_prompt
-        self._is_init = False
-
-    @staticmethod
-    def _replace_system(prefix: Prompt) -> Prompt:
-        """Replace system with the """
-        return [p.replace('{{SYSTEM}}', '') for p in prefix]
-
-    @staticmethod
-    def _has_system(prefix_or_prompt: Prompt) -> bool:
-        return any(['{{SYSTEM}}' in p for p in prefix_or_prompt])
-
-    @staticmethod
-    def _token_attr_to_id(tokenizer: PreTrainedTokenizerBase, value: Optional[Prompt]) -> Optional[Prompt]:
-        """Turn `eos_token_id` to token id
-
-        e.g. [['eos_token_id']] -> [[2]]
-        """
-        if value is None:
-            return None
-        res_value = []
-        for v in value:
-            if isinstance(v, list):
-                v = [getattr(tokenizer, sub_v) if isinstance(sub_v, str) else sub_v for sub_v in v]
-            res_value.append(v)
-        return res_value
-
-    def _check_system(self, system: str) -> str:
-        if system is None:
-            system = ''
-        if system:
-            assert self.support_system, f'The template does not support `system`, template_type: {self.template_type}'
-        return system
-
-    def _init_template(
-            self,
             tokenizer: PreTrainedTokenizerBase,
+            template_meta: 'TemplateMeta',
             default_system: Optional[str] = None,
             max_length: Optional[int] = None,
             *,
+            use_generate_template: bool = False,
             truncation_strategy: Literal['delete', 'truncation_left'] = 'truncation_left',
             max_pixels: int = -1,
-            tools_prompt: str = 'react_en',
+            tools_prompt: Optional[str] = None,
             # only for train
             loss_scale: str = 'default',
             sequence_parallel_size: int = 1) -> None:
@@ -180,28 +77,28 @@ class Template:
             e.g. 512 * 512 (H*W)
         tools_prompt: The type of tools_prompt added in the system.
         """
-        assert self._is_init is False, 'The template has been initialized.'
-        self._is_init = True
-
+        from .register import TemplateMeta
+        if use_generate_template:
+            template_meta = template_meta.to_generation_template_meta()
         # if default_system is None. not change self.default_system
         if default_system is not None:
-            self.default_system = self._check_system(default_system)
+            self.default_system = template_meta.check_system(default_system)
+        else:
+            self.default_system = template_meta.default_system
 
-        for key in ['prefix', 'prompt', 'chat_sep', 'suffix', 'system_prefix']:
-            value = getattr(self, key)
-            value = self._token_attr_to_id(tokenizer, value)
-            setattr(self, key, value)
+        template_meta.token_attr_to_id(tokenizer)
 
+        self.template_meta: TemplateMeta = template_meta
         self.tokenizer = tokenizer
+        self.use_generate_template = use_generate_template
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        if loss_scale:
-            self.loss_scale = loss_scale
+        self.loss_scale = loss_scale
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
-        self.is_multimodal = getattr(tokenizer, 'is_multimodal', None)
+        self.model_info = tokenizer.model_info
         self.task: Literal['train', 'pt_infer', 'vllm_infer', 'lmdeploy_infer'] = 'pt_infer'
-        self.tools_prompt = tools_prompt or self.default_tools_prompt
+        self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
 
     def _preprocess_inputs(
         self,
@@ -209,15 +106,17 @@ class Template:
         *,
         max_pixels: int = -1,
     ) -> None:
+        template_meta = self.template_meta
         system = inputs.system
         if system is None:
             system = self.default_system
-        inputs.system = self._check_system(system)
+        inputs.system = template_meta.check_system(system)
 
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
-        if n_round > 1 and not self.support_multi_round:
-            raise ValueError(f'The template does not support multi-round chat, template_type: {self.template_type}')
+        if n_round > 1 and not template_meta.support_multi_round:
+            raise ValueError(
+                f'The template does not support multi-round chat, template_type: {template_meta.template_type}')
 
         images = inputs.images
         if images and self.load_medias:
@@ -241,11 +140,6 @@ class Template:
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
-        # Template needs to be initialized
-        if not self._is_init:
-            raise ValueError(
-                'Template is not initialized, please use the `get_template` function to obtain the template.')
-
         if isinstance(inputs, InferRequest):
             inputs = InferRequest.to_template_inputs(inputs, tools_prompt=self.tools_prompt)
         else:

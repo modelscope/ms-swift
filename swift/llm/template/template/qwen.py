@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -7,60 +8,40 @@ import torch
 from swift.utils import get_env_args, is_deepspeed_enabled
 from ..base import Template
 from ..constant import TemplateType
-from ..register import register_template
-from ..utils import Context, findall
+from ..register import TemplateMeta, register_template
+from ..utils import Context, Prompt, findall
 from ..vision_utils import load_audio_qwen, load_batch, load_video_qwen2
 
 DEFAULT_SYSTEM = 'You are a helpful assistant.'
 
 
-# You can set the query as '' to serve as a template for pre-training.
-class DefaultGenerationTemplate(Template):
-
-    def __init__(self, template_type: str):
-        super().__init__(template_type, [], ['{{QUERY}}'], None, [['eos_token_id']], auto_add_bos=True)
-
-
-register_template(DefaultGenerationTemplate(TemplateType.default_generation), is_generation=True)
-
-
-class ChatmlTemplateMixin:
-    system = None
-
-    def __init__(self, template_type: str, auto_add_bos: bool = True):
-        Template.__init__(
-            self,
-            template_type, [], ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'], ['<|im_end|>\n'],
-            ['<|im_end|>'],
-            self.system, ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'],
-            auto_add_bos=auto_add_bos)
+@dataclass
+class ChatmlTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=list)
+    prompt: Prompt = field(default_factory=lambda: ['<|im_start|>user\n{{QUERY}}<|im_end|>\n<|im_start|>assistant\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|im_end|>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n'])
+    auto_add_bos: bool = True
 
 
-class ChatmlTemplate(ChatmlTemplateMixin, Template):
-    pass
+@dataclass
+class QwenTemplateMeta(ChatmlTemplateMeta):
+    default_system: Optional[str] = DEFAULT_SYSTEM
+    auto_add_bos: bool = False
 
 
-class QwenTemplateMixin(ChatmlTemplateMixin):
-    system = DEFAULT_SYSTEM
-
-    def __init__(self, template_type: str):
-        super().__init__(template_type, auto_add_bos=False)
+@dataclass
+class Qwen2_5TemplateMeta(QwenTemplateMeta):
+    default_system: Optional[str] = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
 
 
-class QwenTemplate(QwenTemplateMixin, Template):
-    pass
+register_template(ChatmlTemplateMeta(TemplateType.chatml))
+register_template(QwenTemplateMeta(TemplateType.qwen))
+register_template(Qwen2_5TemplateMeta(TemplateType.qwen2_5))
 
 
-class Qwen2_5Template(QwenTemplate):
-    system = 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.'
-
-
-register_template(ChatmlTemplate(TemplateType.chatml))
-register_template(QwenTemplate(TemplateType.qwen))
-register_template(Qwen2_5Template(TemplateType.qwen2_5))
-
-
-class _QwenVLTemplateMixin:
+class QwenVLTemplate(Template):
     load_medias = False
 
     def check_example(self, example):
@@ -104,19 +85,10 @@ class _QwenVLTemplateMixin:
             ]
 
 
-class QwenVLTemplate(_QwenVLTemplateMixin, QwenTemplate):
-    pass
+register_template(QwenTemplateMeta(TemplateType.qwen_vl, template_cls=QwenVLTemplate))
 
 
-class QwenVLGenerationTemplate(_QwenVLTemplateMixin, DefaultGenerationTemplate):
-    pass
-
-
-register_template(QwenVLTemplate(TemplateType.qwen_vl))
-register_template(QwenVLGenerationTemplate(TemplateType.qwen_vl_generation))
-
-
-class _QwenAudioTemplateMixin:
+class QwenAudioTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -155,20 +127,18 @@ class _QwenAudioTemplateMixin:
         return res
 
 
-class QwenAudioTemplate(_QwenAudioTemplateMixin, QwenTemplate):
-    pass
+register_template(QwenTemplateMeta(TemplateType.qwen_audio, template_cls=QwenAudioTemplate))
 
 
-class QwenAudioGenerationTemplate(_QwenAudioTemplateMixin, DefaultGenerationTemplate):
-    pass
+class Qwen2AudioTemplate(Template):
 
-
-register_template(QwenAudioTemplate(TemplateType.qwen_audio), lazy_tokenize=True)
-register_template(
-    QwenAudioGenerationTemplate(TemplateType.qwen_audio_generation), lazy_tokenize=True, is_generation=True)
-
-
-class _Qwen2AudioTemplateMixin:
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    example: Dict[str, Any]) -> List[Context]:
+        assert media_type == 'audio'
+        if self.use_generate_template:
+            return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
+        else:
+            return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
 
     def _encode(self, example: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         inputs, _ = Template._encode(self, example)
@@ -197,26 +167,7 @@ class _Qwen2AudioTemplateMixin:
         return res
 
 
-class Qwen2AudioTemplate(_Qwen2AudioTemplateMixin, QwenTemplate):
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    example: Dict[str, Any]) -> List[Context]:
-        assert media_type == 'audio'
-        return [f'Audio {index + 1}: <|audio_bos|><|AUDIO|><|audio_eos|>\n']
-
-
-class Qwen2AudioGenerationTemplate(_Qwen2AudioTemplateMixin, DefaultGenerationTemplate):
-
-    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    example: Dict[str, Any]) -> List[Context]:
-        assert media_type == 'audio'
-        return ['<|audio_bos|><|AUDIO|><|audio_eos|>\n']
-
-
-register_template(Qwen2AudioTemplate(TemplateType.qwen2_audio), lazy_tokenize=True)
-
-register_template(
-    Qwen2AudioGenerationTemplate(TemplateType.qwen2_audio_generation), lazy_tokenize=True, is_generation=True)
+register_template(QwenTemplateMeta(TemplateType.qwen2_audio, template_cls=Qwen2AudioTemplate))
 
 
 def _process_image_qwen(image):
@@ -246,7 +197,7 @@ def _process_image_qwen(image):
     return image
 
 
-class _Qwen2VLTemplateMixin:
+class Qwen2VLTemplate(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     example: Dict[str, Any]) -> List[Context]:
@@ -356,14 +307,4 @@ class _Qwen2VLTemplateMixin:
         return res
 
 
-class Qwen2VLTemplate(_Qwen2VLTemplateMixin, QwenTemplate):
-    pass
-
-
-class Qwen2VLGenerationTemplate(_Qwen2VLTemplateMixin, DefaultGenerationTemplate):
-    pass
-
-
-register_template(Qwen2VLTemplate(TemplateType.qwen2_vl), lazy_tokenize=True)
-
-register_template(Qwen2VLGenerationTemplate(TemplateType.qwen2_vl_generation), lazy_tokenize=True, is_generation=True)
+register_template(QwenTemplateMeta(TemplateType.qwen2_vl, template_cls=Qwen2VLTemplate))

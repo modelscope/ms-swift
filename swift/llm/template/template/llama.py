@@ -1,5 +1,6 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -7,9 +8,8 @@ import torch
 
 from ..base import Template
 from ..constant import TemplateType
-from ..register import register_template
-from ..utils import Context, findall
-from .qwen import DefaultGenerationTemplate
+from ..register import TemplateMeta, register_template
+from ..utils import Context, Prompt, findall
 
 # ref: https://github.com/facebookresearch/llama/blob/main/llama/generation.py
 LLAMA_DEFAULT_SYSTEM = (
@@ -20,68 +20,53 @@ LLAMA_DEFAULT_SYSTEM = (
     'If a question does not make any sense, or is not factually coherent, '
     'explain why instead of answering something not correct. '
     "If you don't know the answer to a question, please don't share false information.")
+
 register_template(
-    Template(TemplateType.llama, ['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'],
-             LLAMA_DEFAULT_SYSTEM, ['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+    TemplateMeta(
+        TemplateType.llama, ['<s>[INST] '], ['{{QUERY}} [/INST]'], ['</s><s>[INST] '], ['</s>'],
+        default_system=LLAMA_DEFAULT_SYSTEM,
+        system_prefix=['<s>[INST] <<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
 
 
-class Llama3TemplateMixin:
-    system = None
+@dataclass
+class Llama3TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<|begin_of_text|>'])
+    prompt: Prompt = field(default_factory=lambda: [
+        '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<|eot_id|>'])
+    suffix: Prompt = field(default_factory=lambda: ['<|eot_id|>'])
+    system_prefix: Optional[Prompt] = field(
+        default_factory=lambda: ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'])
+    tool_prompt: Optional[Prompt] = field(default_factory=lambda: [
+        '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
+        '<|start_header_id|>assistant<|end_header_id|>\n\n'
+    ])
 
-    def __init__(self, template_type: str):
-        Template.__init__(
-            self,
-            template_type, ['<|begin_of_text|>'], [
-                '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-                '<|start_header_id|>assistant<|end_header_id|>\n\n'
-            ], ['<|eot_id|>'], ['<|eot_id|>'],
-            self.system, ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{SYSTEM}}<|eot_id|>'],
-            default_tools_prompt='toolbench',
-            tool_prompt=[
-                '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-                '<|start_header_id|>assistant<|end_header_id|>\n\n'
-            ])
-
-
-class Llama3Template(Llama3TemplateMixin, Template):
-    pass
+    default_tools_prompt: str = 'toolbench'
 
 
-register_template(Llama3Template(TemplateType.llama3))
+register_template(Llama3TemplateMeta(TemplateType.llama3))
 
 
-class Llama3_2TemplateMixin:
-    system = None
-
-    def __init__(self, template_type: str):
-        now = datetime.now()
-        date_string = now.strftime('%d %b %Y')
-        date_prompt = f'Cutting Knowledge Date: December 2023\nToday Date: {date_string}'
-        Template.__init__(
-            self,
-            template_type, [
-                f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n'
-                '{{SYSTEM}}<|eot_id|>'
-            ], [
-                '<|start_header_id|>user<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-                '<|start_header_id|>assistant<|end_header_id|>\n\n'
-            ], ['<|eot_id|>'], ['<|eot_id|>'],
-            self.system,
-            default_tools_prompt='toolbench',
-            tool_prompt=[
-                '<|start_header_id|>tool<|end_header_id|>\n\n{{QUERY}}<|eot_id|>'
-                '<|start_header_id|>assistant<|end_header_id|>\n\n'
-            ])
+def _get_llama3_2_prefix() -> Prompt:
+    now = datetime.now()
+    date_string = now.strftime('%d %b %Y')
+    date_prompt = f'Cutting Knowledge Date: December 2023\nToday Date: {date_string}'
+    return [f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n' '{{SYSTEM}}<|eot_id|>']
 
 
-class Llama3_2Template(Llama3_2TemplateMixin, Template):
-    pass
+@dataclass
+class Llama3_2TemplateMeta(Llama3TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: _get_llama3_2_prefix())
+    system_prefix: Optional[Prompt] = None
 
 
-register_template(Llama3_2Template(TemplateType.llama3_2))
+register_template(Llama3_2TemplateMeta(TemplateType.llama3_2))
 
 
-class Llama3_2VisionTemplateMixin:
+class Llama3_2VisionTemplate(Template):
 
     def replace_tag(self, media_type, index, example) -> List[Context]:
         assert media_type == 'image'
@@ -131,13 +116,4 @@ class Llama3_2VisionTemplateMixin:
         return res
 
 
-class Llama3_2VisionTemplate(Llama3_2VisionTemplateMixin, Llama3Template):
-    pass
-
-
-class Llama3_2VisionGenerationTemplate(Llama3_2VisionTemplateMixin, DefaultGenerationTemplate):
-    pass
-
-
-register_template(Llama3_2VisionTemplate(TemplateType.llama3_2_vision), lazy_tokenize=True)
-register_template(Llama3_2VisionGenerationTemplate(TemplateType.llama3_2_vision_generation), lazy_tokenize=True)
+register_template(Llama3TemplateMeta(TemplateType.llama3_2_vision, template_cls=Llama3_2VisionTemplate))

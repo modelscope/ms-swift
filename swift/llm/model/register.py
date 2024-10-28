@@ -116,7 +116,10 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False, **kwargs) -
     MODEL_MAPPING[model_type] = model_info
 
 
-def load_by_unsloth(model_dir, torch_dtype, max_seq_length: Optional[int] = None, load_in_4bit: bool = True):
+def load_by_unsloth(model_dir: str,
+                    torch_dtype: torch.dtype,
+                    max_seq_length: Optional[int] = None,
+                    load_in_4bit: bool = True):
     """Load model by unsloth"""
     # TODO:check
     assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`'
@@ -339,10 +342,10 @@ def get_model_tokenizer(
     get_function = model_meta.get_function
     model, tokenizer = get_function(model_dir, model_config, model_kwargs, load_model, **kwargs)
 
-    model_config.model_info = model_info
-    tokenizer.config = model_config
+    tokenizer.model_info = model_info
 
     if model is not None:
+        model.model_info = model_info
         fix_gradient_checkpointing_warning(model_meta.is_moe)
         fix_transformers_upgrade(model)
 

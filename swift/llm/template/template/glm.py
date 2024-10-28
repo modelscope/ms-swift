@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 import torch
 from transformers import PreTrainedTokenizerBase
@@ -6,26 +7,41 @@ from transformers import PreTrainedTokenizerBase
 from swift.llm import history_to_messages
 from ..base import Template
 from ..constant import TemplateType
-from ..register import register_template
-from ..utils import Context, findall
+from ..register import TemplateMeta, register_template
+from ..utils import Context, Prompt, Word, findall
 
 
 class GLMTemplate(Template):
 
-    def _init_template(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs) -> None:
-        res = super()._init_template(tokenizer, *args, **kwargs)
+    def __init__(self, tokenizer: PreTrainedTokenizerBase, *args, **kwargs) -> None:
+        super().__init__(tokenizer, *args, **kwargs)
         token_list = tokenizer.encode('')
-        self.prefix.insert(0, token_list)
-        if self.system_prefix is not None:
-            self.system_prefix.insert(0, token_list)
-        return res
+        template_meta = self.template_meta
+        template_meta.prefix.insert(0, token_list)
+        if template_meta.system_prefix is not None:
+            template_meta.system_prefix.insert(0, token_list)
+
+
+register_template(
+    TemplateMeta(
+        TemplateType.chatglm2, ['{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
+        [['eos_token_id']],
+        template_cls=GLMTemplate))
+
+
+@dataclass
+class GLM3TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: [])
+    prompt: Prompt = field(default_factory=lambda: ['<|user|>\n{{QUERY}}<|assistant|>\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: [])
+    suffix: Prompt = field(default_factory=lambda: ['<|user|>'])
+    template_cls: Type[Template] = GLMTemplate
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<|system|>\n{{SYSTEM}}'])
+
+    stop_words: List[Word] = field(default_factory=lambda: ['<|endoftext|>', '<|user|>', '<|observation|>'])
 
 
 class GLM4VTemplate(GLMTemplate):
-
-    def __init__(self, template_type: str):
-        super().__init__(template_type, [], ['<|user|>\n{{QUERY}}<|assistant|>'], [], ['<|endoftext|>'], None,
-                         ['<|system|>\n{{SYSTEM}}'])
 
     def check_example(self, example):
         images = example.get('images') or []
@@ -71,32 +87,25 @@ class GLM4VTemplate(GLMTemplate):
         return res
 
 
-register_template(GLM4VTemplate(TemplateType.glm4v), infer_media_type='dialogue', lazy_tokenize=True, use_model=True)
+# not '<|assistant|>\n'
+register_template(
+    GLM3TemplateMeta(
+        TemplateType.glm4v,
+        prompt=['<|user|>\n{{QUERY}}<|assistant|>'],
+        suffix=['<|endoftext|>'],
+        template_cls=GLM4VTemplate))
+
+register_template(GLM3TemplateMeta(TemplateType.chatglm3))
 
 register_template(
-    GLMTemplate(TemplateType.chatglm2, ['{{SYSTEM}}'], ['[Round {{ROUND1}}]\n\n问：{{QUERY}}\n\n答：'], ['\n\n'],
-                [['eos_token_id']]))
-
-register_template(
-    GLMTemplate(TemplateType.chatglm_generation, [], ['{{QUERY}}'], None, [['eos_token_id']]), is_generation=True)
-
-register_template(
-    GLMTemplate(TemplateType.chatglm3, [], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'], None,
-                ['<|system|>\n{{SYSTEM}}']))
-
-register_template(
-    GLMTemplate(
-        TemplateType.chatglm4, [], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|user|>'],
-        None, ['<|system|>\n{{SYSTEM}}'],
-        default_tools_prompt='glm4',
-        tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
+    GLM3TemplateMeta(
+        TemplateType.chatglm4, default_tools_prompt='glm4', tool_prompt=['<|observation|>\n{{QUERY}}<|assistant|>\n']))
 
 codegeex4_system = '你是一位智能编程助手，你叫CodeGeeX。你会为用户回答关于编程、代码、计算机方面的任何问题，并提供格式规范、可以执行、准确安全的代码，并在必要时提供详细的解释。'
 
-register_template(
-    GLMTemplate(TemplateType.codegeex4, [], ['<|user|>\n{{QUERY}}<|assistant|>\n'], [], ['<|endoftext|>'],
-                codegeex4_system, ['<|system|>\n{{SYSTEM}}']))
+register_template(GLM3TemplateMeta(TemplateType.codegeex4, suffix=['<|endoftext|>'], default_system=codegeex4_system))
 
 register_template(
-    Template(TemplateType.longwriter_llama3, ['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'], None,
-             ['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
+    TemplateMeta(
+        TemplateType.longwriter_llama3, ['[INST]'], ['{{QUERY}}[/INST]'], ['[INST]'], ['<|end_of_text|>'],
+        system_prefix=['<<SYS>>\n{{SYSTEM}}\n<</SYS>>\n\n']))
