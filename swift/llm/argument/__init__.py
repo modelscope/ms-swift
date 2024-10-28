@@ -1,4 +1,3 @@
-from .appui_args import AppUIArguments
 from .base_args import BaseArguments
 from .deploy_args import DeployArguments
 from .eval_args import EvalArguments

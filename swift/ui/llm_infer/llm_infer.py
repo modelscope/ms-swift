@@ -13,8 +13,8 @@ from gradio import Accordion, Tab
 from json import JSONDecodeError
 from modelscope import GenerationConfig, snapshot_download
 
-from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, XRequestConfig, inference_client,
-                       inference_stream, prepare_model_template)
+from swift.llm import (TEMPLATE_MAPPING, DeployArguments, InferArguments, RequestConfig)
+from swift.llm.infer.infer import SwiftInfer
 from swift.ui.base import BaseUI
 from swift.ui.llm_infer.model import Model
 from swift.ui.llm_infer.runtime import Runtime
@@ -27,6 +27,8 @@ class LLMInfer(BaseUI):
     sub_ui = [Model, Runtime]
 
     is_inference = os.environ.get('USE_INFERENCE') == '1' or os.environ.get('MODELSCOPE_ENVIRONMENT') == 'studio'
+
+    is_gradio_app = False
 
     locale_dict = {
         'generate_alert': {
@@ -124,6 +126,8 @@ class LLMInfer(BaseUI):
             with gr.Blocks():
                 model_and_template = gr.State([])
                 history = gr.State([])
+                if cls.is_gradio_app:
+                    BaseUI.visible = False
                 Model.build_ui(base_tab)
                 Runtime.build_ui(base_tab)
                 with gr.Row():
@@ -134,6 +138,7 @@ class LLMInfer(BaseUI):
                         value=default_device,
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
+                BaseUI.visible = True
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row():
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
@@ -370,7 +375,9 @@ class LLMInfer(BaseUI):
         if gpus != 'cpu':
             os.environ['CUDA_VISIBLE_DEVICES'] = gpus
         infer_args = InferArguments(**kwargs)
-        model, template = prepare_model_template(infer_args)
+        swift_infer = SwiftInfer(infer_args)
+        model = swift_infer.infer_engine
+        template = swift_infer.template
         gr.Info(cls.locale('loaded_alert', cls.lang)['value'])
         return [model, template]
 
@@ -458,7 +465,7 @@ class LLMInfer(BaseUI):
         if sft_type in ('lora', 'longlora') and not args.get('merge_lora'):
             model_type = infer_model_type or 'default-lora'
         old_history, history = history or [], []
-        request_config = XRequestConfig(
+        request_config = RequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
         request_config.stream = True
         request_config.stop = ['Observation:']

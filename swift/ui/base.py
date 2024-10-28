@@ -10,7 +10,7 @@ import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.llm.model.model import MODEL_MAPPING, ModelType
+from swift.llm import MODEL_MAPPING, ModelType
 
 all_langs = ['zh', 'en']
 builder: Type['BaseUI'] = None
@@ -50,6 +50,8 @@ def update_data(fn):
                     kwargs['value'] = values['value']
                 if 'label' in values:
                     kwargs['label'] = values['label']
+                if hasattr(builder, 'visible'):
+                    kwargs['visible'] = builder.visible
                 argument = base_builder.argument(elem_id)
                 if argument and 'label' in kwargs:
                     kwargs['label'] = kwargs['label'] + f'({argument})'
@@ -93,6 +95,7 @@ class BaseUI:
     bool_regex = r'^(T|t)rue$|^(F|f)alse$'
     cache_dir = os.path.join(get_cache_dir(), 'swift-web-ui')
     os.makedirs(cache_dir, exist_ok=True)
+    visible = True
 
     @classmethod
     def build_ui(cls, base_tab: Type['BaseUI']):
@@ -159,11 +162,13 @@ class BaseUI:
     @classmethod
     def default(cls, elem_id):
         """Get choice by elem_id"""
+        if elem_id in cls.default_dict:
+            return cls.default_dict.get(elem_id)
         for sub_ui in BaseUI.sub_ui:
             _choice = sub_ui.default(elem_id)
             if _choice:
                 return _choice
-        return cls.default_dict.get(elem_id, None)
+        return None
 
     @classmethod
     def locale(cls, elem_id, lang):
