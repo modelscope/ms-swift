@@ -6,7 +6,7 @@ from typing import Literal, Optional
 import torch.distributed as dist
 
 from swift.utils import get_logger, is_dist
-from .base_args import BaseArguments
+from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 from .tuner_args import adapters_can_be_merged
 
@@ -69,7 +69,7 @@ class ExportArguments(BaseArguments, MergeArguments):
 
         logger.info(f'Setting args.output_dir: {self.output_dir}')
 
-        self.output_dir = self.to_abspath(self.output_dir)
+        self.output_dir = to_abspath(self.output_dir)
         assert not os.path.exists(self.output_dir), (f'args.output_dir: {self.output_dir} already exists.')
 
     def __post_init__(self):

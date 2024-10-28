@@ -14,7 +14,7 @@ if TYPE_CHECKING:
                            WebUIArguments, AppUIArguments)
     from .template import TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
-                        ModelInfo, ModelMeta)
+                        ModelInfo, ModelMeta, get_model_meta)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
                           MediaResource, register_dataset, register_dataset_info, dataset_map, stat_dataset, LLMDataset,
                           LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_example, sort_by_max_length,
@@ -47,7 +47,7 @@ else:
         'template': ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template'],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
-            'ModelInfo', 'ModelMeta'
+            'ModelInfo', 'ModelMeta', 'get_model_meta'
         ],
         'dataset': [
             'AlpacaPreprocessor', 'ClsPreprocessor', 'ComposePreprocessor', 'MessagesPreprocessor', 'DatasetName',

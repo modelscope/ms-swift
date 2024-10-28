@@ -24,6 +24,8 @@ class QuantizeArguments:
     bnb_4bit_use_double_quant: bool = True
 
     def _init_quantization_config(self) -> None:
+        if self.quant_method is None:
+            return
         assert self.quant_method in {'bnb', 'hqq', 'eetq'}
         if self.quant_method == 'bnb':
             if self.quant_bits == 4:
@@ -50,10 +52,10 @@ class QuantizeArguments:
     def __post_init__(self):
         from swift.llm import ExportArguments
         if self.bnb_4bit_compute_dtype is None:
-            if self.torch.dtype in {torch.float16, torch.float32}:
+            if self.torch_dtype in {torch.float16, torch.float32}:
                 self.bnb_4bit_compute_dtype = torch.float32
             elif self.torch_dtype == torch.bfloat16:
                 self.bnb_4bit_compute_dtype = torch.bfloat16
-        self.bnb_4bit_compute_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.bnb_4bit_compute_dtype)
+        self.bnb_4bit_compute_dtype: torch.dtype = HfConfigFactory.to_torch_dtype(self.bnb_4bit_compute_dtype)
         if not isinstance(self, ExportArguments):
             self._init_quantization_config()

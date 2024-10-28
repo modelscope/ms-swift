@@ -16,8 +16,8 @@ from swift.plugin import LOSS_MAPPING, extra_tuners
 from swift.trainers import TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_dist_setting, get_logger, get_pai_tensorboard_dir, is_dist,
                          is_liger_available, is_local_master, is_mp, is_pai_training_job, use_torchacc)
-from .base_args import BaseArguments
-from .tuner_args import TunerArguments, get_supported_tuners
+from .base_args import BaseArguments, to_abspath
+from .tuner_args import TunerArguments
 
 logger = get_logger()
 
@@ -263,8 +263,7 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
         if self.lazy_tokenize is None and not self.streaming:
             self.lazy_tokenize = self.is_multimodal
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
-        self._check_args_valid()
-        self.prepare_train_stage()
+        self.init_train_stage()
         if self.train_backend == 'hf':
             self.init_hf()
         else:
@@ -306,28 +305,15 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
             if self.ddp_backend is None:
                 self.ddp_backend = 'nccl'
 
-    def prepare_train_type(self):
+    def init_freeze_parameters(self):
         """Some arguments will be decided by the train_type"""
-        if self.is_adapter:
-            assert self.freeze_parameters_ratio == 0. and len(
-                self.additional_trainable_parameters) == 0, ('lora does not support, please use `--train_type full`')
-            if self.quant_method is not None:
-                assert self.quantization_bit == 0, (
-                    f'{self.model_type} is already a quantized model and does not need to be quantized again.')
-        elif self.train_type == 'full':
+        if self.train_type == 'full':
+            # TODO: freeze xxx
             if self.freeze_vit:
                 if self.model_type in MODEL_KEYS_MAPPING:
                     vision_tower = MODEL_KEYS_MAPPING[self.model_type].vision_tower
                     if vision_tower:
                         self.freeze_parameters += vision_tower
-            assert 0 <= self.freeze_parameters_ratio <= 1
-            assert self.quantization_bit == 0, 'Full parameter fine-tuning does not support quantization.'
-            assert self.dtype != 'fp16', ("Fine-tuning with dtype=='fp16' can lead to NaN issues. "
-                                          'Please use fp32+AMP or bf16 to perform full parameter fine-tuning.')
-            if isinstance(self.additional_trainable_parameters, str):
-                self.additional_trainable_parameters = [self.additional_trainable_parameters]
-        elif self.train_type not in extra_tuners:
-            raise ValueError(f'train_type: {self.train_type}')
 
     def prepare_liger(self):
         """Liger kernel"""
@@ -337,11 +323,7 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
                 logger.warn('use_liger is not compatible with `loss_scale`, setting to default...')
                 self.loss_scale = 'default'
 
-    def _check_args_valid(self):
-        if 'qwen-audio' in self.model_type:
-            assert self.preprocess_num_proc == 1 or self.lazy_tokenize, 'not support'
-
-    def prepare_train_stage(self):
+    def init_train_stage(self):
         self.train_stage = 'sft'
 
     def _handle_pai_compat(self) -> None:
@@ -396,20 +378,23 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
             if self.train_backend == 'hf':
                 self.training_args.output_dir = self.output_dir
                 self.training_args.run_name = self.output_dir
-        if is_local_master():
-            os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
-            if self.train_backend == 'hf':
-                self.training_args.logging_dir = self.logging_dir
+
+        self.output_dir = to_abspath(self.output_dir)
+        self.logging_dir = to_abspath(self.logging_dir)
+
+        if is_local_master():
+            os.makedirs(self.output_dir, exist_ok=True)
+        if self.train_backend == 'hf':
+            self.training_args.logging_dir = self.logging_dir
 
 
 @dataclass
 class PtArguments(SftArguments):
-    train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
     lazy_tokenize: Optional[bool] = True
 
-    def prepare_train_stage(self):
+    def init_train_stage(self):
         self.train_stage = 'pt'
 
 
@@ -445,7 +430,7 @@ class RLHFArguments(SftArguments):
         self.ref_model_free = self.rlhf_type in ['cpo', 'orpo']
         super().__post_init__()
 
-    def prepare_train_stage(self):
+    def init_train_stage(self):
         self.train_stage = self.rlhf_type
 
     def _prepare_simpo(self):

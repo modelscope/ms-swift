@@ -6,6 +6,7 @@ from typing import List, Literal, Optional
 
 from swift.llm import DATASET_MAPPING, register_dataset_info
 from swift.utils import get_logger
+from .utils import to_abspath
 
 logger = get_logger()
 
@@ -38,6 +39,7 @@ class DataArguments:
         """Register custom .py file to datasets"""
         if self.custom_register_path is None:
             return
+        self.custom_register_path = to_abspath(self.custom_register_path, True)
         folder, fname = os.path.split(self.custom_register_path)
         sys.path.append(folder)
         __import__(fname.rstrip('.py'))

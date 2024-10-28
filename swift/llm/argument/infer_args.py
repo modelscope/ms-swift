@@ -9,7 +9,7 @@ from transformers.utils.versions import require_version
 
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
-from .base_args import BaseArguments
+from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
 from .tuner_args import adapters_can_be_merged
 
@@ -66,7 +66,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
             result_dir = os.path.join(result_dir, 'infer_result')
         else:
             result_dir = self.result_dir
-        result_dir = os.path.abspath(os.path.expanduser(result_dir))
+        result_dir = to_abspath(self.result_dir)
         os.makedirs(result_dir, exist_ok=True)
         self.result_dir = result_dir
         time = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -82,23 +82,13 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         BaseArguments.__post_init__(self)
         MergeArguments.__post_init__(self)
 
-        self.handle_ckpt_dir()
-        self.prepare_eval_human()
+        self._init_ckpt_dir()
+        self._init_result_dir()
+        self._init_stream()
+        self._init_eval_human()
         self.prepare_infer_backend()
 
-    def handle_ckpt_dir(self):
-        if self.ckpt_dir is None:
-            if self.ckpt_dir is None:
-                # The original model is the complete model.
-                self.train_type = 'full'
-            if self.load_args_from_ckpt_dir:
-                self.load_args_from_ckpt_dir = False
-        if self.load_args_from_ckpt_dir:
-            self.load_from_ckpt_dir()
-        else:
-            assert self.load_dataset_config is False, 'You need to first set `--load_args_from_ckpt_dir true`.'
-
-    def prepare_eval_human(self):
+    def _init_eval_human(self):
         if self.eval_human is None:
             if len(self.dataset) == 0 and len(self.val_dataset) == 0:
                 self.eval_human = True
@@ -163,6 +153,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
                 logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
                 raise
 
+        # TODO:move
         @dataclass
         class PtLoRARequest:
             lora_name: str

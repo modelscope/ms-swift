@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
-from swift.llm import TEMPLATE_MAPPING
+from swift.llm import TEMPLATE_MAPPING, get_model_meta
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -24,4 +24,5 @@ class TemplateArguments:
 
     def __post_init__(self):
         if self.template is None:
-            self.template = self.model_meta.template
+            model_meta = get_model_meta(self.model_type)
+            self.template = model_meta.template
