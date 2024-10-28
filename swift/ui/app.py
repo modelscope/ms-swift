@@ -1,6 +1,8 @@
 import os
+from dataclasses import fields
 
 import gradio as gr
+from gradio import Tab, Accordion
 from packaging import version
 from transformers.utils import strtobool
 
@@ -61,7 +63,13 @@ def run_ui(arguments: WebUIArguments):
                 f'<div class="gr-prose" style="max-width: 80%"><p>If the waiting queue is too long, you can either run locally or duplicate the Space and run it on your own profile using a (paid) private A10G-large GPU for training. A A10G-large costs US$3.15/h. &nbsp;&nbsp;<a class="duplicate-button" style="display:inline-block" target="_blank" href="https://huggingface.co/spaces/{os.environ["SPACE_ID"]}?duplicate=true"><img src="https://img.shields.io/badge/-Duplicate%20Space-blue?labelColor=white&style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAP5JREFUOE+lk7FqAkEURY+ltunEgFXS2sZGIbXfEPdLlnxJyDdYB62sbbUKpLbVNhyYFzbrrA74YJlh9r079973psed0cvUD4A+4HoCjsA85X0Dfn/RBLBgBDxnQPfAEJgBY+A9gALA4tcbamSzS4xq4FOQAJgCDwV2CPKV8tZAJcAjMMkUe1vX+U+SMhfAJEHasQIWmXNN3abzDwHUrgcRGmYcgKe0bxrblHEB4E/pndMazNpSZGcsZdBlYJcEL9Afo75molJyM2FxmPgmgPqlWNLGfwZGG6UiyEvLzHYDmoPkDDiNm9JR9uboiONcBXrpY1qmgs21x1QwyZcpvxt9NS09PlsPAAAAAElFTkSuQmCC&logoWidth=14" alt="Duplicate Space"></a></p></div>'  # noqa
             )
         with gr.Tabs():
-            if is_shared_ui:
+            if arguments.model_type or arguments.ckpt_dir:
+                for f in fields(arguments):
+                    if getattr(arguments, f.name):
+                        LLMInfer.default_dict[f.name] = getattr(arguments, f.name)
+                LLMInfer.is_gradio_app = True
+                LLMInfer.build_ui(LLMInfer)
+            elif is_shared_ui:
                 LLMInfer.build_ui(LLMInfer)
                 LLMTrain.build_ui(LLMTrain)
                 LLMExport.build_ui(LLMExport)
@@ -75,6 +83,11 @@ def run_ui(arguments: WebUIArguments):
     concurrent = {}
     if version.parse(gr.__version__) < version.parse('4.0.0') and os.environ.get('MODELSCOPE_ENVIRONMENT') != 'studio':
         concurrent = {'concurrency_count': 5}
+    if is_shared_ui:
+        app.load(LLMInfer.deploy_model, [LLMInfer.element('runtime_tab'),
+                                         [value for value in LLMInfer.elements().values() if
+                                          not isinstance(value, (Tab, Accordion))],
+                         LLMInfer.element('running_tasks'), LLMInfer.element('model_and_template')])
     app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
 
 
