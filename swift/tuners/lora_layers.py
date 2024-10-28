@@ -627,7 +627,7 @@ class LoraModel(_LoraModel):
         self._prepare_model(peft_config, model)
 
         for key in key_list:
-            if '_part_' in key:
+            if '_part_' in key or not key:
                 # Avoid lora conflict with part tuner
                 continue
             # Check for modules_to_save in case
@@ -653,7 +653,6 @@ class LoraModel(_LoraModel):
             parent, target, target_name = _get_submodules(model, key)
             self._create_and_replace(peft_config, adapter_name, target, target_name, parent, current_key=key)
 
-        # Handle X-LoRA case.
         if not is_target_modules_in_base_model and hasattr(peft_config, 'target_modules'):
             raise ValueError(f'Target modules {peft_config.target_modules} not found in the base model. '
                              f'Please check the target modules and try again.')

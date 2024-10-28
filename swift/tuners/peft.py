@@ -97,13 +97,16 @@ def _create_and_replace_hook(self, *args, **kwargs):
     return self._create_and_replace_origin(*args, **kwargs)
 
 
-def _create_and_replace_hook2(self, *args, **kwargs):
+def _create_and_replace_hook_with_mm_check(self, *args, **kwargs):
     target = _get_target(*args, **kwargs)
 
     all_supported_names = ('linear', )
-    all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D)
+    all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, torch.nn.Conv3d, transformers.pytorch_utils.Conv1D)
 
-    is_multimodal = getattr(self.model, 'is_multimodal', False)
+    from swift.llm import get_model_meta
+    from swift.llm import ModelMeta
+    model_meta: ModelMeta = get_model_meta(self.model.model_info.model_type)
+    is_multimodal = model_meta.is_multimodal
 
     if is_multimodal and target is not None and (not any(
         [name in target.__class__.__name__.lower()
@@ -301,14 +304,14 @@ def hot_patch_peft_module():
     LoraModel._create_and_replace_origin = LoraModel._create_and_replace
     LoraModel._create_and_replace = _create_and_replace_hook
     VeraModel._create_and_replace_origin = VeraModel._create_and_replace
-    VeraModel._create_and_replace = _create_and_replace_hook2
+    VeraModel._create_and_replace = _create_and_replace_hook_with_mm_check
     BOFTModel._create_and_replace_origin = BOFTModel._create_and_replace
-    BOFTModel._create_and_replace = _create_and_replace_hook2
+    BOFTModel._create_and_replace = _create_and_replace_hook_with_mm_check
     IA3Model._create_and_replace_origin = IA3Model._create_and_replace
-    IA3Model._create_and_replace = _create_and_replace_hook2
+    IA3Model._create_and_replace = _create_and_replace_hook_with_mm_check
     if FourierFTModel is not None:
         FourierFTModel._create_and_replace_origin = FourierFTModel._create_and_replace
-        FourierFTModel._create_and_replace = _create_and_replace_hook2
+        FourierFTModel._create_and_replace = _create_and_replace_hook_with_mm_check
 
     # Support type conversion
     def init(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name):
@@ -316,7 +319,7 @@ def hot_patch_peft_module():
             for _config in config.values():  # There is a target_modules as a string.
                 if isinstance(getattr(_config, 'target_modules', None), str):
                     # Make sure the regex can find all linear in the module.
-                    LoraModel._create_and_replace = _create_and_replace_hook2
+                    LoraModel._create_and_replace = _create_and_replace_hook_with_mm_check
                     break
 
         self.__init_origin__(model, config, adapter_name)
