@@ -9,7 +9,7 @@ from packaging import version
 from transformers import PreTrainedTokenizerBase
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
-from swift.llm import Template
+from swift.llm import Template, TemplateMeta
 from swift.plugin import Metric
 from swift.utils import get_logger
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -108,9 +108,10 @@ class VllmEngine(InferEngine):
             assert not limit_mm_per_prompt, (
                 'The current version of VLLM does not support `limit_mm_per_prompt`. Please upgrade VLLM.')
 
+        model_info = self.model_info
         engine_args = AsyncEngineArgs(
             model=self.model_dir,
-            dtype=dtype_mapping[self.torch_dtype],
+            dtype=dtype_mapping[model_info.torch_dtype],
             gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
             max_model_len=max_model_len,
@@ -123,7 +124,7 @@ class VllmEngine(InferEngine):
         self.engine_args = engine_args
         self.enable_lora = enable_lora
         if max_model_len is not None:
-            self.max_model_len = max_model_len
+            model_info.max_model_len = max_model_len
 
     @staticmethod
     def _init_env() -> None:
@@ -246,7 +247,8 @@ class VllmEngine(InferEngine):
             if request_config.top_logprobs is not None:
                 kwargs['logprobs'] = max(1, request_config.top_logprobs)
 
-        for key in ['n', 'best_of', 'frequency_penalty', 'length_penalty', 'presence_penalty', 'seed']:
+        # TODO: beam search
+        for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             kwargs[key] = getattr(request_config, key)
 
         return SamplingParams(**kwargs)

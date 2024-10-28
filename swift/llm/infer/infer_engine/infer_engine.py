@@ -50,8 +50,6 @@ class InferEngine(BaseInferEngine):
         self.model_info = model_info
         self.model_dir = model_info.model_dir
         self.config = model_info.config
-        self.max_model_len = model_info.max_model_len
-        self.torch_dtype = model_info.torch_dtype
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
@@ -146,8 +144,8 @@ class InferEngine(BaseInferEngine):
         if request_config.stream:
 
             def _gen_wrapper():
-                for res in self.__infer_stream(tasks, True, use_tqdm), metrics:
-                    yield InferEngine._update_metrics(res, metrics)
+                for res in self.__infer_stream(tasks, True, use_tqdm):
+                    yield self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
@@ -200,7 +198,7 @@ class InferEngine(BaseInferEngine):
                                request_config: RequestConfig,
                                inputs: Dict[str, Any],
                                strict: bool = False) -> None:
-        max_model_len = self.max_model_len
+        max_model_len = self.model_info.max_model_len
         if isinstance(inputs, dict):
             inputs = [inputs]
         # The num_tokens takes the maximum value from inputs_list.

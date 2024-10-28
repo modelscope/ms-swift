@@ -12,7 +12,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
-from swift.llm import Template, TemplateMeta
+from swift.llm import Template, TemplateMeta, get_model_meta
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
@@ -72,7 +72,8 @@ class LmdeployEngine(InferEngine):
         logger.info(f'backend_config: {backend_config}')
 
         pipeline_kwargs = {}
-        if self.is_multimodal:
+        is_multimodal = get_model_meta(self.model_info.model_type)
+        if is_multimodal:
             vision_config = VisionConfig(max_batch_size=vision_batch_size)
             pipeline_kwargs['vision_config'] = vision_config
             logger.info(f'vision_config: {vision_config}')
@@ -83,7 +84,7 @@ class LmdeployEngine(InferEngine):
         _old_best_match_model = async_engine.best_match_model
 
         def _best_match_model(*args, **kwargs) -> Optional[str]:
-            return self.model_type
+            return self.model_info.model_type
 
         async_engine.best_match_model = _best_match_model
         yield
@@ -143,17 +144,6 @@ class LmdeployEngine(InferEngine):
             inputs['images'] = await self.engine.vl_encoder.async_infer(images)
             await template.prepare_lmdeploy_inputs(inputs)
         return generator
-
-    @staticmethod
-    def _get_finish_reason(output, generation_config: LmdeployGenerationConfig):
-        if output.status.name == 'FINISH':
-            if output.num_token >= generation_config.max_new_tokens:
-                finish_reason = 'length'
-            else:
-                finish_reason = 'stop'
-        else:
-            finish_reason = None
-        return finish_reason
 
     async def _infer_stream_async(
             self, template: Template, inputs: Dict[str, Any],

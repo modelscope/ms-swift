@@ -372,7 +372,7 @@ class PtEngine(InferEngine):
 
             def _gen_wrapper():
                 for res in self._infer_stream(*infer_args, lora_request=lora_request):
-                    yield InferEngine._update_metrics(res, metrics)
+                    yield self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
