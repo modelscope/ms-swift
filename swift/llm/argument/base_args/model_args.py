@@ -96,7 +96,7 @@ class ModelArguments:
         from swift.llm import get_model_tokenizer, ModelInfo
         self.model_info: ModelInfo = get_model_tokenizer(
             self.model, torch_dtype, load_model=False, model_type=self.model_type,
-            revision=self.model_revision)[1].config.model_info
+            revision=self.model_revision)[1].model_info
         self.model_type = self.model_info.model_type
         return self.model_info.torch_dtype
 

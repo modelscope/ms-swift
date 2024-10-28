@@ -77,6 +77,10 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         self.eval_dataset = bool(self.dataset and self.split_dataset_ratio > 0 or self.val_dataset)
         if self.stream is None:
             self.stream = not self.eval_dataset
+        template_info = TEMPLATE_MAPPING[self.template]
+        if self.num_beams != 1 or not template_info.get('stream', True):
+            self.stream = False
+            logger.info('Setting args.stream: False')
 
     def __post_init__(self) -> None:
         BaseArguments.__post_init__(self)
@@ -134,11 +138,6 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
             self.lora_modules.append(f'default-lora={self.ckpt_dir}')
             self.lora_request_list, self.use_dora = self._parse_lora_modules(self.lora_modules,
                                                                              self.infer_backend == 'vllm')
-
-        template_info = TEMPLATE_MAPPING[self.template_type]
-        if self.num_beams != 1 or not template_info.get('stream', True):
-            self.stream = False
-            logger.info('Setting args.stream: False')
 
     @staticmethod
     def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> Tuple[List[Any], bool]:

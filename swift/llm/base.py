@@ -32,9 +32,9 @@ class SwiftPipeline(ABC):
 
     @staticmethod
     def _compat_dsw_gradio(args) -> None:
-        from swift.llm import AppUIArguments, WebUIArguments
-        if (isinstance(args, (AppUIArguments, WebUIArguments)) and 'JUPYTER_NAME' in os.environ
-                and 'dsw-' in os.environ['JUPYTER_NAME'] and 'GRADIO_ROOT_PATH' not in os.environ):
+        from swift.llm import WebUIArguments
+        if (isinstance(args, WebUIArguments) and 'JUPYTER_NAME' in os.environ and 'dsw-' in os.environ['JUPYTER_NAME']
+                and 'GRADIO_ROOT_PATH' not in os.environ):
             os.environ['GRADIO_ROOT_PATH'] = f"/{os.environ['JUPYTER_NAME']}/proxy/{args.port}"
 
     def main(self):
