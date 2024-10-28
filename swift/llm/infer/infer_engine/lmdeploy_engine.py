@@ -12,7 +12,7 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from transformers import GenerationConfig, PreTrainedTokenizerBase
 
-from swift.llm import Template
+from swift.llm import Template, TemplateMeta
 from swift.utils import get_logger, get_seed
 from ..protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                         ChatCompletionStreamResponse, ChatMessage, DeltaMessage, RequestConfig, UsageInfo, random_uuid)
@@ -111,9 +111,9 @@ class LmdeployEngine(InferEngine):
             self.generation_config = LmdeployGenerationConfig()
 
     def _add_stop_words(self, generation_config: LmdeployGenerationConfig, request_config: RequestConfig,
-                        template: Template) -> None:
-        stop_words = (request_config.stop or []) + (self.generation_config.stop_words or []) + template.stop_words
-        stop_words += [template.suffix[-1], self.tokenizer.eos_token]
+                        template_meta: TemplateMeta) -> None:
+        stop_words = (request_config.stop or []) + (self.generation_config.stop_words or []) + template_meta.stop_words
+        stop_words += [template_meta.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop_words = self._get_stop_words(stop_words)
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> LmdeployGenerationConfig:

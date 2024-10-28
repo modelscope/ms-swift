@@ -38,13 +38,13 @@ class InferTools:
 
     @staticmethod
     def safe_decode(template: Template, generate_ids: List[int], is_finished: bool, **decode_kwargs) -> str:
-        # Do not print template.suffix[-1] and eos_token.
+        # Do not print template_meta.suffix[-1] and eos_token.
         tokenizer = template.tokenizer
 
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
             generate_ids = generate_ids[:-1]
         # skip suffix and eos_token
-        template_suffix = template.suffix[-1]
+        template_suffix = template.template_meta.suffix[-1]
         if isinstance(template_suffix, str):
             template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)
         generate_ids = InferTools._skip_stop_tokens(generate_ids, template_suffix, is_finished)

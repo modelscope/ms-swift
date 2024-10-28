@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebUIArguments, AppUIArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
-                           TemplateInputs, Messages)
+                           TemplateInputs, Messages, TemplateMeta)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, get_model_meta)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
@@ -41,7 +41,7 @@ else:
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
-            'TemplateInputs', 'Messages'
+            'TemplateInputs', 'Messages', 'TemplateMeta'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',

@@ -33,7 +33,7 @@ class InferEngine(BaseInferEngine):
             revision: Optional[str] = None,
             # model
             model_kwargs: Optional[Dict[str, Any]] = None,
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto') -> None:
+            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None) -> None:
         model, tokenizer = get_model_tokenizer(
             model_id_or_path,
             torch_dtype,
@@ -177,7 +177,7 @@ class InferEngine(BaseInferEngine):
         assert len(inputs) >= 0
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template)
+        self._add_stop_words(generation_config, request_config, template.template_meta)
         infer_args = (template, inputs, generation_config)
         if request_config.stream:
             return self._infer_stream_async(*infer_args, **kwargs)

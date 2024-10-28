@@ -170,9 +170,9 @@ class VllmEngine(InferEngine):
             self.generation_config = SamplingParams()
 
     def _add_stop_words(self, generation_config: SamplingParams, request_config: RequestConfig,
-                        template: Template) -> None:
-        stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template.stop_words
-        stop_words += [template.suffix[-1], self.tokenizer.eos_token]
+                        template_meta: TemplateMeta) -> None:
+        stop_words = (request_config.stop or []) + (self.generation_config.stop or []) + template_meta.stop_words
+        stop_words += [template_meta.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop = self._get_stop_words(stop_words)
 
     def _add_request(self,

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList, StoppingCriteriaList
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import Template, to_device
+from swift.llm import Template, TemplateMeta, to_device
 from swift.plugin import Metric
 from swift.tuners import Swift
 from swift.utils import get_logger
@@ -51,7 +51,7 @@ class PtEngine(InferEngine):
             model_type: Optional[str] = None,
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
-            attn_impl: Literal['flash_attn', 'sdpa', 'eager', 'auto'] = 'auto',
+            attn_impl: Literal['flash_attn', 'sdpa', 'eager', None] = None,
             # model kwargs
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             quantization_config: Optional[Dict[str, Any]] = None,
@@ -111,9 +111,9 @@ class PtEngine(InferEngine):
         return generation_config
 
     def _add_stop_words(self, generation_config: GenerationConfig, request_config: RequestConfig,
-                        template: Template) -> None:
-        stop_words = (request_config.stop or []) + template.stop_words
-        stop_words += [template.suffix[-1], self.tokenizer.eos_token]
+                        template_meta: TemplateMeta) -> None:
+        stop_words = (request_config.stop or []) + template_meta.stop_words
+        stop_words += [template_meta.suffix[-1], self.tokenizer.eos_token]
         generation_config.stop_words = self._get_stop_words(stop_words)
 
     @staticmethod
@@ -365,11 +365,16 @@ class PtEngine(InferEngine):
             next(self.model.parameters()).device)
         self.set_default_max_tokens(request_config, inputs)
         generation_config = self._prepare_generation_config(request_config)
-        self._add_stop_words(generation_config, request_config, template)
+        self._add_stop_words(generation_config, request_config, template.template_meta)
 
         infer_args = (template, inputs, generation_config)
         if request_config.stream:
-            return self._update_metrics_wrapper(self._infer_stream(*infer_args, lora_request=lora_request), metrics)
+
+            def _gen_wrapper():
+                for res in self._infer_stream(*infer_args, lora_request=lora_request):
+                    yield InferEngine._update_metrics(res, metrics)
+
+            return _gen_wrapper()
         else:
             return self._update_metrics(self._infer_full(*infer_args, lora_request=lora_request), metrics)
 
