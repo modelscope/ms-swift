@@ -1,6 +1,7 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import hashlib
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar, Union
 
@@ -161,13 +162,20 @@ class HfConfigFactory:
         # get possible model_types based on the model architecture.
         from .register import get_arch_mapping
         arch_mapping = get_arch_mapping()
-        model_name = model_dir.rsplit('/', 1)[-1].lower()
+
         arch = config.architectures[0]
         model_type_dict: Dict[str, List[str]] = arch_mapping[arch]
         model_type_list = list(model_type_dict.keys())
         if len(model_type_list) == 1:
             return model_type_list
-        # Filter again based on model_dir.
+        # Filter again based on model_name.
+        # compat hf hub
+        match_ = re.search('/models--.+?--(.+?)/snapshots/', model_dir)
+        if match_ is not None:
+            model_name = match_.group(1)
+        else:
+            model_name = model_dir.rsplit('/', 1)[-1]
+        model_name = model_name.lower()
         model_type_dict_reversed = {}
         for model_type, model_names in model_type_dict.items():
             model_type_dict_reversed.update({model_name.lower(): model_type for model_name in model_names})

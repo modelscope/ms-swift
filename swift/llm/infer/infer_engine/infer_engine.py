@@ -249,3 +249,14 @@ class InferEngine(BaseInferEngine):
                 _res['top_logprobs'] = res_top_logprobs
             res.append(_res)
         return {'content': res}
+
+    @staticmethod
+    def _get_finish_reason(max_tokens: int, num_prompt_tokens: int, is_finished: bool):
+        if is_finished:
+            if num_prompt_tokens >= max_tokens:
+                finish_reason = 'length'
+            else:
+                finish_reason = 'stop'
+        else:
+            finish_reason = None
+        return finish_reason

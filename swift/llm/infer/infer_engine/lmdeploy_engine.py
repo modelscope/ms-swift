@@ -183,7 +183,8 @@ class LmdeployEngine(InferEngine):
 
                 usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
                 toolcall = self._get_toolcall(output.token_ids, is_finished)
-                finish_reason = self._get_finish_reason(output, generation_config)
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
+                                                        output.status.name == 'FINISH')
                 choices = [
                     ChatCompletionResponseStreamChoice(
                         index=0,
@@ -209,7 +210,8 @@ class LmdeployEngine(InferEngine):
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)
         toolcall = self._get_toolcall(response, True)
-        finish_reason = self._get_finish_reason(output, generation_config)
+        finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
+                                                output.status.name == 'FINISH')
         choices = [
             ChatCompletionResponseChoice(
                 index=0,

@@ -154,17 +154,6 @@ class PtEngine(InferEngine):
         return self.infer(template, [infer_request], request_config, use_tqdm=False, lora_request=lora_request)[0]
 
     @staticmethod
-    def _get_finish_reason(generation_config: GenerationConfig, num_prompt_tokens: int, is_finished: bool):
-        if is_finished:
-            if num_prompt_tokens >= generation_config.max_new_tokens:
-                finish_reason = 'length'
-            else:
-                finish_reason = 'stop'
-        else:
-            finish_reason = None
-        return finish_reason
-
-    @staticmethod
     def _update_batched_logprobs(batched_logprobs: List[torch.Tensor], logits_streamer: Optional[LogitsStreamer],
                                  generate_ids: torch.Tensor, top_logprobs: int) -> None:
         seq_len = generate_ids.shape[1] - len(batched_logprobs[0])
@@ -269,7 +258,8 @@ class PtEngine(InferEngine):
 
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
                 toolcall = self._get_toolcall(generate_ids, is_finished[i])
-                finish_reason = self._get_finish_reason(generation_config, num_prompt_tokens, is_finished[i])
+                finish_reason = self._get_finish_reason(generation_config.max_new_tokens, num_prompt_tokens,
+                                                        is_finished[i])
 
                 choices = [
                     ChatCompletionResponseStreamChoice(
