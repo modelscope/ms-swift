@@ -207,6 +207,7 @@ register_model(
             Model('ZhipuAI/glm-4v-9b', 'THUDM/glm-4v-9b'),
         ]),
         TemplateType.glm4v,
+        is_multimodal=True,
         requires=['transformers>=4.42']),
     get_model_tokenizer_glm4v,
 )
@@ -235,6 +236,7 @@ register_model(
             Model('ZhipuAI/cogvlm-chat', 'THUDM/cogvlm-chat-hf'),
         ]),
         TemplateType.cogvlm,
+        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
     ),
@@ -249,6 +251,7 @@ register_model(
             Model('ZhipuAI/cogagent-chat', 'THUDM/cogagent-chat-hf'),
         ]),
         TemplateType.cogvlm,
+        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42']), get_model_tokenizer_cogvlm)
 
@@ -260,6 +263,7 @@ register_model(
             Model('ZhipuAI/cogagent-vqa', 'THUDM/cogagent-vqa-hf'),
         ]),
         TemplateType.cogagent_vqa,
+        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42']),
     get_model_tokenizer_cogvlm,
@@ -289,6 +293,7 @@ register_model(
             Model('ZhipuAI/cogvlm2-llama3-chinese-chat-19B', 'THUDM/cogvlm2-llama3-chinese-chat-19B'),
         ]),
         TemplateType.cogvlm,
+        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers<4.42'],
         support_lmdeploy=True),
@@ -303,5 +308,6 @@ register_model(
             Model('ZhipuAI/cogvlm2-video-llama3-chat', 'THUDM/cogvlm2-video-llama3-chat'),
         ], tags=['video']),
         TemplateType.cogvlm2_video,
+        is_multimodal=True,
         support_gradient_checkpointing=False,
         requires=['transformers>=4.42']), get_model_tokenizer_cogvlm2)

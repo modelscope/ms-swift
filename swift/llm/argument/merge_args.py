@@ -10,7 +10,8 @@ logger = get_logger()
 @dataclass
 class MergeArguments:
     merge_lora: bool = False
-    merge_device_map: Optional[str] = None
+    merge_device_map: str = 'auto'
+
     use_merge_kit: bool = False
     instruct_model_id_or_path: Optional[str] = None
     instruct_model_revision: Optional[str] = None

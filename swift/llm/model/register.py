@@ -65,6 +65,7 @@ class ModelMeta:
     support_flash_attn: bool = False
     support_vllm: bool = False
     support_lmdeploy: bool = False
+    support_megatron: bool = False
 
     tags: List[str] = field(default_factory=list)
 
@@ -350,7 +351,6 @@ def get_model_tokenizer(
     model, tokenizer = get_function(model_dir, model_config, model_kwargs, load_model, **kwargs)
 
     model_config.model_info = model_info
-    model_config.model_meta = model_meta
     tokenizer.config = model_config
 
     if model is not None:
@@ -386,11 +386,13 @@ def get_arch_mapping() -> Dict[str, Dict[str, List[str]]]:
         # arch(str) -> Dict[model_type(str), List[model_name(str)]]
         ARCH_MAPPING = {}
         for model_type, model_info in MODEL_MAPPING.items():
-            arch = model_info['architectures']
-            model_names = _get_model_names(model_info['model_groups'])
-            if arch not in ARCH_MAPPING:
-                ARCH_MAPPING[arch] = {}
-            ARCH_MAPPING[arch][model_type] = model_names
+            model_meta = model_info['model_meta']
+            archs = model_meta.architectures
+            model_names = _get_model_names(model_meta.model_groups)
+            for arch in archs:
+                if arch not in ARCH_MAPPING:
+                    ARCH_MAPPING[arch] = {}
+                ARCH_MAPPING[arch][model_type] = model_names
     return ARCH_MAPPING
 
 

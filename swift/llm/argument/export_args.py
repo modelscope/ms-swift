@@ -15,17 +15,17 @@ logger = get_logger()
 
 @dataclass
 class ExportArguments(BaseArguments, MergeArguments):
+    output_dir: Optional[str] = None
+
     to_peft_format: bool = False
     # awq/gptq
     quant_n_samples: int = 256
-    quant_seqlen: Optional[int] = None  # default: self.max_length
-    quant_device_map: Optional[str] = None  # e.g. 'cpu', 'auto'
-    quant_output_dir: Optional[str] = None
+    quant_seqlen: int = 2048
+    quant_device_map: str = 'auto'  # e.g. 'cpu', 'auto'
     quant_batch_size: int = 1
 
     # ollama
     to_ollama: bool = False
-    ollama_output_dir: Optional[str] = None
     gguf_file: Optional[str] = None
 
     # push to ms hub
@@ -38,40 +38,51 @@ class ExportArguments(BaseArguments, MergeArguments):
     # megatron
     to_megatron: bool = False
     to_hf: bool = False
-    megatron_output_dir: Optional[str] = None
-    hf_output_dir: Optional[str] = None
     tp: int = 1
     pp: int = 1
 
-    def __post_init__(self):
-        super().__post_init__()
-        if self.quant_seqlen is None:
-            self.quant_seqlen = self.max_length
+    def _init_quant(self):
+
         if self.quant_bits > 0:
+            if self.quant_method is None:
+                raise ValueError('Please specify the quantization method using `--quant_method awq/gptq`.')
             if len(self.dataset) == 0:
                 raise ValueError(f'self.dataset: {self.dataset}, Please input the quant dataset.')
-            if self.quant_output_dir is None:
-                if self.ckpt_dir is None:
-                    self.quant_output_dir = f'{self.model_type}-{self.quant_method}-int{self.quant_bits}'
-                else:
-                    ckpt_dir, ckpt_name = os.path.split(self.ckpt_dir)
-                    self.quant_output_dir = os.path.join(ckpt_dir,
-                                                         f'{ckpt_name}-{self.quant_method}-int{self.quant_bits}')
-                self.quant_output_dir = self.check_path_validity(self.quant_output_dir)
-                logger.info(f'Setting args.quant_output_dir: {self.quant_output_dir}')
-            assert not os.path.exists(
-                self.quant_output_dir), (f'args.quant_output_dir: {self.quant_output_dir} already exists.')
+
+    def _init_output_dir(self):
+        if self.ckpt_dir is None:
+            ckpt_dir = self.model_info.model_dir
+        ckpt_dir, ckpt_name = os.path.split(model_dir)
+        if self.to_peft_format:
+            suffix = 'peft'
+        elif self.merge_lora:
+            suffix = 'merged'
+        elif self.quant_bits > 0:
+            suffix = f'{self.quant_method}-int{self.quant_bits}'
+        elif self.to_ollama:
+            suffix = 'ollama'
+        elif self.to_megatron:
+            suffix = f'tp{self.tp}-pp{self.pp}'
+        elif self.to_hf:
+            suffix = 'hf'
+        self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
+
+        logger.info(f'Setting args.output_dir: {self.output_dir}')
+
+        self.output_dir = self.to_abspath(self.output_dir)
+        assert not os.path.exists(self.output_dir), (f'args.output_dir: {self.output_dir} already exists.')
+
+    def __post_init__(self):
+        super().__post_init__()
+        self._init_output_dir()
+        if self.quant_bits > 0:
+            self._init_quant()
         elif self.to_ollama:
             assert self.train_type in ['full'] + adapters_can_be_merged()
             if self.train_type != 'full':
                 self.merge_lora = True
-            if not self.ollama_output_dir:
-                self.ollama_output_dir = f'{self.model_type}-ollama'
-            self.ollama_output_dir = self.check_path_validity(self.ollama_output_dir)
-            assert not os.path.exists(
-                self.ollama_output_dir), f'Please make sure your output dir does not exists: {self.ollama_output_dir}'
+
         elif self.to_megatron or self.to_hf:
-            self.quant_method = None  # fix parameter conflict
             os.environ['RANK'] = '0'
             os.environ['LOCAL_RANK'] = '0'
             os.environ['WORLD_SIZE'] = '1'
@@ -80,23 +91,9 @@ class ExportArguments(BaseArguments, MergeArguments):
             os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
             assert is_dist(), 'Please start in distributed mode.'
             dist.init_process_group(backend='nccl')
-            if self.to_megatron:
-                if self.megatron_output_dir is None:
-                    self.megatron_output_dir = f'{self.model_type}-tp{self.tp}-pp{self.pp}'
-                self.megatron_output_dir = self.check_path_validity(self.megatron_output_dir)
-                logger.info(f'Setting args.megatron_output_dir: {self.megatron_output_dir}')
-            if self.to_hf:
-                if self.hf_output_dir is None:
-                    self.hf_output_dir = os.path.join(self.ckpt_dir, f'{self.model_type}-hf')
-                self.hf_output_dir = self.check_path_validity(self.hf_output_dir)
-                logger.info(f'Setting args.hf_output_dir: {self.hf_output_dir}')
 
-    def select_dtype(self) -> None:
-        if self.quant_bits > 0 and self.dtype == 'auto':
-            self.dtype = 'fp16'
-            logger.info(f'Setting args.dtype: {self.dtype}')
-        super().select_dtype()
-
-    def handle_merge_device_map(self):
-        if self.merge_device_map is None and self.quant_bits > 0:
-            self.merge_device_map = 'cpu'
+    def _init_torch_dtype(self) -> None:
+        if self.quant_bits > 0 and self.torch_dtype is None:
+            self.torch_dtype = 'float16'
+            logger.info(f'Setting args.torch_dtype: {self.torch_dtype}')
+        super()._init_torch_dtype()

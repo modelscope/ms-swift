@@ -77,8 +77,8 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
         elif not support_gradient_checkpointing and self.gradient_checkpointing:
             logger.warning(f'{self.model_type} not support gradient_checkpointing.')
 
-    def init_transformers(self: 'SftArguments') -> None:
-        """Init transformer if you are using transformers models"""
+    def init_hf(self: 'SftArguments') -> None:
+        """Init transformers if you are using transformers models"""
         training_args_cls, kwargs = TrainerFactory.get_training_args(self.train_stage, self)
 
         parameters = inspect.signature(training_args_cls.__init__).parameters
@@ -168,7 +168,7 @@ class Seq2SeqTrainingOverrideArguments(Seq2SeqTrainingArguments):
 class MegatronArguments:
 
     # megatron
-    train_backend: Literal['transformers', 'megatron'] = 'transformers'
+    train_backend: Literal['hf', 'megatron'] = 'hf'
     tp: int = 1
     pp: int = 1
     min_lr: Optional[float] = None
@@ -219,7 +219,7 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
     freeze_parameters_ratio: float = 0.  # 0 ~ 1
     additional_trainable_parameters: List[str] = field(default_factory=list)
 
-    add_output_dir_suffix: Optional[bool] = None
+    add_output_dir_suffix: bool = True
     resume_from_checkpoint: Optional[str] = None
     resume_only_model: bool = False
     check_model_is_latest: bool = True
@@ -259,18 +259,18 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
         self.prepare_train_type()
         self.prepare_liger()
 
-        self._handle_streaming_args()
+        self._init_streaming_args()
         if self.lazy_tokenize is None and not self.streaming:
             self.lazy_tokenize = self.is_multimodal
             logger.info(f'Setting args.lazy_tokenize: {self.lazy_tokenize}')
         self._check_args_valid()
         self.prepare_train_stage()
-        if self.train_backend == 'transformers':
-            self.init_transformers()
+        if self.train_backend == 'hf':
+            self.init_hf()
         else:
             self.init_megatron()
 
-        self.prepare_output_dir()
+        self._init_output_dir()
 
     def prepare_deepspeed(self):
         """Prepare deepspeed settings"""
@@ -353,11 +353,10 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
         if self.logging_dir is None and pai_tensorboard_dir is not None:
             self.logging_dir = pai_tensorboard_dir
             logger.info(f'Setting args.logging_dir: {self.logging_dir}')
-        if self.add_output_dir_suffix is None:
-            self.add_output_dir_suffix = False
-            logger.info(f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}')
+        self.add_output_dir_suffix = False
+        logger.info(f'Setting args.add_output_dir_suffix: {self.add_output_dir_suffix}')
 
-    def _handle_streaming_args(self) -> None:
+    def _init_streaming_args(self) -> None:
         """Streaming mode does not support some specific arguments"""
         if not self.streaming:
             return
@@ -374,37 +373,34 @@ class SftArguments(BaseArguments, Seq2SeqTrainingOverrideArguments, TunerArgumen
 
         if self.lazy_tokenize:
             self.lazy_tokenize = False
-            logger.info('lazy_tokenize set to False in streaming dataset')
+            logger.warning('lazy_tokenize set to False in streaming dataset')
 
         if self.split_dataset_ratio > 0:
-            logger.info('Set split_dataset_ratio to 0 in streaming mode.'
-                        'You can manually set val_dataset and val_dataset_sample.'
-                        'or set streaming_val_size instead to split from train dataset')
+            logger.warning('Set split_dataset_ratio to 0 in streaming mode.'
+                           'You can manually set val_dataset and val_dataset_sample.'
+                           'or set streaming_val_size instead to split from train dataset')
             self.split_dataset_ratio = 0
 
         if self.dataloader_num_workers is None or self.dataloader_num_workers > 0:
-            logger.info('Set dataloader_num_workers to 0 in streaming mode')
+            logger.warning('Set dataloader_num_workers to 0 in streaming mode')
             self.dataloader_num_workers = 0
 
-    def prepare_output_dir(self):
+    def _init_output_dir(self):
         """Prepare the output folder"""
         if self.add_output_dir_suffix is None:
             self.add_output_dir_suffix = True
         if self.add_output_dir_suffix:
-            if self.train_backend == 'megatron':
-                self.output_dir = os.path.join(self.output_dir, f'{self.model_type}-tp{self.tp}-pp{self.pp}')
-            else:
-                self.output_dir = os.path.join(self.output_dir, self.model_type)
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'output_dir: {self.output_dir}')
-            if self.train_backend == 'transformers':
+            assert not os.path.exists(self.output_dir), (f'args.output_dir: {self.output_dir} already exists.')
+            if self.train_backend == 'hf':
                 self.training_args.output_dir = self.output_dir
                 self.training_args.run_name = self.output_dir
         if is_local_master():
             os.makedirs(self.output_dir, exist_ok=True)
         if self.logging_dir is None:
             self.logging_dir = f'{self.output_dir}/runs'
-            if self.train_backend == 'transformers':
+            if self.train_backend == 'hf':
                 self.training_args.logging_dir = self.logging_dir
 
 

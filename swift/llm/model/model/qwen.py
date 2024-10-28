@@ -5,11 +5,11 @@ from transformers import BitsAndBytesConfig, PretrainedConfig, PreTrainedTokeniz
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
-from swift.llm import ModelMeta, TemplateType
+from swift.llm import TemplateType
 from swift.utils import get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
 from ..patcher import patch_fixed_device, patch_output_clone, patch_output_to_input_device
-from ..register import (Model, ModelGroup, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
+from ..register import (Model, ModelGroup, ModelMeta, get_model_tokenizer_from_local, get_model_tokenizer_multimodal,
                         get_model_tokenizer_with_flash_attn, register_model)
 from ..utils import AttnImpl
 
@@ -159,6 +159,7 @@ register_model(
         ],
         TemplateType.qwen_audio,
         support_flash_attn=True,
+        is_multimodal=True,
         additional_saved_files=['mel_filters.npz']),
     get_model_tokenizer_qwen_audio,
 )
@@ -240,6 +241,7 @@ register_model(
         support_flash_attn=True,
         support_vllm=True,
         support_lmdeploy=True,
+        is_multimodal=True,
         additional_saved_files=['SimSun.ttf']),
     get_model_tokenizer_qwen_vl,
 )
@@ -523,6 +525,7 @@ register_model(
         ],
         TemplateType.qwen2_vl,
         requires=['transformers>=4.45.dev.0'],  # pip install qwen_vl_utils
+        is_multimodal=True,
         support_flash_attn=True,
         support_vllm=True),
     get_model_tokenizer_qwen2_vl,
@@ -548,6 +551,7 @@ register_model(
         ],
         TemplateType.qwen2_audio,
         requires=['transformers>=4.45.dev.0'],
+        is_multimodal=True,
         support_flash_attn=True),
     get_model_tokenizer_qwen2_audio,
 )

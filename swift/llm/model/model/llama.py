@@ -290,8 +290,8 @@ register_model(
         TemplateType.llama3_2_vision,
         requires=['transformers>=4.45'],
         ignore_file_pattern=['*.pth'],
+        is_multimodal=True,
         support_flash_attn=True,
-        support_vllm=True,
-        is_multimodal=True),
+        support_vllm=True),
     get_model_tokenizer_llama3_2_vision,
 )

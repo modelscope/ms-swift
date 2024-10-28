@@ -49,7 +49,7 @@ class HfConfigFactory:
             model_types = HfConfigFactory._get_matched_model_types(config, model_dir)
             if len(model_types) > 1:
                 raise ValueError('Unable to obtain the accurate model_type based on the model architecture. '
-                                 f'Please explicitly provide the model_type. Available model_types: {model_types}')
+                                 f'Please explicitly provide the `model_type`. Available model_types: {model_types}')
             model_type = model_types[0]
 
         quant_info = HfConfigFactory._get_quant_info(config) or {}
@@ -155,18 +155,16 @@ class HfConfigFactory:
         return res or None
 
     @staticmethod
-    def _get_matched_model_types(config: PretrainedConfig, model_dir: Optional[str] = None) -> List[str]:
+    def _get_matched_model_types(config: PretrainedConfig, model_dir: str) -> List[str]:
         """Get possible model_type."""
         # get possible model_types based on the model architecture.
         from .register import get_arch_mapping
         arch_mapping = get_arch_mapping()
-        model_name = None
-        if model_dir is not None:
-            model_name = model_dir.rsplit('/', 1)[-1].lower()
+        model_name = model_dir.rsplit('/', 1)[-1].lower()
         arch = config.architectures[0]
         model_type_dict: Dict[str, List[str]] = arch_mapping[arch]
         model_type_list = list(model_type_dict.keys())
-        if len(model_type_list) == 1 or model_dir is None:
+        if len(model_type_list) == 1:
             return model_type_list
         # Filter again based on model_dir.
         model_type_dict_reversed = {}

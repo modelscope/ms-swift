@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 
 import json
 
-from swift.utils import get_logger
+from swift.utils import check_json_format, get_logger, is_master
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
@@ -28,11 +28,11 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
     gpu_memory_fraction: Optional[float] = None
     ignore_args_error: bool = False  # True: notebook compatibility
 
-    def __init__(self):
+    def __post_init__(self):
         if self.load_args:
             self._load_args()
-        else:
-            self._save_args()
+
+        self._save_args()
         ModelArguments.__post_init__(self)
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
@@ -44,7 +44,7 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
             logger.info('hub login successful!')
 
     @staticmethod
-    def check_path_validity(path: Union[str, List[str]], check_path_exist: bool = False) -> Union[str, List[str]]:
+    def to_abspath(path: Union[str, List[str]], check_path_exist: bool = False) -> Union[str, List[str]]:
         """Check the path for validity and convert it to an absolute path.
 
         Args:
@@ -63,7 +63,7 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
         assert isinstance(path, list), f'path: {path}'
         res = []
         for v in path:
-            res.append(BaseArguments.check_path_validity(v, check_path_exist))
+            res.append(BaseArguments.to_abspath(v, check_path_exist))
         return res
 
     def handle_path(self) -> None:
@@ -81,7 +81,7 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
             value = getattr(self, k, None)
             if value is None:
                 continue
-            value = self.check_path_validity(value, k in check_exist_path)
+            value = self.to_abspath(value, k in check_exist_path)
             setattr(self, k, value)
 
     def _load_args(self) -> None:
@@ -113,4 +113,12 @@ class BaseArguments(ModelArguments, TemplateArguments, QuantizeArguments, Genera
                 setattr(self, key, old_value)
 
     def _save_args(self) -> None:
-        pass
+        from swift.llm import InferArguments
+        if isinstance(self, InferArguments):
+            return
+        self.args_type = self.__class__.__name__
+        if is_master():
+            fpath = os.path.join(self.output_dir, 'args.json')
+            logger.info(f'The {args.__class__.__name__} will be saved in: {fpath}')
+            with open(fpath, 'w', encoding='utf-8') as f:
+                json.dump(check_json_format(args.__dict__), f, ensure_ascii=False, indent=2)

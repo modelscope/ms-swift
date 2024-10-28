@@ -21,7 +21,7 @@ if TYPE_CHECKING:
                        get_peft_model_state_dict)
     from .prompt import Prompt, PromptConfig, PromptModule
     from .scetuning.scetuning import SCETuning, SCETuningConfig
-    from .utils import SwiftConfig, SwiftOutput, swift_to_peft_format
+    from .utils import SwiftConfig, SwiftOutput
 else:
     _import_structure = {
         'adapter': ['Adapter', 'AdapterConfig', 'AdapterModule'],
@@ -43,7 +43,7 @@ else:
         ],
         'prompt': ['Prompt', 'PromptConfig', 'PromptModule'],
         'scetuning': ['SCETuning', 'SCETuningConfig'],
-        'utils': ['SwiftConfig', 'SwiftOutput', 'swift_to_peft_format'],
+        'utils': ['SwiftConfig', 'SwiftOutput'],
     }
 
     import sys

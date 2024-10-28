@@ -8,7 +8,6 @@ import json
 from transformers.utils.versions import require_version
 
 from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo
-from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments
 from .merge_args import MergeArguments
@@ -86,7 +85,6 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         self.handle_ckpt_dir()
         self.prepare_eval_human()
         self.prepare_infer_backend()
-        self.prepare_merge_device_map()
 
     def handle_ckpt_dir(self):
         if self.ckpt_dir is None:
@@ -155,10 +153,6 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
             self.stream = False
             logger.info('Setting args.stream: False')
 
-    def prepare_merge_device_map(self):
-        if self.merge_device_map is None:
-            self.merge_device_map = 'cpu'
-
     @staticmethod
     def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> Tuple[List[Any], bool]:
         VllmLoRARequest = None
@@ -180,7 +174,6 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         use_dora_list = []
         for i, lora_module in enumerate(lora_modules):
             lora_name, lora_local_path = lora_module.split('=')
-            lora_local_path = swift_to_peft_format(lora_local_path)
             with open(os.path.join(lora_local_path, 'adapter_config.json'), 'r') as f:
                 _json = json.load(f)
                 use_dora_list.append(_json.get('use_dora', False))

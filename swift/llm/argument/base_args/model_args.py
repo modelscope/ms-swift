@@ -101,7 +101,7 @@ class ModelArguments:
         return self.model_info.torch_dtype
 
     def __post_init__(self):
-        if self.rope_scaling:
+        if self.rope_scaling:  # TODO: check
             logger.info(f'rope_scaling is set to {self.rope_scaling}, please remember to set max_length')
         if self.use_hf:
             os.environ['USE_HF'] = '1'
