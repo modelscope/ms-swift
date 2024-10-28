@@ -7,7 +7,7 @@ from typing import Any, List, Literal, Optional, Tuple
 import json
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, get_model_meta
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
@@ -96,6 +96,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         logger.info(f'Setting args.eval_human: {self.eval_human}')
 
     def prepare_infer_backend(self):
+        model_meta = get_model_meta(self.modle_type)
         model_info = MODEL_MAPPING.get(self.model_type, {})
         support_vllm = model_info.get('support_vllm', False)
         support_lmdeploy = model_info.get('support_lmdeploy', False)
