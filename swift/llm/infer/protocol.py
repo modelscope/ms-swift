@@ -10,9 +10,8 @@ import json
 from fastapi.responses import JSONResponse
 from PIL import Image
 
-from swift.llm import Messages
-
-Tool = Dict[str, Union[str, Dict]]
+from swift.llm import TemplateInputs
+from swift.llm.template import Messages, Tool
 
 
 def random_uuid() -> str:
@@ -247,42 +246,5 @@ class CompletionStreamResponse:
 
 
 @dataclass
-class InferRequest:
-    """
-    messages: Input in messages format.
-        Examples: [{
-            "role": "user",  # or assistant/system/role
-            "content": [  # str or List[Dict[str, Any]]
-                {
-                    "type": "image",  # or audio/video
-                    # This content is usually written in the `images` field (recommended).
-                    "image": "<url/path/base64/PIL.Image>",
-                },
-                {"type": "text", "text": "<text>"},
-            ],
-        }]
-    objects: Used for grounding tasks in a general format.
-    tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
-        Specifying this parameter will override system.
-    """
-    messages: Messages
-
-    images: List[Union[str, Image.Image]] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
-    videos: List[str] = field(default_factory=list)
-
-    objects: Union[str, None, List[Dict[str, Any]]] = None  # List[Dict[str, Any]]
-    tools: Optional[List[Tool]] = None
-
-    def __post_init__(self):
-        # Format objects(groundings/refs) to json
-        if isinstance(self.objects, str):
-            # reload grounding from str
-            self.objects = json.loads(self.objects)
-        elif self.objects is None:
-            self.objects = []
-
-    def copy(self):
-        return self.__class__(
-            deepcopy(self.messages), self.images.copy(), self.audios.copy(), self.videos.copy(), deepcopy(self.objects),
-            deepcopy(self.tools))
+class InferRequest(TemplateInputs):
+    pass

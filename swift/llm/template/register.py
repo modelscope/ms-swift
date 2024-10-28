@@ -148,24 +148,23 @@ def get_template(
         default_system: Optional[str] = None,
         max_length: Optional[int] = None,
         *,
+        use_generate_template: bool = False,
         truncation_strategy: Literal['delete', 'truncation_left'] = 'delete',
         max_pixels: int = -1,  # h * w
         tools_prompt: str = 'react_en',
         # train
         loss_scale: str = 'default',
         sequence_parallel_size: int = 1) -> 'Template':
-    template_info = TEMPLATE_MAPPING[template_type]
-    # To ensure that obtaining the same template_type multiple times does not interfere with each other.
-    template_meta = template_info['template_meta']
-    template_cls = template_meta['template_cls']
+    template_meta = TEMPLATE_MAPPING[template_type]['template_meta']
+    template_cls = template_meta.template_cls
     return template_cls(
         tokenizer,
         template_meta,
         default_system,
         max_length,
+        use_generate_template=use_generate_template,
         truncation_strategy=truncation_strategy,
         loss_scale=loss_scale,
         max_pixels=max_pixels,
         sequence_parallel_size=sequence_parallel_size,
         tools_prompt=tools_prompt)
-    return template

@@ -11,8 +11,6 @@ from swift.utils import deep_getattr, get_logger, upper_bound
 logger = get_logger()
 
 History = List[Union[Tuple[str, str], List[str]]]
-Message = Dict[str, Union[str, List[Dict[str, Any]]]]
-Messages = List[Message]
 
 
 def to_device(inputs: Any, device: torch.device) -> Any:
@@ -117,7 +115,7 @@ def dynamic_vit_gradient_checkpointing(model, model_type: str) -> None:
 
 def history_to_messages(history: History,
                         system: Optional[str] = None,
-                        roles: Optional[List[List[str]]] = None) -> Messages:
+                        roles: Optional[List[List[str]]] = None) -> 'Messages':
     """
     history: [['query1', 'response1'], ['query2', 'response2']]
         or [['query1', 'response1'], ['query2', None]]
@@ -139,7 +137,7 @@ def history_to_messages(history: History,
     return messages
 
 
-def messages_to_history(messages: Messages) -> Dict[str, Any]:
+def messages_to_history(messages: 'Messages') -> Dict[str, Any]:
     system = None
     if messages[0]['role'] == 'system':
         system = messages[0]['content']

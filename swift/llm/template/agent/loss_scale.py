@@ -4,7 +4,7 @@ from typing import List, Optional
 
 import json
 
-from swift.llm import Messages
+from ..template_inputs import Messages
 from ..utils import ContextType
 from .utils import calculate_loss_scale
 

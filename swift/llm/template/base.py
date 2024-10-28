@@ -14,10 +14,10 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerBase
 from transformers.integrations import is_deepspeed_zero3_enabled
 
-from ..infer import InferRequest
 from ..utils import decode_base64
 from .agent import loss_scale_map, split_str_parts_by
-from .utils import Context, ContextType, Prompt, TemplateInputs, Word, fetch_one, findall
+from .template_inputs import StdTemplateInputs, TemplateInputs
+from .utils import Context, ContextType, Prompt, Word, fetch_one, findall
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
 logger = get_logger()
@@ -50,7 +50,6 @@ class Template:
     image_placeholder = ['<image>']
     load_medias = True
 
-    loss_scale = 'default'
     output_prompt_answer = False  # for encoder-decoder & kto
     padding_side: Literal['left', 'right'] = 'right'  # The padding_side when the training batch_size >= 2.
 
@@ -97,12 +96,13 @@ class Template:
         self.max_pixels = max_pixels
         self.sequence_parallel_size = sequence_parallel_size
         self.model_info = tokenizer.model_info
-        self.task: Literal['train', 'pt_infer', 'vllm_infer', 'lmdeploy_infer'] = 'pt_infer'
         self.tools_prompt = tools_prompt or template_meta.default_tools_prompt
+        self.is_training = False
+        self.infer_backend: Literal['pt', 'vllm', 'lmdeploy'] = 'pt'
 
     def _preprocess_inputs(
         self,
-        inputs: TemplateInputs,
+        inputs: StdTemplateInputs,
         *,
         max_pixels: int = -1,
     ) -> None:
@@ -133,7 +133,9 @@ class Template:
 
     def encode(
         self,
-        inputs: Union[TemplateInputs, InferRequest, Dict[str, Any]],
+        inputs: TemplateInputs,
+        *,
+        model=None,
     ) -> Dict[str, Any]:
         """The entrance method of Template!
 
@@ -141,27 +143,27 @@ class Template:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
         if isinstance(inputs, dict):
-            inputs = TemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
-        elif isinstance(inputs, InferRequest):
-            inputs = TemplateInputs.from_infer_request(inputs, tools_prompt=self.tools_prompt)
+            inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, TemplateInputs):
+            inputs = StdTemplateInputs.from_template_inputs(inputs, tools_prompt=self.tools_prompt)
+        elif isinstance(inputs, StdTemplateInputs):
             inputs = inputs.copy()
 
-        assert isinstance(inputs, TemplateInputs)
+        assert isinstance(inputs, StdTemplateInputs)
         self._preprocess_inputs(inputs)
-        if self.task in {'train', 'pt_infer'}:
-            self._check_inputs(inputs)
-            res = self._encode(inputs)
-        else:
-            res = Template._encode(self, inputs)
+        if self.infer_backend in {'vllm', 'lmdeploy'}:
+            res = Template._encode(self, inputs, model=model)
             if inputs.images:
                 res['images'] = inputs.images
+        else:
+            self._check_inputs(inputs)
+            res = self._encode(inputs, model=model)
         return res
 
     def post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
-    def _preprocess_objects(self, inputs: TemplateInputs, objects: List[Dict[str, Any]]):
+    def _preprocess_objects(self, inputs: StdTemplateInputs, objects: List[Dict[str, Any]]):
         # Load image into PIL format
         images = inputs.images
         images = load_batch(images, load_image)  # base64/local_path -> PIL.Image
@@ -206,7 +208,7 @@ class Template:
             res_context_type.append(ContextType.OTHER)
 
     def _simplify_context_list(self, context_list: List[Context], loss_scale_list: List[float],
-                               inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
+                               inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """Merge anything in the context to simplify the inputs"""
         if inputs.is_multimodal:
             context_list, loss_scale_list = self._split_special_tokens(context_list, loss_scale_list)
@@ -259,12 +261,12 @@ class Template:
         return self.tokenizer(
             context, return_attention_mask=False, add_special_tokens=False, **tokenizer_kwargs)['input_ids']
 
-    def _check_inputs(self, inputs: TemplateInputs) -> None:
+    def _check_inputs(self, inputs: StdTemplateInputs) -> None:
         """Check inputs valid"""
         pass
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
-                    inputs: TemplateInputs) -> List[Context]:
+                    inputs: StdTemplateInputs) -> List[Context]:
         """Override this function to do your own replace operation.
 
         This method is used to replace standard tags like `<image>` to some tokens that the model needs.
@@ -278,7 +280,7 @@ class Template:
             The content or input_ids after replacement.
         """
         if media_type == 'image':
-            if self.task == 'lmdeploy_infer':
+            if self.infer_backend == 'lmdeploy':
                 return [[-100]]
             return self.image_placeholder
         elif media_type == 'video':
@@ -286,7 +288,7 @@ class Template:
         elif media_type == 'audio':
             return ['<audio>']
 
-    def replace_object(self, object_: Dict[str, Any], index: int, inputs: TemplateInputs) -> List[Context]:
+    def replace_object(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace objects referenced by the bbox to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
 
@@ -300,7 +302,7 @@ class Template:
         """
         return [object_['caption']]
 
-    def replace_box(self, object_: Dict[str, Any], index: int, inputs: TemplateInputs) -> List[Context]:
+    def replace_box(self, object_: Dict[str, Any], index: int, inputs: StdTemplateInputs) -> List[Context]:
         """Replace bbox pointing to the objects to contents or input_ids. This is useful in the grounding task.
         Override this function to do your own replace operation.
 
@@ -322,7 +324,7 @@ class Template:
             return [f'[({object_["bbox"][0]},{object_["bbox"][1]}),({object_["bbox"][2]},{object_["bbox"][3]})]']
 
     def _pre_tokenize(self, context_list: List[Context], loss_scale_list: List[float],
-                      inputs: TemplateInputs) -> Tuple[List[Context], List[float]]:
+                      inputs: StdTemplateInputs) -> Tuple[List[Context], List[float]]:
         """This method happens before tokenization, replace standard tags to the contents or input_ids needed by
         the model.
 
@@ -363,7 +365,7 @@ class Template:
         return res, res_loss_scale
 
     @staticmethod
-    def _add_default_tags(inputs: TemplateInputs):
+    def _add_default_tags(inputs: StdTemplateInputs):
         total_content = '\n'.join([message['content'] for message in inputs.messages])
         for media_type in ['image', 'audio', 'video']:
             media_key, media_tag = f'{media_type}s', f'<{media_type}>'
@@ -423,17 +425,18 @@ class Template:
         if len(messages) % 2 == 1:
             messages.append({'role': 'assistant', 'content': None})  # inference
 
-    def _encode(self, inputs: TemplateInputs) -> Dict[str, Any]:
+    def _encode(self, inputs: StdTemplateInputs, *, model: Optional[nn.Module] = None) -> Dict[str, Any]:
 
         res_context_list: List[Context] = []
         res_context_types: List[ContextType] = []
-        if self.auto_add_bos:
+        template_meta = self.template_meta
+        if template_meta.auto_add_bos:
             bos_token_id = self.tokenizer.bos_token_id
             if isinstance(bos_token_id, int) and bos_token_id in self.tokenizer.encode(''):
                 res_context_list.append([bos_token_id])
                 res_context_types.append(ContextType.OTHER)
 
-        prefix = self.system_prefix if inputs.system else self.prefix
+        prefix = template_meta.system_prefix if inputs.system else template_meta.prefix
         self._concat_context_list(prefix, res_context_list, res_context_types, system=inputs.system)
 
         n_round = len(inputs.messages) // 2
@@ -444,23 +447,23 @@ class Template:
             assert query_role in {'user', 'tool'}
             assert response_role in {'assistant'}
             if query_role == 'tool':
-                prompt = self.tool_prompt
-            elif self.is_post_system and i == n_round - 1:
-                prompt = self.system_prompt
+                prompt = template_meta.tool_prompt
+            elif template_meta.is_post_system and i == n_round - 1:
+                prompt = template_meta.system_prompt
             else:
-                prompt = self.prompt
+                prompt = template_meta.prompt
 
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
             if i < n_round - 1:
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = self.chat_sep  # TODO:agent check
+                extra_context_list = template_meta.chat_sep  # TODO:agent check
                 extra_context_type = ContextType.OTHER
             elif response is not None:
                 # It is the final round, and the response exists (during training).
                 context_list.append('{{RESPONSE}}')
-                extra_context_list = self.suffix
+                extra_context_list = template_meta.suffix
                 extra_context_type = ContextType.SUFFIX
             assert query or response  # TODO:check
             self._concat_context_list(
@@ -499,7 +502,7 @@ class Template:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
             input_ids, labels, loss_scale, tokenizer_kwargs = self._encode_context_list(
                 res_context_list, loss_scale_list)
-            self._use_dynamic_eos(labels, self._encode_context_list(self.suffix)[0])
+            self._use_dynamic_eos(labels, self._encode_context_list(template_meta.suffix)[0])
 
         if tokenizer_kwargs:
             res['tokenizer_kwargs'] = tokenizer_kwargs
@@ -529,21 +532,21 @@ class Template:
 
     def get_generate_ids(self, generate_ids: Union[torch.Tensor, List[int]],
                          num_prompt_tokens: int) -> Union[torch.Tensor, List[int]]:
-        if self.skip_prompt:
+        if self.template_meta.skip_prompt:
             return generate_ids[..., num_prompt_tokens:]
         else:
             return generate_ids
 
-    def post_process_generate_response(self, response: str, inputs: TemplateInputs) -> str:
+    def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
         return response
 
     def _pre_forward_hook(self, args, kwargs, model):
         from swift.llm import to_device
-        res_extra = []
-        data = kwargs.pop('_data')
-        for d in data:
-            res_extra.append(self.post_encode(model, d))
-        kwargs.update(to_device(self.data_collator(res_extra), model.device))
+        extra_inputs = []
+        batched_data = kwargs.pop('_data')
+        for data in batched_data:
+            extra_inputs.append(self.post_encode(model, data))
+        kwargs.update(to_device(self.data_collator(extra_inputs, model=model), model.device))
         if 'inputs_embeds' in kwargs:
             kwargs.pop('input_ids', None)
 
@@ -556,33 +559,19 @@ class Template:
             kwargs.pop('position_ids', None)
         return args, kwargs
 
-    @contextmanager
-    def vllm_context(self):
-        task = self.task
-        self.task = 'vllm_infer'
-        yield
-        self.task = task
+    def set_infer_backend(self, infer_backend: Literal['vllm', 'lmdeploy', 'pt']) -> None:
+        self.is_training = False
+        self.infer_backend = infer_backend
 
-    @contextmanager
-    def lmdeploy_context(self):
-        task = self.task
-        self.task = 'lmdeploy_infer'
-        yield
-        self.task = task
-
-    @contextmanager
-    def training_context(self, trainer, models: List[nn.Module]):
+    def set_training_mode(self, trainer, *, is_multimodal: bool, models: List[nn.Module]) -> None:
         """This function is important for multi-modal training, as it registers the post_encode method
             as a forward hook, converting input_ids into inputs_embeds.
         """
-        # TODO:torch>=2.0
-        task = self.task
-        self.task = 'train'
-        if not self.is_multimodal:
-            yield
-            self.task = task  # recover
+        self.is_training = True
+        if not is_multimodal:
             return
 
+        # TODO:torch>=2.0
         trainer.data_collator = self._pre_data_collator
         handles = []
         for model in models:
@@ -602,17 +591,9 @@ class Template:
                 return res
 
             deepspeed.initialize = _initialize
-        yield
-        trainer.data_collator = self.data_collator
-        self.task = task
-        for handle in handles:
-            handle.remove()
-        if _deepspeed_initialize:
-            deepspeed.initialize = _deepspeed_initialize
 
     def _pre_data_collator(self, batch: List[Dict[str, Any]], *args, **kwargs) -> Dict[str, Any]:
         """for multimodal LLM"""
-        assert self.is_multimodal
         new_batch = [{'labels': b['labels']} for b in batch]
         res = self.data_collator(new_batch, *args, **kwargs)  # only labels
         res['_data'] = batch
@@ -622,7 +603,8 @@ class Template:
                       batch: List[Dict[str, Any]],
                       *,
                       padding_side: Optional[str] = None,
-                      padding_to: Optional[int] = None) -> Dict[str, Any]:
+                      padding_to: Optional[int] = None,
+                      model: Optional[nn.Module] = None) -> Dict[str, Any]:
         """
         Args:
             batch(`List[Dict[str, Any]]`): The input data in batch

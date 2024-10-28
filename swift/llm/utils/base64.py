@@ -8,8 +8,6 @@ from typing import Any, Dict, List, Optional, Union
 
 from PIL import Image
 
-from .utils import Messages
-
 
 def _decode_prompt(prompt: str, tmp_dir: str = 'tmp') -> str:
     pattern = r'<(?:img|audio|video)>(.+?)</(?:img|audio|video)>'
@@ -58,7 +56,7 @@ def _from_base64(img_base64: Union[str, Image.Image], tmp_dir: str = 'tmp') -> s
 
 
 def decode_base64(*,
-                  messages: Optional[Messages] = None,
+                  messages: Optional['Messages'] = None,
                   prompt: Optional[str] = None,
                   images: Optional[List[str]] = None,
                   tmp_dir: str = 'tmp') -> Dict[str, Any]:
@@ -100,7 +98,7 @@ def _encode_prompt(prompt: str) -> str:
 
 
 def convert_to_base64(*,
-                      messages: Optional[Messages] = None,
+                      messages: Optional['Messages'] = None,
                       prompt: Optional[str] = None,
                       images: Optional[List[str]] = None) -> Dict[str, Any]:
     """local_path -> base64"""

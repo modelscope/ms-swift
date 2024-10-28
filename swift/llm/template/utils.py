@@ -1,16 +1,11 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
 import re
-from copy import deepcopy
-from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
-import json
 import torch
-from PIL import Image
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
-from swift.llm import History, Messages, to_device
-from .agent import get_tools_prompt
+from swift.llm import History
 
 Prompt = List[Union[str, List[int], List[str]]]
 Word = Union[str, List[int]]
@@ -136,129 +131,3 @@ def align_image_inputs(input_ids: List[int], labels: List[int], new_input_ids,
             j += 1
         i += 1
     return input_ids, labels
-
-
-@dataclass
-class TemplateInputs:
-    # only user/tool/assistant
-    messages: List[Dict[str, str]]
-    # None: use default system; '': not use system
-    system: Optional[str] = None
-
-    images: List[Union[str, Image.Image]] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
-    videos: List[str] = field(default_factory=list)
-    objects: List[Dict[str, Any]] = field(default_factory=list)
-
-    def __post_init__(self):
-        self.image_idx = 0
-        self.audio_idx = 0
-        self.video_idx = 0
-        self.object_idx = 0
-        self.box_idx = 0
-
-    def copy(self):
-        return self.__class__(
-            deepcopy(self.messages), self.system, self.images.copy(), self.audios.copy(), self.videos.copy(),
-            self.objects.copy())
-
-    @property
-    def is_multimodal(self):
-        return bool(self.images or self.audios or self.videos or self.objects)
-
-    @classmethod
-    def from_dict(cls, inputs: Dict[str, Any], *, tools_prompt: str = 'react_en') -> 'TemplateInputs':
-        messages = deepcopy(inputs['messages'])
-        tools = deepcopy(inputs.get('tools'))
-        objects = deepcopy(inputs.get('objects')) or []
-
-        assert len(messages) >= 1
-
-        if messages[0]['role'] == 'system':
-            message = messages.pop(0)
-            system = message['content']
-        else:
-            system = None
-
-        if tools is not None:
-            assert system is None
-            if isinstance(tools, str):
-                tools = json.loads(tools)
-            system = get_tools_prompt(tools, tools_prompt)
-
-        media_kwargs = TemplateInputs.remove_messages_media(messages)
-        for k in list(media_kwargs.keys()):
-            mm_data = media_kwargs[k]
-            inputs_mm_data = inputs.get(k).copy() or []
-            if mm_data:
-                assert not inputs_mm_data, f'self.{k}: {inputs_mm_data}'
-            else:
-                media_kwargs[k] = inputs_mm_data
-
-        TemplateInputs.messages_join_observation(messages)
-        return cls(messages, system, **media_kwargs, objects=objects)
-
-    @staticmethod
-    def remove_messages_media(messages: Messages) -> Dict[str, Any]:
-        res = {'images': [], 'audios': [], 'videos': []}
-        for message in messages:
-            content = message['content']
-            if isinstance(content, str):
-                continue
-            # List[Dict[str, Any]]
-            new_content = ''
-            for item in content:
-                key: str = item['type']
-                value = item[key]
-                if key == 'text':
-                    new_content += value
-                    continue
-                # image/audio/video
-                # image_url/audio_url/video_url
-                if key.endswith('_url'):
-                    key = key[:-len('_url')]
-                new_content += f'<{key}>'
-                res[f'{key}s'].append(value)
-            message['content'] = new_content
-        return res
-
-    @classmethod
-    def from_infer_request(cls, infer_request: 'InferRequest', *, tools_prompt: str = 'react_en') -> 'TemplateInputs':
-        return cls.from_dict(asdict(infer_request), tools_prompt=tools_prompt)
-
-    @staticmethod
-    def messages_join_observation(messages: Messages) -> None:
-        """
-        Joins observations from 'tool' message into the 'assistant' response.
-
-        Example:
-        ---------
-        Original messages:
-        messages = [
-            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                    [{"location": "Hangzhou"}]\nObservations:'},
-            {'role': 'tool', 'content': 'It is 26 degrees Celsius and sunny in Hangzhou today.'}
-        ]
-
-        Transformed messages:
-        messages = [
-            {'role': 'user', 'content': "What's the weather today in Hangzhou?"},
-            {'role': 'assistant', 'content': 'Action: get_weather\nAction Input:\
-                    [{"location": "Hangzhou"}]\nObservations: It is 26 degrees Celsius and sunny in Hangzhou today.'}
-        ]
-        """
-        if len(messages) < 2:
-            return
-        i = 1
-        while i < len(messages):
-            pre_message, message = messages[i - 1], messages[i]
-            pre_role, pre_content = pre_message['role'], pre_message['content']
-            role, content = message['role'], message['content']
-            if pre_role == 'assistant' and role == 'tool' and isinstance(content,
-                                                                         str) and content.endswith('Observation:'):
-                assert isinstance(pre_content, str)
-                pre_message['content'] = pre_content + content  # assistant
-                messages.pop(i)  # remove tool
-            else:
-                i += 1

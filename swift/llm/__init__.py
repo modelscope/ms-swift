@@ -13,15 +13,15 @@ if TYPE_CHECKING:
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebUIArguments, AppUIArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
-                           TemplateInputs)
+                           TemplateInputs, Messages)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, get_model_meta)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
                           MediaResource, register_dataset, register_dataset_info, dataset_map, stat_dataset, LLMDataset,
                           LLMIterableDataset, LazyLLMDataset, ConstantLengthDataset, print_example, sort_by_max_length,
                           standard_keys, load_dataset, DATASET_TYPE, HfDataset, sample_dataset)
-    from .utils import (deep_getattr, to_device, Messages, History, decode_base64, history_to_messages,
-                        messages_to_history, safe_tokenizer_decode)
+    from .utils import (deep_getattr, to_device, History, decode_base64, history_to_messages, messages_to_history,
+                        safe_tokenizer_decode)
     from .module_mapping import MODEL_KEYS_MAPPING, MultiModelKeys
     from .base import SwiftPipeline
 else:
@@ -39,8 +39,10 @@ else:
             'EvalArguments', 'InferArguments', 'SftArguments', 'ExportArguments', 'WebUIArguments', 'DeployArguments',
             'RLHFArguments', 'AppUIArguments'
         ],
-        'template':
-        ['TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template', 'TemplateInputs'],
+        'template': [
+            'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
+            'TemplateInputs', 'Messages'
+        ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',
             'ModelInfo', 'ModelMeta', 'get_model_meta'
@@ -53,8 +55,8 @@ else:
             'sample_dataset'
         ],
         'utils': [
-            'deep_getattr', 'to_device', 'History', 'Messages', 'decode_base64', 'history_to_messages',
-            'messages_to_history', 'safe_tokenizer_decode'
+            'deep_getattr', 'to_device', 'History', 'decode_base64', 'history_to_messages', 'messages_to_history',
+            'safe_tokenizer_decode'
         ],
         'module_mapping': ['MODEL_KEYS_MAPPING', 'MultiModelKeys'],
         'base': ['SwiftPipeline']
