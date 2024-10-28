@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
     from .infer import (VllmEngine, InferRequest, RequestConfig, InferStats, LmdeployEngine, PtEngine, infer_main,
-                        deploy_main)
+                        deploy_main, PtLoRARequest)
     from .export import export_main, merge_lora
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
@@ -28,14 +28,8 @@ else:
     _import_structure = {
         'rlhf': ['rlhf_main'],
         'infer': [
-            'deploy_main',
-            'VllmEngine',
-            'InferRequest',
-            'RequestConfig',
-            'InferStats',
-            'LmdeployEngine',
-            'PtEngine',
-            'infer_main',
+            'deploy_main', 'VllmEngine', 'InferRequest', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine',
+            'infer_main', 'PtLoRARequest'
         ],
         'export': ['export_main', 'merge_lora'],
         'eval': ['eval_main'],

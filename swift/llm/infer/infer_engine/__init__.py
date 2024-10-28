@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .vllm_engine import VllmEngine
     from .lmdeploy_engine import LmdeployEngine
-    from .pt_engine import PtEngine
+    from .pt_engine import PtEngine, PtLoRARequest
     from .infer_engine import InferEngine
     from .base import BaseInferEngine
     from .utils import InferStats
@@ -15,7 +15,7 @@ else:
     _import_structure = {
         'vllm_engine': ['VllmEngine'],
         'lmdeploy_engine': ['LmdeployEngine'],
-        'pt_engine': ['PtEngine'],
+        'pt_engine': ['PtEngine', 'PtLoRARequest'],
         'infer_engine': ['InferEngine'],
         'base': ['BaseInferEngine'],
         'utils': ['InferStats']

@@ -7,7 +7,7 @@ from typing import Any, List, Literal, Optional, Tuple
 import json
 from transformers.utils.versions import require_version
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, get_model_meta
+from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelInfo, PtLoRARequest, get_model_meta
 from swift.utils import get_logger, is_lmdeploy_available, is_vllm_available
 from .base_args import BaseArguments, to_abspath
 from .merge_args import MergeArguments
@@ -43,7 +43,7 @@ class LmdeployArguments:
 
 @dataclass
 class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArguments):
-    infer_backend: Literal['vllm', 'pt', 'lmdeploy', None] = None
+    infer_backend: Literal['vllm', 'pt', 'lmdeploy'] = 'pt'
     ckpt_dir: Optional[str] = field(default=None, metadata={'help': '/path/to/your/vx-xxx/checkpoint-xxx'})
 
     val_dataset_sample: int = -1
@@ -89,7 +89,7 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         self._init_result_dir()
         self._init_stream()
         self._init_eval_human()
-        self.prepare_infer_backend()
+        self._parse_lora_modules()
 
     def _init_eval_human(self):
         if len(self.dataset) == 0 and len(self.val_dataset) == 0:
@@ -99,77 +99,18 @@ class InferArguments(BaseArguments, MergeArguments, VllmArguments, LmdeployArgum
         self.eval_human = eval_human
         logger.info(f'Setting args.eval_human: {self.eval_human}')
 
-    def prepare_infer_backend(self):
-        model_meta = get_model_meta(self.modle_type)
-        model_info = MODEL_MAPPING.get(self.model_type, {})
-        support_vllm = model_info.get('support_vllm', False)
-        support_lmdeploy = model_info.get('support_lmdeploy', False)
-        self.lora_request_list = None
-        if self.infer_backend == 'auto':
-            self.infer_backend = 'pt'
-            if is_vllm_available() and support_vllm and not self.is_multimodal:
-                if ((self.train_type == 'full' or self.train_type in adapters_can_be_merged() and self.merge_lora)
-                        and self.quantization_bit == 0):
-                    self.infer_backend = 'vllm'
-                if self.vllm_enable_lora:
-                    self.infer_backend = 'vllm'
-            if is_lmdeploy_available() and support_lmdeploy and self.is_multimodal:
-                if ((self.train_type == 'full' or self.train_type == 'lora' and self.merge_lora)
-                        and self.quantization_bit == 0):
-                    self.infer_backend = 'lmdeploy'
+    def _parse_lora_modules(self) -> None:
+        if len(self.lora_modules) == 0:
+            return
+        assert self.infer_backend in {'vllm', 'pt'}
         if self.infer_backend == 'vllm':
-            require_version('vllm')
-            if not support_vllm:
-                logger.warning(f'vllm not support `{self.model_type}`')
-            if self.train_type == 'lora' and not self.vllm_enable_lora:
-                assert self.merge_lora, ('To use vLLM, you need to provide the complete weight parameters. '
-                                         'Please set `--merge_lora true`.')
-        if self.infer_backend == 'lmdeploy':
-            require_version('lmdeploy')
-            assert self.quantization_bit == 0, 'lmdeploy does not support bnb.'
-            if not support_lmdeploy:
-                logger.warning(f'lmdeploy not support `{self.model_type}`')
-            if self.train_type == 'lora':
-                assert self.merge_lora, ('To use LMDeploy, you need to provide the complete weight parameters. '
-                                         'Please set `--merge_lora true`.')
+            from vllm.lora.request import LoRARequest
+            lora_request_cls = LoRARequest
+        elif self.infer_backend == 'pt':
+            lora_request_cls = PtLoRARequest
 
-        if (self.infer_backend == 'vllm' and self.vllm_enable_lora
-                or self.infer_backend == 'pt' and isinstance(self, DeployArguments) and self.train_type == 'lora'):
-            assert self.ckpt_dir is not None
-            self.lora_modules.append(f'default-lora={self.ckpt_dir}')
-            self.lora_request_list, self.use_dora = self._parse_lora_modules(self.lora_modules,
-                                                                             self.infer_backend == 'vllm')
-
-    @staticmethod
-    def _parse_lora_modules(lora_modules: List[str], use_vllm: bool) -> Tuple[List[Any], bool]:
-        VllmLoRARequest = None
-        if use_vllm:
-            try:
-                from .vllm_utils import LoRARequest as VllmLoRARequest
-            except ImportError:
-                logger.warning('The current version of VLLM does not support `enable_lora`. Please upgrade VLLM.')
-                raise
-
-        # TODO:move
-        @dataclass
-        class PtLoRARequest:
-            lora_name: str
-            lora_int_id: int
-            lora_local_path: str
-
-        LoRARequest = VllmLoRARequest if use_vllm else PtLoRARequest
         lora_request_list = []
-        use_dora_list = []
-        for i, lora_module in enumerate(lora_modules):
+        for i, lora_module in enumerate(self.lora_modules):
             lora_name, lora_local_path = lora_module.split('=')
-            with open(os.path.join(lora_local_path, 'adapter_config.json'), 'r') as f:
-                _json = json.load(f)
-                use_dora_list.append(_json.get('use_dora', False))
-            lora_request_list.append(LoRARequest(lora_name, i + 1, lora_local_path))
-        if any(use_dora_list) and len(lora_modules) > 1:
-            raise ValueError('Dora does not support inference with other loras')
-        elif not any(use_dora_list):
-            use_dora = False
-        else:
-            use_dora = True
-        return lora_request_list, use_dora
+            lora_request_list.append(lora_request_cls(lora_name, i + 1, lora_local_path))
+        self.lora_request_list = lora_request_list
