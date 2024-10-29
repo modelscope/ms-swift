@@ -6,10 +6,6 @@ from dataclasses import asdict, dataclass, field, fields
 from http import HTTPStatus
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-import json
-from fastapi.responses import JSONResponse
-from PIL import Image
-
 from swift.llm import TemplateInputs
 from swift.llm.template import Messages, Tool
 

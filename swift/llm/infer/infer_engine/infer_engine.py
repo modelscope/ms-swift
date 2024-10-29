@@ -52,6 +52,9 @@ class InferEngine(BaseInferEngine):
         self.model_dir = self.model_info.model_dir
         self.config = self.model_info.config
 
+    def _prepare_default_template(self):
+        self.default_template = get_template(self.model_meta.template, self.tokenizer)
+
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
         stop: List[str] = []
         for stop_word in stop_words:
@@ -133,13 +136,15 @@ class InferEngine(BaseInferEngine):
 
     @torch.inference_mode()
     def infer(self,
-              template: Template,
               infer_requests: List[InferRequest],
               request_config: Optional[RequestConfig] = None,
               metrics: Optional[List[Metric]] = None,
               *,
+              template: Optional[Template] = None,
               use_tqdm: Optional[bool] = None,
               **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
+        if template is None:
+            template = self.default_template
         tasks = [
             self.infer_async(template, infer_request, request_config, **kwargs) for infer_request in infer_requests
         ]
@@ -169,11 +174,14 @@ class InferEngine(BaseInferEngine):
 
     @torch.inference_mode()
     async def infer_async(self,
-                          template: Template,
                           infer_request: InferRequest,
                           request_config: Optional[RequestConfig] = None,
+                          *,
+                          template: Optional[Template] = None,
                           **kwargs) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         request_config = deepcopy(request_config or RequestConfig())
+        if template is None:
+            template = self.default_template
 
         inputs = template.encode(infer_request)
         assert len(inputs) >= 0

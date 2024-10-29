@@ -50,6 +50,7 @@ class LmdeployEngine(InferEngine):
             engine_kwargs=engine_kwargs)
 
         self._prepare_engine()
+        self._prepare_default_template()
         self._load_generation_config()
 
     def _prepare_engine_kwargs(self,

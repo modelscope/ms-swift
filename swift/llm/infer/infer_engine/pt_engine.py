@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 from copy import deepcopy
 from dataclasses import dataclass
@@ -74,6 +75,7 @@ class PtEngine(InferEngine):
             revision=revision,
             attn_impl=attn_impl,
             model_kwargs=model_kwargs)
+        self._prepare_default_template()
         self.max_batch_size = max_batch_size
         self.engine = self.model
         self.generation_config = self.model.generation_config
@@ -142,11 +144,13 @@ class PtEngine(InferEngine):
 
     async def _infer_stream_async(
             self,
-            template: Template,
             infer_request: InferRequest,
             request_config: RequestConfig,
             *,
+            template: Optional[Template] = None,
             lora_request: Optional[PtLoRARequest] = None) -> AsyncIterator[ChatCompletionStreamResponse]:
+        if template is None:
+            template = self.default_template
         gen = self.infer(template, [infer_request], request_config, use_tqdm=False, lora_request=lora_request)
         for response in gen:
             yield response[0]
@@ -337,10 +341,10 @@ class PtEngine(InferEngine):
     @torch.inference_mode()
     async def infer_async(
         self,
-        template: Template,
         infer_request: InferRequest,
         request_config: Optional[RequestConfig] = None,
         *,
+        template: Optional[Template] = None,
         lora_request: Optional[PtLoRARequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
         infer_args = (template, infer_request, request_config)
@@ -387,15 +391,16 @@ class PtEngine(InferEngine):
     @torch.inference_mode()
     def infer(
         self,
-        template: Template,
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
+        template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         lora_request: Optional[PtLoRARequest] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
-
+        if template is None:
+            template = self.default_template
         if use_tqdm is None:
             use_tqdm = not request_config.stream
         prog_bar = tqdm(total=len(infer_requests), dynamic_ncols=True, disable=not use_tqdm)

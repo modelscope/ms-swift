@@ -1,3 +1,4 @@
+# Copyright (c) Alibaba, Inc. and its affiliates.
 import inspect
 import os
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
@@ -68,6 +69,7 @@ class VllmEngine(InferEngine):
             engine_kwargs=engine_kwargs)
 
         self._prepare_engine()
+        self._prepare_default_template()
         self._load_generation_config()
         self._fix_vllm_bug()
 
@@ -320,24 +322,24 @@ class VllmEngine(InferEngine):
     @torch.inference_mode()
     def infer(
         self,
-        template: Template,
         infer_requests: List[InferRequest],
         request_config: Optional[RequestConfig] = None,
         metrics: Optional[List[Metric]] = None,
         *,
+        template: Optional[Template] = None,
         use_tqdm: Optional[bool] = None,
         lora_request: Optional['LoRARequest'] = None
     ) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
         return super().infer(
-            template, infer_requests, request_config, metrics, use_tqdm=use_tqdm, lora_request=lora_request)
+            infer_requests, request_config, metrics, template=template, use_tqdm=use_tqdm, lora_request=lora_request)
 
     @torch.inference_mode()
     async def infer_async(
         self,
-        template: Template,
         infer_request: InferRequest,
         request_config: Optional[RequestConfig] = None,
         *,
+        template: Optional[Template] = None,
         lora_request: Optional['LoRARequest'] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        return await super().infer_async(template, infer_request, request_config, lora_request=lora_request)
+        return await super().infer_async(infer_request, request_config, template=template, lora_request=lora_request)
