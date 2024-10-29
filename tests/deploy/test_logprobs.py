@@ -1,38 +1,41 @@
 def _test_client(print_logprobs: bool = False):
     import requests
     import time
+    import aiohttp
     from pprint import pprint
-    from swift.llm import get_model_list_client, XRequestConfig, inference_client
+    from swift.llm import InferClient, InferRequest, RequestConfig
     query = '123*234=?'
 
     while True:
         try:
-            model_list = get_model_list_client()
-        except requests.exceptions.ConnectionError:
+            infer_client = InferClient()
+        except aiohttp.ClientConnectorError:
             time.sleep(5)
             continue
         break
-    model_type = model_list.data[0].id
-    is_chat = model_list.data[0].is_chat
-    is_multimodal = model_list.data[0].is_multimodal
-    print(f'model_type: {model_type}')
+    models = infer_client.models
+    print(f'models: {models}')
 
-    request_config = XRequestConfig(seed=42, max_tokens=256, temperature=0.8, logprobs=True, top_logprobs=5)
-    resp = inference_client(
-        model_type, query, request_config=request_config, is_chat=is_chat, is_multimodal=is_multimodal)
+    infer_request = InferRequest(messages=[{'role': 'user', 'content': '你是谁'}])
+    request_config = RequestConfig(seed=42, max_tokens=256, temperature=0.8, logprobs=True, top_logprobs=5)
+
+    resp = infer_client.infer(
+        [infer_request],
+        request_config=request_config)[0]
     response = resp.choices[0].message.content
     print(f'query: {query}')
     print(f'response: {response}')
     if print_logprobs:
         pprint(resp.choices[0].logprobs)
 
-    request_config = XRequestConfig(
+    request_config = RequestConfig(
         stream=True, seed=42, max_tokens=256, temperature=0.8, top_k=20, top_p=0.8, logprobs=True, top_logprobs=5)
-    stream_resp = inference_client(
-        model_type, query, request_config=request_config, is_chat=is_chat, is_multimodal=is_multimodal)
+    stream_resp = infer_client.infer(
+        [infer_request], request_config=request_config)
     print(f'query: {query}')
     print('response: ', end='')
     for chunk in stream_resp:
+        chunk = chunk[0]
         print(chunk.choices[0].delta.content, end='', flush=True)
         if print_logprobs and chunk.choices[0].logprobs is not None:
             pprint(chunk.choices[0].logprobs)
@@ -42,7 +45,6 @@ def _test_client(print_logprobs: bool = False):
 def _test(infer_backend):
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    os.environ['TIMEOUT'] = '-1'
 
     from swift.llm import DeployArguments
     from swift.llm.infer.deploy import llm_deploy
@@ -81,7 +83,7 @@ def test_vllm_orgin():
 
 
 if __name__ == '__main__':
-    # test_vllm_orgin()
+    test_vllm_orgin()
     # test_vllm()
     # test_lmdeploy()
-    test_pt()
+    # test_pt()

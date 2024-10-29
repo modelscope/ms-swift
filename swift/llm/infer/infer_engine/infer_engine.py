@@ -86,8 +86,7 @@ class InferEngine(BaseInferEngine):
 
         queue = Queue()
         new_tasks = [_run_infer(i, task, queue, stream) for i, task in enumerate(tasks)]
-        loop = asyncio.get_event_loop()
-        thread = Thread(target=lambda: loop.run_until_complete(_batch_run(new_tasks)))
+        thread = Thread(target=lambda: asyncio.run(_batch_run(new_tasks)))
         thread.start()
 
         prog_bar = tqdm(total=len(new_tasks), dynamic_ncols=True, disable=not use_tqdm)
@@ -140,13 +139,10 @@ class InferEngine(BaseInferEngine):
               request_config: Optional[RequestConfig] = None,
               metrics: Optional[List[Metric]] = None,
               *,
-              template: Optional[Template] = None,
               use_tqdm: Optional[bool] = None,
               **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
-        if template is None:
-            template = self.default_template
         tasks = [
-            self.infer_async(template, infer_request, request_config, **kwargs) for infer_request in infer_requests
+            self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests
         ]
         if use_tqdm is None:
             use_tqdm = not request_config.stream
