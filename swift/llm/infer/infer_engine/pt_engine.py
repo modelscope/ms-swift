@@ -142,26 +142,6 @@ class PtEngine(InferEngine):
             batched_logprobs.append(logprobs_list)
         return batched_logprobs
 
-    async def _infer_stream_async(
-            self,
-            infer_request: InferRequest,
-            request_config: RequestConfig,
-            *,
-            template: Optional[Template] = None,
-            lora_request: Optional[PtLoRARequest] = None) -> AsyncIterator[ChatCompletionStreamResponse]:
-        gen = self.infer([infer_request], request_config, template=template, use_tqdm=False, lora_request=lora_request)
-        for response in gen:
-            yield response[0]
-
-    async def _infer_full_async(self,
-                                infer_request: InferRequest,
-                                request_config: RequestConfig,
-                                *,
-                                template: Optional[Template] = None,
-                                lora_request: Optional[PtLoRARequest] = None) -> ChatCompletionResponse:
-        return self.infer([infer_request], request_config, template=template, use_tqdm=False,
-                          lora_request=lora_request)[0]
-
     @staticmethod
     def _update_batched_logprobs(batched_logprobs: List[torch.Tensor], logits_streamer: Optional[LogitsStreamer],
                                  generate_ids: torch.Tensor, top_logprobs: int) -> None:
@@ -346,11 +326,20 @@ class PtEngine(InferEngine):
         template: Optional[Template] = None,
         lora_request: Optional[PtLoRARequest] = None,
     ) -> Union[ChatCompletionResponse, AsyncIterator[ChatCompletionStreamResponse]]:
-        infer_args = (infer_request, request_config)
+        res_or_gen = self.infer([infer_request],
+                                request_config,
+                                template=template,
+                                use_tqdm=False,
+                                lora_request=lora_request)
         if request_config.stream:
-            return self._infer_stream_async(*infer_args, template=template, lora_request=lora_request)
+
+            async def _gen_wrapper():
+                for response in gen:
+                    yield response[0]
+
+            return _gen_wrapper()
         else:
-            return await self._infer_full_async(*infer_args, template=template, lora_request=lora_request)
+            return res_or_gen[0]
 
     def _infer(
         self,
@@ -383,7 +372,8 @@ class PtEngine(InferEngine):
 
             def _gen_wrapper():
                 for res in self._infer_stream(*infer_args, lora_request=lora_request):
-                    yield self._update_metrics(res, metrics)
+                    yield res
+                self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:

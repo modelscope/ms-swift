@@ -106,12 +106,6 @@ class InferEngine(BaseInferEngine):
         yield outputs
 
     @staticmethod
-    def __infer_full(tasks, use_tqdm: bool = True) -> List[ChatCompletionResponse]:
-        for outputs in InferEngine.__infer_stream(tasks, False, use_tqdm):
-            pass
-        return outputs
-
-    @staticmethod
     def _get_usage_info(num_prompt_tokens: int, num_generated_tokens: int) -> UsageInfo:
         return UsageInfo(
             prompt_tokens=num_prompt_tokens,
@@ -148,11 +142,14 @@ class InferEngine(BaseInferEngine):
 
             def _gen_wrapper():
                 for res in self.__infer_stream(tasks, True, use_tqdm):
-                    yield self._update_metrics(res, metrics)
+                    yield res
+                self._update_metrics(res, metrics)
 
             return _gen_wrapper()
         else:
-            return self._update_metrics(self.__infer_full(tasks, use_tqdm), metrics)
+            for outputs in self.__infer_stream(tasks, False, use_tqdm):
+                pass
+            return self._update_metrics(outputs, metrics)
 
     def _get_toolcall(self, response: Union[str, List[int]],
                       is_finished: bool) -> Optional[List[ChatCompletionMessageToolCall]]:
