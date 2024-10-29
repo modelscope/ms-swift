@@ -66,7 +66,13 @@ class InferClient(InferEngine):
 
     @staticmethod
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
-        return asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
+        res = asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
+        # ignore empty
+        empty_requset = ChatCompletionRequest('', [])
+        for k in list(res.keys()):
+            if res[k] == getattr(empty_requset, k):
+                res.pop(k)
+        return res
 
     @staticmethod
     def _parse_stream_data(data: bytes) -> Optional[str]:

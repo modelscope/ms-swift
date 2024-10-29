@@ -251,8 +251,8 @@ class CompletionResponse:
 
 @dataclass
 class DeltaMessage:
-    role: Literal['system', 'user', 'assistant']
-    content: str
+    role: Literal['system', 'user', 'assistant', None] = None
+    content: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
 
 
@@ -281,7 +281,7 @@ class CompletionResponseStreamChoice:
 class ChatCompletionStreamResponse:
     model: str
     choices: List[ChatCompletionResponseStreamChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
     id: str = field(default_factory=lambda: f'chatcmpl-{random_uuid()}')
     object: str = 'chat.completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
@@ -296,7 +296,7 @@ class ChatCompletionStreamResponse:
 class CompletionStreamResponse:
     model: str
     choices: List[CompletionResponseStreamChoice]
-    usage: UsageInfo
+    usage: Optional[UsageInfo] = None
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))

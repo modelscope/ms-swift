@@ -141,9 +141,7 @@ class InferEngine(BaseInferEngine):
               *,
               use_tqdm: Optional[bool] = None,
               **kwargs) -> Union[List[ChatCompletionResponse], Iterator[List[Optional[ChatCompletionStreamResponse]]]]:
-        tasks = [
-            self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests
-        ]
+        tasks = [self.infer_async(infer_request, request_config, **kwargs) for infer_request in infer_requests]
         if use_tqdm is None:
             use_tqdm = not request_config.stream
         if request_config.stream:
