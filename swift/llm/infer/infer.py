@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
-from swift.llm import (HfDataset, InferArguments, Messages, SwiftPipeline, Template, get_template, load_dataset,
-                       merge_lora, sample_dataset, InferRequest)
+from swift.llm import (HfDataset, InferArguments, InferRequest, Messages, SwiftPipeline, Template, get_template,
+                       load_dataset, merge_lora, sample_dataset)
 from swift.utils import append_to_jsonl, get_logger
 from .infer_engine import InferEngine
 from .protocol import RequestConfig

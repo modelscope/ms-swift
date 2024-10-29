@@ -66,10 +66,7 @@ class InferClient(InferEngine):
 
     @staticmethod
     def _prepare_request_data(model: str, infer_request: InferRequest, request_config: RequestConfig) -> Dict[str, Any]:
-        infer_request_kwargs = asdict(infer_request)
-        value = infer_request_kwargs['objects']
-
-        return asdict(ChatCompletionRequest(model, **asdict(request_config)))
+        return asdict(ChatCompletionRequest(model, **asdict(infer_request), **asdict(request_config)))
 
     @staticmethod
     def _parse_stream_data(data: bytes) -> Optional[str]:
