@@ -3,11 +3,9 @@ import time
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
-from http import HTTPStatus
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
-from swift.llm import TemplateInputs
-from swift.llm.template import Messages, Tool
+from swift.llm.template import InferRequest, Messages, Tool
 
 
 def random_uuid() -> str:
@@ -92,12 +90,19 @@ class ChatCompletionRequestMixin:
 
 
 @dataclass
-class CompletionRequest(RequestConfig, CompletionRequestMixin):
+class MultiModalRequestMixin:
+    images: List[str] = field(default_factory=list)
+    audios: List[str] = field(default_factory=list)
+    videos: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CompletionRequest(RequestConfig, MultiModalRequestMixin, CompletionRequestMixin):
     pass
 
 
 @dataclass
-class ChatCompletionRequest(RequestConfig, ChatCompletionRequestMixin):
+class ChatCompletionRequest(RequestConfig, MultiModalRequestMixin, ChatCompletionRequestMixin):
 
     def parse(self) -> Tuple['InferRequest', 'RequestConfig']:
         data = asdict(self)
@@ -239,12 +244,3 @@ class CompletionStreamResponse:
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion.chunk'
     created: int = field(default_factory=lambda: int(time.time()))
-
-
-@dataclass
-class InferRequest(TemplateInputs):
-
-    def remove_response(self):
-        last_role = self.messages[-1]['role']
-        if last_role == 'assistant':
-            self.messages.pop()

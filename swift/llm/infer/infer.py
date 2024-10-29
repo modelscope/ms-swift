@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import numpy as np
 
 from swift.llm import (HfDataset, InferArguments, Messages, SwiftPipeline, Template, get_template, load_dataset,
-                       merge_lora, sample_dataset)
+                       merge_lora, sample_dataset, InferRequest)
 from swift.utils import append_to_jsonl, get_logger
 from .infer_engine import InferEngine
-from .protocol import InferRequest, RequestConfig
+from .protocol import RequestConfig
 
 logger = get_logger()
 
@@ -131,8 +131,8 @@ class SwiftInfer(SwiftPipeline):
             result = self.infer_cli()
         else:
             result = self.infer_dataset()
-        if args.result_path is not None:
-            logger.info(f'The inference results have been saved to result_path: `{result_path}`.')
+        if self.result_path is not None:
+            logger.info(f'The inference results have been saved to result_path: `{self.result_path}`.')
         return result
 
     @staticmethod

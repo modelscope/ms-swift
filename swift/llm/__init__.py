@@ -5,15 +5,15 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
-    from .infer import (VllmEngine, InferRequest, RequestConfig, InferStats, LmdeployEngine, PtEngine, infer_main,
-                        deploy_main, PtLoRARequest, InferClient)
+    from .infer import (VllmEngine, RequestConfig, InferStats, LmdeployEngine, PtEngine, infer_main, deploy_main,
+                        PtLoRARequest, InferClient)
     from .export import export_main, merge_lora
     from .eval import eval_main
     from .train import sft_main, pt_main, rlhf_main
     from .argument import (EvalArguments, InferArguments, SftArguments, ExportArguments, DeployArguments, RLHFArguments,
                            WebUIArguments, AppUIArguments)
     from .template import (TEMPLATE_MAPPING, Template, Word, get_template, TemplateType, register_template,
-                           TemplateInputs, Messages, TemplateMeta, get_template_meta)
+                           TemplateInputs, Messages, TemplateMeta, get_template_meta, InferRequest)
     from .model import (MODEL_MAPPING, ModelType, get_model_tokenizer, safe_snapshot_download, HfConfigFactory,
                         ModelInfo, ModelMeta, get_model_meta)
     from .dataset import (AlpacaPreprocessor, MessagesPreprocessor, AutoPreprocessor, DatasetName, DATASET_MAPPING,
@@ -29,8 +29,8 @@ else:
     _import_structure = {
         'rlhf': ['rlhf_main'],
         'infer': [
-            'deploy_main', 'VllmEngine', 'InferRequest', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine',
-            'infer_main', 'PtLoRARequest', 'InferClient'
+            'deploy_main', 'VllmEngine', 'RequestConfig', 'InferStats', 'LmdeployEngine', 'PtEngine', 'infer_main',
+            'PtLoRARequest', 'InferClient'
         ],
         'export': ['export_main', 'merge_lora'],
         'eval': ['eval_main'],
@@ -41,7 +41,7 @@ else:
         ],
         'template': [
             'TEMPLATE_MAPPING', 'Template', 'Word', 'get_template', 'TemplateType', 'register_template',
-            'TemplateInputs', 'Messages', 'TemplateMeta', 'get_template_meta'
+            'TemplateInputs', 'Messages', 'TemplateMeta', 'get_template_meta', 'InferRequest'
         ],
         'model': [
             'MODEL_MAPPING', 'ModelType', 'get_model_tokenizer', 'safe_snapshot_download', 'HfConfigFactory',

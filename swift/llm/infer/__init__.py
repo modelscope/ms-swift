@@ -6,7 +6,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .infer import infer_main
     from .deploy import deploy_main
-    from .protocol import InferRequest, RequestConfig
+    from .protocol import RequestConfig
     from .infer_engine import (InferEngine, VllmEngine, LmdeployEngine, PtEngine, InferStats, PtLoRARequest,
                                InferClient)
 else:
@@ -14,9 +14,9 @@ else:
     _import_structure = {
         'deploy': ['deploy_main'],
         'infer': ['infer_main'],
-        'protocol': ['InferRequest', 'RequestConfig'],
-        'infer_engine': ['InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'InferStats', 'PtLoRARequest',
-                         'InferClient'],
+        'protocol': ['RequestConfig'],
+        'infer_engine':
+        ['InferEngine', 'VllmEngine', 'LmdeployEngine', 'PtEngine', 'InferStats', 'PtLoRARequest', 'InferClient'],
     }
 
     import sys

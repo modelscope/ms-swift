@@ -11,7 +11,7 @@ Messages = List[Message]
 
 
 @dataclass
-class TemplateInputs:
+class InferRequest:
     """
     messages: Input in messages format.
         Examples: [{
@@ -25,7 +25,6 @@ class TemplateInputs:
                 {"type": "text", "text": "<text>"},
             ],
         }]
-    objects: Used for grounding tasks in a general format.
     tools: Organize tools into the format of tools_prompt for system. for example, 'react_en'.
         Specifying this parameter will override system.
     """
@@ -35,8 +34,25 @@ class TemplateInputs:
     audios: List[str] = field(default_factory=list)
     videos: List[str] = field(default_factory=list)
 
-    objects: Union[str, None, List[Dict[str, Any]]] = None  # List[Dict[str, Any]]
     tools: Optional[List[Tool]] = None
+
+    def remove_response(self):
+        last_role = self.messages[-1]['role']
+        if last_role == 'assistant':
+            self.messages.pop()
+
+    def copy(self):
+        return self.__class__(
+            deepcopy(self.messages), self.images.copy(), self.audios.copy(), self.videos.copy(), deepcopy(self.tools))
+
+
+@dataclass
+class TemplateInputs(InferRequest):
+    """
+    objects: Used for grounding tasks in a general format.
+    """
+
+    objects: Union[str, None, List[Dict[str, Any]]] = None  # List[Dict[str, Any]]
 
     def __post_init__(self):
         # Format objects(groundings/refs) to json
@@ -47,9 +63,9 @@ class TemplateInputs:
             self.objects = []
 
     def copy(self):
-        return self.__class__(
-            deepcopy(self.messages), self.images.copy(), self.audios.copy(), self.videos.copy(), deepcopy(self.objects),
-            deepcopy(self.tools))
+        infer_request = super().copy()
+        return self.__class__(infer_request.messages, infer_request.images, infer_request.audios, infer_request.videos,
+                              infer_request.tools, deepcopy(self.objects))
 
 
 @dataclass
