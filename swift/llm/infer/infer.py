@@ -310,7 +310,6 @@ class SwiftInfer(SwiftPipeline):
             infer_requests = []
             for data in val_dataset:
                 infer_request = InferRequest(**data)
-                infer_request.remove_response()
                 infer_requests.append(infer_request)
             resp_list = self.infer(infer_requests, request_config, template=self.template, use_tqdm=True)
             for data, resp in zip(val_dataset, resp_list):

@@ -36,7 +36,10 @@ class InferRequest:
 
     tools: Optional[List[Tool]] = None
 
-    def remove_response(self):
+    def __post_init__(self):
+        self._remove_response()
+
+    def _remove_response(self):
         last_role = self.messages[-1]['role']
         if last_role == 'assistant':
             self.messages.pop()
@@ -152,13 +155,6 @@ class StdTemplateInputs:
                 res[f'{key}s'].append(value)
             message['content'] = new_content
         return res
-
-    @classmethod
-    def from_template_inputs(cls,
-                             template_inputs: TemplateInputs,
-                             *,
-                             tools_prompt: str = 'react_en') -> 'StdTemplateInputs':
-        return cls.from_dict(asdict(template_inputs), tools_prompt=tools_prompt)
 
     @staticmethod
     def messages_join_observation(messages: Messages) -> None:

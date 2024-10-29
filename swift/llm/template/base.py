@@ -4,6 +4,7 @@ import inspect
 import os
 import re
 from contextlib import contextmanager
+from dataclasses import asdict
 from functools import partial, wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -18,7 +19,7 @@ from transformers import PreTrainedTokenizerBase
 from transformers.integrations import is_deepspeed_zero3_enabled
 
 from .agent import loss_scale_map, split_str_parts_by
-from .template_inputs import StdTemplateInputs, TemplateInputs
+from .template_inputs import InferRequest, StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, Prompt, Word, fetch_one, findall
 from .vision_utils import load_batch, load_image, normalize_bbox, rescale_image
 
@@ -135,7 +136,7 @@ class Template:
 
     def encode(
         self,
-        inputs: TemplateInputs,
+        inputs: Union[TemplateInputs, Dict[str, Any], StdTemplateInputs, InferRequest],
         *,
         model=None,
     ) -> Dict[str, Any]:
@@ -144,10 +145,13 @@ class Template:
         Returns:
             return {'input_ids': List[int], 'labels': Optional[List[int]], ...}
         """
+        if isinstance(inputs, InferRequest):
+            inputs = asdict(inputs)
+        elif isinstance(inputs, TemplateInputs):
+            inputs = asdict(inputs)
+
         if isinstance(inputs, dict):
             inputs = StdTemplateInputs.from_dict(inputs, tools_prompt=self.tools_prompt)
-        elif isinstance(inputs, TemplateInputs):
-            inputs = StdTemplateInputs.from_template_inputs(inputs, tools_prompt=self.tools_prompt)
         elif isinstance(inputs, StdTemplateInputs):
             inputs = inputs.copy()
 
