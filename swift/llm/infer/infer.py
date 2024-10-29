@@ -128,9 +128,12 @@ class SwiftInfer(SwiftPipeline):
 
     def run(self) -> List[Dict[str, Any]]:
         if self.args.eval_human:
-            return self.infer_cli()
+            result = self.infer_cli()
         else:
-            return self.infer_dataset()
+            result = self.infer_dataset()
+        if args.result_path is not None:
+            logger.info(f'The inference results have been saved to result_path: `{result_path}`.')
+        return result
 
     @staticmethod
     def _input_mm_data(infer_state: InferCliState) -> None:
