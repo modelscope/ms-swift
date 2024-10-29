@@ -68,7 +68,7 @@ pip install -e '.[eval]'
 
 ```shell
 # 原始模型 (单卡A100大约需要半小时)
-CUDA_VISIBLE_DEVCIES=0 swift eval --model_type qwen2-7b-instruct \
+CUDA_VISIBLE_DEVICES=0 swift eval --model_type qwen2-7b-instruct \
     --eval_dataset ARC_c --infer_backend vllm
 
 # LoRA微调后
